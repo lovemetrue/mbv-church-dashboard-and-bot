@@ -408,15 +408,64 @@ a.tel:hover { color: var(--accent-hi); border-bottom-color: var(--accent); }
 @media (max-width: 720px) {
   .shell { padding: 20px 14px 48px; }
   .kpis { grid-template-columns: repeat(2, 1fr); }
-  .nav { display: none; }
-  .topbar { gap: 10px; padding: 0 14px; }
-  /* На узком экране в шапке остаётся только период и профиль:
-     иначе правая группа выталкивает страницу за экран. */
-  #cityChip, .topbar .icon-btn { display: none; }
   .page-head { flex-direction: column; align-items: flex-start; }
   .readouts { gap: 20px; }
-  /* Сетка районов географическая, перестраивать её нельзя.
-     Поэтому она скроллится внутри карточки, а не тянет за собой всю страницу. */
+
+  /*
+   * Шапка на телефоне — в две строки: сверху бренд и действия, снизу разделы.
+   *
+   * Раньше здесь стояло `.nav { display: none }`: разделы не «сжимались», а
+   * исчезали совсем, и четыре из пяти становились недоступны с телефона —
+   * попасть в «Заявки» или «40 дней» было нечем. Одной строкой пять вкладок и
+   * правую группу на 375px не разместить, поэтому вкладки уезжают на свою
+   * строку и прокручиваются, если не влезли.
+   */
+  .topbar { height: auto; flex-wrap: wrap; gap: 0 10px; padding: 8px 14px 0; }
+  .brand { order: 1; }
+  .topbar-right { order: 2; gap: 6px; }
+  .nav {
+    order: 3; width: 100%;
+    /* Отрицательные поля — чтобы полоса прокрутки шла от края до края экрана,
+       а сами вкладки стояли по отступу страницы. */
+    margin: 8px -14px 0; padding: 0 14px 8px;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav button { flex: none; white-space: nowrap; scroll-snap-align: start; }
+
+  /*
+   * Затухание у краёв строки разделов: обрезанная вкладка иначе выглядит поломкой
+   * вёрстки, а не подсказкой «здесь листается» — полосы прокрутки на телефоне не
+   * видно. Затухаем только ту сторону, где есть что листать: классы at-start и
+   * at-end ставит скрипт. Если разделы влезли целиком, оба класса стоят сразу и
+   * затухания нет вовсе.
+   */
+  .nav {
+    scroll-snap-type: x proximity;
+    /* Без этого прилипание тянет первую вкладку к самому краю контейнера, и крайнее
+       левое положение прокрутки равно отступу (14), а не нулю: скрипт тогда никогда
+       не считает строку «в начале» и держит слева лишнее затухание. */
+    scroll-padding: 0 14px;
+    -webkit-mask-image: var(--nav-fade);
+    mask-image: var(--nav-fade);
+    --nav-fade: linear-gradient(to right, transparent 0, #000 26px, #000 calc(100% - 26px), transparent 100%);
+  }
+  .nav.at-start { --nav-fade: linear-gradient(to right, #000 calc(100% - 26px), transparent 100%); }
+  .nav.at-end { --nav-fade: linear-gradient(to right, transparent 0, #000 26px, #000 100%); }
+  .nav.at-start.at-end { --nav-fade: none; }
+
+  /*
+   * В правой группе оставляем только то, что работает и нужно с телефона:
+   * выгрузку и «Выйти» (её вставляет сервер). «Весь период» — подсказка, а не
+   * фильтр; город и шестерёнка вообще заглушки; аватар — украшение. На 375px
+   * они выдавливали страницу за экран: 385px против 375px видимых.
+   */
+  #cityChip, .topbar .icon-btn, #rangeBtn, .topbar-right .avatar { display: none; }
+  /* Подпись чипа на узком экране рвётся на две строки и раздувает шапку:
+     оставляем иконку — рядом только одна кнопка, спутать не с чем. */
+  #exportLink span { display: none; }
+  #exportLink { padding: 0 9px; }
+
 }
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
@@ -2154,6 +2203,24 @@ function applyView() {
   });
 }
 
+/*
+ * Затухание у краёв строки разделов: подсказка, что её можно листать. Держим его
+ * только с той стороны, где есть куда листать, — иначе крайняя вкладка остаётся
+ * полупрозрачной и выглядит обрезанной. На широком экране прокрутки нет, оба
+ * условия верны сразу, и затухания не видно вовсе.
+ */
+const navStrip = $('.nav');
+const navFade = () => {
+  navStrip.classList.toggle('at-start', navStrip.scrollLeft <= 1);
+  navStrip.classList.toggle(
+    'at-end',
+    navStrip.scrollLeft + navStrip.clientWidth >= navStrip.scrollWidth - 1,
+  );
+};
+navStrip.addEventListener('scroll', navFade, { passive: true });
+addEventListener('resize', navFade);
+navFade();
+
 document.querySelectorAll('.nav button').forEach((b) => {
   b.onclick = () => {
     document.querySelectorAll('.nav button').forEach((x) => x.setAttribute('aria-selected', 'false'));
@@ -2161,6 +2228,10 @@ document.querySelectorAll('.nav button').forEach((b) => {
     state.view = b.dataset.view;
     applyView();
     scrollTo({ top: 0, behavior: 'smooth' });
+    // На телефоне разделы не влезают в строку и прокручиваются. Выбранную вкладку
+    // подтягиваем в вид, иначе она остаётся у края под затуханием и выглядит
+    // обрезанной. На широком экране прокручивать нечего, и вызов ничего не делает.
+    b.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
   };
 });
 

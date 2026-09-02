@@ -1,0 +1,91 @@
+services:
+  bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-church}:${POSTGRES_PASSWORD:-church}@db:5432/${POSTGRES_DB:-church40}
+      TZ: ${TIMEZONE:-Europe/Moscow}
+    depends_on:
+      db:
+        condition: service_healthy
+    # Российские хостинги часто режут api.telegram.org: DNS отдаёт адрес, который молча
+    # таймаутит. Поэтому имя хоста прибиваем к живому IP — SNI и проверка сертификата
+    # при этом работают штатно, потому что имя остаётся telegram-овым.
+    # Как найти рабочий адрес, если бот перестал подключаться, — см. README.
+    extra_hosts:
+      - 'api.telegram.org:${TELEGRAM_API_IP:-149.154.167.220}'
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-church}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-church}
+      POSTGRES_DB: ${POSTGRES_DB:-church40}
+      TZ: ${TIMEZONE:-Europe/Moscow}
+    networks:
+      default:
+        # Уникальное имя. Дашборд стоит ещё и в сети сайта, а там свой контейнер
+        # с именем db: по короткому имени он попадал в чужую базу.
+        aliases: [church40-db]
+    volumes:
+      # Postgres 18 ждёт монтирование на /var/lib/postgresql (данные лежат в подкаталоге версии),
+      # иначе контейнер уходит в перезапуск. Так же работает pg_upgrade между мажорными версиями.
+      - pgdata:/var/lib/postgresql
+    # Порт наружу не публикуем: бот ходит к базе по внутренней сети compose.
+    # Для локальной разработки поднимайте базу профилем dev (см. README).
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-church} -d ${POSTGRES_DB:-church40}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  # Дашборд статистики: вход по паролю, сессии в Valkey.
+  # Тот же образ, что и бот, просто другая команда.
+  dashboard:
+    build: .
+    restart: unless-stopped
+    command: node dist/dashboard/index.js
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Valkey сайта, но отдельная база (db3) и свой префикс ключей: с сайтом не пересекаемся.
+      # Именно church40-db, а не db: см. алиас у сервиса db.
+      DATABASE_URL: postgres://${POSTGRES_USER:-church}:${POSTGRES_PASSWORD:-church}@church40-db:5432/${POSTGRES_DB:-church40}
+      REDIS_URL: redis://bloodofjesus-valkey:6379/3
+      DASHBOARD_HTML: /app/dashboard/home-groups.html
+      TZ: ${TIMEZONE:-Europe/Moscow}
+    # Наружу не публикуем: только для nginx на хосте.
+    ports:
+      - '127.0.0.1:8090:8090'
+    networks:
+      - default
+      - site
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+networks:
+  default:
+  # Сеть стека сайта: нужна, чтобы дотянуться до его Valkey. Сам стек не трогаем.
+  site:
+    external: true
+    name: blood-of-jesus_default
+
+volumes:
+  pgdata:

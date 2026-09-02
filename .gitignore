@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+.env.local
+backups/
+*.log
+.DS_Store
+_preview.html

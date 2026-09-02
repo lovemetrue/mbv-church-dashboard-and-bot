@@ -1,0 +1,6 @@
+# Оверрайд для разработки на ноутбуке: база доступна с хоста, бот из compose не поднимается.
+# Запуск: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db
+services:
+  db:
+    ports:
+      - '5433:5432'

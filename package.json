@@ -1,0 +1,36 @@
+{
+  "name": "church40bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Бот регистрации участников церковной кампании «40 дней» — Telegram и MAX на одной кодовой базе",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node --env-file-if-exists=.env dist/index.js",
+    "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "import:spreadsheet": "node --env-file-if-exists=.env scripts/import-spreadsheet.mjs"
+  },
+  "dependencies": {
+    "@maxhub/max-bot-api": "^0.2.5",
+    "grammy": "^1.45.1",
+    "pg": "^8.13.1",
+    "pino": "^9.5.0",
+    "qrcode": "^1.5.4",
+    "redis": "^4.7.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.11.10",
+    "@types/qrcode": "^1.5.6",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.11"
+  }
+}

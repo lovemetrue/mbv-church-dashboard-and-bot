@@ -1,20 +1,21 @@
-import { attendsMbv, churchByIndex } from './churches.js';
+import { OTHER_CHURCH, attendsMbv, churchByIndex, otherChurchByIndex } from './churches.js';
 import { formatPhone, normalizePhone } from './phone.js';
-import { years } from './plural.js';
 import type { Button, IncomingUpdate } from './platform.js';
 import {
+  AGE_GROUPS,
   CB,
   KIT_DATE,
   MDG_DEADLINE,
   MDG_LABEL,
   T,
+  ageKeyboard,
+  backKeyboard,
   cancelQuestionKeyboard,
   churchKeyboard,
   consentKeyboard,
-  finishKeyboard,
   mdgKeyboard,
   menuKeyboard,
-  skipKeyboard,
+  otherChurchKeyboard,
   summaryKeyboard,
 } from './texts.js';
 
@@ -32,18 +33,25 @@ export type FsmState =
   | 'await_fio'
   | 'await_phone'
   | 'await_church'
+  /** Второй экран церквей: человек выбрал «Другая церковь». */
+  | 'await_other_church'
   | 'await_mdg'
   | 'await_location'
   | 'await_age'
-  | 'await_companions'
   | 'await_leader_name'
   | 'summary'
   | 'menu'
   /** Человек нажал «Задать вопрос» и пишет его текстом. */
   | 'await_question';
 
-/** Что у человека с домашней группой. */
-export type MdgStatus = 'open' | 'join' | 'member' | 'leader';
+/**
+ * Что у человека с малой домашней группой.
+ *
+ * `home` — готов пустить группу к себе домой, но вести не берётся. Дальше по
+ * сценарию идёт тем же путём, что и `open`, но координатору разница важна:
+ * одному нужен ведущий, другому — место.
+ */
+export type MdgStatus = 'open' | 'home' | 'join' | 'member' | 'leader';
 
 export interface Draft {
   consent?: boolean;
@@ -54,8 +62,8 @@ export interface Draft {
   church?: string;
   mdgStatus?: MdgStatus;
   location?: string;
-  age?: number;
-  companions?: string;
+  /** Возрастная категория, а не число: спрашиваем кнопкой (см. AGE_GROUPS). */
+  age?: string;
   leaderName?: string;
 }
 
@@ -118,6 +126,7 @@ export interface FsmResult {
 
 const MDG_DONE: Record<MdgStatus, string> = {
   open: T.mdgOpenDone(),
+  home: T.mdgOpenDone(),
   join: T.mdgJoinDone(MDG_DEADLINE),
   member: T.mdgMemberDone,
   leader: T.mdgLeaderDone,
@@ -140,8 +149,7 @@ const stay = (state: FsmState, draft: Draft, actions: OutAction[], effects: Effe
 const askConsent = (): FsmResult =>
   stay('await_consent', {}, [msg(T.greeting, consentKeyboard())]);
 
-const askFio = (draft: Draft, intro = false): FsmResult =>
-  stay('await_fio', draft, intro ? [msg(T.dataNotice), msg(T.askFio)] : [msg(T.askFio)]);
+const askFio = (draft: Draft): FsmResult => stay('await_fio', draft, [msg(T.askFio)]);
 
 const askPhone = (draft: Draft, effects: Effect[] = []): FsmResult =>
   stay('await_phone', draft, [{ kind: 'request_contact', text: T.askPhone }], effects);
@@ -161,20 +169,26 @@ const askChurch = (draft: Draft, effects: Effect[] = []): FsmResult =>
     effects,
   );
 
-const askMdg = (draft: Draft, effects: Effect[] = []): FsmResult =>
-  stay('await_mdg', draft, [msg(T.askMdg, mdgKeyboard())], effects);
+const askOtherChurch = (draft: Draft, effects: Effect[] = []): FsmResult =>
+  stay('await_other_church', draft, [msg(T.askOtherChurch, otherChurchKeyboard())], effects);
 
+const askMdg = (draft: Draft, effects: Effect[] = []): FsmResult =>
+  stay('await_mdg', draft, [msg(T.askMdg, mdgKeyboard(attendsMbv(draft.church)))], effects);
+
+/** Тем, кто открывает группу, подбираем место встреч; тем, кто ищет, — группу рядом. */
 const askLocation = (draft: Draft, effects: Effect[] = []): FsmResult =>
-  stay('await_location', draft, [msg(T.askLocation, finishKeyboard())], effects);
+  stay(
+    'await_location',
+    draft,
+    [msg(draft.mdgStatus === 'join' ? T.askLocationJoin : T.askLocationOpen, backKeyboard())],
+    effects,
+  );
 
 const askAge = (draft: Draft, effects: Effect[] = []): FsmResult =>
-  stay('await_age', draft, [msg(T.askAge, finishKeyboard())], effects);
-
-const askCompanions = (draft: Draft, effects: Effect[] = []): FsmResult =>
-  stay('await_companions', draft, [msg(T.askCompanions, skipKeyboard())], effects);
+  stay('await_age', draft, [msg(T.askAge, ageKeyboard())], effects);
 
 const askLeaderName = (draft: Draft, effects: Effect[] = []): FsmResult =>
-  stay('await_leader_name', draft, [msg(T.askLeaderName, finishKeyboard())], effects);
+  stay('await_leader_name', draft, [msg(T.askLeaderName, backKeyboard())], effects);
 
 /** Итоговая сводка: ТЗ требует показать всё собранное и получить подтверждение. */
 function showSummary(draft: Draft, effects: Effect[] = []): FsmResult {
@@ -183,11 +197,10 @@ function showSummary(draft: Draft, effects: Effect[] = []): FsmResult {
     `Телефон: ${formatPhone(draft.phone) || 'не указан'}`,
     `Церковь: ${draft.church ?? 'не указана'}`,
   ];
-  if (draft.mdgStatus) rows.push(`Домашняя группа: ${MDG_LABEL[draft.mdgStatus]}`);
+  if (draft.mdgStatus) rows.push(`Малая группа: ${MDG_LABEL[draft.mdgStatus]}`);
   if (draft.leaderName) rows.push(`Ведущий группы: ${draft.leaderName}`);
   if (draft.location) rows.push(`Район: ${draft.location}`);
-  if (draft.age) rows.push(`Возраст: ${years(draft.age)}`);
-  if (draft.companions) rows.push(`С кем планируете посещать: ${draft.companions}`);
+  if (draft.age) rows.push(`Возраст: ${draft.age}`);
 
   return stay(
     'summary',
@@ -197,58 +210,12 @@ function showSummary(draft: Draft, effects: Effect[] = []): FsmResult {
   );
 }
 
-const showMenu = (draft: Draft, text: string, participant?: Participant): FsmResult =>
-  stay('menu', draft, [msg(text, menuKeyboard(participant ? !participant.complete : false))]);
-
-/** Досрочное завершение: ТЗ разрешает выйти на любом уточняющем вопросе. */
-const finishEarly = (draft: Draft): FsmResult => ({
-  actions: [msg(T.incompleteWarning, menuKeyboard(true))],
-  state: 'menu',
-  draft,
-  effects: [{ kind: 'save', patch: profilePatch(draft) }, { kind: 'finish', complete: false }],
-});
+const showMenu = (draft: Draft, text: string): FsmResult =>
+  stay('menu', draft, [msg(text, menuKeyboard())]);
 
 function profilePatch(draft: Draft): ProfilePatch {
   const { consent: _consent, phoneAttempts: _attempts, ...patch } = draft;
   return patch;
-}
-
-/** Первый вопрос, на который человек ещё не ответил. Нужен кнопке «Дозаполнить анкету». */
-export function nextMissingStep(draft: Draft): FsmState {
-  if (!draft.fio) return 'await_fio';
-  if (!draft.phone) return 'await_phone';
-  if (!draft.church) return 'await_church';
-  if (!attendsMbv(draft.church)) return 'summary';
-  if (!draft.mdgStatus) return 'await_mdg';
-  if (draft.mdgStatus === 'member' && !draft.leaderName) return 'await_leader_name';
-  if ((draft.mdgStatus === 'open' || draft.mdgStatus === 'join') && !draft.location) return 'await_location';
-  if (draft.mdgStatus !== 'leader' && !draft.age) return 'await_age';
-  if (draft.mdgStatus === 'join' && !draft.companions) return 'await_companions';
-  return 'summary';
-}
-
-/** Переход на нужный шаг по состоянию черновика. */
-function goToStep(step: FsmState, draft: Draft, effects: Effect[] = []): FsmResult {
-  switch (step) {
-    case 'await_fio':
-      return askFio(draft);
-    case 'await_phone':
-      return askPhone(draft, effects);
-    case 'await_church':
-      return askChurch(draft, effects);
-    case 'await_mdg':
-      return askMdg(draft, effects);
-    case 'await_location':
-      return askLocation(draft, effects);
-    case 'await_age':
-      return askAge(draft, effects);
-    case 'await_companions':
-      return askCompanions(draft, effects);
-    case 'await_leader_name':
-      return askLeaderName(draft, effects);
-    default:
-      return showSummary(draft, effects);
-  }
 }
 
 // ── основной обработчик ─────────────────────────────────────────────────────
@@ -275,7 +242,7 @@ export function handleUpdate({
         : null;
 
   if (update.kind === 'start') {
-    return registered ? showMenu(draft, T.welcomeBack, participant) : askConsent();
+    return registered ? showMenu(draft, T.welcomeBack) : askConsent();
   }
 
   // Кнопки меню работают у зарегистрированного человека в любом состоянии.
@@ -283,18 +250,23 @@ export function handleUpdate({
     return handleMenu(update.data, draft, leadBlock, participant, openQuestions ?? 0);
   }
 
-  // Досрочное завершение доступно на всех уточняющих вопросах.
-  if (update.kind === 'callback' && update.data === CB.finishEarly && draft.phone && draft.fio) {
-    return finishEarly(draft);
+  /*
+   * «Вернуться» к вопросу про малую группу. Человек мог нажать не ту кнопку, и без
+   * этого ему пришлось бы проходить анкету заново. Прежний выбор стираем: иначе
+   * сводка покажет ответы от отменённой ветки.
+   */
+  if (update.kind === 'callback' && update.data === CB.back && draft.church) {
+    const { mdgStatus: _s, location: _l, age: _a, leaderName: _n, ...kept } = draft;
+    return askMdg(kept);
   }
 
   switch (state) {
     case 'idle':
-      return registered ? showMenu(draft, T.menuHint, participant) : askConsent();
+      return registered ? showMenu(draft, T.menuHint) : askConsent();
 
     case 'await_consent':
       if (update.kind === 'callback' && update.data === CB.consentYes) {
-        const next = askFio({ ...draft, consent: true }, true);
+        const next = askFio({ ...draft, consent: true });
         return { ...next, effects: [{ kind: 'consent' }] };
       }
       if (update.kind === 'callback' && update.data === CB.consentNo) {
@@ -312,6 +284,9 @@ export function handleUpdate({
     case 'await_church':
       return awaitChurch(update, draft);
 
+    case 'await_other_church':
+      return awaitOtherChurch(update, draft);
+
     case 'await_mdg':
       return awaitMdg(update, draft);
 
@@ -320,13 +295,7 @@ export function handleUpdate({
       return awaitLocation(update.text, draft);
 
     case 'await_age':
-      if (update.kind !== 'text') return ignore('await_age', draft);
-      return awaitAge(update.text, draft);
-
-    case 'await_companions':
-      if (update.kind === 'callback' && update.data === CB.skip) return showSummary(draft);
-      if (update.kind !== 'text') return ignore('await_companions', draft);
-      return awaitCompanions(update.text, draft);
+      return awaitAge(update, draft);
 
     case 'await_leader_name':
       if (update.kind !== 'text') return ignore('await_leader_name', draft);
@@ -336,11 +305,11 @@ export function handleUpdate({
       return awaitConfirm(update, draft, alreadyOpen, leadBlock);
 
     case 'await_question':
-      return awaitQuestion(update, draft, participant);
+      return awaitQuestion(update, draft);
 
     case 'menu':
       // Переписки с участниками нет, поэтому на свободный текст объясняем это прямо.
-      if (update.kind === 'text') return showMenu(draft, T.menuNoChat, participant);
+      if (update.kind === 'text') return showMenu(draft, T.menuNoChat);
       return ignore('menu', draft);
   }
 }
@@ -391,22 +360,45 @@ function awaitChurch(update: IncomingUpdate, draft: Draft): FsmResult {
   const church = churchByIndex(Number.parseInt(update.data.slice(CB.churchPrefix.length), 10));
   if (!church) return stay('await_church', draft, [msg(T.churchHint, churchKeyboard())]);
 
+  // «Другая церковь» — это не ответ, а переход ко второму экрану со списком церквей.
+  if (church === OTHER_CHURCH) return askOtherChurch(draft);
+
   const next: Draft = { ...draft, church };
   const effects: Effect[] = [{ kind: 'save', patch: { church } }];
+  return askMdg(next, effects);
+}
 
-  // Вопрос про домашнюю группу задаём только людям из МБВ: так требует ТЗ.
-  return attendsMbv(church) ? askMdg(next, effects) : showSummary(next, effects);
+function awaitOtherChurch(update: IncomingUpdate, draft: Draft): FsmResult {
+  if (update.kind !== 'callback' || !update.data.startsWith(CB.otherChurchPrefix)) {
+    return stay('await_other_church', draft, [msg(T.churchHint, otherChurchKeyboard())]);
+  }
+
+  const church = otherChurchByIndex(
+    Number.parseInt(update.data.slice(CB.otherChurchPrefix.length), 10),
+  );
+  if (!church) return stay('await_other_church', draft, [msg(T.churchHint, otherChurchKeyboard())]);
+
+  // Название церкви, которой нет в списке, отдельно не спрашиваем: со всеми из других
+  // церквей служитель связывается лично, и там же это выясняется.
+  const next: Draft = { ...draft, church };
+  return askMdg(next, [{ kind: 'save', patch: { church } }]);
 }
 
 function awaitMdg(update: IncomingUpdate, draft: Draft): FsmResult {
+  // Справка вопрос не закрывает: рассказали и снова показали варианты.
+  if (update.kind === 'callback' && update.data === CB.mdgAbout) {
+    return stay('await_mdg', draft, [msg(T.mdgAbout, mdgKeyboard(attendsMbv(draft.church)))]);
+  }
+
   const chosen = readMdgChoice(update);
-  if (!chosen) return stay('await_mdg', draft, [msg(T.mdgHint, mdgKeyboard())]);
+  if (!chosen) return stay('await_mdg', draft, [msg(T.mdgHint, mdgKeyboard(attendsMbv(draft.church)))]);
 
   const next: Draft = { ...draft, mdgStatus: chosen };
   const effects: Effect[] = [{ kind: 'save', patch: { mdgStatus: chosen } }];
 
   switch (chosen) {
     case 'open':
+    case 'home':
     case 'join':
       return askLocation(next, effects);
     case 'member':
@@ -422,6 +414,8 @@ function readMdgChoice(update: IncomingUpdate): MdgStatus | null {
   switch (update.data) {
     case CB.mdgOpen:
       return 'open';
+    case CB.mdgHome:
+      return 'home';
     case CB.mdgJoin:
       return 'join';
     case CB.mdgMember:
@@ -435,32 +429,26 @@ function readMdgChoice(update: IncomingUpdate): MdgStatus | null {
 
 function awaitLocation(raw: string, draft: Draft): FsmResult {
   const location = raw.trim();
-  if (location.length < 2) return stay('await_location', draft, [msg(T.askLocation, finishKeyboard())]);
+  if (location.length < 2) return askLocation(draft);
   return askAge({ ...draft, location }, [{ kind: 'save', patch: { location } }]);
 }
 
-function awaitAge(raw: string, draft: Draft): FsmResult {
-  const age = Number.parseInt(raw.replace(/\D/g, ''), 10);
-  if (!Number.isFinite(age) || age < 5 || age > 110) {
-    return stay('await_age', draft, [msg(T.ageInvalid, finishKeyboard())]);
+function awaitAge(update: IncomingUpdate, draft: Draft): FsmResult {
+  if (update.kind !== 'callback' || !update.data.startsWith(CB.agePrefix)) {
+    return stay('await_age', draft, [msg(T.askAge, ageKeyboard())]);
   }
 
-  const next: Draft = { ...draft, age };
-  const effects: Effect[] = [{ kind: 'save', patch: { age } }];
-  // Про компанию спрашиваем только тех, кто ищет группу.
-  return next.mdgStatus === 'join' ? askCompanions(next, effects) : showSummary(next, effects);
-}
+  const age = AGE_GROUPS[Number.parseInt(update.data.slice(CB.agePrefix.length), 10)];
+  if (!age) return stay('await_age', draft, [msg(T.askAge, ageKeyboard())]);
 
-function awaitCompanions(raw: string, draft: Draft): FsmResult {
-  const companions = raw.trim();
-  if (!companions) return showSummary(draft);
-  return showSummary({ ...draft, companions }, [{ kind: 'save', patch: { companions } }]);
+  return showSummary({ ...draft, age }, [{ kind: 'save', patch: { age } }]);
 }
 
 function awaitLeaderName(raw: string, draft: Draft): FsmResult {
   const leaderName = raw.trim();
-  if (leaderName.length < 3) return stay('await_leader_name', draft, [msg(T.askLeaderName, finishKeyboard())]);
-  return askAge({ ...draft, leaderName }, [{ kind: 'save', patch: { leaderName } }]);
+  if (leaderName.length < 3) return askLeaderName(draft);
+  // Возраст у состоящих в группе не спрашиваем: группа у человека уже есть.
+  return showSummary({ ...draft, leaderName }, [{ kind: 'save', patch: { leaderName } }]);
 }
 
 function awaitConfirm(
@@ -483,16 +471,18 @@ function awaitConfirm(
     { kind: 'finish', complete: true },
   ];
 
-  // Служителям нужна заявка по тем, кто ищет группу или готов её открыть.
+  // Служителям нужна заявка по тем, кто ищет группу, готов её открыть или дать дом:
+  // во всех трёх случаях дальше идёт живой разговор с координатором.
+  const offersGroup = draft.mdgStatus === 'open' || draft.mdgStatus === 'home';
   if (draft.mdgStatus === 'join' && !alreadyOpen('join_group')) {
     effects.push({ kind: 'create_request', type: 'join_group' });
   }
-  if (draft.mdgStatus === 'open' && leadBlock === null) {
+  if (offersGroup && leadBlock === null) {
     effects.push({ kind: 'create_request', type: 'lead_group' });
   }
 
   // Если заявку не заводим, нельзя отвечать «мы передали»: объясняем настоящую причину.
-  const done = draft.mdgStatus === 'open' && leadBlock
+  const done = offersGroup && leadBlock
     ? LEAD_BLOCK_TEXT[leadBlock]
     : draft.mdgStatus
       ? MDG_DONE[draft.mdgStatus]
@@ -516,11 +506,9 @@ const MAX_OPEN_QUESTIONS = 3;
  * В отличие от заявки на группу, вопросов может быть несколько: одна тема не мешает
  * другой. Поэтому здесь не запрет на повтор, а предел на число неотвеченных.
  */
-function awaitQuestion(update: IncomingUpdate, draft: Draft, participant?: Participant): FsmResult {
-  const incomplete = participant ? !participant.complete : false;
-
+function awaitQuestion(update: IncomingUpdate, draft: Draft): FsmResult {
   if (update.kind === 'callback' && update.data === CB.cancelQuestion) {
-    return stay('menu', draft, [msg(T.questionCancelled, menuKeyboard(incomplete))]);
+    return stay('menu', draft, [msg(T.questionCancelled, menuKeyboard())]);
   }
   if (update.kind !== 'text') return ignore('await_question', draft);
 
@@ -530,7 +518,7 @@ function awaitQuestion(update: IncomingUpdate, draft: Draft, participant?: Parti
   }
 
   return {
-    actions: [msg(T.questionAccepted, menuKeyboard(incomplete))],
+    actions: [msg(T.questionAccepted, menuKeyboard())],
     state: 'menu',
     draft,
     effects: [{ kind: 'create_request', type: 'question', text: question }],
@@ -544,37 +532,31 @@ function handleMenu(
   participant?: Participant,
   openQuestions = 0,
 ): FsmResult {
-  const incomplete = participant ? !participant.complete : false;
-
   switch (data) {
     case CB.menuAsk:
       if (openQuestions >= MAX_OPEN_QUESTIONS) {
-        return stay('menu', draft, [msg(T.questionTooMany, menuKeyboard(incomplete))]);
+        return stay('menu', draft, [msg(T.questionTooMany, menuKeyboard())]);
       }
       return stay('await_question', draft, [
         msg(T.askQuestion, cancelQuestionKeyboard()),
       ]);
 
     case CB.menuStatus:
-      return stay('menu', draft, [msg(statusText(participant), menuKeyboard(incomplete))]);
-
-    case CB.menuResume:
-      // Возвращаем человека на первый вопрос, на который он не ответил.
-      return goToStep(nextMissingStep(draft), draft);
+      return stay('menu', draft, [msg(statusText(participant), menuKeyboard())]);
 
     case CB.menuLead:
       if (leadBlock) {
-        return stay('menu', draft, [msg(LEAD_BLOCK_TEXT[leadBlock], menuKeyboard(incomplete))]);
+        return stay('menu', draft, [msg(LEAD_BLOCK_TEXT[leadBlock], menuKeyboard())]);
       }
       return {
-        actions: [msg(T.leadRequestAccepted, menuKeyboard(incomplete))],
+        actions: [msg(T.leadRequestAccepted, menuKeyboard())],
         state: 'menu',
         draft,
         effects: [{ kind: 'create_request', type: 'lead_group' }],
       };
 
     default:
-      return showMenu(draft, T.menuHint, participant);
+      return showMenu(draft, T.menuHint);
   }
 }
 
@@ -587,7 +569,7 @@ function statusText(participant?: Participant): string {
 
   if (participant.kitIssued) {
     lines.push(T.statusKitIssued);
-  } else if (participant.mdgStatus === 'open') {
+  } else if (participant.mdgStatus === 'open' || participant.mdgStatus === 'home') {
     lines.push(T.statusWaitingOpen(MDG_DEADLINE));
   } else if (participant.mdgStatus === 'join') {
     lines.push(T.statusWaitingMdg(MDG_DEADLINE));

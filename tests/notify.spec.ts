@@ -38,10 +38,9 @@ describe('сообщение служителю о заявке', () => {
     expect(l.filter((x) => x.includes('не указан'))).toHaveLength(2);
   });
 
-  test('возраст согласован с числом', () => {
-    expect(formatRequest(request({ age: 34 }))).toContain('34 года');
-    expect(formatRequest(request({ age: 47 }))).toContain('47 лет');
-    expect(formatRequest(request({ age: 21 }))).toContain('21 год');
+  test('возраст показан категорией: анкета спрашивает её, а не число', () => {
+    expect(formatRequest(request({ age: '25-40' }))).toContain('25-40');
+    expect(formatRequest(request({ age: null }))).toContain('не указан');
   });
 
   test('телефон показан в читаемом виде', () => {

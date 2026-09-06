@@ -13,7 +13,8 @@ export interface UserRow {
   church: string | null;
   mdg_status: MdgStatus | null;
   location: string | null;
-  age: number | null;
+  /** Возрастная категория («25-40»), а не число: так спрашивает анкета. */
+  age: string | null;
   companions: string | null;
   leader_name: string | null;
   consent_at: Date | null;
@@ -44,7 +45,6 @@ const COLUMNS: Record<keyof ProfilePatch, string> = {
   mdgStatus: 'mdg_status',
   location: 'location',
   age: 'age',
-  companions: 'companions',
   leaderName: 'leader_name',
 };
 
@@ -159,7 +159,7 @@ export class UsersRepo {
     church?: string;
     mdgStatus?: MdgStatus;
     location?: string;
-    age?: number;
+    age?: string;
     preferredContact?: string;
     comment?: string;
   }): Promise<UserRow> {
@@ -213,6 +213,7 @@ export class UsersRepo {
       complete: number;
       incomplete: number;
       mdg_open: number;
+      mdg_home: number;
       mdg_join: number;
       mdg_member: number;
       mdg_leader: number;
@@ -227,6 +228,7 @@ export class UsersRepo {
               count(*) FILTER (WHERE registration_no IS NOT NULL AND complete)::int AS complete,
               count(*) FILTER (WHERE registration_no IS NOT NULL AND NOT complete)::int AS incomplete,
               count(*) FILTER (WHERE mdg_status = 'open')::int                      AS mdg_open,
+              count(*) FILTER (WHERE mdg_status = 'home')::int                      AS mdg_home,
               count(*) FILTER (WHERE mdg_status = 'join')::int                      AS mdg_join,
               count(*) FILTER (WHERE mdg_status = 'member')::int                    AS mdg_member,
               count(*) FILTER (WHERE mdg_status = 'leader')::int                    AS mdg_leader,

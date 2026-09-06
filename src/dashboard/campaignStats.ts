@@ -22,7 +22,7 @@ export interface CampaignStats {
     unfinished: number;
   };
   /** Что у людей с домашней группой. */
-  mdg: { open: number; join: number; member: number; leader: number };
+  mdg: { open: number; home: number; join: number; member: number; leader: number };
   /** Разрез по платформам: пусто, если ещё никто не зарегистрировался. */
   byPlatform: {
     platform: PlatformName;
@@ -94,6 +94,7 @@ export async function campaignStats(
     },
     mdg: {
       open: sum((r) => r.mdg_open),
+      home: sum((r) => r.mdg_home),
       join: sum((r) => r.mdg_join),
       member: sum((r) => r.mdg_member),
       leader: sum((r) => r.mdg_leader),

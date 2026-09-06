@@ -91,7 +91,7 @@ describe('регистрация через роутер', () => {
     expect(u).toMatchObject({
       full_name: 'Иванов Иван Иванович',
       phone: '+79001234567',
-      church: 'МБВ (Колизей)',
+      church: 'МБВ Колизей',
     });
     expect(u['registration_no']).toBeNull();
   });
@@ -121,57 +121,51 @@ describe('регистрация через роутер', () => {
     expect(rows.map((r) => (r as { registration_no: number }).registration_no)).toEqual([1, 2]);
   });
 
-  test('ветка «ищу группу» сохраняет адрес, возраст и компанию', async () => {
+  test('ветка «ищу группу» сохраняет район и возрастную категорию', async () => {
     await answerRequired();
     await router.handle(tap(CB.mdgJoin));
     await router.handle(text('улица Ленина, 5'));
-    await router.handle(text('34'));
-    await router.handle(text('с женой'));
+    await router.handle(tap('age:2'));
     await router.handle(tap(CB.confirm));
 
     expect(await dbUser()).toMatchObject({
       mdg_status: 'join',
       location: 'улица Ленина, 5',
-      age: 34,
-      companions: 'с женой',
+      age: '25-40',
     });
+  });
+
+  test('«готов предоставить дом» пишется отдельным статусом', async () => {
+    await answerRequired();
+    await router.handle(tap(CB.mdgHome));
+    await router.handle(text('Приморский, м. Пионерская'));
+    await router.handle(tap('age:3'));
+    await router.handle(tap(CB.confirm));
+
+    expect(await dbUser()).toMatchObject({ mdg_status: 'home', age: '40-55' });
   });
 
   test('заявка координатору создаётся для того, кто ищет группу', async () => {
     await answerRequired();
     await router.handle(tap(CB.mdgJoin));
     await router.handle(text('улица Ленина, 5'));
-    await router.handle(text('34'));
-    await router.handle(tap(CB.skip));
+    await router.handle(tap('age:2'));
     await router.handle(tap(CB.confirm));
 
     const { rows } = await db.query('SELECT type, status FROM requests');
     expect(rows).toEqual([{ type: 'join_group', status: 'Новая' }]);
   });
 
-  test('досрочное завершение регистрирует, но помечает анкету неполной', async () => {
+  test('«вернуться» возвращает к выбору, не теряя обязательных ответов', async () => {
     await answerRequired();
     await router.handle(tap(CB.mdgJoin));
-    await router.handle(tap(CB.finishEarly));
-
-    const u = await dbUser();
-    expect(u['registration_no']).toBe(1);
-    expect(u).toMatchObject({ complete: false });
-  });
-
-  test('дозаполнить анкету можно позже, номер при этом не меняется', async () => {
-    await answerRequired();
-    await router.handle(tap(CB.mdgJoin));
-    await router.handle(tap(CB.finishEarly));
-
-    await router.handle(tap(CB.menuResume));
-    await router.handle(text('улица Ленина, 5'));
-    await router.handle(text('34'));
-    await router.handle(tap(CB.skip));
+    await router.handle(tap(CB.back));
+    await router.handle(tap(CB.mdgLeader));
     await router.handle(tap(CB.confirm));
 
     const u = await dbUser();
-    expect(u).toMatchObject({ registration_no: 1, complete: true, location: 'улица Ленина, 5' });
+    expect(u).toMatchObject({ mdg_status: 'leader', complete: true, registration_no: 1 });
+    expect(u['location']).toBeNull();
   });
 
   test('состояние диалога переживает перезапуск процесса', async () => {

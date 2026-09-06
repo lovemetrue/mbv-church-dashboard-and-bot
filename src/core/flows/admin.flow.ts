@@ -6,7 +6,7 @@ import { localDate } from '../../broadcast/schedule.js';
 import { formatDayRanges } from '../dayRanges.js';
 import { b, code, esc, i } from '../html.js';
 import { formatPhone } from '../phone.js';
-import { participants, toParticipants, years } from '../plural.js';
+import { participants, toParticipants } from '../plural.js';
 import type { AdminDialog } from '../../db/repos/adminSessions.repo.js';
 import type { UserRow } from '../../db/repos/users.repo.js';
 import type { Deps } from '../../deps.js';
@@ -87,7 +87,7 @@ function participantCard(u: UserRow): string {
   if (u.church) lines.push(`⛪️ ${esc(u.church)}`);
   if (u.mdg_status) lines.push(`👥 ${esc(MDG_SHORT[u.mdg_status])}`);
   if (u.location) lines.push(`📍 ${esc(u.location)}`);
-  if (u.age) lines.push(`🎂 ${years(u.age)}`);
+  if (u.age) lines.push(`🎂 ${u.age}`);
   if (!u.complete) lines.push('⚠️ анкета заполнена не до конца');
   if (u.admin_comment) lines.push(`📝 ${esc(u.admin_comment)}`);
   return lines.join('\n');

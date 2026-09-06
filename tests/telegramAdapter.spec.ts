@@ -161,7 +161,7 @@ describe('сквозной прогон через настоящий Telegram-�
     expect(rows[0]).toMatchObject({
       phone: '+79001234567',
       full_name: 'Иванов Иван Иванович',
-      church: 'МБВ (Колизей)',
+      church: 'МБВ Колизей',
       mdg_status: 'leader',
       complete: true,
       username: 'ivan',

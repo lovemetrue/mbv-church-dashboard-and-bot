@@ -22,7 +22,7 @@ const REQUIRED: Draft = {
   consent: true,
   fio: 'Иванов Иван Иванович',
   phone: '+79001234567',
-  church: 'МБВ (Колизей)',
+  church: 'МБВ Колизей',
 };
 
 describe('согласие на обработку данных', () => {
@@ -40,11 +40,17 @@ describe('согласие на обработку данных', () => {
     expect(said(r)).toContain('/start');
   });
 
-  test('согласие фиксируется отдельным эффектом и бот предупреждает про уточняющие вопросы', () => {
+  test('согласие фиксируется отдельным эффектом и сразу спрашивают ФИО', () => {
     const r = run('await_consent', {}, tap(CB.consentYes));
     expect(r.effects).toEqual([{ kind: 'consent' }]);
     expect(r.state).toBe('await_fio');
-    expect(said(r)).toMatch(/2–3 уточняющих|Завершить регистрацию/);
+    expect(said(r)).toContain('ФИО');
+  });
+
+  test('на кнопке согласия нет галочки: она выглядела бы уже нажатой', () => {
+    const r = run('await_consent', {}, start());
+    expect(said(r)).toContain('Кампанию');
+    expect(r.actions.at(-1)?.buttons?.flat().map((b) => b.text)).toEqual(['Согласен', 'Не согласен']);
   });
 
   test('до согласия анкета не начинается', () => {
@@ -81,34 +87,53 @@ describe('обязательные вопросы', () => {
     expect(r.draft.phone).toBeUndefined();
   });
 
-  test('вопрос про церковь показывает варианты филиалов', () => {
+  test('вопрос про церковь показывает пять вариантов', () => {
     const r = run('await_phone', { consent: true }, contact('79001234567'));
     expect(said(r)).toContain(T.askChurch);
-    expect(buttons(r).length).toBeGreaterThanOrEqual(6);
+    expect(buttons(r).length).toBe(5);
   });
 
-  test('выбор филиала ведёт к вопросу про малую группу', () => {
+  test('выбор церкви МБВ ведёт к вопросу про малую группу', () => {
     const r = run('await_church', { consent: true, fio: 'Иванов Иван', phone: '+79001234567' }, tap('church:0'));
     expect(r.state).toBe('await_mdg');
-    expect(r.draft.church).toBe('МБВ (Колизей)');
+    expect(r.draft.church).toBe('МБВ Колизей');
   });
 });
 
 describe('человек не из МБВ', () => {
   const draft = { consent: true, fio: 'Иванов Иван', phone: '+79001234567' };
 
-  test('«другая церковь» ведёт сразу к сводке, минуя вопросы про МДГ', () => {
+  test('«другая церковь» открывает второй экран со списком церквей', () => {
     // Индекс «другой церкви» — предпоследний в списке вариантов.
-    const r = run('await_church', draft, tap('church:4'));
-    expect(r.draft.church).toBe('Другая церковь');
-    expect(r.state).toBe('summary');
-    expect(r.draft.mdgStatus).toBeUndefined();
+    const r = run('await_church', draft, tap('church:3'));
+    expect(r.state).toBe('await_other_church');
+    // Сама «Другая церковь» ответом не считается: это переход, а не выбор.
+    expect(r.draft.church).toBeUndefined();
   });
 
-  test('«не посещаю церковь» тоже ведёт к сводке', () => {
-    const r = run('await_church', draft, tap('church:5'));
+  test('конкретная церковь из второго экрана сохраняется и ведёт к вопросу про группу', () => {
+    const r = run('await_other_church', draft, tap('church2:0'));
+    expect(r.draft.church).toContain('Кингисепп');
+    expect(r.state).toBe('await_mdg');
+  });
+
+  test('«не посещаю церковь» тоже ведёт к вопросу про малую группу', () => {
+    const r = run('await_church', draft, tap('church:4'));
     expect(r.draft.church).toBe('Не посещаю церковь');
-    expect(r.state).toBe('summary');
+    expect(r.state).toBe('await_mdg');
+  });
+
+  test('не из МБВ предлагают только узнать про группы и присоединиться', () => {
+    // Звать вести или открывать группу человека из другой церкви преждевременно.
+    const r = run('await_church', draft, tap('church:4'));
+    expect(buttons(r)).toEqual([CB.mdgAbout, CB.mdgJoin]);
+  });
+
+  test('справка про малую группу не закрывает вопрос', () => {
+    const r = run('await_mdg', { ...draft, church: 'Не посещаю церковь' }, tap(CB.mdgAbout));
+    expect(r.state).toBe('await_mdg');
+    expect(r.draft.mdgStatus).toBeUndefined();
+    expect(buttons(r)).toEqual([CB.mdgAbout, CB.mdgJoin]);
   });
 
   test('подтверждение завершает регистрацию человека не из МБВ', () => {
@@ -120,75 +145,90 @@ describe('человек не из МБВ', () => {
   });
 });
 
-describe('ветка «хочу открыть МДГ»', () => {
-  test('спрашивает локацию, затем возраст, затем сводку', () => {
+describe('ветка «готов открыть группу»', () => {
+  test('спрашивает район, затем возрастную категорию, затем сводку', () => {
     const chosen = run('await_mdg', REQUIRED, tap(CB.mdgOpen));
     expect(chosen.state).toBe('await_location');
     expect(chosen.draft.mdgStatus).toBe('open');
+    expect(said(chosen)).toContain('станции метро');
 
-    const located = run('await_location', chosen.draft, text('улица Ленина, 5'));
+    const located = run('await_location', chosen.draft, text('Приморский, м. Пионерская'));
     expect(located.state).toBe('await_age');
-    expect(located.draft.location).toBe('улица Ленина, 5');
+    expect(located.draft.location).toBe('Приморский, м. Пионерская');
 
-    const aged = run('await_age', located.draft, text('34'));
+    // Возраст выбирают кнопкой, а не пишут числом: быстрее и без ошибок ввода.
+    const aged = run('await_age', located.draft, tap('age:2'));
     expect(aged.state).toBe('summary');
-    expect(aged.draft.age).toBe(34);
+    expect(aged.draft.age).toBe('25-40');
   });
 
-  test('в подтверждении сказано, что свяжется координатор МДГ', () => {
-    const draft: Draft = { ...REQUIRED, mdgStatus: 'open', location: 'ул. Ленина 5', age: 34 };
+  test('возраст числом не принимается: ждём кнопку', () => {
+    const draft: Draft = { ...REQUIRED, mdgStatus: 'open', location: 'ул. Ленина 5' };
+    const r = run('await_age', draft, text('34'));
+    expect(r.state).toBe('await_age');
+    expect(r.draft.age).toBeUndefined();
+  });
+
+  test('«готов предоставить дом» идёт тем же путём, но записывается отдельно', () => {
+    // Координатору разница важна: одному нужен ведущий, другому — место.
+    const r = run('await_mdg', REQUIRED, tap(CB.mdgHome));
+    expect(r.state).toBe('await_location');
+    expect(r.draft.mdgStatus).toBe('home');
+  });
+
+  test('в подтверждении благодарят за готовность открыть дом', () => {
+    const draft: Draft = { ...REQUIRED, mdgStatus: 'open', location: 'ул. Ленина 5', age: '25-40' };
     const r = run('summary', draft, tap(CB.confirm));
-    expect(said(r)).toContain('координатор');
+    expect(said(r)).toContain('координатор служения');
   });
 });
 
-describe('ветка «хочу присоединиться к МДГ»', () => {
-  test('после возраста спрашивает, с кем человек будет ходить', () => {
-    const draft: Draft = { ...REQUIRED, mdgStatus: 'join', location: 'ул. Ленина 5' };
-    const r = run('await_age', draft, text('34'));
-    expect(r.state).toBe('await_companions');
+describe('ветка «хочу присоединиться к группе»', () => {
+  test('после района сразу возраст, а потом сводка: про компанию не спрашивают', () => {
+    const draft: Draft = { ...REQUIRED, mdgStatus: 'join' };
+    const located = run('await_location', draft, text('Приморский'));
+    expect(located.state).toBe('await_age');
+
+    const aged = run('await_age', located.draft, tap('age:1'));
+    expect(aged.state).toBe('summary');
+    expect(aged.draft.age).toBe('18-25');
   });
 
-  test('ответ про компанию сохраняется и ведёт к сводке', () => {
-    const draft: Draft = { ...REQUIRED, mdgStatus: 'join', location: 'ул. Ленина 5', age: 34 };
-    const r = run('await_companions', draft, text('с женой'));
-    expect(r.state).toBe('summary');
-    expect(r.draft.companions).toBe('с женой');
-  });
-
-  test('вопрос про компанию можно пропустить', () => {
-    const draft: Draft = { ...REQUIRED, mdgStatus: 'join', location: 'ул. Ленина 5', age: 34 };
-    const r = run('await_companions', draft, tap(CB.skip));
-    expect(r.state).toBe('summary');
-    expect(r.draft.companions).toBeUndefined();
+  test('ищущему группу формулировка вопроса своя', () => {
+    const r = run('await_mdg', REQUIRED, tap(CB.mdgJoin));
+    expect(said(r)).toContain('удобно');
   });
 
   test('заявка служителю создаётся при подтверждении', () => {
-    const draft: Draft = { ...REQUIRED, mdgStatus: 'join', location: 'ул. Ленина 5', age: 34 };
+    const draft: Draft = { ...REQUIRED, mdgStatus: 'join', location: 'ул. Ленина 5', age: '25-40' };
     const r = run('summary', draft, tap(CB.confirm));
     expect(r.effects).toEqual(
       expect.arrayContaining([expect.objectContaining({ kind: 'create_request', type: 'join_group' })]),
     );
-    expect(said(r)).toContain('координатор');
+    expect(said(r)).toContain('Миссия Благая Весть');
   });
 });
 
 describe('ветка «уже состою в МДГ»', () => {
-  test('спрашивает ФИО ведущего, затем возраст', () => {
+  test('спрашивает ведущего и на этом заканчивает: возраст здесь не нужен', () => {
     const chosen = run('await_mdg', REQUIRED, tap(CB.mdgMember));
     expect(chosen.state).toBe('await_leader_name');
 
     const named = run('await_leader_name', chosen.draft, text('Петров Пётр'));
-    expect(named.state).toBe('await_age');
+    expect(named.state).toBe('summary');
     expect(named.draft.leaderName).toBe('Петров Пётр');
+    expect(named.draft.age).toBeUndefined();
+  });
 
-    const aged = run('await_age', named.draft, text('34'));
-    expect(aged.state).toBe('summary');
+  test('без имени ведущего дальше не пускают: вопрос обязательный', () => {
+    const r = run('await_leader_name', { ...REQUIRED, mdgStatus: 'member' }, text('П'));
+    expect(r.state).toBe('await_leader_name');
+    expect(r.draft.leaderName).toBeUndefined();
   });
 
   test('локацию у состоящего в группе не спрашивают', () => {
     const chosen = run('await_mdg', REQUIRED, tap(CB.mdgMember));
-    expect(said(chosen)).not.toContain(T.askLocation);
+    expect(said(chosen)).not.toContain(T.askLocationJoin);
   });
 });
 
@@ -200,25 +240,27 @@ describe('ветка «я веду МДГ»', () => {
   });
 });
 
-describe('досрочное завершение', () => {
-  test('кнопка есть на уточняющих вопросах', () => {
+describe('кнопка «вернуться»', () => {
+  test('есть на уточняющих вопросах', () => {
     const r = run('await_mdg', REQUIRED, tap(CB.mdgOpen));
-    expect(buttons(r)).toContain(CB.finishEarly);
+    expect(buttons(r)).toContain(CB.back);
   });
 
-  test('досрочное завершение регистрирует, но помечает анкету неполной', () => {
-    const draft: Draft = { ...REQUIRED, mdgStatus: 'join' };
-    const r = run('await_location', draft, tap(CB.finishEarly));
-    expect(r.state).toBe('menu');
-    expect(r.effects).toEqual(
-      expect.arrayContaining([expect.objectContaining({ kind: 'finish', complete: false })]),
-    );
-    expect(said(r)).toContain('не хватает');
+  test('возвращает к выбору про малую группу и стирает ответы отменённой ветки', () => {
+    const draft: Draft = { ...REQUIRED, mdgStatus: 'open', location: 'ул. Ленина 5' };
+    const r = run('await_age', draft, tap(CB.back));
+    expect(r.state).toBe('await_mdg');
+    expect(r.draft.mdgStatus).toBeUndefined();
+    expect(r.draft.location).toBeUndefined();
+    // Обязательные ответы при этом остаются: заполнять анкету заново не нужно.
+    expect(r.draft.fio).toBe(REQUIRED.fio);
+    expect(r.draft.church).toBe(REQUIRED.church);
   });
 
-  test('на обязательных вопросах кнопки завершения нет', () => {
-    const r = run('await_consent', {}, tap(CB.consentYes));
-    expect(buttons(r)).not.toContain(CB.finishEarly);
+  test('досрочно завершить регистрацию больше нельзя', () => {
+    const r = run('await_location', { ...REQUIRED, mdgStatus: 'join' }, tap('reg:finish'));
+    expect(r.state).toBe('await_location');
+    expect(r.effects).toEqual([]);
   });
 });
 
@@ -231,19 +273,19 @@ describe('сводка и подтверждение', () => {
     companions: 'с женой',
   };
 
-  test('возраст показывается со словом: 34 года, а не просто 34', () => {
-    const r = run('await_companions', { ...draft, companions: undefined }, text('с женой'));
-    expect(said(r)).toContain('34 года');
-  });
-
   test('показывает всё, что человек сообщил, и ссылку на политику', () => {
-    const r = run('await_companions', { ...draft, companions: undefined }, text('с женой'));
+    const r = run('await_age', { ...draft, age: undefined }, tap('age:2'));
     const shown = said(r);
     expect(shown).toContain('Иванов Иван Иванович');
     expect(shown).toContain('+7 900 123-45-67');
-    expect(shown).toContain('МБВ (Колизей)');
-    expect(shown).toContain('с женой');
+    expect(shown).toContain('МБВ Колизей');
+    expect(shown).toContain('25-40');
     expect(shown).toContain('mbv.spb.ru');
+  });
+
+  test('на кнопке подтверждения нет галочки', () => {
+    const r = run('await_age', { ...draft, age: undefined }, tap('age:2'));
+    expect(r.actions.at(-1)?.buttons?.flat()[0]?.text).toBe('Всё верно, зарегистрировать');
   });
 
   test('подтверждение завершает регистрацию полностью', () => {
@@ -294,16 +336,10 @@ describe('меню и статус', () => {
     expect(said(r)).toContain('уже получили');
   });
 
-  test('неполная анкета видна в статусе и в меню появляется «дозаполнить»', () => {
+  test('кнопки «дозаполнить анкету» в меню больше нет', () => {
+    // Досрочного завершения нет, значит и незаполненной анкеты не бывает.
     const r = run('menu', REQUIRED, tap(CB.menuStatus), registered({ complete: false }));
-    expect(said(r)).toContain('не завершена');
-    expect(buttons(r)).toContain(CB.menuResume);
-  });
-
-  test('«дозаполнить» возвращает на первый недостающий вопрос', () => {
-    const draft: Draft = { ...REQUIRED, mdgStatus: 'join' };
-    const r = run('menu', draft, tap(CB.menuResume), registered({ complete: false, mdgStatus: 'join' }));
-    expect(r.state).toBe('await_location');
+    expect(buttons(r)).not.toContain('menu:resume');
   });
 
   test('на свободный текст бот объясняет, что переписки в боте нет', () => {

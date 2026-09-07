@@ -124,8 +124,10 @@ export class Router {
      * только там, где заявка вообще может появиться — кнопка меню и подтверждение
      * анкеты, — и только если своей открытой заявки ещё нет: она важнее сверки.
      */
-    const mayLead = update.kind === 'callback'
-      && (update.data === CB.menuLead || update.data === CB.confirm);
+    // Точки, где может появиться заявка на открытие группы: выбор в анкете, кнопка
+    // меню и подтверждение анкеты. Гонять два запроса на каждое сообщение незачем.
+    const LEAD_POINTS: readonly string[] = [CB.mdgOpen, CB.mdgHome, CB.menuLead, CB.confirm];
+    const mayLead = update.kind === 'callback' && LEAD_POINTS.includes(update.data);
     const leadPhoneTaken = mayLead && user.phone && !openRequests.includes('lead_group')
       ? await this.leadPhoneTaken(user.phone)
       : undefined;
@@ -176,6 +178,16 @@ export class Router {
 
     await this.deps.sessions.set(user.id, result.state, result.draft);
 
+    /*
+     * На шаге, где регистрация завершилась, карточка с номером и QR идёт первой,
+     * а итог ветки («Спасибо за ваше желание открыть свой дом…») — сразу за ней.
+     * Иначе человек сначала читал благодарность и только потом узнавал номер.
+     * На всех остальных шагах assignedNo пустой, и порядок обычный.
+     */
+    if (assignedNo !== null) {
+      await this.sendRegistrationCard(platform, update.ctx.chatId, assignedNo);
+    }
+
     for (const action of result.actions) {
       await this.send(platform, update.ctx, user.id, action, admin);
     }
@@ -186,10 +198,6 @@ export class Router {
     // клавиатура вернётся сама (см. clear_contact_ui в send).
     const asksContact = result.actions.some((a) => a.kind === 'request_contact');
     if (admin && update.kind === 'start' && !asksContact) await this.admin.showMenu(update.ctx);
-
-    if (assignedNo !== null) {
-      await this.sendRegistrationCard(platform, update.ctx.chatId, assignedNo);
-    }
 
     for (const request of created) {
       await this.notifier.notifyRequest(request);
@@ -273,6 +281,17 @@ export class Router {
     action: OutAction,
     admin = false,
   ): Promise<void> {
+    /*
+     * Что именно бот ответил — видно только здесь: сообщения участнику уходят
+     * через эту воронку. Пишем на уровне debug, чтобы в обычной работе тексты
+     * людей в журнал не попадали: включается через LOG_LEVEL=debug на время разбора.
+     */
+    this.deps.logger.debug(
+      { platform: ctx.platform, chatId: ctx.chatId, kind: action.kind, text: action.text,
+        buttons: action.buttons?.flat().map((b) => b.text) },
+      'бот отвечает',
+    );
+
     try {
       switch (action.kind) {
         case 'request_contact':

@@ -288,7 +288,7 @@ export function handleUpdate({
       return awaitOtherChurch(update, draft);
 
     case 'await_mdg':
-      return awaitMdg(update, draft);
+      return awaitMdg(update, draft, leadBlock);
 
     case 'await_location':
       if (update.kind !== 'text') return ignore('await_location', draft);
@@ -384,7 +384,7 @@ function awaitOtherChurch(update: IncomingUpdate, draft: Draft): FsmResult {
   return askMdg(next, [{ kind: 'save', patch: { church } }]);
 }
 
-function awaitMdg(update: IncomingUpdate, draft: Draft): FsmResult {
+function awaitMdg(update: IncomingUpdate, draft: Draft, leadBlock: LeadBlock): FsmResult {
   // Справка вопрос не закрывает: рассказали и снова показали варианты.
   if (update.kind === 'callback' && update.data === CB.mdgAbout) {
     return stay('await_mdg', draft, [msg(T.mdgAbout, mdgKeyboard(attendsMbv(draft.church)))]);
@@ -392,6 +392,20 @@ function awaitMdg(update: IncomingUpdate, draft: Draft): FsmResult {
 
   const chosen = readMdgChoice(update);
   if (!chosen) return stay('await_mdg', draft, [msg(T.mdgHint, mdgKeyboard(attendsMbv(draft.church)))]);
+
+  /*
+   * Сверка телефона — здесь, а не на подтверждении анкеты.
+   *
+   * Раньше человек с действующей группой отвечал на район и возраст, а отказ получал
+   * в самом конце, вплотную с «Готово, вы зарегистрированы» — два сообщения подряд,
+   * противоречащие друг другу. Отказываем сразу и оставляем варианты на экране:
+   * ведущий действующей группы почти всегда хотел кнопку «Я ведущий Малой группы».
+   */
+  if ((chosen === 'open' || chosen === 'home') && leadBlock) {
+    return stay('await_mdg', draft, [
+      msg(LEAD_BLOCK_TEXT[leadBlock], mdgKeyboard(attendsMbv(draft.church))),
+    ]);
+  }
 
   const next: Draft = { ...draft, mdgStatus: chosen };
   const effects: Effect[] = [{ kind: 'save', patch: { mdgStatus: chosen } }];

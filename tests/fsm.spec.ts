@@ -183,6 +183,38 @@ describe('ветка «готов открыть группу»', () => {
   });
 });
 
+describe('у кого уже есть действующая группа', () => {
+  // Отказывать надо в момент выбора, а не после района и возраста: иначе человек
+  // заполняет полшага впустую и получает отказ вплотную с «вы зарегистрированы».
+  test('«готов открыть» отклоняется сразу и вопрос остаётся на экране', () => {
+    const r = run('await_mdg', REQUIRED, tap(CB.mdgOpen), { leadPhoneTaken: 'group' });
+    expect(r.state).toBe('await_mdg');
+    expect(r.draft.mdgStatus).toBeUndefined();
+    expect(said(r)).toContain('уже записана действующая');
+    // Варианты показываем снова, чтобы человек выбрал подходящий.
+    expect(buttons(r)).toContain(CB.mdgLeader);
+  });
+
+  test('«готов предоставить дом» отклоняется так же', () => {
+    const r = run('await_mdg', REQUIRED, tap(CB.mdgHome), { leadPhoneTaken: 'group' });
+    expect(r.state).toBe('await_mdg');
+    expect(r.draft.mdgStatus).toBeUndefined();
+  });
+
+  test('остальные варианты сверка не трогает', () => {
+    // Человек с группой вполне может выбрать «я ведущий» — это как раз его случай.
+    const r = run('await_mdg', REQUIRED, tap(CB.mdgLeader), { leadPhoneTaken: 'group' });
+    expect(r.state).toBe('summary');
+    expect(r.draft.mdgStatus).toBe('leader');
+  });
+
+  test('открытая заявка по номеру отклоняет с другим текстом', () => {
+    const r = run('await_mdg', REQUIRED, tap(CB.mdgOpen), { leadPhoneTaken: 'request' });
+    expect(r.state).toBe('await_mdg');
+    expect(said(r)).toContain('уже приняли');
+  });
+});
+
 describe('ветка «хочу присоединиться к группе»', () => {
   test('после района сразу возраст, а потом сводка: про компанию не спрашивают', () => {
     const draft: Draft = { ...REQUIRED, mdgStatus: 'join' };

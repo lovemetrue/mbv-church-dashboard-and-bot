@@ -74,6 +74,24 @@ describe('заявка на открытие группы: сверка теле
     expect(max.textsTo('222').join('\n')).toContain(T.leadPhoneHasRequest);
   });
 
+  test('в анкете отказ приходит сразу на выборе, а не после района и возраста', async () => {
+    // Так было: человек заполнял район и возраст и получал отказ вплотную
+    // с «вы зарегистрированы» — два противоречащих сообщения подряд.
+    await seedGroup('Функционирует');
+    const userId = await seedUser(db, { id: '111', phone: PHONE, registered: false });
+    // Сажаем человека ровно на вопрос про малую группу: обязательные ответы уже даны.
+    await db.query(
+      `INSERT INTO sessions (user_id, state, data) VALUES ($1, 'await_mdg', $2)
+       ON CONFLICT (user_id) DO UPDATE SET state = 'await_mdg', data = $2`,
+      [userId, JSON.stringify({ consent: true, fio: 'Тестов Тест', phone: PHONE, church: 'МБВ Колизей' })],
+    );
+    await router.handle({ kind: 'callback', ctx: ctx('111'), data: CB.mdgOpen, callbackId: 'c' });
+
+    const said = tg.textsTo('111').join('\n');
+    expect(said).toContain('уже записана действующая');
+    expect(said).not.toContain('Напишите, пожалуйста, район');
+  });
+
   test('другой номер заявку подать может: сверка не ловит лишних', async () => {
     await seedUser(db, { id: '111', phone: PHONE });
     await router.handle(tapLead('111'));

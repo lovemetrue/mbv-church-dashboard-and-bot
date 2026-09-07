@@ -113,6 +113,22 @@ describe('регистрация через роутер', () => {
     expect(tg.textsTo(USER).join('\n')).toContain('1');
   });
 
+  test('благодарность идёт после номера регистрации, а не перед ним', async () => {
+    // Раньше человек читал «Спасибо за ваше желание…», и только потом узнавал номер:
+    // сначала итог ветки, потом сама регистрация — обратный порядок.
+    await answerRequired();
+    await router.handle(tap(CB.mdgOpen));
+    await router.handle(text('Приморский, м. Пионерская'));
+    await router.handle(tap('age:2'));
+    await router.handle(tap(CB.confirm));
+
+    const texts = tg.textsTo(USER);
+    const номер = texts.findIndex((t) => t.includes('Ваш номер регистрации'));
+    const итог = texts.findIndex((t) => t.includes('открыть свой дом и своё сердце'));
+    expect(номер).toBeGreaterThanOrEqual(0);
+    expect(итог).toBeGreaterThan(номер);
+  });
+
   test('номера регистрации не повторяются', async () => {
     await registerLeader(USER);
     await registerLeader('777');

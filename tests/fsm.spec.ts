@@ -278,6 +278,20 @@ describe('кнопка «вернуться»', () => {
     expect(buttons(r)).toContain(CB.back);
   });
 
+  test('есть и на сводке: у ведущего уточняющих вопросов нет, вернуться больше негде', () => {
+    const r = run('await_mdg', REQUIRED, tap(CB.mdgLeader));
+    expect(r.state).toBe('summary');
+    expect(buttons(r)).toContain(CB.back);
+  });
+
+  test('со сводки возвращает к выбору, сохраняя обязательные ответы', () => {
+    const draft: Draft = { ...REQUIRED, mdgStatus: 'leader' };
+    const r = run('summary', draft, tap(CB.back));
+    expect(r.state).toBe('await_mdg');
+    expect(r.draft.mdgStatus).toBeUndefined();
+    expect(r.draft.fio).toBe(REQUIRED.fio);
+  });
+
   test('возвращает к выбору про малую группу и стирает ответы отменённой ветки', () => {
     const draft: Draft = { ...REQUIRED, mdgStatus: 'open', location: 'ул. Ленина 5' };
     const r = run('await_age', draft, tap(CB.back));

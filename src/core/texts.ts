@@ -8,7 +8,7 @@ import type { Button } from './platform.js';
  */
 const env = (name: string, fallback: string): string => process.env[name]?.trim() || fallback;
 
-export const CAMPAIGN_TITLE = env('CAMPAIGN_TITLE', '40 дней');
+export const CAMPAIGN_TITLE = env('CAMPAIGN_TITLE', '40 ДНЕЙ МОЛИТВЫ');
 /** Когда можно получить набор участника. */
 export const KIT_DATE = env('KIT_DATE', '1 ноября');
 /** До какой даты координатор связывается с теми, кто ждёт направления в домашнюю группу. */

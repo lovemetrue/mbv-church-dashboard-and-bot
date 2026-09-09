@@ -316,9 +316,23 @@ export function handleUpdate({
 
 // ── обработчики шагов ───────────────────────────────────────────────────────
 
+/**
+ * Слово похоже на часть имени: русские буквы, внутри допустимы дефис и апостроф
+ * (Кузнецова-Иванова, Анна-Мария).
+ *
+ * Проверяем именно кириллицу, а не «нет цифр»: в журнале лежит настоящее
+ * «hjlbjyjd lfdbl» — это «Родионов Давид», набранное при английской раскладке,
+ * и прежняя проверка такое пропускала. Блок кириллицы берём целиком, чтобы
+ * проходили і, ї, є, ў у людей из Украины и Беларуси. Первый символ обязан быть
+ * буквой, иначе прошло бы «--».
+ */
+const NAME_WORD = /^\p{Script=Cyrillic}[\p{Script=Cyrillic}'\u2019-]*$/u;
+
+const isName = (words: string[]): boolean => words.every((w) => NAME_WORD.test(w));
+
 function awaitFio(raw: string, draft: Draft): FsmResult {
   const words = raw.trim().split(/\s+/).filter(Boolean);
-  const looksLikeName = words.length >= 2 && words.every((w) => w.length >= 2 && !/\d/.test(w));
+  const looksLikeName = words.length >= 2 && words.every((w) => w.length >= 2) && isName(words);
   if (!looksLikeName) return stay('await_fio', draft, [msg(T.fioInvalid)]);
 
   const fio = words.join(' ');
@@ -460,7 +474,10 @@ function awaitAge(update: IncomingUpdate, draft: Draft): FsmResult {
 
 function awaitLeaderName(raw: string, draft: Draft): FsmResult {
   const leaderName = raw.trim();
-  if (leaderName.length < 3) return askLeaderName(draft);
+  // Кнопку «Вернуться» оставляем и в отказе: иначе человек застрянет на этом шаге.
+  if (leaderName.length < 3 || !isName(leaderName.split(/\s+/).filter(Boolean))) {
+    return stay('await_leader_name', draft, [msg(T.leaderNameInvalid, backKeyboard())]);
+  }
   // Возраст у состоящих в группе не спрашиваем: группа у человека уже есть.
   return showSummary({ ...draft, leaderName }, [{ kind: 'save', patch: { leaderName } }]);
 }

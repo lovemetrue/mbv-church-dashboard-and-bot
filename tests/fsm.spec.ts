@@ -74,6 +74,37 @@ describe('обязательные вопросы', () => {
     expect(r.draft.fio).toBeUndefined();
   });
 
+  // Настоящий случай из журнала: «hjlbjyjd lfdbl» — это «Родионов Давид», набранное
+  // при английской раскладке. Проверка на слова и цифры такое пропускала.
+  test.each([
+    ['латиница', 'Ivanov Ivan'],
+    ['английская раскладка', 'hjlbjyjd lfdbl'],
+    ['латиница вперемешку с русским', 'Иванов Ivan'],
+    ['одни знаки', '-- --'],
+  ])('ФИО не русскими буквами не принимаем: %s', (_case, input) => {
+    const r = run('await_fio', { consent: true }, text(input));
+    expect(r.state).toBe('await_fio');
+    expect(r.draft.fio).toBeUndefined();
+    expect(said(r)).toContain('русскими буквами');
+  });
+
+  test.each([
+    ['двойная фамилия через дефис', 'Кузнецова-Иванова Анна-Мария'],
+    ['ё на месте', 'Алёшин Пётр'],
+    ['украинские буквы', 'Петренко Олексій'],
+  ])('русское ФИО проходит: %s', (_case, input) => {
+    const r = run('await_fio', { consent: true }, text(input));
+    expect(r.state).toBe('await_phone');
+    expect(r.draft.fio).toBe(input);
+  });
+
+  test('имя ведущего латиницей тоже не принимаем', () => {
+    const r = run('await_leader_name', { ...REQUIRED, mdgStatus: 'member' }, text('Ivan Petrov'));
+    expect(r.state).toBe('await_leader_name');
+    expect(r.draft.leaderName).toBeUndefined();
+    expect(said(r)).toContain('русскими буквами');
+  });
+
   test('телефон из контакта нормализуется и сохраняется', () => {
     const r = run('await_phone', { consent: true, fio: 'Иванов Иван' }, contact('89001234567'));
     expect(r.state).toBe('await_church');

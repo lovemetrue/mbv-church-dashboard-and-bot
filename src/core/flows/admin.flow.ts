@@ -376,7 +376,9 @@ export class AdminFlow {
         const user = byId.get(id);
         const nick = user?.username ? ` @${esc(user.username)}` : '';
         const self = id === ctx.platformUserId ? ' · это вы' : '';
-        const reachable = client ? await client.canReach(id) : false;
+        // Спрашиваем про чат, а не про человека: в MAX это разные id, и про id человека
+        // платформа честно отвечает «чат не найден» — доступность выходила ложно плохой.
+        const reachable = client ? await client.canReach(user?.chat_id || id) : false;
 
         lines.push('', `${code(id)}${self}`);
         if (user?.full_name || nick) lines.push(`${esc(user?.full_name ?? '')}${nick}`.trim());

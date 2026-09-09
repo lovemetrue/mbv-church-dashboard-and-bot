@@ -56,9 +56,11 @@ export class AdminNotifier {
 
   async broadcast(text: string): Promise<void> {
     for (const [platformName, platform] of this.deps.platforms) {
-      for (const adminId of this.deps.admins.get(platformName) ?? []) {
+      const ids = this.deps.admins.get(platformName) ?? [];
+      const chats = await this.deps.users.chatIds(platformName, ids);
+      for (const adminId of ids) {
         try {
-          await platform.sendMessage(adminId, { text, format: 'html' });
+          await platform.sendMessage(chats.get(adminId) ?? adminId, { text, format: 'html' });
         } catch (err) {
           // Недоступный админ не должен ломать обработку сообщения участника.
           this.deps.logger.warn({ platform: platformName, adminId, err }, 'не удалось уведомить админа');

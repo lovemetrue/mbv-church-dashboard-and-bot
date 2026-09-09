@@ -130,6 +130,20 @@ export class UsersRepo {
     return rows;
   }
 
+  /**
+   * Куда писать этим людям: id чата по id человека на платформе.
+   *
+   * В Telegram у личной переписки id чата совпадает с id человека, а в MAX нет:
+   * бот отвечает участнику 27637540 в чат 428149719. Поэтому уведомления
+   * служителям уходили на id человека и падали «404: Chat not found». Чат мы
+   * знаем только с того момента, как человек боту написал: в карте его не будет,
+   * пока этого не случилось.
+   */
+  async chatIds(platform: PlatformName, ids: string[]): Promise<Map<string, string>> {
+    const rows = await this.findByPlatformIds(platform, ids);
+    return new Map(rows.filter((u) => u.chat_id !== '').map((u) => [u.platform_user_id, u.chat_id]));
+  }
+
   async findByRegistrationNo(no: number): Promise<UserRow | null> {
     const { rows } = await this.db.query<UserRow>('SELECT * FROM users WHERE registration_no = $1', [no]);
     return rows[0] ?? null;

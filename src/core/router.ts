@@ -17,6 +17,19 @@ const USER_HELP = [
 ].join('\n');
 
 /**
+ * Апдейты, которые значат то же, что «/start»: открыть меню или начать анкету.
+ *
+ * «▶️ Старт» на клавиатуре служителя — не его команда, а вход в анкету, и разбор
+ * админских кнопок про неё не знает. Подпись приходит текстом в Telegram, callback'ом
+ * в MAX; без этой подмены нажатие в MAX молчало вовсе, а в Telegram посреди анкеты
+ * уходило ответом на вопрос — «▶️ Старт» успешно проходило проверку ФИО.
+ */
+function isStart(u: IncomingUpdate): boolean {
+  if (u.kind === 'text') return /^\/menu\b/i.test(u.text.trim()) || commandByLabel(u.text) === '/start';
+  return u.kind === 'callback' && u.data === `${ADMIN_CB}/start`;
+}
+
+/**
  * Связывает платформы, диалог и базу.
  * Здесь и только здесь исполняются эффекты, которые вернул FSM.
  */
@@ -53,10 +66,7 @@ export class Router {
     }
 
     // «/menu» это то же, что «/start»: открыть меню или начать анкету.
-    const update: IncomingUpdate =
-      incoming.kind === 'text' && /^\/menu\b/i.test(incoming.text.trim())
-        ? { kind: 'start', ctx: incoming.ctx }
-        : incoming;
+    const update: IncomingUpdate = isStart(incoming) ? { kind: 'start', ctx: incoming.ctx } : incoming;
 
     const user = await this.deps.users.ensure({
       platform: update.ctx.platform,

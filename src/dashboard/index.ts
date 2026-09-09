@@ -44,7 +44,7 @@ async function main(): Promise<void> {
   // Расписание кампании читается из тех же переменных, что у бота: иначе номер дня
   // в дашборде и в боте разошёлся бы.
   const schedule = {
-    startDate: env('CAMPAIGN_START_DATE', '2026-09-01'),
+    startDate: env('CAMPAIGN_START_DATE', '2026-11-01'),
     broadcastTime: env('BROADCAST_TIME', '07:00'),
     totalDays: Number(env('CAMPAIGN_DAYS', '40')),
     timezone: env('TIMEZONE', 'Europe/Moscow'),

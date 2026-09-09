@@ -10,9 +10,9 @@ const env = (name: string, fallback: string): string => process.env[name]?.trim(
 
 export const CAMPAIGN_TITLE = env('CAMPAIGN_TITLE', '40 ДНЕЙ МОЛИТВЫ');
 /** Когда можно получить набор участника. */
-export const KIT_DATE = env('KIT_DATE', '1 ноября');
+export const KIT_DATE = env('KIT_DATE', '1 ноября 2026');
 /** До какой даты координатор связывается с теми, кто ждёт направления в домашнюю группу. */
-export const MDG_DEADLINE = env('MDG_DEADLINE', '25 октября');
+export const MDG_DEADLINE = env('MDG_DEADLINE', '25 октября 2026');
 /** За какой срок служитель отвечает на вопрос. */
 export const REPLY_TIME = env('REPLY_TIME', 'в течение трёх дней');
 /** Документы об обработке персональных данных. */

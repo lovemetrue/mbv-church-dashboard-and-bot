@@ -138,6 +138,29 @@ describe('простые кнопки', () => {
     await router.handle(text('/export'));
     expect(tg.files).toHaveLength(1);
   });
+
+  // «Старт» — не команда служителя, а вход в анкету. Разбор админских кнопок её не
+  // знает, и без подмены нажатие в MAX молчало, а в Telegram уходило в анкету ответом.
+  test('«Старт» инлайн-кнопкой (так приходит в MAX) начинает анкету', async () => {
+    await router.handle(tap(`${ADMIN_CB}/start`));
+    expect(toAdmin()).toContain('согласие на обработку персональных данных');
+  });
+
+  test('«Старт» подписью кнопки (так приходит в Telegram) начинает анкету', async () => {
+    await router.handle(text('▶️ Старт'));
+    expect(toAdmin()).toContain('согласие на обработку персональных данных');
+  });
+
+  test('«Старт» посреди анкеты не уходит ответом на вопрос', async () => {
+    await router.handle({ kind: 'start', ctx: ctx(ADMIN) });
+    await router.handle(tap(CB.consentYes));
+    tg.sent.length = 0;
+
+    await router.handle(text('▶️ Старт'));
+
+    expect(toAdmin()).not.toContain('Похоже, это не ФИО');
+    expect(toAdmin()).toContain('согласие на обработку персональных данных');
+  });
 });
 
 describe('диалог «Загрузить день»', () => {

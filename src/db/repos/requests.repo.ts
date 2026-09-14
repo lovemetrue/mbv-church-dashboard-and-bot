@@ -64,6 +64,7 @@ const WITH_USER = `
 /** Заявка в том виде, в каком её ждёт дашборд: имена полей как в листе ЗАЯВКИ. */
 export interface DashboardRequest {
   id: number;
+  group_id: number | null;
   fio: string | null;
   responsible: string | null;
   status: RequestStatus;
@@ -94,6 +95,7 @@ export interface RequestInput {
   fio: string;
   type: RequestType;
   status: RequestStatus;
+  groupId?: number | null;
   phone?: string | null;
   phones?: string[];
   age?: string | null;
@@ -132,8 +134,8 @@ export class RequestsRepo {
     const { rows } = await this.db.query<{ id: number }>(
       `INSERT INTO requests (type, status, fio, phone, phones, age, place, responsible, source,
                              ministry, note, extra, recommended, recommended_at, final_group,
-                             cancel_reason, attendance, requested_at, origin)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'ui')
+                             cancel_reason, attendance, requested_at, group_id, origin)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'ui')
        RETURNING id`,
       [
         input.type,
@@ -154,6 +156,7 @@ export class RequestsRepo {
         input.cancelReason ?? null,
         input.attendance ?? null,
         input.requestedAt ?? null,
+        input.groupId ?? null,
       ],
     );
     return rows[0]!.id;
@@ -170,16 +173,22 @@ export class RequestsRepo {
    * Быстрая смена статуса из списка — самое частое действие служителя.
    * Отдельно от полной правки, чтобы не гонять двадцать полей ради одного.
    */
-  async setStatus(id: number, status: RequestStatus, responsible?: string | null): Promise<boolean> {
+  async setStatus(
+    id: number,
+    status: RequestStatus,
+    responsible?: string | null,
+    groupId?: number | null,
+  ): Promise<boolean> {
     const closing = (CLOSED_STATUSES as readonly string[]).includes(status);
     const { rowCount } = await this.db.query(
       `UPDATE requests
           SET status = $2,
               responsible = coalesce($3, responsible),
+              group_id = coalesce($5, group_id),
               handled_by = CASE WHEN $4 THEN 'дашборд' ELSE handled_by END,
               handled_at = CASE WHEN $4 THEN now() ELSE handled_at END
         WHERE id = $1 AND archived_at IS NULL`,
-      [id, status, responsible ?? null, closing],
+      [id, status, responsible ?? null, closing, groupId ?? null],
     );
     return (rowCount ?? 0) > 0;
   }
@@ -198,9 +207,9 @@ export class RequestsRepo {
          type = $2, status = $3, fio = $4, phone = $5, phones = $6, age = $7, place = $8,
          responsible = $9, source = $10, ministry = $11, note = $12, extra = $13,
          recommended = $14, recommended_at = $15, final_group = $16, cancel_reason = $17,
-         attendance = $18, requested_at = $19,
-         handled_by = CASE WHEN $20 THEN 'дашборд' ELSE handled_by END,
-         handled_at = CASE WHEN $20 THEN now() ELSE handled_at END
+         attendance = $18, requested_at = $19, group_id = $20,
+         handled_by = CASE WHEN $21 THEN 'дашборд' ELSE handled_by END,
+         handled_at = CASE WHEN $21 THEN now() ELSE handled_at END
        WHERE id = $1 AND archived_at IS NULL`,
       [
         id,
@@ -222,6 +231,7 @@ export class RequestsRepo {
         patch.cancelReason ?? null,
         patch.attendance ?? null,
         patch.requestedAt ?? null,
+        patch.groupId ?? null,
         closing,
       ],
     );
@@ -246,14 +256,14 @@ export class RequestsRepo {
    */
   async forDashboard(): Promise<DashboardRequest[]> {
     const { rows } = await this.db.query<{
-      id: number; fio: string | null; responsible: string | null; status: RequestStatus;
+      id: number; group_id: number | null; fio: string | null; responsible: string | null; status: RequestStatus;
       date: string | null; phone: string | null; phones: string[]; age: string | null;
       place: string | null; source: string | null; ministry: string | null; note: string | null;
       extra: string | null; recommended: string | null; recommended_at: string | null;
       final_group: string | null; cancel_reason: string | null; attendance: string | null;
       type: RequestType; text: string | null; origin: 'таблица' | 'бот' | 'ui';
     }>(
-      `SELECT r.id,
+      `SELECT r.id, r.group_id,
               coalesce(r.fio, u.full_name) AS fio,
               r.responsible, r.status,
               coalesce(r.requested_at, r.created_at::date) AS date,

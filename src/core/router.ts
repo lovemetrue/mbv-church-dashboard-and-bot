@@ -1,6 +1,7 @@
 import { ADMIN_CB, adminMenu, commandByLabel, retiredLabel } from '../admin/menu.js';
 import { AdminNotifier } from '../admin/notify.js';
 import type { Deps } from '../deps.js';
+import { campaignIsActive } from '../broadcast/schedule.js';
 import { AdminFlow } from './flows/admin.flow.js';
 import { handleUpdate, type OutAction, type Participant } from './fsm.js';
 import { kitPayload, parseKitPayload, qrPng } from './qr.js';
@@ -215,13 +216,15 @@ export class Router {
   }
 
   /**
-   * Что нашла сверка номера: открытая заявка на открытие группы или действующая группа.
-   *
    * Порядок важен — от него зависит, что человек прочтёт. Про уже принятую заявку
    * говорим «служитель свяжется», про действующую группу — «идите к координатору».
+   *
+   * На время кампании (день 1..CAMPAIGN_DAYS) вторую проверку снимаем: ведущий
+   * действующей группы может на время кампании открыть ещё одну.
    */
   private async leadPhoneTaken(phone: string): Promise<'request' | 'group' | undefined> {
     if (await this.deps.requests.openLeadByPhone(phone)) return 'request';
+    if (campaignIsActive(new Date(), this.deps.schedule)) return undefined;
     if (await this.deps.groups.activeLeaderByPhone(phone)) return 'group';
     return undefined;
   }

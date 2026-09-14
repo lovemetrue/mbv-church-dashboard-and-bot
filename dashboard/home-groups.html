@@ -930,7 +930,6 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
             <th>Телефон</th>
             <th>Место</th>
             <th>Домашняя группа</th>
-            <th>Ответственный</th>
             <th>Статус</th>
           </tr>
         </thead>
@@ -1523,6 +1522,19 @@ const store = {
    в домашнюю группу. Живёт на своей вкладке и в общий обзор не попадает —
    это отдельный поток работы, а не срез по группам.                        */
 const requests = DATA.requests ?? [];
+const coordinators = DATA.coordinators ?? [];
+
+/**
+ * Варианты для «Ответственный»: список координаторов плюс — если текущее
+ * значение заявки не входит в реестр (опечатка, уволенный координатор) —
+ * это значение отдельным пунктом. Иначе сохранение молча заменило бы его
+ * на первый пункт списка.
+ */
+function responsibleOptions(current) {
+  const names = coordinators.map((c) => c.name);
+  const all = current && !names.includes(current) ? [current, ...names] : names;
+  return all.map((n) => `<option value="${esc(n)}"${n === current ? ' selected' : ''}>${esc(n)}</option>`).join('');
+}
 
 function visibleRequests() {
   return requests.filter((r) =>
@@ -1568,7 +1580,10 @@ function requestDetails(r) {
         <option value="">— группа не назначена —</option>
         ${groupOptions(r)}
       </select>
-      <input class="req-owner" data-id="${r.id}" placeholder="Ответственный" value="${esc(r.responsible ?? '')}">
+      <select class="req-owner" data-id="${r.id}">
+        <option value="">— ответственный не выбран —</option>
+        ${responsibleOptions(r.responsible)}
+      </select>
       <button class="btn-primary req-save" data-id="${r.id}">Сохранить</button>
       <span class="form-msg req-msg" data-id="${r.id}"></span>
     </dd>
@@ -1774,10 +1789,9 @@ function renderRequests() {
       <td>${phoneCell(r)}</td>
       <td>${esc(r.place) || '—'}</td>
       <td>${groupLabel(r.group_id)}</td>
-      <td>${esc(r.responsible) || '—'}</td>
       <td><span class="pill ${cls}"><i></i>${esc(label)}</span></td>
     </tr>
-    <tr class="detail hidden"><td colspan="7">${requestDetails(r)}</td></tr>`;
+    <tr class="detail hidden"><td colspan="6">${requestDetails(r)}</td></tr>`;
   }).join('');
 
   $('#reqBody').querySelectorAll('tr.row').forEach((tr) => {
@@ -2042,11 +2056,16 @@ const GROUP_FIELDS = [
   { name: 'checked', label: 'Данные проверены', type: 'checkbox', wide: true, from: 'checked' },
 ];
 
+const RESPONSIBLE_OPTIONS = [...new Set([
+  ...coordinators.map((c) => c.name),
+  ...requests.map((r) => r.responsible).filter(Boolean),
+])];
+
 const REQUEST_FIELDS = [
   { name: 'fio', label: 'ФИО', required: true, wide: true, from: 'fio', placeholder: 'Петров Пётр Петрович' },
   { name: 'type', label: 'О чём заявка', required: true, pairs: FORM_REQUEST_TYPES, from: 'type' },
   { name: 'status', label: 'Статус', required: true, options: FORM_REQUEST_STATUSES, from: 'status' },
-  { name: 'responsible', label: 'Ответственный', from: 'responsible', placeholder: 'Юлия Комарская' },
+  { name: 'responsible', label: 'Ответственный', options: RESPONSIBLE_OPTIONS, from: 'responsible' },
   { name: 'phone', label: 'Телефон', from: 'phone', placeholder: '+7 921 000-11-22' },
   { name: 'age', label: 'Возраст', from: 'age', placeholder: '35-45 лет' },
   { name: 'place', label: 'Место', from: 'place', placeholder: 'Дыбенко' },

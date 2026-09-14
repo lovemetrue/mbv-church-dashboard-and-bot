@@ -287,6 +287,17 @@ td.num-cell { font-family: var(--mono); font-variant-numeric: tabular-nums; colo
 .pill.draft { color: var(--idle); background: rgba(110,118,129,.12); border-color: rgba(110,118,129,.25); }
 .pill.fresh { color: var(--fresh); background: rgba(79,195,210,.1); border-color: rgba(79,195,210,.24); }
 
+#reqGroupFilter {
+  background: var(--surface-3);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
 .table-foot { padding: 11px 16px; color: var(--text-3); font-size: 12px; border-top: 1px solid var(--border); }
 
 /* ── тултип ──────────────────────────────────────────────────────────── */
@@ -908,6 +919,7 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
         <button data-req="Аннулирована">Аннулированы</button>
         <button data-req="Не указан">Без статуса</button>
       </div>
+      <select id="reqGroupFilter" aria-label="Фильтр по домашней группе"></select>
     </div>
     <div class="table-scroll">
       <table>
@@ -917,6 +929,7 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
             <th>Человек</th>
             <th>Телефон</th>
             <th>Место</th>
+            <th>Домашняя группа</th>
             <th>Ответственный</th>
             <th>Статус</th>
           </tr>
@@ -1095,7 +1108,7 @@ const REQUEST_PILL = {
 
 const MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
 
-const state = { district: null, status: '', campaign: '', sort: 'people', dir: -1, view: 'all', request: null };
+const state = { district: null, status: '', campaign: '', sort: 'people', dir: -1, view: 'all', request: null, groupId: null };
 const $ = (s) => document.querySelector(s);
 const groups = DATA.groups;
 
@@ -1512,7 +1525,15 @@ const store = {
 const requests = DATA.requests ?? [];
 
 function visibleRequests() {
-  return state.request ? requests.filter((r) => r.status === state.request) : requests;
+  return requests.filter((r) =>
+    (!state.request || r.status === state.request) &&
+    (!state.groupId || r.group_id === state.groupId));
+}
+
+function groupLabel(id) {
+  if (!id) return '—';
+  const g = groups.find((x) => x.id === id);
+  return g ? `${esc(g.leader)} · ${groupCode(g.id)}` : `${groupCode(id)} (архив)`;
 }
 
 function requestDetails(r) {
@@ -1542,6 +1563,10 @@ function requestDetails(r) {
     <dd>
       <select class="req-status" data-id="${r.id}">
         ${FORM_REQUEST_STATUSES.map((v) => `<option value="${esc(v)}"${v === r.status ? ' selected' : ''}>${esc(v)}</option>`).join('')}
+      </select>
+      <select class="req-group" data-id="${r.id}">
+        <option value="">— группа не назначена —</option>
+        ${groupOptions(r)}
       </select>
       <input class="req-owner" data-id="${r.id}" placeholder="Ответственный" value="${esc(r.responsible ?? '')}">
       <button class="btn-primary req-save" data-id="${r.id}">Сохранить</button>
@@ -1587,6 +1612,34 @@ function ageBucket(raw) {
   if (n < 55) return '45-55';
   if (n < 65) return '55-65';
   return '65+';
+}
+
+function bucketRange(bucket) {
+  if (bucket === '65+') return [65, 200];
+  const [lo, hi] = bucket.split('-').map(Number);
+  return [lo, hi];
+}
+
+/** Возрастной диапазон группы: свободный текст вида «35-50». Не разобрали — не участвует в подборе. */
+function groupAgeRange(raw) {
+  const m = raw ? /^(\d{2})\s*[-–—]\s*(\d{2})$/.exec(String(raw).trim()) : null;
+  return m ? [Number(m[1]), Number(m[2])] : null;
+}
+
+function rangesOverlap(a, b) { return a[0] <= b[1] && b[0] <= a[1]; }
+
+/** Кандидаты в группу для заявки: рекомендованные (по возрасту) — первыми и со звездой. */
+function groupOptions(r) {
+  const bucket = ageBucket(r.age);
+  const reqRange = bucket ? bucketRange(bucket) : null;
+  const scored = groups.map((g) => ({
+    g,
+    match: Boolean(reqRange && groupAgeRange(g.age) && rangesOverlap(reqRange, groupAgeRange(g.age))),
+  }));
+  scored.sort((a, b) => Number(b.match) - Number(a.match) || a.g.leader.localeCompare(b.g.leader, 'ru'));
+  return scored.map(({ g, match }) =>
+    `<option value="${g.id}"${g.id === r.group_id ? ' selected' : ''}>${match ? '★ ' : ''}${esc(g.leader)} · ${groupCode(g.id)}</option>`,
+  ).join('');
 }
 
 /* Заявки по месяцам: столбик на месяц, внутри — доли по исходу.
@@ -1720,10 +1773,11 @@ function renderRequests() {
       <td class="strong"><span class="caret">›</span>${r.fio ? esc(r.fio) : '<span style="color:var(--text-3)">без имени</span>'}</td>
       <td>${phoneCell(r)}</td>
       <td>${esc(r.place) || '—'}</td>
+      <td>${groupLabel(r.group_id)}</td>
       <td>${esc(r.responsible) || '—'}</td>
       <td><span class="pill ${cls}"><i></i>${esc(label)}</span></td>
     </tr>
-    <tr class="detail hidden"><td colspan="6">${requestDetails(r)}</td></tr>`;
+    <tr class="detail hidden"><td colspan="7">${requestDetails(r)}</td></tr>`;
   }).join('');
 
   $('#reqBody').querySelectorAll('tr.row').forEach((tr) => {
@@ -1745,6 +1799,7 @@ function renderRequests() {
       const msg = $(`#reqBody .req-msg[data-id="${id}"]`);
       const status = $(`#reqBody .req-status[data-id="${id}"]`).value;
       const responsible = $(`#reqBody .req-owner[data-id="${id}"]`).value;
+      const groupId = $(`#reqBody .req-group[data-id="${id}"]`).value;
       btn.disabled = true;
       msg.className = 'form-msg req-msg';
       msg.textContent = 'Сохраняем…';
@@ -1752,7 +1807,7 @@ function renderRequests() {
         const r = await fetch((window.HG_BASE ?? './') + 'request/status', {
           method: 'POST',
           headers: { 'content-type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({ id, status, responsible }),
+          body: new URLSearchParams({ id, status, responsible, groupId }),
         });
         if (r.ok) {
           msg.className = 'form-msg req-msg ok';
@@ -1782,6 +1837,13 @@ document.querySelectorAll('#segRequest button').forEach((b) => {
     renderRequests();
   };
 });
+
+$('#reqGroupFilter').innerHTML = '<option value="">Все группы</option>' +
+  groups.map((g) => `<option value="${g.id}">${esc(g.leader)} · ${groupCode(g.id)}</option>`).join('');
+$('#reqGroupFilter').onchange = (e) => {
+  state.groupId = e.target.value ? Number(e.target.value) : null;
+  renderRequests();
+};
 
 function renderAll() {
   renderKpi();
@@ -1988,6 +2050,9 @@ const REQUEST_FIELDS = [
   { name: 'phone', label: 'Телефон', from: 'phone', placeholder: '+7 921 000-11-22' },
   { name: 'age', label: 'Возраст', from: 'age', placeholder: '35-45 лет' },
   { name: 'place', label: 'Место', from: 'place', placeholder: 'Дыбенко' },
+  { name: 'groupId', label: 'Домашняя группа',
+    pairs: [['', '— не назначена —'], ...groups.map((g) => [String(g.id), `${g.leader} · ${groupCode(g.id)}`])],
+    from: 'group_id' },
   { name: 'source', label: 'Источник заявки', from: 'source', placeholder: 'Сайт церкви' },
   { name: 'ministry', label: 'Служение', from: 'ministry', placeholder: 'Колизей 13:00' },
   { name: 'requestedAt', label: 'Дата заявки', type: 'date', from: 'date' },

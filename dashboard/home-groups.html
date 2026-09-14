@@ -482,7 +482,7 @@ a.tel:hover { color: var(--accent-hi); border-bottom-color: var(--accent); }
    пустым («нет данных в этом срезе»), мерцал бы вечно. */
 /* До первой отрисовки в разметке видны разделы всех вкладок сразу: скрывает их
    applyView, который ещё не выполнился. На медленном телефоне из-за этого мелькали
-   заявки, формы и кампания. Прячем их сразу — вкладка по умолчанию («Обзор») их и
+   заявки, формы и кампания. Прячем их сразу — вкладка по умолчанию («Домашние группы») их и
    не показывает, поэтому подстановка ничего не сдвигает. Тильда в селекторе — то же
    совпадение по словам, что и tags.split(' ') в applyView. */
 html:not([data-ready]) :is([data-section~="requests"], [data-section~="new"], [data-section~="campaign"]) {
@@ -565,9 +565,9 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
   </div>
 
   <nav class="nav" role="tablist" aria-label="Разделы">
-    <button role="tab" aria-selected="true" data-view="all">Обзор</button>
+    <button role="tab" aria-selected="true" data-view="all">Домашние группы</button>
     <button role="tab" aria-selected="false" data-view="analytics">Аналитика</button>
-    <button role="tab" aria-selected="false" data-view="requests">Заявки</button>
+    <button role="tab" aria-selected="false" data-view="requests">Заявки (МДГ)</button>
     <button role="tab" aria-selected="false" data-view="campaign">40 дней</button>
     <button role="tab" aria-selected="false" data-view="new">Добавить</button>
   </nav>
@@ -886,7 +886,7 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
   <section class="card" data-section="requests">
     <div class="card-head">
       <div>
-        <h2 class="card-title">Заявки</h2>
+        <h2 class="card-title">Заявки (МДГ)</h2>
         <p class="card-sub" id="reqSub">Все заявки</p>
       </div>
       <!-- Порядок как в жизни заявки: пришла → ждёт → ведут → проверяют → закрыта.
@@ -2167,7 +2167,7 @@ wireForm('#requestForm', '#requestMsg', 'request/create', 'Заявка доба
    иначе до первого клика видно всё сразу. */
 /* Эпиграф под заголовком: своё место Писания для каждой вкладки.
    Для «Групп», «Географии» и «Аналитики» отдельных стихов не задавали —
-   там показываем тот же, что на «Обзоре». */
+   там показываем тот же, что на «Домашних группах». */
 const EPIGRAPHS = {
   all: [
     'И сделал литое море, — от края до края его десять локтей, — совершенно круглое, высотою в пять локтей, и снурок в тридцать локтей обнимал его кругом',

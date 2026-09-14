@@ -1,4 +1,5 @@
 import { Client, type Pool } from 'pg';
+import type { MdgStatus } from '../../src/core/fsm.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { createPool } from '../../src/db/pool.js';
 
@@ -43,7 +44,7 @@ export async function seedUser(
     phone?: string;
     fio?: string;
     church?: string;
-    mdgStatus?: 'open' | 'join' | 'member' | 'leader' | null;
+    mdgStatus?: MdgStatus | null;
     complete?: boolean;
     chatId?: string;
   },

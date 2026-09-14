@@ -40,7 +40,10 @@ beforeEach(async () => {
     db,
     platforms: new Map<PlatformName, Platform>([['telegram', tg], ['max', max]]),
     admins: new Map([['telegram', [ADMIN]]]),
-    schedule: { startDate: '2026-09-01', broadcastTime: '07:00', totalDays: 40, timezone: 'Europe/Moscow' },
+    // Далеко в будущем: большинство тестов этого файла проверяют поведение вне
+    // кампании. Тест на ослабление правила на время кампании ниже сам строит
+    // свой Router с датой начала «сегодня».
+    schedule: { startDate: '2099-01-01', broadcastTime: '07:00', totalDays: 40, timezone: 'Europe/Moscow' },
   });
   router = new Router(deps);
 });
@@ -147,5 +150,20 @@ describe('заявка на открытие группы: сверка теле
     await router.handle(tapLead('222', 'max'));
 
     expect(await leadRequests()).toBe(2);
+  });
+
+  test('на время кампании ведущий действующей группы может открыть ещё одну', async () => {
+    // «Сегодня» — чтобы тест не зависел от календарной даты запуска.
+    const today = new Date().toISOString().slice(0, 10);
+    const campaignRouter = new Router(createDeps({
+      ...deps.raw,
+      schedule: { ...deps.raw.schedule, startDate: today },
+    }));
+
+    await seedGroup('Функционирует');
+    await seedUser(db, { id: '111', phone: PHONE });
+    await campaignRouter.handle(tapLead('111'));
+
+    expect(await leadRequests()).toBe(1);
   });
 });

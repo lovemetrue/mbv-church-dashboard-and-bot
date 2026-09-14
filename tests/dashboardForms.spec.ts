@@ -125,4 +125,21 @@ describe('форма заявки', () => {
       expect(parseRequestForm(form({ ...REQUEST_MIN, status })).ok, status).toBe(true);
     }
   });
+
+  test('домашняя группа не выбрана — поле пустое, а не ошибка', () => {
+    const r = parseRequestForm(form(REQUEST_MIN));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.groupId).toBeNull();
+  });
+
+  test('домашняя группа приходит как id из списка', () => {
+    const r = parseRequestForm(form({ ...REQUEST_MIN, groupId: '42' }));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.groupId).toBe(42);
+  });
+
+  test('нечисловой id группы отвергается', () => {
+    const r = parseRequestForm(form({ ...REQUEST_MIN, groupId: 'сорок два' }));
+    expect(r.ok).toBe(false);
+  });
 });

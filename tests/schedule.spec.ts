@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { campaignDay, dueBroadcast, localDate, localTime } from '../src/broadcast/schedule.js';
+import { campaignDay, campaignIsActive, dueBroadcast, localDate, localTime } from '../src/broadcast/schedule.js';
 
 const opts = {
   startDate: '2026-09-01',
@@ -81,5 +81,23 @@ describe('dueBroadcast', () => {
     const winter = { ...opts, startDate: '2027-01-10' };
     expect(dueBroadcast(utc('2027-01-10T03:59:00Z'), winter)).toBeNull();
     expect(dueBroadcast(utc('2027-01-10T04:00:00Z'), winter)).toBe(1);
+  });
+});
+
+describe('campaignIsActive', () => {
+  test('до старта кампании — не идёт', () => {
+    expect(campaignIsActive(utc('2026-08-30T09:00:00Z'), opts)).toBe(false);
+  });
+
+  test('в день старта — идёт', () => {
+    expect(campaignIsActive(utc('2026-09-01T09:00:00Z'), opts)).toBe(true);
+  });
+
+  test('в последний (сороковой) день — всё ещё идёт', () => {
+    expect(campaignIsActive(utc('2026-10-10T09:00:00Z'), opts)).toBe(true);
+  });
+
+  test('на следующий день после окончания — уже не идёт', () => {
+    expect(campaignIsActive(utc('2026-10-11T09:00:00Z'), opts)).toBe(false);
   });
 });

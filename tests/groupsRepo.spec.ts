@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import type { Pool } from 'pg';
 import { GroupsRepo } from '../src/db/repos/groups.repo.js';
-import { setupTestDb, truncateAll } from './helpers/testDb.js';
+import { seedUser, setupTestDb, truncateAll } from './helpers/testDb.js';
 
 /**
  * Хранилище домашних групп. Раньше эти проверки шли через диалог `/leader` в боте;
@@ -121,6 +121,28 @@ describe('данные для дашборда', () => {
     await repo.create({ ...MIN, feedbackAt: '2026-08-20' }, 'таблица');
     const [g] = await repo.forDashboard();
     expect(g!.feedback_at).toBe('2026-08-20');
+  });
+
+  test('бейдж кампании загорается по совпадению телефона с завершённой регистрацией', async () => {
+    await repo.add({ ...MIN, phone: '+79001112233' }, '999', 'telegram');
+    await seedUser(db, { id: '1', phone: '+79001112233', complete: true });
+
+    const [g] = await repo.forDashboard();
+    expect(g!.campaign_registered).toBe(true);
+  });
+
+  test('без завершённой регистрации бейджа нет', async () => {
+    await repo.add({ ...MIN, phone: '+79001112233' }, '999', 'telegram');
+    await seedUser(db, { id: '1', phone: '+79001112233', complete: false });
+
+    const [g] = await repo.forDashboard();
+    expect(g!.campaign_registered).toBe(false);
+  });
+
+  test('без совпадения по номеру бейджа нет', async () => {
+    await repo.add({ ...MIN, phone: '+79001112233' }, '999', 'telegram');
+    const [g] = await repo.forDashboard();
+    expect(g!.campaign_registered).toBe(false);
   });
 });
 

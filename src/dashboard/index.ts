@@ -62,6 +62,7 @@ async function main(): Promise<void> {
       groups: await groups.forDashboard(),
       requests: await requests.forDashboard(),
       coordinators: await coordinators.listActive(),
+      leaderCandidates: await users.leaderCandidates(),
       campaign: await campaignStats({ users, requests, campaign, deliveries }, schedule),
     }),
     deleteGroup: async (id) => (await groups.archive(id)) !== null,
@@ -71,7 +72,7 @@ async function main(): Promise<void> {
     createRequest: (input) => requests.createFromDashboard(input as never),
     updateRequest: (id, patch) => requests.updateFromDashboard(id, patch as never),
     deleteRequest: (id) => requests.archive(id),
-    setRequestStatus: (id, status, responsible) => requests.setStatus(id, status as never, responsible),
+    setRequestStatus: (id, status, responsible, groupId) => requests.setStatus(id, status as never, responsible, groupId),
     updateGroup: async (id, input) => (await groups.update(id, input as never)) !== null,
     exportUsers: async () => usersToCsv(await users.exportRows()),
   });

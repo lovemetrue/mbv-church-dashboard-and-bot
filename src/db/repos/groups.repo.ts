@@ -89,6 +89,8 @@ export interface DashboardGroup {
   status: string;
   checked: boolean | null;
   source: GroupSource;
+  /** Ведущий этой группы совпал по телефону с завершённой регистрацией участника кампании. */
+  campaign_registered: boolean;
 }
 
 const COLUMNS = `no, leader, open_to_new, phone, phones, age, district, metro, address,
@@ -244,8 +246,14 @@ export class GroupsRepo {
    * с таблицей церкви, а заведённые позже (без номера) идут в конце.
    */
   async forDashboard(): Promise<DashboardGroup[]> {
-    const { rows } = await this.db.query<GroupRow>(
-      `SELECT * FROM groups WHERE archived_at IS NULL
+    const { rows } = await this.db.query<GroupRow & { campaign_registered: boolean }>(
+      `SELECT *,
+              EXISTS (
+                SELECT 1 FROM users u
+                 WHERE u.complete = true AND u.phone = ANY(groups.phones)
+              ) AS campaign_registered
+         FROM groups
+        WHERE archived_at IS NULL
         ORDER BY no NULLS LAST, created_at, id`,
     );
     return rows.map((r) => ({
@@ -271,6 +279,7 @@ export class GroupsRepo {
       status: r.status,
       checked: r.checked,
       source: r.source,
+      campaign_registered: r.campaign_registered,
     }));
   }
 }

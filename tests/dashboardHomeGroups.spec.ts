@@ -41,3 +41,13 @@ describe('код домашней группы', () => {
     expect(html).toContain("padStart(4, '0')");
   });
 });
+
+describe('подбор ведущего из зарегистрированных участников', () => {
+  test('поле выбора кандидата есть в описании полей группы', () => {
+    expect(html).toContain("name: 'leaderCandidate'");
+  });
+
+  test('выбор кандидата подставляет ФИО и телефон, ничего не отправляя за него', () => {
+    expect(html).toContain('function wireLeaderCandidatePicker');
+  });
+});

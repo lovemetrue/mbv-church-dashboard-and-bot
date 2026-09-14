@@ -18,3 +18,26 @@ describe('переименования вкладок', () => {
     expect(html).toContain('<h2 class="card-title">Заявки (МДГ)</h2>');
   });
 });
+
+describe('бейдж «40 дней» в реестре групп', () => {
+  test('колонка есть в шапке таблицы', () => {
+    expect(html).toContain('>40 дней<');
+  });
+
+  test('бейдж переиспользует существующий зелёный пилл, а не новый цвет', () => {
+    expect(html).toContain('pill live');
+  });
+
+  test('есть фильтр по регистрации в кампании', () => {
+    expect(html).toContain('id="segCampaign"');
+    expect(html).toContain('data-campaign="yes"');
+    expect(html).toContain('data-campaign="no"');
+  });
+});
+
+describe('код домашней группы', () => {
+  test('вычисляется из id, без отдельного счётчика в базе', () => {
+    expect(html).toContain('function groupCode(id)');
+    expect(html).toContain("padStart(4, '0')");
+  });
+});

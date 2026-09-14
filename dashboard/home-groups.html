@@ -767,12 +767,18 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
         <button data-status="На паузе">На паузе</button>
         <button data-status="Закрыта">Закрытые</button>
       </div>
+      <div class="seg" id="segCampaign">
+        <button aria-selected="true" data-campaign="">Все</button>
+        <button data-campaign="yes">Зарегистрированы</button>
+        <button data-campaign="no">Не зарегистрированы</button>
+      </div>
     </div>
     <div class="table-scroll">
       <table>
         <thead>
           <tr>
             <th class="sortable" data-key="leader">Группа <span class="arrow">↓</span></th>
+            <th class="sortable" data-key="campaign_registered">40 дней <span class="arrow">↓</span></th>
             <th class="sortable" data-key="district">Район <span class="arrow">↓</span></th>
             <th class="sortable" data-key="phone">Телефон <span class="arrow">↓</span></th>
             <th class="sortable" data-key="coordinator">Координатор <span class="arrow">↓</span></th>
@@ -1089,9 +1095,12 @@ const REQUEST_PILL = {
 
 const MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
 
-const state = { district: null, status: '', sort: 'people', dir: -1, view: 'all', request: null };
+const state = { district: null, status: '', campaign: '', sort: 'people', dir: -1, view: 'all', request: null };
 const $ = (s) => document.querySelector(s);
 const groups = DATA.groups;
+
+/** Код группы: вычисляется из id, отдельного счётчика в базе нет. */
+function groupCode(id) { return `ДГ-${String(id).padStart(4, '0')}`; }
 
 const plural = (n, one, few, many) => {
   const t = Math.abs(n) % 100, l = t % 10;
@@ -1119,7 +1128,8 @@ const countBy = (rows, key) => {
 function visible() {
   return groups.filter((g) =>
     (!state.district || g.district === state.district) &&
-    (!state.status || g.status === state.status));
+    (!state.status || g.status === state.status) &&
+    (!state.campaign || (state.campaign === 'yes' ? g.campaign_registered : !g.campaign_registered)));
 }
 
 /* ── тултип ───────────────────────────────────────────────────────────── */
@@ -1433,7 +1443,8 @@ function renderTable() {
   $('#tbody').innerHTML = rows.map((g) => {
     const [cls, label] = STATUS_PILL[g.status] || ['draft', g.status];
     return `<tr class="row">
-      <td class="strong"><span class="caret">\u203a</span>${esc(g.leader)}${g.source && g.source !== 'таблица' ? ` <span class="src">${esc(g.source)}</span>` : ''}</td>
+      <td class="strong"><span class="caret">\u203a</span>${esc(g.leader)} <span class="mono" style="color:var(--text-3)">${groupCode(g.id)}</span>${g.source && g.source !== 'таблица' ? ` <span class="src">${esc(g.source)}</span>` : ''}</td>
+      <td>${g.campaign_registered ? '<span class="pill live"><i></i>40 дней</span>' : '—'}</td>
       <td>${esc(g.district)}${g.metro ? ` <span style="color:var(--text-3)">\u00b7 ${esc(g.metro.split(',')[0])}</span>` : ''}</td>
       <td>${phoneCell(g)}</td>
       <td>${esc(g.coordinator) || '\u2014'}</td>
@@ -1441,7 +1452,7 @@ function renderTable() {
       <td class="mono" style="color:var(--text-3)">${ruDate(g.feedback_at)}</td>
       <td><span class="pill ${cls}"><i></i>${esc(label)}</span></td>
     </tr>
-    <tr class="detail hidden"><td colspan="7">${details(g)}</td></tr>`;
+    <tr class="detail hidden"><td colspan="8">${details(g)}</td></tr>`;
   }).join('');
 
   // Клик по строке раскрывает подробности; клик по телефону — это звонок,
@@ -1793,6 +1804,15 @@ document.querySelectorAll('#segStatus button').forEach((b) => {
     document.querySelectorAll('#segStatus button').forEach((x) => x.setAttribute('aria-selected', 'false'));
     b.setAttribute('aria-selected', 'true');
     state.status = b.dataset.status;
+    renderAll();
+  };
+});
+
+document.querySelectorAll('#segCampaign button').forEach((b) => {
+  b.onclick = () => {
+    document.querySelectorAll('#segCampaign button').forEach((x) => x.setAttribute('aria-selected', 'false'));
+    b.setAttribute('aria-selected', 'true');
+    state.campaign = b.dataset.campaign;
     renderAll();
   };
 });

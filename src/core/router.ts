@@ -179,6 +179,9 @@ export class Router {
           const no = await this.deps.users.finishRegistration(user.id, effect.complete);
           // Карточку с номером и QR отправляем только при первом присвоении.
           if (user.registration_no === null) assignedNo = no;
+          // «40 дней»: анкету спрашивает телефон задолго до этого шага, поэтому
+          // user.phone (загружен в начале хода) уже актуален.
+          if (effect.complete && user.phone) await this.deps.groups.markCampaignRegisteredByPhone(user.phone);
           break;
         }
         case 'create_request':

@@ -123,24 +123,63 @@ describe('данные для дашборда', () => {
     expect(g!.feedback_at).toBe('2026-08-20');
   });
 
-  test('бейдж кампании загорается по совпадению телефона с завершённой регистрацией', async () => {
-    await repo.add({ ...MIN, phone: '+79001112233' }, '999', 'telegram');
+  test('бейдж кампании — хранимое поле, по умолчанию выключен', async () => {
+    const row = await repo.add({ ...MIN, phone: '+79001112233' }, '999', 'telegram');
+    expect(row.campaign_registered).toBe(false);
+  });
+
+  test('заведение группы на уже зарегистрированного участника сразу включает бейдж', async () => {
+    // Например: ведущего выбрали из подбора зарегистрированных (форма дашборда).
     await seedUser(db, { id: '1', phone: '+79001112233', complete: true });
+    const row = await repo.add({ ...MIN, phone: '+79001112233' }, '999', 'telegram');
+    expect(row.campaign_registered).toBe(true);
+  });
+
+  test('без завершённой регистрации бейдж не включается', async () => {
+    await seedUser(db, { id: '1', phone: '+79001112233', complete: false });
+    const row = await repo.add({ ...MIN, phone: '+79001112233' }, '999', 'telegram');
+    expect(row.campaign_registered).toBe(false);
+  });
+
+  test('бейдж можно включить и выключить руками', async () => {
+    const row = await repo.create({ ...MIN, campaignRegistered: true }, 'ui');
+    expect(row.campaign_registered).toBe(true);
+
+    const updated = await repo.update(row.id, { ...MIN, campaignRegistered: false });
+    expect(updated!.campaign_registered).toBe(false);
+  });
+
+  test('правка не гасит ручную отметку «да», даже если номер не совпадает ни с кем', async () => {
+    const row = await repo.create({ ...MIN, campaignRegistered: true }, 'ui');
+    const updated = await repo.update(row.id, { ...MIN, comment: 'уточнили день', campaignRegistered: true });
+    expect(updated!.campaign_registered).toBe(true);
+  });
+});
+
+describe('«40 дней»: включение по завершению анкеты в боте', () => {
+  test('markCampaignRegisteredByPhone включает бейдж у действующих групп с этим номером', async () => {
+    const row = await repo.add({ ...MIN, phone: '+79001112233' }, '999', 'telegram');
+    await repo.markCampaignRegisteredByPhone('+79001112233');
 
     const [g] = await repo.forDashboard();
+    expect(g!.id).toBe(row.id);
     expect(g!.campaign_registered).toBe(true);
   });
 
-  test('без завершённой регистрации бейджа нет', async () => {
-    await repo.add({ ...MIN, phone: '+79001112233' }, '999', 'telegram');
-    await seedUser(db, { id: '1', phone: '+79001112233', complete: false });
+  test('уже включённый бейдж повторный вызов не трогает', async () => {
+    const row = await repo.add({ ...MIN, phone: '+79001112233' }, '999', 'telegram');
+    await repo.markCampaignRegisteredByPhone('+79001112233');
+    await repo.markCampaignRegisteredByPhone('+79001112233');
 
     const [g] = await repo.forDashboard();
-    expect(g!.campaign_registered).toBe(false);
+    expect(g!.id).toBe(row.id);
+    expect(g!.campaign_registered).toBe(true);
   });
 
-  test('без совпадения по номеру бейджа нет', async () => {
+  test('чужой номер бейдж не включает', async () => {
     await repo.add({ ...MIN, phone: '+79001112233' }, '999', 'telegram');
+    await repo.markCampaignRegisteredByPhone('+79009998877');
+
     const [g] = await repo.forDashboard();
     expect(g!.campaign_registered).toBe(false);
   });

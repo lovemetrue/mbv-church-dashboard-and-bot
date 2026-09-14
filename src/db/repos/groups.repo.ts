@@ -33,6 +33,9 @@ export interface GroupInput extends HomeGroupInput {
   comment?: string | null;
   training?: string | null;
   checked?: boolean | null;
+  /** «40 дней»: редактируемое свойство, автоматически включается по совпадению
+   *  телефона с завершённой регистрацией участника кампании (см. GroupsRepo). */
+  campaignRegistered?: boolean | null;
 }
 
 export interface GroupRow {
@@ -57,6 +60,7 @@ export interface GroupRow {
   format: string;
   status: string;
   checked: boolean | null;
+  campaign_registered: boolean;
   source: GroupSource;
   added_by: string | null;
   added_platform: string | null;
@@ -89,13 +93,15 @@ export interface DashboardGroup {
   status: string;
   checked: boolean | null;
   source: GroupSource;
-  /** Ведущий этой группы совпал по телефону с завершённой регистрацией участника кампании. */
+  /** «40 дней»: редактируемое свойство, автоматически включается по совпадению
+   *  телефона ведущего с завершённой регистрацией участника кампании. */
   campaign_registered: boolean;
 }
 
 const COLUMNS = `no, leader, open_to_new, phone, phones, age, district, metro, address,
                  composition, day, "time", people, coordinator, feedback_at, comment,
-                 training, format, status, checked, source, added_by, added_platform`;
+                 training, format, status, checked, campaign_registered, source, added_by,
+                 added_platform`;
 
 // Колонки типа date приходят строкой «2026-08-20» — так настроен пул (src/db/pool.ts).
 
@@ -116,7 +122,7 @@ export class GroupsRepo {
   ): Promise<GroupRow> {
     const { rows } = await this.db.query<GroupRow>(
       `INSERT INTO groups (${COLUMNS})
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
        RETURNING *`,
       [
         input.no ?? null,
@@ -139,12 +145,16 @@ export class GroupsRepo {
         input.format,
         input.status,
         input.checked ?? null,
+        input.campaignRegistered ?? false,
         source,
         addedBy,
         platform,
       ],
     );
-    return rows[0]!;
+    const row = rows[0]!;
+    // Ведущего могли выбрать из уже зарегистрированных участников (подбор в форме) —
+    // тогда бейдж должен загореться сразу, не дожидаясь новой регистрации.
+    return (await this.syncCampaignRegistered(row.id)) ?? row;
   }
 
   /**
@@ -160,7 +170,7 @@ export class GroupsRepo {
          no = $2, leader = $3, open_to_new = $4, phone = $5, phones = $6, age = $7,
          district = $8, metro = $9, address = $10, composition = $11, day = $12,
          "time" = $13, people = $14, coordinator = $15, feedback_at = $16, comment = $17,
-         training = $18, format = $19, status = $20, checked = $21,
+         training = $18, format = $19, status = $20, checked = $21, campaign_registered = $22,
          source = CASE WHEN source = 'таблица' THEN 'ui' ELSE source END
        WHERE id = $1 AND archived_at IS NULL
        RETURNING *`,
@@ -186,9 +196,14 @@ export class GroupsRepo {
         input.format,
         input.status,
         input.checked ?? null,
+        input.campaignRegistered ?? false,
       ],
     );
-    return rows[0] ?? null;
+    const row = rows[0];
+    if (!row) return null;
+    // Номер могли поменять на совпадающий с уже зарегистрированным участником —
+    // пересчитываем, но только в сторону «да» (см. syncCampaignRegistered).
+    return (await this.syncCampaignRegistered(row.id)) ?? row;
   }
 
   async listActive(limit = 50): Promise<GroupRow[]> {
@@ -229,6 +244,35 @@ export class GroupsRepo {
     return rows.length > 0;
   }
 
+  /**
+   * «40 дней»: включает бейдж всем действующим группам с этим номером — вызывается
+   * при завершении анкеты участника в боте. Только включает: ручную отметку «нет»
+   * этим не перезаписать, а повторный вызов для уже отмеченной группы безвреден.
+   */
+  async markCampaignRegisteredByPhone(phone: string): Promise<void> {
+    await this.db.query(
+      `UPDATE groups SET campaign_registered = true
+        WHERE archived_at IS NULL AND campaign_registered = false AND $1 = ANY(phones)`,
+      [phone],
+    );
+  }
+
+  /**
+   * То же самое, но с другой стороны: после заведения или правки группы проверяет,
+   * не совпал ли её номер с уже завершённой регистрацией участника (например,
+   * ведущего выбрали из подбора зарегистрированных). Тоже только включает.
+   */
+  private async syncCampaignRegistered(id: number): Promise<GroupRow | null> {
+    const { rows } = await this.db.query<GroupRow>(
+      `UPDATE groups g SET campaign_registered = true
+        WHERE g.id = $1 AND g.campaign_registered = false
+          AND EXISTS (SELECT 1 FROM users u WHERE u.complete = true AND u.phone = ANY(g.phones))
+        RETURNING *`,
+      [id],
+    );
+    return rows[0] ?? null;
+  }
+
   async archive(id: number): Promise<GroupRow | null> {
     const { rows } = await this.db.query<GroupRow>(
       `UPDATE groups
@@ -246,14 +290,8 @@ export class GroupsRepo {
    * с таблицей церкви, а заведённые позже (без номера) идут в конце.
    */
   async forDashboard(): Promise<DashboardGroup[]> {
-    const { rows } = await this.db.query<GroupRow & { campaign_registered: boolean }>(
-      `SELECT *,
-              EXISTS (
-                SELECT 1 FROM users u
-                 WHERE u.complete = true AND u.phone = ANY(groups.phones)
-              ) AS campaign_registered
-         FROM groups
-        WHERE archived_at IS NULL
+    const { rows } = await this.db.query<GroupRow>(
+      `SELECT * FROM groups WHERE archived_at IS NULL
         ORDER BY no NULLS LAST, created_at, id`,
     );
     return rows.map((r) => ({

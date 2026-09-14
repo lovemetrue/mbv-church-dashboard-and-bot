@@ -118,6 +118,7 @@ export function parseGroupForm(form: URLSearchParams): Parsed<GroupInput> {
       training: text(form, 'training'),
       // Чекбокс приходит только когда отмечен; пустое поле здесь значит «нет».
       checked: form.get('checked') !== null,
+      campaignRegistered: form.get('campaignRegistered') !== null,
     },
   };
 }

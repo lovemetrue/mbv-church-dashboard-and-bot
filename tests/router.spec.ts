@@ -210,6 +210,19 @@ describe('регистрация через роутер', () => {
     const { rows } = await db.query('SELECT count(*)::int AS n FROM users');
     expect(rows[0]).toMatchObject({ n: 1 });
   });
+
+  test('завершение анкеты включает бейдж «40 дней» у группы с этим номером', async () => {
+    await deps.groups.add(
+      { leader: 'Петров Пётр', district: 'Приморский', format: 'Молодежная', status: 'Функционирует', phone: '+79001234567' },
+      ADMIN,
+      'telegram',
+    );
+
+    await registerLeader();
+
+    const [g] = await deps.groups.forDashboard();
+    expect(g!.campaign_registered).toBe(true);
+  });
 });
 
 describe('заявки служителям', () => {

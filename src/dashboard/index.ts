@@ -62,6 +62,7 @@ async function main(): Promise<void> {
       groups: await groups.forDashboard(),
       requests: await requests.forDashboard(),
       coordinators: await coordinators.listActive(),
+      leaderCandidates: await users.leaderCandidates(),
       campaign: await campaignStats({ users, requests, campaign, deliveries }, schedule),
     }),
     deleteGroup: async (id) => (await groups.archive(id)) !== null,

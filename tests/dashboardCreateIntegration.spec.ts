@@ -54,6 +54,7 @@ beforeAll(async () => {
       groups: await groups.forDashboard(),
       requests: await requests.forDashboard(),
       coordinators: await coordinators.listActive(),
+      leaderCandidates: await users.leaderCandidates(),
     }),
     createGroup: async (input) => (await groups.create(input as never, 'ui')).id,
     createRequest: (input) => requests.createFromDashboard(input as never),

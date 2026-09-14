@@ -37,6 +37,16 @@ export interface Recipient {
   chat_id: string;
 }
 
+export interface LeaderCandidate {
+  id: number;
+  full_name: string | null;
+  phone: string | null;
+  church: string | null;
+  mdg_status: MdgStatus | null;
+  location: string | null;
+  age: string | null;
+}
+
 /** Соответствие полей анкеты колонкам: список закрытый, поэтому SQL собирается безопасно. */
 const COLUMNS: Record<keyof ProfilePatch, string> = {
   fio: 'full_name',
@@ -252,6 +262,21 @@ export class UsersRepo {
          FROM users
         GROUP BY platform
         ORDER BY platform`,
+    );
+    return rows;
+  }
+
+  /**
+   * Кандидаты в ведущие новой группы: анкета завершена, человек отметил, что готов
+   * открыть группу или предоставить дом, и не заблокировал бота. Используется
+   * дашбордом при заведении новой домашней группы.
+   */
+  async leaderCandidates(): Promise<LeaderCandidate[]> {
+    const { rows } = await this.db.query<LeaderCandidate>(
+      `SELECT id, full_name, phone, church, mdg_status, location, age
+         FROM users
+        WHERE complete = true AND mdg_status IN ('open', 'home') AND blocked_at IS NULL
+        ORDER BY full_name`,
     );
     return rows;
   }

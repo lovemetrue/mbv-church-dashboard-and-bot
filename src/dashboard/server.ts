@@ -15,11 +15,13 @@ export interface DashboardData {
   groups: readonly object[];
   requests: readonly object[];
   coordinators: readonly object[];
+  /** Зарегистрированные участники, готовые открыть группу или предоставить дом. */
+  leaderCandidates: readonly object[];
   /** Показатели кампании: то, что раньше показывала команда /stats в боте. */
   campaign?: object | null;
 }
 
-const EMPTY_DATA: DashboardData = { groups: [], requests: [], coordinators: [], campaign: null };
+const EMPTY_DATA: DashboardData = { groups: [], requests: [], coordinators: [], leaderCandidates: [], campaign: null };
 
 export interface DashboardDeps {
   auth: SessionService;

@@ -930,6 +930,7 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
             <th>Телефон</th>
             <th>Место</th>
             <th>Домашняя группа</th>
+            <th>Куда направляем</th>
             <th>Статус</th>
           </tr>
         </thead>
@@ -1789,9 +1790,10 @@ function renderRequests() {
       <td>${phoneCell(r)}</td>
       <td>${esc(r.place) || '—'}</td>
       <td>${groupLabel(r.group_id)}</td>
+      <td>${esc(r.recommended) || '—'}</td>
       <td><span class="pill ${cls}"><i></i>${esc(label)}</span></td>
     </tr>
-    <tr class="detail hidden"><td colspan="6">${requestDetails(r)}</td></tr>`;
+    <tr class="detail hidden"><td colspan="7">${requestDetails(r)}</td></tr>`;
   }).join('');
 
   $('#reqBody').querySelectorAll('tr.row').forEach((tr) => {

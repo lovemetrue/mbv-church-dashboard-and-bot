@@ -94,3 +94,9 @@ describe('«Ответственный» — выпадающий список, 
     expect(html).toContain('function responsibleOptions');
   });
 });
+
+describe('«Куда направляем»', () => {
+  test('колонка есть в шапке и показывает существующее поле «Рекомендованная группа»', () => {
+    expect(html).toContain('<th>Куда направляем</th>');
+  });
+});

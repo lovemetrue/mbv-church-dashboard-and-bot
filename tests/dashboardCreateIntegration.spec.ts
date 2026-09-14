@@ -62,7 +62,7 @@ beforeAll(async () => {
     deleteGroup: async (id) => (await groups.archive(id)) !== null,
     updateGroup: async (id, input) => (await groups.update(id, input as never)) !== null,
     deleteRequest: (id) => requests.archive(id),
-    setRequestStatus: (id, status, responsible) => requests.setStatus(id, status as never, responsible),
+    setRequestStatus: (id, status, responsible, groupId) => requests.setStatus(id, status as never, responsible, groupId),
     exportUsers: async () => usersToCsv(await users.exportRows()),
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
@@ -290,6 +290,25 @@ describe('ведение заявки в дашборде', () => {
     const cookie = await login();
     const r = await post('/request/status', { id: '999999', status: 'Исполнена' }, cookie);
     expect(r.status).toBe(404);
+  });
+
+  test('быстрое назначение группы через переключатель статуса', async () => {
+    const cookie = await login();
+    await post('/group/create', {
+      leader: 'Иванова Мария', district: 'Невский', format: 'Молодежная', status: 'Функционирует',
+    }, cookie);
+    const { rows: g } = await db.query<{ id: number }>('SELECT id FROM groups');
+
+    await post('/request/create', { fio: 'Сидоров Сидор', type: 'join_group', status: 'Новая' }, cookie);
+    const { rows: r } = await db.query<{ id: number }>('SELECT id FROM requests');
+
+    const res = await post('/request/status', {
+      id: String(r[0]!.id), status: 'В работе', groupId: String(g[0]!.id),
+    }, cookie);
+    expect(res.status).toBe(200);
+
+    const after = await db.query('SELECT group_id FROM requests WHERE id = $1', [r[0]!.id]);
+    expect(after.rows[0]).toMatchObject({ group_id: g[0]!.id });
   });
 });
 

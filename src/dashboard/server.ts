@@ -41,7 +41,7 @@ export interface DashboardDeps {
   /** Убрать заявку со страницы. false — её нет или уже убрали. */
   deleteRequest?: (id: number) => Promise<boolean>;
   /** Быстрая смена статуса заявки из списка. false — заявки нет. */
-  setRequestStatus?: (id: number, status: string, responsible: string | null) => Promise<boolean>;
+  setRequestStatus?: (id: number, status: string, responsible: string | null, groupId: number | null) => Promise<boolean>;
   /** Исправить группу. false — записи нет. */
   updateGroup?: (id: number, input: unknown) => Promise<boolean>;
   /** Выгрузка участников кампании в CSV. */
@@ -225,8 +225,8 @@ export function createDashboardServer(deps: DashboardDeps) {
           return;
         }
 
-        const { id, status, responsible } = parsed.value;
-        const changed = await deps.setRequestStatus(id, status, responsible);
+        const { id, status, responsible, groupId } = parsed.value;
+        const changed = await deps.setRequestStatus(id, status, responsible, groupId);
         logger.info({ id, status, changed }, 'дашборд: статус заявки изменён');
         send(res, changed ? 200 : 404, changed ? 'ok' : 'Заявка не найдена');
         return;

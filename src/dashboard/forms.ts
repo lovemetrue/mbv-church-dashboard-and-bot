@@ -52,6 +52,14 @@ function oneOf<T extends string>(form: URLSearchParams, name: string, allowed: r
   return v && (allowed as readonly string[]).includes(v) ? (v as T) : null;
 }
 
+/** Число или пусто: пустой выбор в списке групп значит «не назначена». */
+function optionalId(form: URLSearchParams, name: string): number | null | 'invalid' {
+  const raw = text(form, name);
+  if (raw === null) return null;
+  if (!/^\d+$/.test(raw)) return 'invalid';
+  return Number(raw);
+}
+
 export function parseGroupForm(form: URLSearchParams): Parsed<GroupInput> {
   const leader = text(form, 'leader');
   if (!leader) return { ok: false, error: 'Укажите ФИО ведущего.' };
@@ -130,12 +138,16 @@ export function parseRequestForm(form: URLSearchParams): Parsed<RequestInput> {
   const requestedAt = date(form, 'requestedAt');
   if (requestedAt === 'invalid') return { ok: false, error: 'Дата заявки — в виде 2026-08-27.' };
 
+  const groupId = optionalId(form, 'groupId');
+  if (groupId === 'invalid') return { ok: false, error: 'Домашняя группа выбирается из списка.' };
+
   return {
     ok: true,
     value: {
       fio,
       type,
       status,
+      groupId,
       ...phone(form),
       age: text(form, 'age'),
       place: text(form, 'place'),
@@ -176,12 +188,14 @@ export function parseGroupUpdate(form: URLSearchParams): Parsed<{ id: number; in
 /** Быстрая смена статуса: только номер, статус и, если указали, ответственный. */
 export function parseRequestStatus(
   form: URLSearchParams,
-): Parsed<{ id: number; status: RequestStatus; responsible: string | null }> {
+): Parsed<{ id: number; status: RequestStatus; responsible: string | null; groupId: number | null }> {
   const id = parseId(form, 'заявки');
   if (!id.ok) return id;
   const status = oneOf<RequestStatus>(form, 'status', REQUEST_STATUSES);
   if (!status) return { ok: false, error: 'Выберите статус заявки из списка.' };
-  return { ok: true, value: { id: id.value, status, responsible: text(form, 'responsible') } };
+  const groupId = optionalId(form, 'groupId');
+  if (groupId === 'invalid') return { ok: false, error: 'Домашняя группа выбирается из списка.' };
+  return { ok: true, value: { id: id.value, status, responsible: text(form, 'responsible'), groupId } };
 }
 
 /** Правка заявки: любое поле, включая статус. */

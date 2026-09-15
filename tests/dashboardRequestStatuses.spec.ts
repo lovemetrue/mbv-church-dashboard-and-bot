@@ -65,7 +65,7 @@ describe('статусы заявок в дашборде', () => {
 
 describe('связь заявки с домашней группой', () => {
   test('в шапке таблицы есть колонка «Домашняя группа»', () => {
-    expect(html).toContain('<th>Домашняя группа</th>');
+    expect(html).toMatch(/<th[^>]*>Домашняя группа/);
   });
 
   test('есть фильтр по домашней группе', () => {
@@ -97,6 +97,23 @@ describe('«Ответственный» — выпадающий список, 
 
 describe('«Куда направляем»', () => {
   test('колонка есть в шапке и показывает существующее поле «Рекомендованная группа»', () => {
-    expect(html).toContain('<th>Куда направляем</th>');
+    expect(html).toMatch(/<th[^>]*>Куда направляем/);
+  });
+});
+
+describe('сортировка заявок по столбцам', () => {
+  test('каждый заголовок таблицы заявок кликабелен для сортировки', () => {
+    const keys = ['date', 'fio', 'phone', 'place', 'group_id', 'recommended', 'status'];
+    for (const key of keys) {
+      expect(html, `нет сортируемого заголовка для ${key}`).toContain(`class="sortable-req" data-key="${key}"`);
+    }
+  });
+
+  test('клик по заголовку не путает сортировку заявок с сортировкой групп', () => {
+    // Общий обработчик thead th.sortable у групп не должен подхватывать заголовки
+    // заявок — иначе клик по «Дате» в заявках отсортировал бы реестр групп.
+    expect(html).toContain("querySelectorAll('thead th.sortable-req')");
+    expect(html).toContain('state.reqSort');
+    expect(html).toContain('state.reqDir');
   });
 });

@@ -257,8 +257,8 @@ thead th {
   color: var(--text-3); font-size: 11.5px; font-weight: 600;
   text-transform: uppercase; letter-spacing: .05em;
 }
-thead th.sortable { cursor: pointer; user-select: none; }
-thead th.sortable:hover { color: var(--text-2); }
+thead th.sortable, thead th.sortable-req { cursor: pointer; user-select: none; }
+thead th.sortable:hover, thead th.sortable-req:hover { color: var(--text-2); }
 thead th .arrow { opacity: 0; margin-left: 4px; }
 thead th[data-dir] .arrow { opacity: 1; }
 tbody td { padding: 11px 14px; border-bottom: 1px solid rgba(255,255,255,.04); color: var(--text-2); }
@@ -925,13 +925,13 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
       <table>
         <thead>
           <tr>
-            <th>Дата</th>
-            <th>Человек</th>
-            <th>Телефон</th>
-            <th>Место</th>
-            <th>Домашняя группа</th>
-            <th>Куда направляем</th>
-            <th>Статус</th>
+            <th class="sortable-req" data-key="date">Дата <span class="arrow">↓</span></th>
+            <th class="sortable-req" data-key="fio">Человек <span class="arrow">↓</span></th>
+            <th class="sortable-req" data-key="phone">Телефон <span class="arrow">↓</span></th>
+            <th class="sortable-req" data-key="place">Место <span class="arrow">↓</span></th>
+            <th class="sortable-req" data-key="group_id">Домашняя группа <span class="arrow">↓</span></th>
+            <th class="sortable-req" data-key="recommended">Куда направляем <span class="arrow">↓</span></th>
+            <th class="sortable-req" data-key="status">Статус <span class="arrow">↓</span></th>
           </tr>
         </thead>
         <tbody id="reqBody">
@@ -1108,7 +1108,10 @@ const REQUEST_PILL = {
 
 const MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
 
-const state = { district: null, status: '', campaign: '', sort: 'people', dir: -1, view: 'all', request: null, groupId: null };
+const state = {
+  district: null, status: '', campaign: '', sort: 'people', dir: -1, view: 'all', request: null, groupId: null,
+  reqSort: 'date', reqDir: -1,
+};
 const $ = (s) => document.querySelector(s);
 const groups = DATA.groups;
 
@@ -1780,8 +1783,14 @@ function renderRequests() {
   barList($('#reqBySource'), countBy(all.filter((r) => r.source), 'source').slice(0, 9),
     { color: 'var(--accent-hi)', unit: 'заявок' });
 
-  // Свежие сверху: с новыми заявками работают в первую очередь.
-  const rows = [...visibleRequests()].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  // По умолчанию свежие сверху; клик по заголовку переключает на выбранный столбец.
+  const rows = [...visibleRequests()].sort((a, b) => {
+    const k = state.reqSort;
+    let av = a[k] ?? '', bv = b[k] ?? '';
+    if (k === 'group_id') { av = groupLabel(a.group_id); bv = groupLabel(b.group_id); }
+    if (av === bv) return 0;
+    return (av > bv ? 1 : -1) * state.reqDir;
+  });
   $('#reqBody').innerHTML = rows.map((r) => {
     const [cls, label] = REQUEST_PILL[r.status] || ['draft', r.status];
     return `<tr class="row">
@@ -1843,7 +1852,21 @@ function renderRequests() {
 
   $('#reqFoot').textContent = `${rows.length} ${plural(rows.length, 'заявка', 'заявки', 'заявок')}`;
   $('#reqSub').textContent = state.request ? `Статус: ${state.request}` : 'Все заявки';
+
+  document.querySelectorAll('thead th.sortable-req').forEach((th) => {
+    if (th.dataset.key === state.reqSort) th.dataset.dir = state.reqDir;
+    else delete th.dataset.dir;
+    th.querySelector('.arrow').textContent = state.reqDir > 0 ? '↑' : '↓';
+  });
 }
+
+document.querySelectorAll('thead th.sortable-req').forEach((th) => {
+  th.onclick = () => {
+    if (state.reqSort === th.dataset.key) state.reqDir *= -1;
+    else { state.reqSort = th.dataset.key; state.reqDir = th.dataset.key === 'date' ? -1 : 1; }
+    renderRequests();
+  };
+});
 
 document.querySelectorAll('#segRequest button').forEach((b) => {
   b.onclick = () => {

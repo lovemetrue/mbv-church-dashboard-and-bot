@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import {
   parseCoordinatorForm, parseCoordinatorUpdate, parseGroupForm, parseGroupUpdate, parseId,
   parseRequestForm, parseRequestStatus, parseRequestUpdate,
@@ -148,6 +149,20 @@ export function createDashboardServer(deps: DashboardDeps) {
       if (path === '/health') {
         res.writeHead(200, { 'content-type': 'text/plain' });
         res.end('ok');
+        return;
+      }
+
+      // Фавикон: браузер запрашивает его до входа, поэтому без авторизации.
+      // Лежит рядом с home-groups.html — тем же путём, каким сервис читает саму страницу.
+      if (path === '/assets/computer.png') {
+        try {
+          const png = await readFile(join(dirname(deps.htmlPath), 'assets', 'computer.png'));
+          res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'public, max-age=86400' });
+          res.end(png);
+        } catch {
+          res.writeHead(404);
+          res.end();
+        }
         return;
       }
 

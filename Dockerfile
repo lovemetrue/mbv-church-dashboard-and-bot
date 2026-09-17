@@ -26,6 +26,8 @@ COPY --from=build /app/dist ./dist
 COPY migrations ./migrations
 # Файл дашборда читается сервисом на каждый запрос.
 COPY dashboard/home-groups.html ./dashboard/home-groups.html
+# Фавикон и другая статика, на которую ссылается home-groups.html.
+COPY dashboard/assets ./dashboard/assets
 # Импорт выгрузки в базу — рабочая операция на сервере, а не сборочный шаг.
 COPY dashboard/data.json ./dashboard/data.json
 COPY scripts ./scripts

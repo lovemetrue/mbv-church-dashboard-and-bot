@@ -34,11 +34,14 @@ function memoryStore(): SessionStore {
 
 beforeAll(async () => {
   db = await setupTestDb();
-  const { writeFileSync, mkdtempSync } = await import('node:fs');
+  const { writeFileSync, mkdirSync, mkdtempSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
-  const { join } = await import('node:path');
+  const { join, dirname } = await import('node:path');
   htmlPath = join(mkdtempSync(join(tmpdir(), 'hg-int-')), 'page.html');
   writeFileSync(htmlPath, '<h1>дашборд</h1>\n<script>\nconst DATA = window.HG_LIVE;\n</script>');
+  // Фавикон лежит рядом с home-groups.html — так же, как в /app/dashboard в продовом образе.
+  mkdirSync(join(dirname(htmlPath), 'assets'));
+  writeFileSync(join(dirname(htmlPath), 'assets', 'computer.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
 
   const groups = new GroupsRepo(db);
   groupsRepo = groups;
@@ -476,5 +479,19 @@ describe('участники (координаторы) через дашбор�
     expect((await bare('/coordinator/create', { name: 'Новый', role: 'Координатор' })).status).toBe(401);
     expect((await bare('/coordinator/update', { id: String(created.id), name: 'Правка', role: 'Координатор' })).status).toBe(401);
     expect((await bare('/coordinator/delete', { id: String(created.id) })).status).toBe(401);
+  });
+});
+
+describe('фавикон', () => {
+  test('отдаётся без входа: браузер запрашивает его до формы логина', async () => {
+    const r = await fetch(`${base}/assets/computer.png`);
+    expect(r.status).toBe(200);
+    expect(r.headers.get('content-type')).toBe('image/png');
+    expect(new Uint8Array(await r.arrayBuffer())).toEqual(new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+  });
+
+  test('другой файл под /assets не отдаётся: маршрут знает только про иконку', async () => {
+    const r = await fetch(`${base}/assets/other.png`);
+    expect(r.status).toBe(404);
   });
 });

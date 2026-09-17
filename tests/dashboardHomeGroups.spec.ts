@@ -182,3 +182,15 @@ describe('координатор группы выбирается из спис
     expect(html).toContain("groups.map((g) => g.coordinator).filter(Boolean)");
   });
 });
+
+describe('фавикон', () => {
+  test('ссылки в <head> есть и помечены id для перестановки на HG_BASE', () => {
+    expect(html).toContain('href="assets/computer.png" id="favicon"');
+    expect(html).toContain('href="assets/computer.png" id="touchIcon"');
+  });
+
+  test('путь переставляется на HG_BASE в скрипте — страница смонтирована на «/groups» без косой черты', () => {
+    // Голый относительный href браузер разрешит от корня сайта, а не от «/groups/».
+    expect(html).toContain("(window.HG_BASE ?? './') + 'assets/computer.png'");
+  });
+});

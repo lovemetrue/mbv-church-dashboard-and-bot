@@ -1,8 +1,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Домашние группы МБВ</title>
-<link rel="icon" type="image/png" href="assets/computer.png">
-<link rel="apple-touch-icon" href="assets/computer.png">
+<link rel="icon" type="image/png" href="assets/computer.png" id="favicon">
+<link rel="apple-touch-icon" href="assets/computer.png" id="touchIcon">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
@@ -2368,6 +2368,13 @@ function wireForm(formId, msgId, path, doneText) {
 // относительная ссылка ушла бы в корень сайта.
 const exportLink = $('#exportLink');
 if (exportLink) exportLink.href = (window.HG_BASE ?? './') + 'export.csv';
+
+// Страница живёт на «/groups» без косой черты: относительный href в <link> браузер
+// разрешает от корня сайта, а не от «/groups/» — так же, как у exportLink выше.
+['favicon', 'touchIcon'].forEach((id) => {
+  const link = $(`#${id}`);
+  if (link) link.href = (window.HG_BASE ?? './') + 'assets/computer.png';
+});
 
 // Формы заведения строим из того же описания полей, что и правку в списке.
 $('#groupFields').innerHTML = formFieldsHtml(GROUP_FIELDS, null, 'g');

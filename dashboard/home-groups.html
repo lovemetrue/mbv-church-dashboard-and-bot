@@ -576,9 +576,9 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
   </div>
 
   <nav class="nav" role="tablist" aria-label="Разделы">
-    <button role="tab" aria-selected="true" data-view="all">Домашние группы</button>
     <button role="tab" aria-selected="false" data-view="analytics">Аналитика</button>
-    <button role="tab" aria-selected="false" data-view="requests">Заявки (МДГ)</button>
+    <button role="tab" aria-selected="true" data-view="all">Домашние группы</button>
+    <button role="tab" aria-selected="false" data-view="requests">Заявки</button>
     <button role="tab" aria-selected="false" data-view="campaign">40 дней</button>
     <button role="tab" aria-selected="false" data-view="new">Добавить</button>
   </nav>
@@ -607,7 +607,7 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
 <main class="shell">
   <div class="page-head">
     <div>
-      <h1>Аналитика домашних групп</h1>
+      <h1 id="pageTitle">Домашние группы</h1>
       <p class="epigraph" id="epigraph"></p>
     </div>
     <div class="filter-note" id="filterNote">
@@ -647,8 +647,8 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
   </section>
 
   <!-- Карта + районы ---------------------------------------------------- -->
-  <section class="grid-main" data-section="geo">
-    <div class="card map-wrap">
+  <section data-section="geo">
+    <div class="card map-wrap" style="margin-bottom:12px">
       <div class="card-head" style="padding:0">
         <div>
           <h2 class="card-title">Карта Санкт-Петербурга</h2>
@@ -658,16 +658,17 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
       <div class="map-grid" id="mapGrid"></div>
       <div class="outside" id="mapOutside"></div>
     </div>
+  </section>
 
-    <div class="card">
-      <div class="card-head">
-        <div>
-          <h2 class="card-title">Распределение по районам</h2>
-          <p class="card-sub" id="ranksSub">Все группы сети</p>
-        </div>
+  <!-- Районы (перенесено с «Домашних групп») ----------------------------- -->
+  <section class="card" style="margin-bottom:12px" data-section="analytics">
+    <div class="card-head">
+      <div>
+        <h2 class="card-title">Распределение по районам</h2>
+        <p class="card-sub" id="ranksSub">Все группы сети</p>
       </div>
-      <div class="ranks" id="ranks"></div>
     </div>
+    <div class="ranks" id="ranks"></div>
   </section>
 
   <!-- Equity ------------------------------------------------------------ -->
@@ -903,7 +904,7 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
   <section class="card" data-section="requests">
     <div class="card-head">
       <div>
-        <h2 class="card-title">Заявки (МДГ)</h2>
+        <h2 class="card-title">Заявки</h2>
         <p class="card-sub" id="reqSub">Все заявки</p>
       </div>
       <!-- Порядок как в жизни заявки: пришла → ждёт → ведут → проверяют → закрыта.
@@ -2349,9 +2350,19 @@ const EPIGRAPHS = {
   ],
 };
 
+/** Заголовок над вкладкой: свой на каждую, а не одна и та же надпись всегда. */
+const PAGE_TITLES = {
+  all: 'Домашние группы',
+  analytics: 'Аналитика',
+  requests: 'Заявки',
+  campaign: '40 дней',
+  new: 'Добавить',
+};
+
 function renderEpigraph() {
   const [text, ref] = EPIGRAPHS[state.view] ?? EPIGRAPHS.all;
   $('#epigraph').innerHTML = `\u00ab${esc(text)}\u00bb<cite>${esc(ref)}</cite>`;
+  $('#pageTitle').textContent = PAGE_TITLES[state.view] ?? PAGE_TITLES.all;
 }
 
 function applyView() {
@@ -2363,9 +2374,15 @@ function applyView() {
   document.querySelectorAll('[data-section]').forEach((s) => {
     const tags = s.dataset.section.split(' ');
     const own = EXCLUSIVE.find((v) => tags.includes(v)) ?? null;
+    // Графики (data-section="analytics") переехали на свою вкладку — «Домашние
+    // группы» их больше не показывает, даже хотя формально не «эксклюзивная» вкладка.
     const show = exclusive
       ? own === exclusive
-      : own === null && (state.view === 'all' || tags.includes(state.view) || tags.includes('kpi'));
+      : own === null && (
+          (state.view === 'all' && !tags.includes('analytics')) ||
+          tags.includes(state.view) ||
+          tags.includes('kpi')
+        );
     s.classList.toggle('hidden', !show);
   });
 }

@@ -157,7 +157,9 @@ export function createDashboardServer(deps: DashboardDeps) {
       if (path === '/assets/computer.png') {
         try {
           const png = await readFile(join(dirname(deps.htmlPath), 'assets', 'computer.png'));
-          res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'public, max-age=86400' });
+          // Без долгого кэша: файл можно заменить на сервере в любой момент (как уже
+          // бывало), и браузер не должен сутками показывать старую картинку по тому же URL.
+          res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store' });
           res.end(png);
         } catch {
           res.writeHead(404);

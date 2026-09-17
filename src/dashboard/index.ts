@@ -74,6 +74,9 @@ async function main(): Promise<void> {
     deleteRequest: (id) => requests.archive(id),
     setRequestStatus: (id, status, responsible, groupId) => requests.setStatus(id, status as never, responsible, groupId),
     updateGroup: async (id, input) => (await groups.update(id, input as never)) !== null,
+    createCoordinator: async (input) => (await coordinators.create(input as never)).id,
+    updateCoordinator: async (id, input) => (await coordinators.update(id, input as never)) !== null,
+    deleteCoordinator: (id) => coordinators.archive(id),
     exportUsers: async () => usersToCsv(await users.exportRows()),
   });
 

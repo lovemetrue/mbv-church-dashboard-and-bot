@@ -117,3 +117,68 @@ describe('подбор ведущего из зарегистрированны�
     expect(html).toContain('function wireLeaderCandidatePicker');
   });
 });
+
+describe('блоки KPI: без «Всего», в новом порядке, с «На паузе»', () => {
+  test('плитки «Всего групп» и цели больше нет', () => {
+    expect(html).not.toContain('id="kpiTotal"');
+    expect(html).not.toContain('id="targetBtn"');
+    expect(html).not.toContain('id="targetBar"');
+    expect(html).not.toContain('targetValue');
+  });
+
+  test('плитка «На паузе» появилась', () => {
+    expect(html).toContain('id="kpiPaused"');
+    expect(html).toContain('>На паузе<');
+  });
+
+  test('порядок плиток: Действующие, На паузе, Закрытые, Ведущих, Участников', () => {
+    const liveAt = html.indexOf('id="kpiLive"');
+    const pausedAt = html.indexOf('id="kpiPaused"');
+    const closedAt = html.indexOf('id="kpiClosed"');
+    const leadersAt = html.indexOf('id="kpiLeaders"');
+    const peopleAt = html.indexOf('id="kpiPeople"');
+    expect(liveAt).toBeGreaterThan(-1);
+    expect(liveAt).toBeLessThan(pausedAt);
+    expect(pausedAt).toBeLessThan(closedAt);
+    expect(closedAt).toBeLessThan(leadersAt);
+    expect(leadersAt).toBeLessThan(peopleAt);
+  });
+});
+
+describe('раздел «Участники»', () => {
+  test('своя вкладка в навигации', () => {
+    expect(html).toContain('data-view="coordinators">Участники</button>');
+    expect(html).toContain("coordinators: 'Участники'");
+  });
+
+  test('таблица участников на своей вкладке', () => {
+    expect(html).toContain('data-section="coordinators"');
+    expect(html).toContain('id="coordBody"');
+    expect(html).toContain('function renderCoordinators()');
+  });
+
+  test('форма заведения нового участника лежит в «Добавить», как остальные', () => {
+    expect(html).toContain('id="coordinatorForm"');
+    expect(html).toContain("wireForm('#coordinatorForm', '#coordinatorMsg', 'coordinator/create'");
+  });
+
+  test('править и убирать можно так же, как группу и заявку', () => {
+    expect(html).toContain("kind === 'coordinator' ? COORDINATOR_FIELDS");
+    expect(html).toContain("wireRowEditing('#coordBody', 'coordinator'");
+  });
+});
+
+describe('координатор группы выбирается из списка', () => {
+  test('поле «Координатор» больше не свободный текст', () => {
+    const block = html.slice(html.indexOf('const GROUP_FIELDS = ['), html.indexOf('const COORDINATOR_FIELDS = ['));
+    expect(block).toContain("name: 'coordinator'");
+    expect(block).not.toContain("name: 'coordinator', label: 'Координатор', from: 'coordinator', placeholder");
+    expect(block).toContain('GROUP_COORDINATOR_NAMES');
+  });
+
+  test('список составлен из общего реестра участников плюс текущие значения групп', () => {
+    expect(html).toContain('const GROUP_COORDINATOR_NAMES = [...new Set([');
+    expect(html).toContain('coordinators.map((c) => c.name)');
+    expect(html).toContain("groups.map((g) => g.coordinator).filter(Boolean)");
+  });
+});

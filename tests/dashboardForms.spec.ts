@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { parseGroupForm, parseRequestForm } from '../src/dashboard/forms.js';
+import { parseCoordinatorForm, parseCoordinatorUpdate, parseGroupForm, parseRequestForm } from '../src/dashboard/forms.js';
 
 const form = (o: Record<string, string>) => new URLSearchParams(o);
 
@@ -141,5 +141,36 @@ describe('форма заявки', () => {
   test('нечисловой id группы отвергается', () => {
     const r = parseRequestForm(form({ ...REQUEST_MIN, groupId: 'сорок два' }));
     expect(r.ok).toBe(false);
+  });
+});
+
+describe('форма участника (координатора)', () => {
+  test('ФИО и роль проходят', () => {
+    const r = parseCoordinatorForm(form({ name: 'Петрова Мария', role: 'Координатор малых групп' }));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value).toEqual({ name: 'Петрова Мария', role: 'Координатор малых групп' });
+  });
+
+  test('без ФИО не принимается', () => {
+    const r = parseCoordinatorForm(form({ name: '  ', role: 'Координатор' }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain('ФИО');
+  });
+
+  test('без роли не принимается', () => {
+    const r = parseCoordinatorForm(form({ name: 'Петрова Мария', role: '' }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain('роль');
+  });
+
+  test('правка требует номер записи', () => {
+    const r = parseCoordinatorUpdate(form({ name: 'Петрова Мария', role: 'Координатор' }));
+    expect(r.ok).toBe(false);
+  });
+
+  test('правка с номером и полями проходит', () => {
+    const r = parseCoordinatorUpdate(form({ id: '5', name: 'Петрова Мария', role: 'Координатор' }));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value).toEqual({ id: 5, input: { name: 'Петрова Мария', role: 'Координатор' } });
   });
 });

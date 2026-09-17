@@ -20,6 +20,7 @@ let server: ReturnType<typeof createDashboardServer>;
 let htmlPath: string;
 let requests: RequestsRepo;
 let groupsRepo: GroupsRepo;
+let coordinatorsRepo: CoordinatorsRepo;
 
 function memoryStore(): SessionStore {
   const data = new Map<string, string>();
@@ -43,6 +44,7 @@ beforeAll(async () => {
   groupsRepo = groups;
   requests = new RequestsRepo(db);
   const coordinators = new CoordinatorsRepo(db);
+  coordinatorsRepo = coordinators;
   const users = new UsersRepo(db);
 
   server = createDashboardServer({
@@ -63,6 +65,9 @@ beforeAll(async () => {
     updateGroup: async (id, input) => (await groups.update(id, input as never)) !== null,
     deleteRequest: (id) => requests.archive(id),
     setRequestStatus: (id, status, responsible, groupId) => requests.setStatus(id, status as never, responsible, groupId),
+    createCoordinator: async (input) => (await coordinators.create(input as never)).id,
+    updateCoordinator: async (id, input) => (await coordinators.update(id, input as never)) !== null,
+    deleteCoordinator: (id) => coordinators.archive(id),
     exportUsers: async () => usersToCsv(await users.exportRows()),
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
@@ -403,5 +408,73 @@ describe('правка и удаление в списках', () => {
     expect((await bare('/group/update', { id: String(rows[0]!.id), ...GROUP })).status).toBe(401);
     expect((await bare('/group/delete', { id: String(rows[0]!.id) })).status).toBe(401);
     expect((await bare('/request/delete', { id: '1' })).status).toBe(401);
+  });
+});
+
+describe('участники (координаторы) через дашборд', () => {
+  test('заведённый участник доходит до базы', async () => {
+    const cookie = await login();
+    const r = await post('/coordinator/create', { name: 'Петрова Мария', role: 'Координатор малых групп' }, cookie);
+    expect(r.status).toBe(200);
+
+    const { rows } = await db.query('SELECT name, role, source FROM coordinators');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ name: 'Петрова Мария', role: 'Координатор малых групп', source: 'ui' });
+  });
+
+  test('отказ формы ничего не пишет', async () => {
+    const cookie = await login();
+    const r = await post('/coordinator/create', { name: '  ', role: 'Координатор' }, cookie);
+    expect(r.status).toBe(400);
+    const { rows } = await db.query('SELECT count(*)::int AS n FROM coordinators');
+    expect(rows[0]).toMatchObject({ n: 0 });
+  });
+
+  test('участника можно исправить', async () => {
+    const cookie = await login();
+    const created = await coordinatorsRepo.create({ name: 'Петрова Мария', role: 'Координатор' });
+
+    const r = await post('/coordinator/update', {
+      id: String(created.id), name: 'Петрова Мария Ивановна', role: 'Старший координатор',
+    }, cookie);
+    expect(r.status).toBe(200);
+
+    const after = await db.query('SELECT name, role FROM coordinators WHERE id = $1', [created.id]);
+    expect(after.rows[0]).toMatchObject({ name: 'Петрова Мария Ивановна', role: 'Старший координатор' });
+  });
+
+  test('правка несуществующего участника отвечает 404', async () => {
+    const cookie = await login();
+    const r = await post('/coordinator/update', { id: '999999', name: 'Кто-то', role: 'Координатор' }, cookie);
+    expect(r.status).toBe(404);
+  });
+
+  test('участника можно убрать, и он пропадает из списка', async () => {
+    const cookie = await login();
+    const created = await coordinatorsRepo.create({ name: 'Лишний', role: 'Координатор' });
+
+    const r = await post('/coordinator/delete', { id: String(created.id) }, cookie);
+    expect(r.status).toBe(200);
+    expect(await coordinatorsRepo.listActive()).toEqual([]);
+  });
+
+  test('повторное удаление участника отвечает 404', async () => {
+    const cookie = await login();
+    const created = await coordinatorsRepo.create({ name: 'Раз', role: 'Координатор' });
+    await post('/coordinator/delete', { id: String(created.id) }, cookie);
+    expect((await post('/coordinator/delete', { id: String(created.id) }, cookie)).status).toBe(404);
+  });
+
+  test('без сессии не заводит, не правит и не удаляет', async () => {
+    const created = await coordinatorsRepo.create({ name: 'Петрова Мария', role: 'Координатор' });
+    const bare = (path: string, fields: Record<string, string>) =>
+      fetch(`${base}${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams(fields),
+      });
+    expect((await bare('/coordinator/create', { name: 'Новый', role: 'Координатор' })).status).toBe(401);
+    expect((await bare('/coordinator/update', { id: String(created.id), name: 'Правка', role: 'Координатор' })).status).toBe(401);
+    expect((await bare('/coordinator/delete', { id: String(created.id) })).status).toBe(401);
   });
 });

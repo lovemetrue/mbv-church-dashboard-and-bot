@@ -8,6 +8,7 @@ import {
 import { normalizePhone } from '../core/phone.js';
 import { REQUEST_STATUSES, type RequestInput, type RequestStatus } from '../db/repos/requests.repo.js';
 import type { GroupInput } from '../db/repos/groups.repo.js';
+import type { CoordinatorInput } from '../db/repos/coordinators.repo.js';
 import type { RequestType } from '../core/fsm.js';
 
 /**
@@ -204,6 +205,26 @@ export function parseRequestUpdate(form: URLSearchParams): Parsed<{ id: number; 
   const id = parseId(form, 'заявки');
   if (!id.ok) return id;
   const parsed = parseRequestForm(form);
+  if (!parsed.ok) return parsed;
+  return { ok: true, value: { id: id.value, input: parsed.value } };
+}
+
+/**
+ * Координатор — один и тот же человек может стоять и «Координатором» у группы,
+ * и «Ответственным» у заявки, поэтому список общий, а не два разных справочника.
+ */
+export function parseCoordinatorForm(form: URLSearchParams): Parsed<CoordinatorInput> {
+  const name = text(form, 'name');
+  if (!name) return { ok: false, error: 'Укажите ФИО.' };
+  const role = text(form, 'role');
+  if (!role) return { ok: false, error: 'Укажите роль.' };
+  return { ok: true, value: { name, role } };
+}
+
+export function parseCoordinatorUpdate(form: URLSearchParams): Parsed<{ id: number; input: CoordinatorInput }> {
+  const id = parseId(form, 'участника');
+  if (!id.ok) return id;
+  const parsed = parseCoordinatorForm(form);
   if (!parsed.ok) return parsed;
   return { ok: true, value: { id: id.value, input: parsed.value } };
 }

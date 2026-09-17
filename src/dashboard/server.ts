@@ -1,7 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import {
-  parseGroupForm, parseGroupUpdate, parseId, parseRequestForm, parseRequestStatus, parseRequestUpdate,
+  parseCoordinatorForm, parseCoordinatorUpdate, parseGroupForm, parseGroupUpdate, parseId,
+  parseRequestForm, parseRequestStatus, parseRequestUpdate,
 } from './forms.js';
 import { loginPage } from './loginPage.js';
 import { SessionService } from './sessions.js';
@@ -44,6 +45,12 @@ export interface DashboardDeps {
   setRequestStatus?: (id: number, status: string, responsible: string | null, groupId: number | null) => Promise<boolean>;
   /** Исправить группу. false — записи нет. */
   updateGroup?: (id: number, input: unknown) => Promise<boolean>;
+  /** Завести координатора из формы. Возвращает номер новой записи. */
+  createCoordinator?: (input: unknown) => Promise<number>;
+  /** Исправить координатора. false — записи нет. */
+  updateCoordinator?: (id: number, input: unknown) => Promise<boolean>;
+  /** Убрать координатора со страницы. false — его нет или уже убрали. */
+  deleteCoordinator?: (id: number) => Promise<boolean>;
   /** Выгрузка участников кампании в CSV. */
   exportUsers?: () => Promise<string>;
 }
@@ -229,6 +236,87 @@ export function createDashboardServer(deps: DashboardDeps) {
         const changed = await deps.setRequestStatus(id, status, responsible, groupId);
         logger.info({ id, status, changed }, 'дашборд: статус заявки изменён');
         send(res, changed ? 200 : 404, changed ? 'ok' : 'Заявка не найдена');
+        return;
+      }
+
+      /* Координаторы: тот же список людей, что стоит и «Координатором» у группы,
+         и «Ответственным» у заявки — один человек годится на обе роли. */
+      if (path === '/coordinator/create') {
+        if (req.method !== 'POST') {
+          send(res, 404, loginPage());
+          return;
+        }
+        if (!(await deps.auth.verify(sid))) {
+          send(res, 401, loginPage('Сессия истекла. Войдите заново.'));
+          return;
+        }
+        if (!deps.createCoordinator) {
+          send(res, 404, loginPage());
+          return;
+        }
+
+        const parsed = parseCoordinatorForm(new URLSearchParams(await readBody(req)));
+        if (!parsed.ok) {
+          send(res, 400, parsed.error);
+          return;
+        }
+
+        const id = await deps.createCoordinator(parsed.value);
+        logger.info({ id }, 'дашборд: участник добавлен');
+        send(res, 200, String(id));
+        return;
+      }
+
+      if (path === '/coordinator/update') {
+        if (req.method !== 'POST') {
+          send(res, 404, loginPage());
+          return;
+        }
+        if (!(await deps.auth.verify(sid))) {
+          send(res, 401, loginPage('Сессия истекла. Войдите заново.'));
+          return;
+        }
+        if (!deps.updateCoordinator) {
+          send(res, 404, loginPage());
+          return;
+        }
+
+        const parsed = parseCoordinatorUpdate(new URLSearchParams(await readBody(req)));
+        if (!parsed.ok) {
+          send(res, 400, parsed.error);
+          return;
+        }
+
+        const { id, input } = parsed.value;
+        const changed = await deps.updateCoordinator(id, input);
+        logger.info({ id, changed }, 'дашборд: участник исправлен');
+        send(res, changed ? 200 : 404, changed ? 'ok' : 'Запись не найдена или уже убрана');
+        return;
+      }
+
+      if (path === '/coordinator/delete') {
+        if (req.method !== 'POST') {
+          send(res, 404, loginPage());
+          return;
+        }
+        if (!(await deps.auth.verify(sid))) {
+          send(res, 401, loginPage('Сессия истекла. Войдите заново.'));
+          return;
+        }
+        if (!deps.deleteCoordinator) {
+          send(res, 404, loginPage());
+          return;
+        }
+
+        const id = parseId(new URLSearchParams(await readBody(req)), 'участника');
+        if (!id.ok) {
+          send(res, 400, id.error);
+          return;
+        }
+
+        const removed = await deps.deleteCoordinator(id.value);
+        logger.info({ id: id.value, removed }, 'дашборд: участник убран');
+        send(res, removed ? 200 : 404, removed ? 'ok' : 'Запись не найдена или уже убрана');
         return;
       }
 

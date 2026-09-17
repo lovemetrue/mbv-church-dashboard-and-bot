@@ -158,14 +158,6 @@ a.chip { text-decoration: none; }
 .delta.down { color: var(--bad); }
 .delta.flat { color: var(--text-3); }
 
-.target-edit {
-  border-bottom: 1px dashed var(--text-3); color: var(--text-3);
-  padding: 0 1px; font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums;
-}
-.target-edit:hover { color: var(--accent-hi); border-color: var(--accent-hi); }
-.progress { margin-top: 10px; height: 3px; border-radius: 2px; background: var(--surface-3); overflow: hidden; }
-.progress i { display: block; height: 100%; background: var(--accent); border-radius: 2px; transition: width .8s cubic-bezier(.2,.7,.3,1); }
-
 /* ── сетка карта + районы ────────────────────────────────────────────── */
 .grid-main { display: grid; grid-template-columns: 1.35fr 1fr; gap: 12px; margin-bottom: 12px; }
 
@@ -579,6 +571,7 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
     <button role="tab" aria-selected="true" data-view="all">Домашние группы</button>
     <button role="tab" aria-selected="false" data-view="requests">Заявки</button>
     <button role="tab" aria-selected="false" data-view="campaign">40 дней</button>
+    <button role="tab" aria-selected="false" data-view="coordinators">Участники</button>
     <button role="tab" aria-selected="false" data-view="new">Добавить</button>
   </nav>
 
@@ -618,25 +611,24 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
   <!-- KPI ------------------------------------------------------------- -->
   <section class="kpis" data-section="kpi">
     <div class="card kpi">
-      <div class="kpi-label">Всего групп</div>
-      <div class="kpi-value"><span class="num" id="kpiTotal">0</span> <small>/ <button class="target-edit" id="targetBtn" title="Изменить цель">150</button></small></div>
-      <div class="progress"><i id="targetBar" style="width:0"></i></div>
-      <div class="kpi-foot"><span id="targetPct">0%</span> от цели</div>
-    </div>
-    <div class="card kpi">
-      <div class="kpi-label">Ведущих</div>
-      <div class="kpi-value num" id="kpiLeaders">0</div>
-      <div class="kpi-foot"><span id="kpiCoords">0</span> координаторов</div>
-    </div>
-    <div class="card kpi">
       <div class="kpi-label">Действующие</div>
       <div class="kpi-value num" id="kpiLive">0</div>
       <div class="kpi-foot"><span class="delta up" id="kpiLiveShare">0%</span> сети</div>
     </div>
     <div class="card kpi">
+      <div class="kpi-label">На паузе</div>
+      <div class="kpi-value num" id="kpiPaused">0</div>
+      <div class="kpi-foot"><span class="delta flat" id="kpiPausedShare">0%</span> сети</div>
+    </div>
+    <div class="card kpi">
       <div class="kpi-label">Закрытые</div>
       <div class="kpi-value num" id="kpiClosed">0</div>
       <div class="kpi-foot"><span class="delta down" id="kpiClosedShare">0%</span> сети</div>
+    </div>
+    <div class="card kpi">
+      <div class="kpi-label">Ведущих</div>
+      <div class="kpi-value num" id="kpiLeaders">0</div>
+      <div class="kpi-foot"><span id="kpiCoords">0</span> координаторов</div>
     </div>
     <div class="card kpi">
       <div class="kpi-label">Участников</div>
@@ -976,6 +968,22 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
       </div>
     </form>
   </section>
+
+  <section class="card form-card" data-section="new">
+    <div class="card-head" style="padding:0">
+      <div>
+        <h2 class="card-title">Новый участник</h2>
+        <p class="card-sub">Координатор группы или ответственный по заявкам — один человек годится на обе роли</p>
+      </div>
+    </div>
+    <form id="coordinatorForm" autocomplete="off">
+      <div id="coordinatorFields"></div>
+      <div class="form-foot">
+        <button class="btn-primary" type="submit">Добавить участника</button>
+        <span class="form-msg" id="coordinatorMsg"></span>
+      </div>
+    </form>
+  </section>
   <!-- 40-дневная кампания ------------------------------------------------- -->
   <section class="kpis" data-section="campaign">
     <div class="card kpi">
@@ -1064,6 +1072,33 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
       </table>
     </div>
     <div class="table-foot" id="cBroadcastsFoot"></div>
+  </section>
+
+  <!-- Участники ----------------------------------------------------------
+       Один общий список людей: тот же человек может быть и «Координатором»
+       у группы, и «Ответственным» у заявки — роль тут просто подпись. -->
+  <section class="card" data-section="coordinators">
+    <div class="card-head">
+      <div>
+        <h2 class="card-title">Участники</h2>
+        <p class="card-sub" id="coordSub">Координаторы и ответственные по заявкам</p>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>ФИО</th>
+            <th>Роль</th>
+          </tr>
+        </thead>
+        <tbody id="coordBody">
+          <tr class="sk-tr"><td colspan="2"><i class="sk"></i></td></tr>
+          <tr class="sk-tr"><td colspan="2"><i class="sk"></i></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-foot" id="coordFoot"></div>
   </section>
 </main>
 
@@ -1238,28 +1273,24 @@ function renderKpi() {
   // Район из карты — только фильтр таблицы ниже (visible()), KPI его не видят.
   const rows = visibleIgnoringDistrict();
   const live = rows.filter((g) => g.status === 'Функционирует').length;
+  const paused = rows.filter((g) => g.status === 'На паузе').length;
   const closed = rows.filter((g) => g.status === 'Закрыта').length;
   const people = rows.reduce((s, g) => s + (g.people || 0), 0);
   const leaders = new Set(rows.map((g) => g.leader)).size;
-  const target = targetValue;
 
   // Карточки оживают слева направо: сдвиг небольшой, чтобы это читалось
   // как одно движение, а не как пять отдельных счётчиков.
   const D = 70;
 
-  setNum($('#kpiTotal'), rows.length);
-  $('#targetBtn').textContent = target;   // цель редактируется, её не анимируем
-  const pct = Math.min(100, Math.round((rows.length / target) * 100));
-  $('#targetBar').style.width = pct + '%';
-  setNum($('#targetPct'), pct, { suffix: '%' });
-
-  setNum($('#kpiLeaders'), leaders, { delay: D });
-  setNum($('#kpiCoords'), DATA.coordinators.length, { delay: D });
-  setNum($('#kpiLive'), live, { delay: D * 2 });
-  setNum($('#kpiLiveShare'), rows.length ? Math.round((live / rows.length) * 100) : 0, { suffix: '%', delay: D * 2 });
+  setNum($('#kpiLive'), live, { delay: D });
+  setNum($('#kpiLiveShare'), rows.length ? Math.round((live / rows.length) * 100) : 0, { suffix: '%', delay: D });
+  setNum($('#kpiPaused'), paused, { delay: D * 2 });
+  setNum($('#kpiPausedShare'), rows.length ? Math.round((paused / rows.length) * 100) : 0, { suffix: '%', delay: D * 2 });
   setNum($('#kpiClosed'), closed, { delay: D * 3 });
   setNum($('#kpiClosedShare'), rows.length ? Math.round((closed / rows.length) * 100) : 0, { suffix: '%', delay: D * 3 });
-  setNum($('#kpiPeople'), people, { delay: D * 4 });
+  setNum($('#kpiLeaders'), leaders, { delay: D * 4 });
+  setNum($('#kpiCoords'), DATA.coordinators.length, { delay: D * 4 });
+  setNum($('#kpiPeople'), people, { delay: D * 5 });
   const withPeople = rows.filter((g) => g.people);
   setNum($('#kpiAvg'), withPeople.length ? people / withPeople.length : 0, { decimals: 1, delay: D * 4 });
   setNum($('#eqNow'), rows.filter((g) => g.status === 'Функционирует' || g.status === 'На паузе').length);
@@ -1521,16 +1552,27 @@ function renderTable() {
   });
 }
 
+/* ── участники ────────────────────────────────────────────────────────── */
+function renderCoordinators() {
+  $('#coordBody').innerHTML = coordinators.map((c) => `<tr class="row">
+      <td class="strong"><span class="caret">›</span>${esc(c.name)}</td>
+      <td>${esc(c.role)}</td>
+    </tr>
+    <tr class="detail hidden"><td colspan="2"><dl class="detail-grid">${rowActions('coordinator', c)}</dl></td></tr>`).join('');
+
+  $('#coordBody').querySelectorAll('tr.row').forEach((tr) => {
+    tr.onclick = (e) => {
+      if (e.target.closest('.row-actions, .row-form')) return;
+      tr.classList.toggle('open');
+      tr.nextElementSibling.classList.toggle('hidden');
+    };
+  });
+
+  wireRowEditing('#coordBody', 'coordinator', new Map(coordinators.map((c) => [c.id, c])));
+  $('#coordFoot').textContent = `${coordinators.length} ${plural(coordinators.length, 'участник', 'участника', 'участников')}`;
+}
+
 /* ── сборка ───────────────────────────────────────────────────────────── */
-/* Хранилище может быть недоступно (приватное окно, предпросмотр, запрет на данные сайта).
-   Тогда цель просто не запоминается, но дашборд должен работать. */
-/* Цель живёт в памяти, хранилище — только чтобы запомнить между заходами.
-   Если хранилище запрещено, цель всё равно меняется в текущем сеансе. */
-let targetValue = 150;
-const store = {
-  get(k, fallback) { try { return localStorage.getItem(k) ?? fallback; } catch { return fallback; } },
-  set(k, v) { try { localStorage.setItem(k, v); } catch { /* не сохранилось — не беда */ } },
-};
 
 /* ── заявки ───────────────────────────────────────────────────────────────
    Лист «ЗАЯВКИ» церковной таблицы: 233 обращения человека, который хочет
@@ -1913,6 +1955,7 @@ function renderAll() {
     { color: 'var(--accent-hi)', unit: 'групп' });
 
   renderTable();
+  renderCoordinators();
 
   const note = $('#filterNote');
   if (state.district) {
@@ -1949,25 +1992,6 @@ document.querySelectorAll('thead th.sortable').forEach((th) => {
     renderTable();
   };
 });
-
-/* Редактируемая цель: значение переживает перезагрузку. */
-$('#targetBtn').onclick = () => {
-  const btn = $('#targetBtn');
-  const input = document.createElement('input');
-  input.type = 'number'; input.min = '1'; input.value = btn.textContent;
-  input.style.cssText = 'width:64px;background:var(--surface-3);border:1px solid var(--accent);border-radius:6px;color:var(--text);font:inherit;font-size:15px;padding:1px 5px';
-  btn.replaceWith(input);
-  input.focus(); input.select();
-  const commit = () => {
-    const v = Math.max(1, Number(input.value) || 150);
-    targetValue = v;
-    store.set('hg-target', String(v));
-    input.replaceWith(btn);
-    renderKpi();
-  };
-  input.onblur = commit;
-  input.onkeydown = (e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') input.replaceWith(btn); };
-};
 
 /* ── 40-дневная кампания ──────────────────────────────────────────────────
    Те же цифры, что показывала команда /stats в боте. Считает их сервер теми же
@@ -2067,6 +2091,14 @@ const FORM_REQUEST_TYPES = [
   ['question', 'Вопрос служителю'],
 ];
 
+/* Координатора выбираем из общего списка участников. Плюс значения, которые
+   уже стоят у каких-то групп, но самого человека в списке уже нет (уволился,
+   опечатка в выгрузке) — иначе выбор в форме молча заменил бы такую запись. */
+const GROUP_COORDINATOR_NAMES = [...new Set([
+  ...coordinators.map((c) => c.name),
+  ...groups.map((g) => g.coordinator).filter(Boolean),
+])];
+
 const GROUP_FIELDS = [
   { name: 'leader', label: 'ФИО ведущего', required: true, wide: true, from: 'leader', placeholder: 'Иванова Мария Петровна' },
   { name: 'leaderCandidate', label: 'Подобрать из зарегистрированных', wide: true,
@@ -2082,7 +2114,8 @@ const GROUP_FIELDS = [
   { name: 'age', label: 'Возраст группы', from: 'age', placeholder: '35-50' },
   { name: 'composition', label: 'Состав', from: 'composition', placeholder: 'Смешанная' },
   { name: 'openToNew', label: 'Приём новых', from: 'open_to_new', placeholder: 'ДА' },
-  { name: 'coordinator', label: 'Координатор', from: 'coordinator', placeholder: 'Петрова Мария' },
+  { name: 'coordinator', label: 'Координатор',
+    pairs: [['', '— не назначен —'], ...GROUP_COORDINATOR_NAMES.map((n) => [n, n])], from: 'coordinator' },
   { name: 'training', label: 'Обучение', from: 'training', placeholder: 'Да' },
   { name: 'feedbackAt', label: 'Дата обратной связи', type: 'date', from: 'feedback_at' },
   { name: 'no', label: '№ в реестре', from: 'no', placeholder: '85' },
@@ -2118,6 +2151,11 @@ const REQUEST_FIELDS = [
   { name: 'attendance', label: 'Контроль посещения', from: 'attendance' },
   { name: 'note', label: 'Примечание', type: 'textarea', wide: true, from: 'note' },
   { name: 'extra', label: 'Дополнительно', type: 'textarea', wide: true, from: 'extra' },
+];
+
+const COORDINATOR_FIELDS = [
+  { name: 'name', label: 'ФИО', required: true, wide: true, from: 'name', placeholder: 'Петрова Мария' },
+  { name: 'role', label: 'Роль', required: true, wide: true, from: 'role', placeholder: 'Координатор малых групп' },
 ];
 
 /** Разметка одного поля с подставленным значением. */
@@ -2162,7 +2200,7 @@ function rowActions(kind, row) {
     : '';
   return `<div class="wide row-actions">
     <button class="btn-quiet row-edit" data-kind="${kind}" data-id="${row.id}">✏️ Править</button>
-    <button class="btn-quiet row-del" data-kind="${kind}" data-id="${row.id}" data-name="${esc(row.leader ?? row.fio ?? '')}">🗑 Убрать</button>
+    <button class="btn-quiet row-del" data-kind="${kind}" data-id="${row.id}" data-name="${esc(row.leader ?? row.fio ?? row.name ?? '')}">🗑 Убрать</button>
     ${note}
     <span class="form-msg row-msg" data-id="${kind}-${row.id}"></span>
   </div>`;
@@ -2170,7 +2208,7 @@ function rowActions(kind, row) {
 
 /** Форма правки внутри строки. */
 function rowEditForm(kind, row) {
-  const fields = kind === 'group' ? GROUP_FIELDS : REQUEST_FIELDS;
+  const fields = kind === 'group' ? GROUP_FIELDS : kind === 'coordinator' ? COORDINATOR_FIELDS : REQUEST_FIELDS;
   return `<form class="row-form" data-kind="${kind}" data-id="${row.id}">
     ${formFieldsHtml(fields, row, `${kind}${row.id}`)}
     <div class="form-foot">
@@ -2333,9 +2371,11 @@ if (exportLink) exportLink.href = (window.HG_BASE ?? './') + 'export.csv';
 $('#groupFields').innerHTML = formFieldsHtml(GROUP_FIELDS, null, 'g');
 wireLeaderCandidatePicker($('#groupForm'));
 $('#requestFields').innerHTML = formFieldsHtml(REQUEST_FIELDS, null, 'r');
+$('#coordinatorFields').innerHTML = formFieldsHtml(COORDINATOR_FIELDS, null, 'c');
 
 wireForm('#groupForm', '#groupMsg', 'group/create', 'Группа добавлена.');
 wireForm('#requestForm', '#requestMsg', 'request/create', 'Заявка добавлена.');
+wireForm('#coordinatorForm', '#coordinatorMsg', 'coordinator/create', 'Участник добавлен.');
 
 /* Какие секции видны на выбранной вкладке.
    Заявки — отдельный поток: показываются только на своей вкладке, и там не место
@@ -2365,6 +2405,7 @@ const PAGE_TITLES = {
   analytics: 'Аналитика',
   requests: 'Заявки',
   campaign: '40 дней',
+  coordinators: 'Участники',
   new: 'Добавить',
 };
 
@@ -2378,7 +2419,7 @@ function applyView() {
   renderEpigraph();
   // Заявки и формы — отдельные потоки: показываются только на своих вкладках,
   // и там не место показателям по группам.
-  const EXCLUSIVE = ['requests', 'new', 'campaign'];
+  const EXCLUSIVE = ['requests', 'new', 'campaign', 'coordinators'];
   const exclusive = EXCLUSIVE.includes(state.view) ? state.view : null;
   document.querySelectorAll('[data-section]').forEach((s) => {
     const tags = s.dataset.section.split(' ');
@@ -2434,7 +2475,6 @@ $('#rangeBtn').onclick = () => {
   setTimeout(hideTip, 2600);
 };
 
-targetValue = Math.max(1, Number(store.get('hg-target', 150)) || 150);
 renderAll();
 applyView();
 countUp = false;

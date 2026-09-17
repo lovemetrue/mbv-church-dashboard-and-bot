@@ -60,6 +60,31 @@ describe('графики переехали с «Домашних групп» �
   });
 });
 
+describe('клик по карте района фильтрует только таблицу под ней', () => {
+  test('KPI и графики аналитики читают район-независимый список', () => {
+    expect(html).toContain('function visibleIgnoringDistrict()');
+    expect(html).toContain('const rows = visibleIgnoringDistrict();');
+    // Не должно остаться мест, где KPI/аналитика берут district-зависимый visible().
+    expect(html).not.toMatch(/const rows = visible\(\);/);
+  });
+
+  test('«Закрытые домашние группы» больше не срезаются по району с карты', () => {
+    expect(html).not.toContain("g.status === 'Закрыта' &&\n    (!state.district");
+    expect(html).toContain("countBy(groups.filter((g) => g.status === 'Закрыта'), 'district')");
+  });
+
+  test('«Распределение по районам» больше не кликабельно как фильтр', () => {
+    const block = html.slice(html.indexOf('function renderRanks()'), html.indexOf('function renderFeedback'));
+    expect(block).not.toContain('state.district = state.district === name');
+    expect(block).not.toContain('aria-pressed');
+  });
+
+  test('карта по-прежнему устанавливает district для таблицы', () => {
+    const block = html.slice(html.indexOf('function renderMap()'), html.indexOf('function renderRanks'));
+    expect(block).toContain('state.district = state.district === name');
+  });
+});
+
 describe('бейдж «40 дней» в реестре групп', () => {
   test('колонка есть в шапке таблицы', () => {
     expect(html).toContain('>40 дней<');

@@ -204,7 +204,6 @@ a.chip { text-decoration: none; }
 .rank-pct { width: 44px; text-align: right; font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
 .rank-bar { display: block; margin-top: 6px; height: 4px; border-radius: 2px; background: var(--surface-3); overflow: hidden; }
 .rank-bar i { display: block; height: 100%; border-radius: 2px; background: var(--accent); transform-origin: left; animation: grow .7s cubic-bezier(.2,.7,.3,1) both; }
-.rank[aria-pressed="true"] .rank-name { color: var(--accent-hi); font-weight: 600; }
 @keyframes grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 
 /* ── графики ─────────────────────────────────────────────────────────── */
@@ -1163,6 +1162,16 @@ function visible() {
     (!state.campaign || (state.campaign === 'yes' ? g.campaign_registered : !g.campaign_registered)));
 }
 
+/**
+ * То же самое, но без района: карта фильтрует только таблицу реестра (visible()),
+ * а KPI и графики аналитики от клика по району меняться не должны.
+ */
+function visibleIgnoringDistrict() {
+  return groups.filter((g) =>
+    (!state.status || g.status === state.status) &&
+    (!state.campaign || (state.campaign === 'yes' ? g.campaign_registered : !g.campaign_registered)));
+}
+
 /* ── тултип ───────────────────────────────────────────────────────────── */
 const tip = $('#tip');
 function showTip(e, html) {
@@ -1226,7 +1235,8 @@ function setNum(el, value, { suffix = '', decimals = 0, delay = 0, ms = 950 } = 
 }
 
 function renderKpi() {
-  const rows = visible();
+  // Район из карты — только фильтр таблицы ниже (visible()), KPI его не видят.
+  const rows = visibleIgnoringDistrict();
   const live = rows.filter((g) => g.status === 'Функционирует').length;
   const closed = rows.filter((g) => g.status === 'Закрыта').length;
   const people = rows.reduce((s, g) => s + (g.people || 0), 0);
@@ -1303,9 +1313,10 @@ function renderRanks() {
   box.innerHTML = '';
 
   ranked.forEach(([name, n], i) => {
-    const b = document.createElement('button');
+    // Только показ — раньше клик тоже фильтровал по району, но теперь это делает
+    // исключительно карта на «Домашних группах», и только для таблицы под ней.
+    const b = document.createElement('div');
     b.className = 'rank';
-    b.setAttribute('aria-pressed', String(state.district === name));
     b.innerHTML = `
       <span class="rank-top">
         <span class="rank-name">${name}</span>
@@ -1313,7 +1324,6 @@ function renderRanks() {
         <span class="rank-pct">${((n / total) * 100).toFixed(1)}%</span>
       </span>
       <span class="rank-bar"><i style="width:${(n / max) * 100}%;animation-delay:${i * 26}ms"></i></span>`;
-    b.onclick = () => { state.district = state.district === name ? null : name; renderAll(); };
     b.onmousemove = (e) => showTip(e, `<b>${name}</b><br><span>${nGroups(n)} · ${((n / total) * 100).toFixed(1)}% сети</span>`);
     b.onmouseleave = hideTip;
     box.append(b);
@@ -1893,12 +1903,11 @@ function renderAll() {
   renderRanks();
   renderFeedback();
 
-  const rows = visible();
-  barList($('#closedChart'), countBy(groups.filter((g) => g.status === 'Закрыта' &&
-    (!state.district || g.district === state.district)), 'district'), { color: 'var(--bad)', unit: 'закрыто' });
-  $('#closedSub').textContent = state.district
-    ? `${state.district} · динамика появится с датами закрытия`
-    : 'По районам · динамика появится с датами закрытия';
+  // Аналитика тоже не видит район из карты — только статус/«40 дней», как KPI.
+  const rows = visibleIgnoringDistrict();
+  barList($('#closedChart'), countBy(groups.filter((g) => g.status === 'Закрыта'), 'district'),
+    { color: 'var(--bad)', unit: 'закрыто' });
+  $('#closedSub').textContent = 'По районам · динамика появится с датами закрытия';
   barList($('#formatChart'), countBy(rows, 'format'), { unit: 'групп' });
   barList($('#coordChart'), countBy(rows.filter((g) => g.coordinator), 'coordinator').slice(0, 9),
     { color: 'var(--accent-hi)', unit: 'групп' });

@@ -27,8 +27,8 @@ async function main(): Promise<void> {
   const ttlDays = Number(env('DASHBOARD_SESSION_DAYS', '7'));
   const ttlSeconds = Math.round(ttlDays * 86400);
 
-  // Valkey сайта, но своя база и свой префикс ключей: пересечься не с чем.
-  const store = new RedisSessionStore(env('REDIS_URL', 'redis://bloodofjesus-valkey:6379/3'));
+  // Свой Valkey (сервис valkey в docker-compose.yml), ни с кем не общий.
+  const store = new RedisSessionStore(env('REDIS_URL', 'redis://valkey:6379/0'));
   await store.connect();
 
   // Ведущие, заведённые служителями через бота. Дашборд читает их напрямую из базы,

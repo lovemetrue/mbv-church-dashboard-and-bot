@@ -29,22 +29,31 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-church}
       POSTGRES_DB: ${POSTGRES_DB:-church40}
       TZ: ${TIMEZONE:-Europe/Moscow}
-    networks:
-      default:
-        # Уникальное имя. Дашборд стоит ещё и в сети сайта, а там свой контейнер
-        # с именем db: по короткому имени он попадал в чужую базу.
-        aliases: [church40-db]
     volumes:
       # Postgres 18 ждёт монтирование на /var/lib/postgresql (данные лежат в подкаталоге версии),
       # иначе контейнер уходит в перезапуск. Так же работает pg_upgrade между мажорными версиями.
       - pgdata:/var/lib/postgresql
-    # Порт наружу не публикуем: бот ходит к базе по внутренней сети compose.
+    # Порт наружу не публикуем: бот и дашборд ходят к базе по внутренней сети compose.
     # Для локальной разработки поднимайте базу профилем dev (см. README).
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-church} -d ${POSTGRES_DB:-church40}']
       interval: 5s
       timeout: 5s
       retries: 10
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  # Сессии дашборда. Свой контейнер, ни с чьим сайтом не общий — раньше делили Valkey
+  # соседнего стека через внешнюю сеть, но это работало только пока оба жили на одном
+  # сервере. Один инстанс, никакого пароля наружу не торчит (порт не публикуется).
+  valkey:
+    image: valkey/valkey:7.2-alpine
+    restart: unless-stopped
+    volumes:
+      - valkeydata:/data
     logging:
       driver: json-file
       options:
@@ -61,31 +70,26 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      valkey:
+        condition: service_started
     environment:
-      # Valkey сайта, но отдельная база (db3) и свой префикс ключей: с сайтом не пересекаемся.
-      # Именно church40-db, а не db: см. алиас у сервиса db.
-      DATABASE_URL: postgres://${POSTGRES_USER:-church}:${POSTGRES_PASSWORD:-church}@church40-db:5432/${POSTGRES_DB:-church40}
-      REDIS_URL: redis://bloodofjesus-valkey:6379/3
+      DATABASE_URL: postgres://${POSTGRES_USER:-church}:${POSTGRES_PASSWORD:-church}@db:5432/${POSTGRES_DB:-church40}
+      REDIS_URL: redis://valkey:6379/0
       DASHBOARD_HTML: /app/dashboard/home-groups.html
       TZ: ${TIMEZONE:-Europe/Moscow}
-    # Наружу не публикуем: только для nginx на хосте.
+    # По умолчанию только localhost — снаружи должен стоять nginx (или другой
+    # reverse proxy) с доменом и TLS. Открыть порт наружу напрямую (без домена,
+    # обычным http) — задать DASHBOARD_BIND=0.0.0.0 в .env; тогда обязательно
+    # поставить и DASHBOARD_COOKIE_SECURE=false, иначе браузер не отправит куку
+    # сессии обратно по незашифрованному соединению и вход не сохранится.
     ports:
-      - '127.0.0.1:8090:8090'
-    networks:
-      - default
-      - site
+      - '${DASHBOARD_BIND:-127.0.0.1}:8090:8090'
     logging:
       driver: json-file
       options:
         max-size: 10m
         max-file: '3'
 
-networks:
-  default:
-  # Сеть стека сайта: нужна, чтобы дотянуться до его Valkey. Сам стек не трогаем.
-  site:
-    external: true
-    name: blood-of-jesus_default
-
 volumes:
   pgdata:
+  valkeydata:

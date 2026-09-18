@@ -4,8 +4,17 @@ import { Router } from '../src/core/router.js';
 import { createDeps, type Deps } from '../src/deps.js';
 import { CB } from '../src/core/texts.js';
 import type { IncomingUpdate, PlatformName, Platform, UpdateCtx } from '../src/core/platform.js';
+import type { Logger } from '../src/logger.js';
 import { FakePlatform } from './helpers/fakePlatform.js';
 import { seedUser, setupTestDb, truncateAll } from './helpers/testDb.js';
+
+/** Ловит записи в лог, не печатая их: удобно проверить, что сбой не прошёл молча. */
+function recordingLog() {
+  const entries: { level: string; obj: Record<string, unknown>; msg: string }[] = [];
+  const rec = (level: string) => (obj: Record<string, unknown>, msg: string) => { entries.push({ level, obj, msg }); };
+  const log = { debug: rec('debug'), info: rec('info'), warn: rec('warn'), error: rec('error') } as unknown as Logger;
+  return { log, entries };
+}
 
 let db: Pool;
 let tg: FakePlatform;
@@ -260,6 +269,76 @@ describe('заявки служителям', () => {
   });
 
 
+});
+
+/*
+ * Заявка — самое важное, что делает один ход диалога: колега сообщил, что заявка не
+ * дошла до дашборда, а разобраться было не по чему — падение эффекта уходило только
+ * общей строкой в bot.catch() без адресного лога. Проверяем, что сбой соседнего
+ * эффекта (например, завершения регистрации) не стоит человеку заявки, и что каждое
+ * такое падение видно в логе с достаточным контекстом для разбора.
+ */
+describe('заявка не теряется из-за сбоя соседнего эффекта', () => {
+  test('падение finishRegistration не мешает завести заявку на открытие группы', async () => {
+    const { log, entries } = recordingLog();
+    const router2 = new Router({ ...deps, logger: log });
+    await answerRequired();
+    await router2.handle(tap(CB.mdgOpen));
+    await router2.handle(text('Приморский, м. Пионерская'));
+    await router2.handle(tap('age:2'));
+
+    const boom = new Error('база недоступна');
+    deps.users.finishRegistration = async () => { throw boom; };
+
+    await router2.handle(tap(CB.confirm));
+
+    const { rows } = await db.query(`SELECT count(*)::int AS n FROM requests WHERE type = 'lead_group'`);
+    expect(rows[0]).toMatchObject({ n: 1 });
+
+    const failure = entries.find((e) => e.level === 'error' && e.obj.effectKind === 'finish');
+    expect(failure).toBeDefined();
+    expect(failure?.obj.err).toBe(boom);
+    expect(failure?.obj.userId).toBeTypeOf('number');
+  });
+
+  test('падение самой заявки тоже пишется в лог с типом заявки и адресатом', async () => {
+    const { log, entries } = recordingLog();
+    const router2 = new Router({ ...deps, logger: log });
+    await answerRequired();
+    await router2.handle(tap(CB.mdgOpen));
+    await router2.handle(text('Приморский, м. Пионерская'));
+    await router2.handle(tap('age:2'));
+
+    const boom = new Error('нет соединения с базой');
+    deps.requests.create = async () => { throw boom; };
+
+    await router2.handle(tap(CB.confirm));
+
+    const failure = entries.find((e) => e.level === 'error' && e.obj.effectKind === 'create_request');
+    expect(failure).toBeDefined();
+    expect(failure?.obj.err).toBe(boom);
+    expect(failure?.obj.effectType).toBe('lead_group');
+  });
+
+  test('успешное заведение заявки тоже пишется в лог — иначе не отличить «не было» от «не смотрели»', async () => {
+    const { log, entries } = recordingLog();
+    const router2 = new Router({ ...deps, logger: log });
+
+    await router2.handle(start());
+    await router2.handle(tap(CB.consentYes));
+    await router2.handle(text('Иванов Иван Иванович'));
+    await router2.handle(contact('79001234567'));
+    await router2.handle(tap('church:0'));
+    await router2.handle(tap(CB.mdgOpen));
+    await router2.handle(text('Приморский, м. Пионерская'));
+    await router2.handle(tap('age:2'));
+    await router2.handle(tap(CB.confirm));
+
+    const created = entries.find((e) => e.level === 'info' && e.obj.effectKind === 'create_request');
+    expect(created).toBeDefined();
+    expect(created?.obj.effectType).toBe('lead_group');
+    expect(created?.obj.requestId).toBeTypeOf('number');
+  });
 });
 
 describe('админские команды', () => {

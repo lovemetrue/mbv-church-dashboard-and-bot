@@ -167,26 +167,48 @@ export class Router {
     /** Номер регистрации, присвоенный на этом шаге: по нему отправляем карточку с QR. */
     let assignedNo: number | null = null;
 
+    /*
+     * Каждый эффект — свой try/catch. Раньше падение одного (например,
+     * finishRegistration) обрывало цикл до конца, и заявку из того же хода
+     * терять: единственным следом был общий лог bot.catch() без адреса и
+     * контекста. Эффекты пишут в разные таблицы независимо друг от друга,
+     * поэтому падение соседнего не должно стоить человеку заявки — самого
+     * важного из того, что тут происходит.
+     */
     for (const effect of result.effects) {
-      switch (effect.kind) {
-        case 'consent':
-          await this.deps.users.saveConsent(user.id);
-          break;
-        case 'save':
-          await this.deps.users.savePatch(user.id, effect.patch);
-          break;
-        case 'finish': {
-          const no = await this.deps.users.finishRegistration(user.id, effect.complete);
-          // Карточку с номером и QR отправляем только при первом присвоении.
-          if (user.registration_no === null) assignedNo = no;
-          // «40 дней»: анкету спрашивает телефон задолго до этого шага, поэтому
-          // user.phone (загружен в начале хода) уже актуален.
-          if (effect.complete && user.phone) await this.deps.groups.markCampaignRegisteredByPhone(user.phone);
-          break;
+      try {
+        switch (effect.kind) {
+          case 'consent':
+            await this.deps.users.saveConsent(user.id);
+            break;
+          case 'save':
+            await this.deps.users.savePatch(user.id, effect.patch);
+            break;
+          case 'finish': {
+            const no = await this.deps.users.finishRegistration(user.id, effect.complete);
+            // Карточку с номером и QR отправляем только при первом присвоении.
+            if (user.registration_no === null) assignedNo = no;
+            // «40 дней»: анкету спрашивает телефон задолго до этого шага, поэтому
+            // user.phone (загружен в начале хода) уже актуален.
+            if (effect.complete && user.phone) await this.deps.groups.markCampaignRegisteredByPhone(user.phone);
+            break;
+          }
+          case 'create_request': {
+            const request = await this.deps.requests.create(user.id, effect.type, effect.text);
+            created.push(request);
+            this.deps.logger.info(
+              { userId: user.id, effectKind: effect.kind, effectType: effect.type, requestId: request.id },
+              'заявка заведена в базу',
+            );
+            break;
+          }
         }
-        case 'create_request':
-          created.push(await this.deps.requests.create(user.id, effect.type, effect.text));
-          break;
+      } catch (err) {
+        const effectType = effect.kind === 'create_request' ? effect.type : undefined;
+        this.deps.logger.error(
+          { err, userId: user.id, effectKind: effect.kind, effectType },
+          'эффект диалога не выполнен',
+        );
       }
     }
 

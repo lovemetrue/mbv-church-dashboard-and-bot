@@ -311,10 +311,13 @@ describe('в «Регистрации» видно, выдан ли набор, 
     expect(html).toContain('data-key="kit_issued_at">Выдан набор');
   });
 
-  test('ячейка показывает дату выдачи или «Нет»', () => {
+  test('ячейка — пилюля «Да» зелёным или «Нет» красным, тем же стилем, что и статусы', () => {
     const block = html.slice(html.indexOf('function renderRegistration'), html.indexOf('function renderRegistration') + 1400);
     expect(block).toContain('kit_issued_at');
-    expect(block).toContain("'Нет'");
+    expect(block).toContain('pill live');
+    expect(block).toContain('>Да<');
+    expect(block).toContain('pill closed');
+    expect(block).toContain('>Нет<');
   });
 
   test('все столбцы таблицы кликабельны для сортировки', () => {

@@ -1664,7 +1664,9 @@ function renderRegistration() {
       <td>${u.phone ? `<a class="tel" href="tel:${esc(u.phone)}">${esc(fmtPhone(u.phone))}</a>` : '—'}</td>
       <td>${esc(u.church) || '—'}</td>
       <td>${u.mdg_status ? esc(MDG_STATUS_LABEL[u.mdg_status]) : '—'}</td>
-      <td>${u.kit_issued_at ? ruDate(u.kit_issued_at.slice(0, 10)) : 'Нет'}</td>
+      <td>${u.kit_issued_at
+        ? '<span class="pill live"><i></i>Да</span>'
+        : '<span class="pill closed"><i></i>Нет</span>'}</td>
       <td><a href="${cardSrc}" target="_blank" rel="noopener"><img class="reg-qr" src="${qrSrc}" alt="QR №${u.registration_no}" loading="lazy"></a></td>
     </tr>`;
   }).join('');

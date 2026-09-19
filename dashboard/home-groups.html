@@ -577,11 +577,11 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
 
   <nav class="nav" role="tablist" aria-label="Разделы">
     <button role="tab" aria-selected="false" data-view="analytics">Аналитика</button>
-    <button role="tab" aria-selected="true" data-view="requests">Заявки</button>
-    <button role="tab" aria-selected="false" data-view="campaign">40 дней</button>
     <button role="tab" aria-selected="false" data-view="registration">Регистрация</button>
-    <button role="tab" aria-selected="false" data-view="coordinators">Участники</button>
+    <button role="tab" aria-selected="true" data-view="requests">Заявки</button>
     <button role="tab" aria-selected="false" data-view="all">Домашние группы</button>
+    <button role="tab" aria-selected="false" data-view="campaign">40 дней</button>
+    <button role="tab" aria-selected="false" data-view="coordinators">Участники</button>
     <button role="tab" aria-selected="false" data-view="new">Добавить</button>
   </nav>
 
@@ -763,6 +763,70 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
     </div>
   </section>
 
+  <!-- Заявки (переехало со вкладки «Заявки» — там остаётся только сам список) -->
+  <section class="card" style="margin-bottom:12px" data-section="analytics">
+    <div class="card-head">
+      <div>
+        <h2 class="card-title">Заявки по месяцам</h2>
+        <p class="card-sub">Сколько приходит и что с ними стало. Все заявки, фильтр статуса ниже на них не влияет</p>
+      </div>
+      <div class="legend" id="reqLegend"></div>
+    </div>
+    <div id="reqMonths" style="padding:4px 18px 16px"></div>
+  </section>
+
+  <section class="card" style="margin-bottom:12px" data-section="analytics">
+    <div class="card-head">
+      <div>
+        <h2 class="card-title">Возраст обратившихся</h2>
+        <p class="card-sub" id="reqAgeSub">По возрастным группам</p>
+      </div>
+    </div>
+    <div class="ranks" id="reqByAge"></div>
+  </section>
+
+  <section class="grid-two" data-section="analytics">
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2 class="card-title">Ответственные</h2>
+          <p class="card-sub">Кто ведёт заявки</p>
+        </div>
+      </div>
+      <div class="ranks" id="reqByOwner"></div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2 class="card-title">Откуда приходят</h2>
+          <p class="card-sub">Источник заявки</p>
+        </div>
+      </div>
+      <div class="ranks" id="reqBySource"></div>
+    </div>
+  </section>
+
+  <section class="grid-two" data-section="analytics">
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2 class="card-title">Причины аннулирования</h2>
+          <p class="card-sub" id="reqVoidSub">Почему заявка закрыта без результата</p>
+        </div>
+      </div>
+      <div class="ranks" id="reqByReason"></div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2 class="card-title">Служение</h2>
+          <p class="card-sub" id="reqMinistrySub">Куда человек уже ходит</p>
+        </div>
+      </div>
+      <div class="ranks" id="reqByMinistry"></div>
+    </div>
+  </section>
+
   <!-- Таблица ------------------------------------------------------------ -->
   <section class="card" data-section="groups">
     <div class="card-head">
@@ -832,69 +896,6 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
       <div class="kpi-label">Подобрана группа</div>
       <div class="kpi-value num" id="reqRecommended">0</div>
       <div class="kpi-foot">дошли до группы <span id="reqPlaced">0</span></div>
-    </div>
-  </section>
-
-  <section class="card" style="margin-bottom:12px" data-section="requests">
-    <div class="card-head">
-      <div>
-        <h2 class="card-title">Заявки по месяцам</h2>
-        <p class="card-sub">Сколько приходит и что с ними стало. Все заявки, фильтр статуса ниже на них не влияет</p>
-      </div>
-      <div class="legend" id="reqLegend"></div>
-    </div>
-    <div id="reqMonths" style="padding:4px 18px 16px"></div>
-  </section>
-
-  <section class="card" style="margin-bottom:12px" data-section="requests">
-    <div class="card-head">
-      <div>
-        <h2 class="card-title">Возраст обратившихся</h2>
-        <p class="card-sub" id="reqAgeSub">По возрастным группам</p>
-      </div>
-    </div>
-    <div class="ranks" id="reqByAge"></div>
-  </section>
-
-  <section class="grid-two" data-section="requests">
-    <div class="card">
-      <div class="card-head">
-        <div>
-          <h2 class="card-title">Ответственные</h2>
-          <p class="card-sub">Кто ведёт заявки</p>
-        </div>
-      </div>
-      <div class="ranks" id="reqByOwner"></div>
-    </div>
-    <div class="card">
-      <div class="card-head">
-        <div>
-          <h2 class="card-title">Откуда приходят</h2>
-          <p class="card-sub">Источник заявки</p>
-        </div>
-      </div>
-      <div class="ranks" id="reqBySource"></div>
-    </div>
-  </section>
-
-  <section class="grid-two" data-section="requests">
-    <div class="card">
-      <div class="card-head">
-        <div>
-          <h2 class="card-title">Причины аннулирования</h2>
-          <p class="card-sub" id="reqVoidSub">Почему заявка закрыта без результата</p>
-        </div>
-      </div>
-      <div class="ranks" id="reqByReason"></div>
-    </div>
-    <div class="card">
-      <div class="card-head">
-        <div>
-          <h2 class="card-title">Служение</h2>
-          <p class="card-sub" id="reqMinistrySub">Куда человек уже ходит</p>
-        </div>
-      </div>
-      <div class="ranks" id="reqByMinistry"></div>
     </div>
   </section>
 

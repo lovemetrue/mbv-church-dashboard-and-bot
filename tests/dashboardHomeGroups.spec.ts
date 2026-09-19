@@ -21,9 +21,9 @@ describe('переименования вкладок', () => {
 });
 
 describe('порядок и заголовок вкладок', () => {
-  test('порядок: Аналитика, Заявки, 40 дней, Регистрация, Участники, Домашние группы', () => {
+  test('порядок: Аналитика, Регистрация, Заявки, Домашние группы, 40 дней, Участники', () => {
     const at = (view: string) => html.indexOf(`data-view="${view}"`);
-    const order = ['analytics', 'requests', 'campaign', 'registration', 'coordinators', 'all'].map(at);
+    const order = ['analytics', 'registration', 'requests', 'all', 'campaign', 'coordinators'].map(at);
     order.forEach((pos) => expect(pos).toBeGreaterThan(-1));
     for (let i = 1; i < order.length; i++) expect(order[i]).toBeGreaterThan(order[i - 1]!);
   });
@@ -348,5 +348,28 @@ describe('регистрацию можно удалить прямо из сп�
     expect(block).toContain("kind === 'registration'");
     expect(block).toContain('Удалить навсегда');
     expect(block).toContain('Точно убрать');
+  });
+});
+
+describe('на «Заявках» только KPI и сама таблица, графики переехали на «Аналитику»', () => {
+  test('между KPI-плитками и таблицей заявок больше нет других data-section="requests" блоков', () => {
+    const kpiStart = html.indexOf('<section class="kpis" data-section="requests">');
+    const kpiEnd = html.indexOf('</section>', kpiStart) + '</section>'.length;
+    const tableAt = html.indexOf('<section class="card" data-section="requests">');
+    expect(kpiStart).toBeGreaterThan(-1);
+    expect(tableAt).toBeGreaterThan(kpiEnd);
+    expect(html.slice(kpiEnd, tableAt)).not.toContain('data-section="requests"');
+  });
+
+  test('графики «Заявки по месяцам», «Возраст», «Ответственные» и остальные теперь на аналитике', () => {
+    for (const title of [
+      'Заявки по месяцам', 'Возраст обратившихся', 'Ответственные',
+      'Откуда приходят', 'Причины аннулирования', 'Служение',
+    ]) {
+      const titleAt = html.indexOf(`<h2 class="card-title">${title}</h2>`);
+      expect(titleAt).toBeGreaterThan(-1);
+      const sectionAt = html.lastIndexOf('<section', titleAt);
+      expect(html.slice(sectionAt, sectionAt + 200)).toContain('data-section="analytics"');
+    }
   });
 });

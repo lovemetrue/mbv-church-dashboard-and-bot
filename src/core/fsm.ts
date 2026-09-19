@@ -69,7 +69,7 @@ export interface Draft {
 
 export type ProfilePatch = Omit<Draft, 'consent' | 'phoneAttempts'>;
 
-export type RequestType = 'join_group' | 'lead_group' | 'question';
+export type RequestType = 'join_group' | 'lead_group' | 'question' | 'already_member' | 'already_leader';
 
 /**
  * Почему нельзя подать заявку на открытие группы; null — можно.
@@ -294,7 +294,7 @@ export function handleUpdate({
       return awaitOtherChurch(update, draft);
 
     case 'await_mdg':
-      return awaitMdg(update, draft, leadBlock);
+      return awaitMdg(update, draft);
 
     case 'await_location':
       if (update.kind !== 'text') return ignore('await_location', draft);
@@ -404,7 +404,7 @@ function awaitOtherChurch(update: IncomingUpdate, draft: Draft): FsmResult {
   return askMdg(next, [{ kind: 'save', patch: { church } }]);
 }
 
-function awaitMdg(update: IncomingUpdate, draft: Draft, leadBlock: LeadBlock): FsmResult {
+function awaitMdg(update: IncomingUpdate, draft: Draft): FsmResult {
   // Справка вопрос не закрывает: рассказали и снова показали варианты.
   if (update.kind === 'callback' && update.data === CB.mdgAbout) {
     return stay('await_mdg', draft, [msg(T.mdgAbout, mdgKeyboard(attendsMbv(draft.church)))]);
@@ -413,20 +413,9 @@ function awaitMdg(update: IncomingUpdate, draft: Draft, leadBlock: LeadBlock): F
   const chosen = readMdgChoice(update);
   if (!chosen) return stay('await_mdg', draft, [msg(T.mdgHint, mdgKeyboard(attendsMbv(draft.church)))]);
 
-  /*
-   * Сверка телефона — здесь, а не на подтверждении анкеты.
-   *
-   * Раньше человек с действующей группой отвечал на район и возраст, а отказ получал
-   * в самом конце, вплотную с «Готово, вы зарегистрированы» — два сообщения подряд,
-   * противоречащие друг другу. Отказываем сразу и оставляем варианты на экране:
-   * ведущий действующей группы почти всегда хотел кнопку «Я ведущий Малой группы».
-   */
-  if ((chosen === 'open' || chosen === 'home') && leadBlock) {
-    return stay('await_mdg', draft, [
-      msg(LEAD_BLOCK_TEXT[leadBlock], mdgKeyboard(attendsMbv(draft.church))),
-    ]);
-  }
-
+  // Сверку телефона сюда больше не выносим: заявка теперь заводится в любом
+  // случае (см. awaitConfirm), так что впустую заполнять анкету уже нечего —
+  // человек просто идёт обычным путём, а служитель сам сверяет по заявке.
   const next: Draft = { ...draft, mdgStatus: chosen };
   const effects: Effect[] = [{ kind: 'save', patch: { mdgStatus: chosen } }];
 
@@ -508,17 +497,26 @@ function awaitConfirm(
     { kind: 'finish', complete: true },
   ];
 
-  // Служителям нужна заявка по тем, кто ищет группу, готов её открыть или дать дом:
-  // во всех трёх случаях дальше идёт живой разговор с координатором.
+  // Любой ответ про малую группу заводит заявку служителю — даже «уже состою»/
+  // «уже веду» и даже когда телефон совпал с действующей группой реестра.
+  // Раньше в этих случаях заявки не было вообще: служитель не видел ни самого
+  // обращения, ни повода его перепроверить.
   const offersGroup = draft.mdgStatus === 'open' || draft.mdgStatus === 'home';
   if (draft.mdgStatus === 'join' && !alreadyOpen('join_group')) {
     effects.push({ kind: 'create_request', type: 'join_group' });
   }
-  if (offersGroup && leadBlock === null) {
+  if (offersGroup) {
     effects.push({ kind: 'create_request', type: 'lead_group' });
   }
+  if (draft.mdgStatus === 'member') {
+    effects.push({ kind: 'create_request', type: 'already_member' });
+  }
+  if (draft.mdgStatus === 'leader') {
+    effects.push({ kind: 'create_request', type: 'already_leader' });
+  }
 
-  // Если заявку не заводим, нельзя отвечать «мы передали»: объясняем настоящую причину.
+  // Совпадение с действующей группой заявку больше не отменяет — только меняет,
+  // что человек прочтёт напоследок: честно про уже существующую группу.
   const done = offersGroup && leadBlock
     ? LEAD_BLOCK_TEXT[leadBlock]
     : draft.mdgStatus
@@ -581,11 +579,14 @@ function handleMenu(
       return stay('menu', draft, [msg(statusText(participant), menuKeyboard())]);
 
     case CB.menuLead:
-      if (leadBlock) {
+      // «pending» — это уже поданная и ещё не закрытая заявка этого же человека:
+      // повторный клик не должен плодить копии. «phone_group» — просто совпадение
+      // с действующей группой реестра, оно заявку больше не отменяет, только текст.
+      if (leadBlock === 'pending') {
         return stay('menu', draft, [msg(LEAD_BLOCK_TEXT[leadBlock], menuKeyboard())]);
       }
       return {
-        actions: [msg(T.leadRequestAccepted, menuKeyboard())],
+        actions: [msg(leadBlock ? LEAD_BLOCK_TEXT[leadBlock] : T.leadRequestAccepted, menuKeyboard())],
         state: 'menu',
         draft,
         effects: [{ kind: 'create_request', type: 'lead_group' }],

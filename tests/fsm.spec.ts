@@ -222,28 +222,35 @@ describe('ветка «готов открыть группу»', () => {
 });
 
 describe('у кого уже есть действующая группа', () => {
-  // Отказывать надо в момент выбора, а не после района и возраста: иначе человек
-  // заполняет полшага впустую и получает отказ вплотную с «вы зарегистрированы».
-  test('«готов открыть» отклоняется сразу и вопрос остаётся на экране', () => {
+  // Раньше отказывали сразу на выборе, чтобы не гонять человека по анкете
+  // впустую. Теперь заявка уходит служителю в любом случае — пусть сверяет
+  // сам, — так что впустую заполнять уже нечего: анкета идёт обычным путём.
+  test('«готов открыть» не блокируется выбором', () => {
     const r = run('await_mdg', REQUIRED, tap(CB.mdgOpen), { leadPhoneTaken: 'group' });
-    expect(r.state).toBe('await_mdg');
-    expect(r.draft.mdgStatus).toBeUndefined();
-    expect(said(r)).toContain('уже записана действующая');
-    // Варианты показываем снова, чтобы человек выбрал подходящий.
-    expect(buttons(r)).toContain(CB.mdgLeader);
+    expect(r.state).toBe('await_location');
+    expect(r.draft.mdgStatus).toBe('open');
   });
 
-  test('«готов предоставить дом» отклоняется так же', () => {
+  test('«готов предоставить дом» тоже не блокируется', () => {
     const r = run('await_mdg', REQUIRED, tap(CB.mdgHome), { leadPhoneTaken: 'group' });
-    expect(r.state).toBe('await_mdg');
-    expect(r.draft.mdgStatus).toBeUndefined();
+    expect(r.state).toBe('await_location');
+    expect(r.draft.mdgStatus).toBe('home');
   });
 
-  test('остальные варианты сверка не трогает', () => {
+  test('остальные варианты сверка и раньше не трогала', () => {
     // Человек с группой вполне может выбрать «я ведущий» — это как раз его случай.
     const r = run('await_mdg', REQUIRED, tap(CB.mdgLeader), { leadPhoneTaken: 'group' });
     expect(r.state).toBe('summary');
     expect(r.draft.mdgStatus).toBe('leader');
+  });
+
+  test('на подтверждении сообщают про действующую группу, но заявку всё равно заводят', () => {
+    const draft: Draft = { ...REQUIRED, mdgStatus: 'open', location: 'ул. Ленина 5', age: '25-40' };
+    const r = run('summary', draft, tap(CB.confirm), { leadPhoneTaken: 'group' });
+    expect(said(r)).toContain('уже записана действующая');
+    expect(r.effects).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'create_request', type: 'lead_group' })]),
+    );
   });
 });
 
@@ -294,6 +301,14 @@ describe('ветка «уже состою в МДГ»', () => {
     const chosen = run('await_mdg', REQUIRED, tap(CB.mdgMember));
     expect(said(chosen)).not.toContain(T.askLocationJoin);
   });
+
+  test('при подтверждении тоже заводится заявка — служителю есть, что сверить', () => {
+    const draft: Draft = { ...REQUIRED, mdgStatus: 'member', leaderName: 'Петров Пётр' };
+    const r = run('summary', draft, tap(CB.confirm));
+    expect(r.effects).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'create_request', type: 'already_member' })]),
+    );
+  });
 });
 
 describe('ветка «я веду МДГ»', () => {
@@ -301,6 +316,14 @@ describe('ветка «я веду МДГ»', () => {
     const r = run('await_mdg', REQUIRED, tap(CB.mdgLeader));
     expect(r.state).toBe('summary');
     expect(r.draft.mdgStatus).toBe('leader');
+  });
+
+  test('при подтверждении тоже заводится заявка — служителю есть, что сверить', () => {
+    const draft: Draft = { ...REQUIRED, mdgStatus: 'leader' };
+    const r = run('summary', draft, tap(CB.confirm));
+    expect(r.effects).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'create_request', type: 'already_leader' })]),
+    );
   });
 });
 
@@ -442,19 +465,23 @@ describe('меню и статус', () => {
     expect(r.effects).toEqual([]);
   });
 
-  test('ведущему действующей группы объясняем про координатора, а не «мы передали»', () => {
+  test('ведущему действующей группы объясняем про координатора, но заявку заводим — пусть сверит', () => {
     const r = run('menu', REQUIRED, tap(CB.menuLead), { ...registered(), leadPhoneTaken: 'group' });
-    expect(r.effects).toEqual([]);
+    expect(r.effects).toEqual([expect.objectContaining({ kind: 'create_request', type: 'lead_group' })]);
     expect(said(r)).toContain(T.leadPhoneIsLeader);
   });
 
-  test('анкета со «хочу открыть» заявку по занятому телефону не создаёт', () => {
-    // Вторая точка, где рождается заявка: подтверждение анкеты. Профиль сохраняем,
-    // регистрацию завершаем — не создаём только заявку.
+  test('анкета со «хочу открыть» по занятому телефону заявку тоже заводит', () => {
+    // Вторая точка, где рождается заявка: подтверждение анкеты. Регистрация,
+    // заявка и предупреждение про действующую группу — всё сразу.
     const draft: Draft = { ...REQUIRED, mdgStatus: 'open', location: 'ул. Ленина 5', age: 34 };
     const r = run('summary', draft, tap(CB.confirm), { leadPhoneTaken: 'group' });
 
-    expect(r.effects.map((e) => e.kind)).toEqual(['save', 'finish']);
+    expect(r.effects).toEqual([
+      expect.objectContaining({ kind: 'save' }),
+      expect.objectContaining({ kind: 'finish' }),
+      expect.objectContaining({ kind: 'create_request', type: 'lead_group' }),
+    ]);
     expect(said(r)).toContain(T.leadPhoneIsLeader);
   });
 

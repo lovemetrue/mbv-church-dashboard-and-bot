@@ -81,4 +81,10 @@ describe('ответы анкеты бота видны на заявке', () =
     const [row] = await requests.forDashboard();
     expect(row).toMatchObject({ church: null, mdg_status: null });
   });
+
+  test('новые типы «уже состою» и «уже веду» проходят ограничение в базе', async () => {
+    const userId = await seedUser(db, { id: '901', mdgStatus: 'leader' });
+    const created = await requests.create(userId, 'already_leader');
+    expect(created.type).toBe('already_leader');
+  });
 });

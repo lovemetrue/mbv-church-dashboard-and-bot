@@ -83,9 +83,10 @@ describe('заявка на открытие группы: сверка теле
     expect(await leadRequests()).toBe(2);
   });
 
-  test('в анкете отказ приходит сразу на выборе, а не после района и возраста', async () => {
-    // Так было: человек заполнял район и возраст и получал отказ вплотную
-    // с «вы зарегистрированы» — два противоречащих сообщения подряд.
+  test('выбор «готов открыть» не блокируется — анкета идёт обычным путём', async () => {
+    // Раньше отказывали сразу на этом шаге, чтобы не гонять человека по анкете
+    // впустую. Теперь заявка заводится в любом случае (см. тест ниже про
+    // подтверждение), так что впустую заполнять уже нечего — блок сняли.
     await seedGroup('Функционирует');
     const userId = await seedUser(db, { id: '111', phone: PHONE, registered: false });
     // Сажаем человека ровно на вопрос про малую группу: обязательные ответы уже даны.
@@ -97,8 +98,8 @@ describe('заявка на открытие группы: сверка теле
     await router.handle({ kind: 'callback', ctx: ctx('111'), data: CB.mdgOpen, callbackId: 'c' });
 
     const said = tg.textsTo('111').join('\n');
-    expect(said).toContain('уже записана действующая');
-    expect(said).not.toContain('Напишите, пожалуйста, район');
+    expect(said).not.toContain('уже записана действующая');
+    expect(said).toContain('Напишите, пожалуйста, район');
   });
 
   test('другой номер заявку подать может: сверка не ловит лишних', async () => {
@@ -111,12 +112,12 @@ describe('заявка на открытие группы: сверка теле
     expect(await leadRequests()).toBe(2);
   });
 
-  test('ведущий действующей группы заявку не подаёт', async () => {
+  test('ведущему действующей группы всё равно заводят заявку — пусть сверит служитель', async () => {
     await seedGroup('Функционирует');
     await seedUser(db, { id: '111', phone: PHONE });
     await router.handle(tapLead('111'));
 
-    expect(await leadRequests()).toBe(0);
+    expect(await leadRequests()).toBe(1);
     expect(tg.textsTo('111').join('\n')).toContain(T.leadPhoneIsLeader);
   });
 

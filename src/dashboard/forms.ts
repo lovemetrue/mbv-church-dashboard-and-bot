@@ -22,7 +22,9 @@ const MDG_STATUSES: readonly MdgStatus[] = ['open', 'home', 'join', 'member', 'l
  */
 export type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
 
-const REQUEST_TYPES: readonly RequestType[] = ['join_group', 'lead_group', 'question'];
+const REQUEST_TYPES: readonly RequestType[] = [
+  'join_group', 'lead_group', 'question', 'already_member', 'already_leader',
+];
 
 /** Пустое поле формы — это «не заполнено», в базе ему соответствует NULL. */
 function text(form: URLSearchParams, name: string): string | null {

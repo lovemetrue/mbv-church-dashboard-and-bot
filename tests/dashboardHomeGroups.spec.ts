@@ -21,15 +21,11 @@ describe('переименования вкладок', () => {
 });
 
 describe('порядок и заголовок вкладок', () => {
-  test('«Аналитика» идёт первой, перед «Домашними группами»', () => {
-    const analyticsAt = html.indexOf('data-view="analytics"');
-    const allAt = html.indexOf('data-view="all"');
-    const requestsAt = html.indexOf('data-view="requests"');
-    const campaignAt = html.indexOf('data-view="campaign"');
-    expect(analyticsAt).toBeGreaterThan(-1);
-    expect(analyticsAt).toBeLessThan(allAt);
-    expect(allAt).toBeLessThan(requestsAt);
-    expect(requestsAt).toBeLessThan(campaignAt);
+  test('порядок: Аналитика, Заявки, 40 дней, Регистрация, Участники, Домашние группы', () => {
+    const at = (view: string) => html.indexOf(`data-view="${view}"`);
+    const order = ['analytics', 'requests', 'campaign', 'registration', 'coordinators', 'all'].map(at);
+    order.forEach((pos) => expect(pos).toBeGreaterThan(-1));
+    for (let i = 1; i < order.length; i++) expect(order[i]).toBeGreaterThan(order[i - 1]!);
   });
 
   test('заголовок над разделом меняется вместе с вкладкой, а не висит один навсегда', () => {
@@ -299,7 +295,7 @@ describe('номер заявки виден в таблице и по нему 
 describe('QR в дашборде ведёт на печатную карточку, а не на голый PNG', () => {
   test('миниатюра в таблице «Регистрация» открывает карточку по клику', () => {
     expect(html).toContain('registration/card?id=');
-    const block = html.slice(html.indexOf('function renderRegistration'), html.indexOf('function renderRegistration') + 900);
+    const block = html.slice(html.indexOf('function renderRegistration'), html.indexOf('function renderRegistration') + 1400);
     expect(block).toContain('href="${cardSrc}"');
     expect(block).toContain('src="${qrSrc}"');
   });
@@ -307,5 +303,31 @@ describe('QR в дашборде ведёт на печатную карточк
   test('QR сразу после заведения регистрации тоже ссылается на карточку', () => {
     const block = html.slice(html.indexOf('wireRegistrationForm'), html.indexOf('wireRegistrationForm') + 2200);
     expect(block).toContain('registration/card?id=');
+  });
+});
+
+describe('в «Регистрации» видно, выдан ли набор, и столбцы можно сортировать', () => {
+  test('в шапке таблицы есть колонка «Выдан набор»', () => {
+    expect(html).toContain('data-key="kit_issued_at">Выдан набор');
+  });
+
+  test('ячейка показывает дату выдачи или «Нет»', () => {
+    const block = html.slice(html.indexOf('function renderRegistration'), html.indexOf('function renderRegistration') + 1400);
+    expect(block).toContain('kit_issued_at');
+    expect(block).toContain("'Нет'");
+  });
+
+  test('все столбцы таблицы кликабельны для сортировки', () => {
+    const theadStart = html.indexOf('id="regBody"');
+    const theadBlock = html.slice(theadStart - 700, theadStart);
+    for (const key of ['registration_no', 'full_name', 'phone', 'church', 'mdg_status', 'kit_issued_at']) {
+      expect(theadBlock).toContain(`class="sortable-reg" data-key="${key}"`);
+    }
+  });
+
+  test('клик по заголовку сортирует, повторный клик разворачивает', () => {
+    expect(html).toContain("regSort: 'registration_no', regDir: -1");
+    expect(html).toContain('thead th.sortable-reg');
+    expect(html).toContain('state.regSort === th.dataset.key');
   });
 });

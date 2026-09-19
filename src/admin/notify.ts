@@ -8,6 +8,8 @@ const TYPE_LABEL: Record<RequestWithUser['type'], string> = {
   join_group: 'заявка в домашнюю группу',
   lead_group: 'готов открыть домашнюю группу',
   question: 'вопрос',
+  already_member: 'уже состоит в домашней группе',
+  already_leader: 'уже ведёт домашнюю группу',
 };
 
 const PLATFORM_LABEL = { telegram: 'Telegram', max: 'MAX' } as const;

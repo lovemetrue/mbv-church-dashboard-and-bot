@@ -250,8 +250,8 @@ thead th {
   color: var(--text-3); font-size: 11.5px; font-weight: 600;
   text-transform: uppercase; letter-spacing: .05em;
 }
-thead th.sortable, thead th.sortable-req { cursor: pointer; user-select: none; }
-thead th.sortable:hover, thead th.sortable-req:hover { color: var(--text-2); }
+thead th.sortable, thead th.sortable-req, thead th.sortable-reg { cursor: pointer; user-select: none; }
+thead th.sortable:hover, thead th.sortable-req:hover, thead th.sortable-reg:hover { color: var(--text-2); }
 thead th .arrow { opacity: 0; margin-left: 4px; }
 thead th[data-dir] .arrow { opacity: 1; }
 tbody td { padding: 11px 14px; border-bottom: 1px solid rgba(255,255,255,.04); color: var(--text-2); }
@@ -577,11 +577,11 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
 
   <nav class="nav" role="tablist" aria-label="Разделы">
     <button role="tab" aria-selected="false" data-view="analytics">Аналитика</button>
-    <button role="tab" aria-selected="false" data-view="all">Домашние группы</button>
     <button role="tab" aria-selected="true" data-view="requests">Заявки</button>
     <button role="tab" aria-selected="false" data-view="campaign">40 дней</button>
-    <button role="tab" aria-selected="false" data-view="coordinators">Участники</button>
     <button role="tab" aria-selected="false" data-view="registration">Регистрация</button>
+    <button role="tab" aria-selected="false" data-view="coordinators">Участники</button>
+    <button role="tab" aria-selected="false" data-view="all">Домашние группы</button>
     <button role="tab" aria-selected="false" data-view="new">Добавить</button>
   </nav>
 
@@ -1140,17 +1140,18 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
       <table>
         <thead>
           <tr>
-            <th>№</th>
-            <th>ФИО</th>
-            <th>Телефон</th>
-            <th>Церковь</th>
-            <th>Заявка</th>
+            <th class="sortable-reg" data-key="registration_no">№ <span class="arrow">↓</span></th>
+            <th class="sortable-reg" data-key="full_name">ФИО <span class="arrow">↓</span></th>
+            <th class="sortable-reg" data-key="phone">Телефон <span class="arrow">↓</span></th>
+            <th class="sortable-reg" data-key="church">Церковь <span class="arrow">↓</span></th>
+            <th class="sortable-reg" data-key="mdg_status">Заявка <span class="arrow">↓</span></th>
+            <th class="sortable-reg" data-key="kit_issued_at">Выдан набор <span class="arrow">↓</span></th>
             <th>QR</th>
           </tr>
         </thead>
         <tbody id="regBody">
-          <tr class="sk-tr"><td colspan="6"><i class="sk"></i></td></tr>
-          <tr class="sk-tr"><td colspan="6"><i class="sk"></i></td></tr>
+          <tr class="sk-tr"><td colspan="7"><i class="sk"></i></td></tr>
+          <tr class="sk-tr"><td colspan="7"><i class="sk"></i></td></tr>
         </tbody>
       </table>
     </div>
@@ -1215,6 +1216,7 @@ const MDG_STATUS_LABEL = {
 const state = {
   district: null, status: '', campaign: '', sort: 'people', dir: -1, view: 'requests', request: null, groupId: null,
   reqSort: 'date', reqDir: -1,
+  regSort: 'registration_no', regDir: -1,
 };
 const $ = (s) => document.querySelector(s);
 const groups = DATA.groups;
@@ -1643,7 +1645,15 @@ function renderCoordinators() {
 
 /* ── регистрация ──────────────────────────────────────────────────────── */
 function renderRegistration() {
-  $('#regBody').innerHTML = registeredUsers.map((u) => {
+  // По умолчанию свежие сверху; клик по заголовку переключает на выбранный столбец —
+  // тот же приём, что и в «Заявках» (state.reqSort/reqDir).
+  const rows = [...registeredUsers].sort((a, b) => {
+    const k = state.regSort;
+    const av = a[k] ?? '', bv = b[k] ?? '';
+    if (av === bv) return 0;
+    return (av > bv ? 1 : -1) * state.regDir;
+  });
+  $('#regBody').innerHTML = rows.map((u) => {
     const qrSrc = `${window.HG_BASE ?? './'}registration/qr?id=${u.id}`;
     // Миниатюра ведёт не на голый PNG, а на печатную карточку: там же имя,
     // телефон, церковь и заявка — всё, что нужно переслать или распечатать разом.
@@ -1654,11 +1664,26 @@ function renderRegistration() {
       <td>${u.phone ? `<a class="tel" href="tel:${esc(u.phone)}">${esc(fmtPhone(u.phone))}</a>` : '—'}</td>
       <td>${esc(u.church) || '—'}</td>
       <td>${u.mdg_status ? esc(MDG_STATUS_LABEL[u.mdg_status]) : '—'}</td>
+      <td>${u.kit_issued_at ? ruDate(u.kit_issued_at.slice(0, 10)) : 'Нет'}</td>
       <td><a href="${cardSrc}" target="_blank" rel="noopener"><img class="reg-qr" src="${qrSrc}" alt="QR №${u.registration_no}" loading="lazy"></a></td>
     </tr>`;
   }).join('');
   $('#regFoot').textContent = `${registeredUsers.length} ${plural(registeredUsers.length, 'участник', 'участника', 'участников')}`;
+
+  document.querySelectorAll('thead th.sortable-reg').forEach((th) => {
+    if (th.dataset.key === state.regSort) th.dataset.dir = state.regDir;
+    else delete th.dataset.dir;
+    th.querySelector('.arrow').textContent = state.regDir > 0 ? '↑' : '↓';
+  });
 }
+
+document.querySelectorAll('thead th.sortable-reg').forEach((th) => {
+  th.onclick = () => {
+    if (state.regSort === th.dataset.key) state.regDir *= -1;
+    else { state.regSort = th.dataset.key; state.regDir = th.dataset.key === 'registration_no' ? -1 : 1; }
+    renderRegistration();
+  };
+});
 
 /* ── сборка ───────────────────────────────────────────────────────────── */
 
@@ -2184,6 +2209,8 @@ const FORM_REQUEST_TYPES = [
   ['join_group', 'Хочет в домашнюю группу'],
   ['lead_group', 'Готов открыть группу'],
   ['question', 'Вопрос служителю'],
+  ['already_member', 'Уже состоит в группе'],
+  ['already_leader', 'Уже ведёт группу'],
 ];
 
 /* Координатора выбираем из общего списка участников. Плюс значения, которые

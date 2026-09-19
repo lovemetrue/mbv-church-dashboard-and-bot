@@ -48,6 +48,13 @@ describe('сообщение служителю о заявке', () => {
     expect(formatRequest(request(), DASHBOARD_URL)).toContain('+7 900 123-45-67');
   });
 
+  test('заявки «уже состою» и «уже веду группу» подписаны понятно', () => {
+    expect(formatRequest(request({ type: 'already_member', mdg_status: 'member' }), DASHBOARD_URL))
+      .toContain('уже состоит в домашней группе');
+    expect(formatRequest(request({ type: 'already_leader', mdg_status: 'leader' }), DASHBOARD_URL))
+      .toContain('уже ведёт домашнюю группу');
+  });
+
   test('разметка жирным на месте, а текст участника экранирован', () => {
     const text = formatRequest(request({ type: 'question', text: 'а если <b>так</b> & вот так?' }), DASHBOARD_URL);
     expect(text).toContain('<b>');

@@ -311,23 +311,6 @@ export class RequestsRepo {
   }
 
   /** Виды заявок этого человека, которые служители ещё не закрыли. */
-  /**
-   * Есть ли незакрытая заявка на открытие группы по этому номеру — с любого аккаунта.
-   *
-   * Смотрим и телефон самой заявки (так они приходят из таблицы и из дашборда), и
-   * телефон участника: заявки бота хранят только user_id, номер лежит в users.
-   */
-  async openLeadByPhone(phone: string): Promise<boolean> {
-    const { rows } = await this.db.query(
-      `SELECT 1 FROM requests r LEFT JOIN users u ON u.id = r.user_id
-        WHERE r.type = 'lead_group' AND r.${OPEN_CONDITION}
-          AND ($1 = ANY(r.phones) OR u.phone = $1)
-        LIMIT 1`,
-      [phone],
-    );
-    return rows.length > 0;
-  }
-
   async openTypes(userId: number): Promise<RequestType[]> {
     const { rows } = await this.db.query<{ type: RequestType }>(
       `SELECT DISTINCT type FROM requests WHERE user_id = $1 AND ${OPEN_CONDITION}`,

@@ -118,6 +118,13 @@ describe('обязательные вопросы', () => {
     expect(r.draft.phone).toBeUndefined();
   });
 
+  test('телефон текстом не принимается — только кнопкой «поделиться», иначе можно вписать чужой', () => {
+    const r = run('await_phone', { consent: true }, text('+7 900 123-45-67'));
+    expect(r.state).toBe('await_phone');
+    expect(r.draft.phone).toBeUndefined();
+    expect(said(r)).toContain('кнопк');
+  });
+
   test('вопрос про церковь показывает пять вариантов', () => {
     const r = run('await_phone', { consent: true }, contact('79001234567'));
     expect(said(r)).toContain(T.askChurch);
@@ -238,12 +245,6 @@ describe('у кого уже есть действующая группа', () =
     expect(r.state).toBe('summary');
     expect(r.draft.mdgStatus).toBe('leader');
   });
-
-  test('открытая заявка по номеру отклоняет с другим текстом', () => {
-    const r = run('await_mdg', REQUIRED, tap(CB.mdgOpen), { leadPhoneTaken: 'request' });
-    expect(r.state).toBe('await_mdg');
-    expect(said(r)).toContain('уже приняли');
-  });
 });
 
 describe('ветка «хочу присоединиться к группе»', () => {
@@ -309,13 +310,13 @@ describe('кнопка «вернуться»', () => {
     expect(buttons(r)).toContain(CB.back);
   });
 
-  test('есть и на сводке: у ведущего уточняющих вопросов нет, вернуться больше негде', () => {
+  test('на сводке кнопки уже нет: там уже могли пройти район и возраст, и «вернуться» стирало бы их незаметно', () => {
     const r = run('await_mdg', REQUIRED, tap(CB.mdgLeader));
     expect(r.state).toBe('summary');
-    expect(buttons(r)).toContain(CB.back);
+    expect(buttons(r)).not.toContain(CB.back);
   });
 
-  test('со сводки возвращает к выбору, сохраняя обязательные ответы', () => {
+  test('если данные всё же придут (старая кнопка), обработчик по-прежнему возвращает к выбору', () => {
     const draft: Draft = { ...REQUIRED, mdgStatus: 'leader' };
     const r = run('summary', draft, tap(CB.back));
     expect(r.state).toBe('await_mdg');
@@ -441,13 +442,6 @@ describe('меню и статус', () => {
     expect(r.effects).toEqual([]);
   });
 
-  test('сверка по телефону тоже не даёт подать заявку из меню', () => {
-    // Тот же человек из другой платформы: user другой, телефон тот же.
-    const r = run('menu', REQUIRED, tap(CB.menuLead), { ...registered(), leadPhoneTaken: 'request' });
-    expect(r.effects).toEqual([]);
-    expect(said(r)).toContain(T.leadPhoneHasRequest);
-  });
-
   test('ведущему действующей группы объясняем про координатора, а не «мы передали»', () => {
     const r = run('menu', REQUIRED, tap(CB.menuLead), { ...registered(), leadPhoneTaken: 'group' });
     expect(r.effects).toEqual([]);
@@ -485,9 +479,9 @@ describe('меню и статус', () => {
 describe('кнопка «Задать вопрос»', () => {
   const REGISTERED = { registered: true, participant: { complete: true, registrationNo: 7 } } as const;
 
-  test('кнопка есть в меню зарегистрированного', () => {
+  test('кнопки в меню больше нет: задать вопрос некому — переписки с участником в боте нет', () => {
     const r = run('menu', REQUIRED, tap(CB.menuStatus), REGISTERED);
-    expect(buttons(r)).toContain(CB.menuAsk);
+    expect(buttons(r)).not.toContain(CB.menuAsk);
   });
 
   test('нажатие просит написать вопрос и ждёт текст', () => {
@@ -506,7 +500,6 @@ describe('кнопка «Задать вопрос»', () => {
       { kind: 'create_request', type: 'question', text: 'А можно прийти с ребёнком?' },
     ]);
     expect(said(r)).toContain(T.questionAccepted);
-    expect(buttons(r)).toContain(CB.menuAsk);
   });
 
   test('слишком короткий вопрос переспрашивает, а не заводит пустую заявку', () => {
@@ -520,7 +513,6 @@ describe('кнопка «Задать вопрос»', () => {
     const r = run('await_question', REQUIRED, tap(CB.cancelQuestion), REGISTERED);
     expect(r.state).toBe('menu');
     expect(r.effects).toEqual([]);
-    expect(buttons(r)).toContain(CB.menuAsk);
   });
 
   test('несколько вопросов подряд разрешены: у человека их может быть много', () => {

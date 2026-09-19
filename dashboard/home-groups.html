@@ -1144,7 +1144,7 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
             <th>ФИО</th>
             <th>Телефон</th>
             <th>Церковь</th>
-            <th>Малая группа</th>
+            <th>Заявка</th>
             <th>QR</th>
           </tr>
         </thead>
@@ -1699,7 +1699,7 @@ function requestDetails(r) {
     // Ответы из анкеты бота: какую церковь посещает и что выбрал про Малую группу.
     // У заявок из таблицы церкви участника в боте нет — оба поля пустые.
     ['Церковь', r.church],
-    ['Малая группа', r.mdg_status ? MDG_STATUS_LABEL[r.mdg_status] : null],
+    ['Заявка', r.mdg_status ? MDG_STATUS_LABEL[r.mdg_status] : null],
     ['Возраст', r.age],
     ['Источник', r.source],
     ['Служение', r.ministry],
@@ -2264,7 +2264,7 @@ const REGISTRATION_FIELDS = [
   { name: 'fio', label: 'ФИО', required: true, wide: true, from: 'full_name', placeholder: 'Петрова Мария Ивановна' },
   { name: 'phone', label: 'Телефон', required: true, from: 'phone', placeholder: '+7 900 111-22-33' },
   { name: 'church', label: 'Церковь', from: 'church', placeholder: 'МБВ (Колизей)' },
-  { name: 'mdgStatus', label: 'Малая группа',
+  { name: 'mdgStatus', label: 'Заявка',
     pairs: [['', '— не спрошено —'], ...Object.entries(MDG_STATUS_LABEL).map(([k, v]) => [k, v])], from: 'mdg_status' },
   { name: 'location', label: 'Район', from: 'location', placeholder: 'Приморский' },
   { name: 'age', label: 'Возраст', from: 'age', placeholder: '35-50' },

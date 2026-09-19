@@ -65,29 +65,25 @@ describe('кандидаты в ведущие', () => {
  * анкету на бумаге. Своего чата с ботом у такого участника нет.
  */
 describe('ручная регистрация участника', () => {
-  test('получает номер регистрации и считается завершённой', async () => {
+  test('получает случайный 4-значный номер без ведущего нуля и считается завершённой', async () => {
     const u = await repo.createManual({
       platform: 'telegram', byAdminId: 'дашборд', fio: 'Петрова Мария Ивановна', phone: '+79001112233',
     });
-    expect(u.registration_no).toBeGreaterThan(0);
+    expect(u.registration_no).toBeGreaterThanOrEqual(1000);
+    expect(u.registration_no).toBeLessThanOrEqual(9999);
     expect(u).toMatchObject({ full_name: 'Петрова Мария Ивановна', phone: '+79001112233', complete: true, chat_id: '' });
     expect(u.registered_at).toBeInstanceOf(Date);
   });
 
-  test('не съедает лишний номер из последовательности: platform_user_id и registration_no — один и тот же номер', async () => {
+  test('platform_user_id и registration_no — один и тот же номер', async () => {
     const u = await repo.createManual({ platform: 'telegram', byAdminId: 'дашборд', fio: 'Иванов Иван', phone: '+79001112234' });
     expect(u.platform_user_id).toBe(`manual:${u.registration_no}`);
   });
 
-  test('номера не пропускаются между обычной и ручной регистрацией', async () => {
-    await seedUser(db, { id: '1' }); // № N
-    const manual = await repo.createManual({ platform: 'telegram', byAdminId: 'дашборд', fio: 'Кто-то', phone: '+79001112235' });
-    const bot = await seedUser(db, { id: '2' }); // № N+2, если бы не было дыры
-
-    const { rows } = await db.query<{ registration_no: number }>(
-      'SELECT registration_no FROM users WHERE id = ANY($1) ORDER BY registration_no', [[manual.id, bot]],
-    );
-    expect(rows[1]!.registration_no).toBe(rows[0]!.registration_no + 1);
+  test('две ручные регистрации получают разные номера', async () => {
+    const a = await repo.createManual({ platform: 'telegram', byAdminId: 'дашборд', fio: 'Первый', phone: '+79001112235' });
+    const b = await repo.createManual({ platform: 'telegram', byAdminId: 'дашборд', fio: 'Второй', phone: '+79001112239' });
+    expect(a.registration_no).not.toBe(b.registration_no);
   });
 
   test('церковь и статус по МДГ сохраняются, если их заполнили', async () => {

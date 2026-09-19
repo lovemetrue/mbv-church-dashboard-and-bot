@@ -75,5 +75,11 @@ export function commandByLabel(text: string): string | null {
   return BY_LABEL.get(text.trim()) ?? null;
 }
 
-/** Префикс callback-кнопок служителя: так меню работает в MAX, где reply-клавиатур нет. */
+/**
+ * Префикс callback-кнопок служителя.
+ *
+ * Раньше через эти кнопки меню работало и в MAX (там нет reply-клавиатур), но
+ * меню служителя теперь только в Telegram — см. AdminFlow.isAdmin. Формат
+ * данных оставлен как есть, реально теперь используется только в Telegram.
+ */
 export const ADMIN_CB = 'admin:';

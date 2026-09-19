@@ -18,6 +18,9 @@ let deps: Deps;
 
 const ADMIN = '27637540';
 const ADMIN_CHAT = '428149719';
+// Команды служителя теперь только в Telegram (см. AdminFlow.isAdmin) — «/admins»
+// в тесте ниже вызывает уже он, а не сам MAX-админ из отчёта.
+const TG_ADMIN = '111';
 
 beforeAll(async () => {
   db = await setupTestDb();
@@ -55,17 +58,25 @@ describe('куда бот пишет служителю', () => {
   });
 
   test('«/admins» спрашивает доступность про чат: иначе он врёт, что писать нельзя', async () => {
+    // Команды служителя — только в Telegram, поэтому «/admins» вызывает
+    // Telegram-админ; отчёт при этом по-прежнему показывает MAX-админа из ADMIN.
+    const tg = new FakePlatform('telegram');
+    const deps2 = createDeps({
+      ...deps.raw,
+      platforms: new Map<PlatformName, Platform>([['max', max], ['telegram', tg]]),
+      admins: new Map([['max', [ADMIN]], ['telegram', [TG_ADMIN]]]),
+    });
     await seedUser(db, { platform: 'max', id: ADMIN, chatId: ADMIN_CHAT });
     // Про id человека MAX отвечает «чат не найден» — на этом /admins и обманывался.
     max.unreachable.add(ADMIN);
     const cmd: IncomingUpdate = {
       kind: 'text',
-      ctx: { platform: 'max', platformUserId: ADMIN, chatId: ADMIN_CHAT },
+      ctx: { platform: 'telegram', platformUserId: TG_ADMIN, chatId: TG_ADMIN },
       text: '/admins',
     };
 
-    await new Router(deps).handle(cmd);
+    await new Router(deps2).handle(cmd);
 
-    expect(max.textsTo(ADMIN_CHAT).join('\n')).toContain('уведомления дойдут');
+    expect(tg.textsTo(TG_ADMIN).join('\n')).toContain('уведомления дойдут');
   });
 });

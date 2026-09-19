@@ -166,7 +166,8 @@ describe('сквозной прогон через настоящий Telegram-�
       complete: true,
       username: 'ivan',
     });
-    expect(rows[0].registration_no).toBe(1);
+    expect(rows[0].registration_no).toBeGreaterThanOrEqual(1000);
+    expect(rows[0].registration_no).toBeLessThanOrEqual(9999);
   });
 
   test('QR-код с номером регистрации уходит настоящей картинкой', async () => {
@@ -206,7 +207,7 @@ describe('сквозной прогон через настоящий Telegram-�
 
     const rows = lastMarkup()?.['inline_keyboard'] as { callback_data: string }[][];
     const data = rows.flat().map((b) => b.callback_data);
-    expect(data).toEqual(expect.arrayContaining([CB.menuStatus, CB.menuLead]));
+    expect(data).toEqual([CB.menuStatus]);
   });
 
   test('выгрузка участников уходит админу настоящим документом', async () => {
@@ -241,12 +242,20 @@ describe('сквозной прогон через настоящий Telegram-�
       tgUpdate.callback(5, USER, 'church:0'),
       tgUpdate.callback(6, USER, CB.mdgLeader),
       tgUpdate.callback(7, USER, CB.confirm),
-      // Служитель навёл камеру на QR участника: открывается бот со ссылкой.
-      tgUpdate.command(8, 999, '/start kit_1'),
     );
+    await waitProcessed(7);
+
+    // Номер теперь случайный: узнаём его из базы, а не подставляем заранее.
+    const before = await db.query<{ registration_no: number }>(
+      'SELECT registration_no FROM users WHERE platform_user_id = $1', [String(USER)],
+    );
+    const no = before.rows[0]!.registration_no;
+
+    // Служитель навёл камеру на QR участника: открывается бот со ссылкой.
+    api.push(tgUpdate.command(8, 999, `/start kit_${no}`));
     await waitProcessed(8);
 
-    const { rows } = await db.query('SELECT kit_issued_at FROM users WHERE registration_no = 1');
+    const { rows } = await db.query('SELECT kit_issued_at FROM users WHERE registration_no = $1', [no]);
     expect((rows[0] as { kit_issued_at: Date | null }).kit_issued_at).toBeInstanceOf(Date);
   });
 });

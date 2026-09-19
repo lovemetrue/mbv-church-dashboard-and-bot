@@ -96,7 +96,13 @@ function participantCard(u: UserRow): string {
 export class AdminFlow {
   constructor(private readonly deps: Deps) {}
 
+  /**
+   * Меню и команды служителя — только в Telegram. Раньше работали и в MAX
+   * (через инлайн-кнопки, см. ADMIN_CB), но по правкам церкви это убрали:
+   * администрирование ведётся из Telegram и дашборда.
+   */
   isAdmin(platform: PlatformName, userId: string): boolean {
+    if (platform !== 'telegram') return false;
     return isAdmin(this.deps.admins.get(platform) ?? [], userId);
   }
 

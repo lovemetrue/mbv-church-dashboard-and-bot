@@ -3,7 +3,7 @@ import { AdminNotifier } from '../admin/notify.js';
 import type { Deps } from '../deps.js';
 import { campaignIsActive } from '../broadcast/schedule.js';
 import { AdminFlow } from './flows/admin.flow.js';
-import { handleUpdate, type OutAction, type Participant } from './fsm.js';
+import { handleUpdate, profileRows, type Draft, type OutAction, type Participant } from './fsm.js';
 import { kitPayload, parseKitPayload, qrPng } from './qr.js';
 import { SendError, type IncomingUpdate, type Platform, type UpdateCtx } from './platform.js';
 import { CB, KIT_DATE, T, menuKeyboard } from './texts.js';
@@ -221,7 +221,7 @@ export class Router {
      * На всех остальных шагах assignedNo пустой, и порядок обычный.
      */
     if (assignedNo !== null) {
-      await this.sendRegistrationCard(platform, update.ctx.chatId, assignedNo);
+      await this.sendRegistrationCard(platform, update.ctx.chatId, assignedNo, result.draft);
     }
 
     for (const action of result.actions) {
@@ -241,40 +241,67 @@ export class Router {
   }
 
   /**
-   * Порядок важен — от него зависит, что человек прочтёт. Про уже принятую заявку
-   * говорим «служитель свяжется», про действующую группу — «идите к координатору».
+   * Сверка только по действующей группе реестра, не по открытой заявке: заявка
+   * могла остаться «В работе» в дашборде и после того, как саму группу закрыли
+   * (закрытие группы не закрывает её заявку автоматически) — из-за этого бот
+   * отказывал в повторной регистрации по номеру, хотя по дашборду человека
+   * «как будто и нет в ведущих». Раньше здесь была ещё проверка по заявке —
+   * её убрали по правкам церкви.
    *
-   * На время кампании (день 1..CAMPAIGN_DAYS) вторую проверку снимаем: ведущий
+   * На время кампании (день 1..CAMPAIGN_DAYS) проверку снимаем: ведущий
    * действующей группы может на время кампании открыть ещё одну.
    */
-  private async leadPhoneTaken(phone: string): Promise<'request' | 'group' | undefined> {
-    if (await this.deps.requests.openLeadByPhone(phone)) return 'request';
+  private async leadPhoneTaken(phone: string): Promise<'group' | undefined> {
     if (campaignIsActive(new Date(), this.deps.schedule)) return undefined;
     if (await this.deps.groups.activeLeaderByPhone(phone)) return 'group';
     return undefined;
   }
 
   /**
-   * Номер регистрации и QR-код: по ТЗ по нему выдают набор участника.
+   * Номер регистрации, QR-код и все заполненные данные — одним сообщением: его
+   * можно целиком переслать или распечатать, а номер виден сразу под фото, а не
+   * только в отдельном сообщении текстом выше.
+   *
    * В QR кладём ссылку, открывающую бота у служителя; если платформа диплинки не умеет,
    * в код попадает сам номер, и служитель вводит его руками.
    */
-  private async sendRegistrationCard(platform: Platform, chatId: string, registrationNo: number): Promise<void> {
+  private async sendRegistrationCard(
+    platform: Platform,
+    chatId: string,
+    registrationNo: number,
+    draft: Draft,
+  ): Promise<void> {
     try {
-      await platform.sendMessage(chatId, {
-        text: `${T.registeredTitle}\n\n${T.registrationNo(registrationNo)}`,
-      });
+      const caption = [
+        T.registeredTitle,
+        '',
+        T.registrationNo(registrationNo),
+        '',
+        ...profileRows(draft),
+        '',
+        T.kitByQr(KIT_DATE),
+      ].join('\n');
 
       const link = platform.deepLink(kitPayload(registrationNo));
       const png = await qrPng(link ?? `Регистрация №${registrationNo}`);
       await platform.sendPhoto(
         chatId,
         { name: `registration-${registrationNo}.png`, content: png, mime: 'image/png' },
-        T.kitByQr(KIT_DATE),
+        caption,
       );
     } catch (err) {
       // Регистрация уже сохранена, поэтому сбой картинки не должен ломать диалог.
+      // Но номер после объединения в одно сообщение шёл бы только в этой карточке —
+      // если она не отправилась, человек не узнал бы его вовсе. Подстраховываемся
+      // текстом.
       this.deps.logger.error({ err, registrationNo }, 'не удалось отправить карточку регистрации');
+      try {
+        await platform.sendMessage(chatId, {
+          text: `${T.registeredTitle}\n\n${T.registrationNo(registrationNo)}`,
+        });
+      } catch (fallbackErr) {
+        this.deps.logger.error({ err: fallbackErr, registrationNo }, 'не удалось отправить даже номер регистрации');
+      }
     }
   }
 

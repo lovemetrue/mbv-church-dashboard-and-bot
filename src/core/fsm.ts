@@ -78,7 +78,7 @@ export type RequestType = 'join_group' | 'lead_group' | 'question';
  * телефону: тот же человек мог написать из другой платформы, или его номер уже
  * записан ведущим действующей группы.
  */
-export type LeadBlock = 'pending' | 'phone_request' | 'phone_group' | null;
+export type LeadBlock = 'pending' | 'phone_group' | null;
 
 export type Effect =
   | { kind: 'consent' }
@@ -113,8 +113,8 @@ export interface FsmInput {
   openRequests?: RequestType[];
   /** Сколько вопросов человека ещё без ответа. Ограничиваем, чтобы не завалить служителей. */
   openQuestions?: number;
-  /** Что нашла сверка телефона: открытая заявка на открытие группы или действующая группа. */
-  leadPhoneTaken?: 'request' | 'group';
+  /** Что нашла сверка телефона: у номера уже есть действующая группа в реестре. */
+  leadPhoneTaken?: 'group';
 }
 
 export interface FsmResult {
@@ -191,21 +191,29 @@ const askLeaderName = (draft: Draft, effects: Effect[] = []): FsmResult =>
   stay('await_leader_name', draft, [msg(T.askLeaderName, backKeyboard())], effects);
 
 /** Итоговая сводка: ТЗ требует показать всё собранное и получить подтверждение. */
-function showSummary(draft: Draft, effects: Effect[] = []): FsmResult {
+/**
+ * Строки анкеты в виде «Подпись: значение» — общие и для экрана проверки перед
+ * регистрацией, и для карточки регистрации с QR (там нужны те же данные целиком,
+ * чтобы карточку можно было переслать или распечатать одним сообщением).
+ */
+export function profileRows(draft: Draft): string[] {
   const rows = [
     `ФИО: ${draft.fio ?? 'не указано'}`,
     `Телефон: ${formatPhone(draft.phone) || 'не указан'}`,
     `Церковь: ${draft.church ?? 'не указана'}`,
   ];
-  if (draft.mdgStatus) rows.push(`Малая группа: ${MDG_LABEL[draft.mdgStatus]}`);
+  if (draft.mdgStatus) rows.push(`Заявка: ${MDG_LABEL[draft.mdgStatus]}`);
   if (draft.leaderName) rows.push(`Ведущий группы: ${draft.leaderName}`);
   if (draft.location) rows.push(`Район: ${draft.location}`);
   if (draft.age) rows.push(`Возраст: ${draft.age}`);
+  return rows;
+}
 
+function showSummary(draft: Draft, effects: Effect[] = []): FsmResult {
   return stay(
     'summary',
     draft,
-    [msg([T.summaryTitle, '', ...rows, '', T.summaryFooter].join('\n'), summaryKeyboard())],
+    [msg([T.summaryTitle, '', ...profileRows(draft), '', T.summaryFooter].join('\n'), summaryKeyboard())],
     effects,
   );
 }
@@ -235,11 +243,9 @@ export function handleUpdate({
   // Своя незакрытая заявка важнее сверки по телефону: человеку надо ответить про неё.
   const leadBlock: LeadBlock = alreadyOpen('lead_group')
     ? 'pending'
-    : leadPhoneTaken === 'request'
-      ? 'phone_request'
-      : leadPhoneTaken === 'group'
-        ? 'phone_group'
-        : null;
+    : leadPhoneTaken === 'group'
+      ? 'phone_group'
+      : null;
 
   if (update.kind === 'start') {
     return registered ? showMenu(draft, T.welcomeBack) : askConsent();
@@ -351,19 +357,19 @@ function awaitPhone(update: IncomingUpdate, draft: Draft): FsmResult {
     return phone ? accept(phone) : retryPhone(draft);
   }
 
+  // Номер только кнопкой «поделиться»: иначе можно вписать чужой и заблокировать
+  // им чужую регистрацию (заявка ищется по номеру телефона).
   if (update.kind === 'text') {
-    const phone = normalizePhone(update.text);
-    return phone ? accept(phone) : retryPhone(draft);
+    return stay('await_phone', draft, [{ kind: 'request_contact', text: T.phoneTypedNotAllowed }]);
   }
 
   return ignore('await_phone', draft);
 }
 
+/** Контакт есть, но номер в нём не разобрать (редкость — платформа отдала мусор). */
 function retryPhone(draft: Draft): FsmResult {
   const attempts = (draft.phoneAttempts ?? 0) + 1;
-  // С первой ошибки просим повторить, со второй показываем пример формата.
-  const text = attempts >= 2 ? T.phoneFormatHint : T.phoneInvalid;
-  return stay('await_phone', { ...draft, phoneAttempts: attempts }, [{ kind: 'request_contact', text }]);
+  return stay('await_phone', { ...draft, phoneAttempts: attempts }, [{ kind: 'request_contact', text: T.phoneInvalid }]);
 }
 
 function awaitChurch(update: IncomingUpdate, draft: Draft): FsmResult {
@@ -524,7 +530,6 @@ function awaitConfirm(
 /** Что отвечаем, когда заявку на открытие группы подавать не нужно. */
 const LEAD_BLOCK_TEXT: Record<NonNullable<LeadBlock>, string> = {
   pending: T.leadRequestPending,
-  phone_request: T.leadPhoneHasRequest,
   phone_group: T.leadPhoneIsLeader,
 };
 

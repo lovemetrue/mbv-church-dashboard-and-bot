@@ -73,6 +73,21 @@ export interface RegisteredParticipant {
   kit_issued_at: Date | null;
 }
 
+/**
+ * Номер регистрации — случайный, 4 знака, без ведущего нуля (1000-9999).
+ * Раньше был последовательным (1, 2, 3…) — по правкам церкви сменили на случайный;
+ * уже выданные последовательные номера не трогаем, меняется только генерация новых.
+ */
+const RANDOM_REGISTRATION_MIN = 1000;
+const RANDOM_REGISTRATION_MAX = 9999;
+const randomRegistrationNo = (): number =>
+  RANDOM_REGISTRATION_MIN + Math.floor(Math.random() * (RANDOM_REGISTRATION_MAX - RANDOM_REGISTRATION_MIN + 1));
+
+/** Совпадение случайного номера с уже занятым (UNIQUE на registration_no) — знак повторить попытку. */
+function isUniqueViolation(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as { code?: string }).code === '23505';
+}
+
 /** Соответствие полей анкеты колонкам: список закрытый, поэтому SQL собирается безопасно. */
 const COLUMNS: Record<keyof ProfilePatch, string> = {
   fio: 'full_name',
@@ -134,17 +149,26 @@ export class UsersRepo {
    * Повторный вызов номер не меняет.
    */
   async finishRegistration(userId: number, complete: boolean): Promise<number> {
-    const { rows } = await this.db.query<{ registration_no: number }>(
-      `UPDATE users
-          SET registration_no = COALESCE(registration_no, nextval('registration_no_seq')::int),
-              registered_at   = COALESCE(registered_at, now()),
-              complete        = $2,
-              blocked_at      = NULL
-        WHERE id = $1
-        RETURNING registration_no`,
-      [userId, complete],
-    );
-    return rows[0]!.registration_no;
+    // COALESCE не трогает уже присвоенный номер — повторная попытка нужна только
+    // когда его ещё нет и случайный черновик совпал с чьим-то чужим (редкость).
+    for (let attempt = 0; attempt < 30; attempt++) {
+      try {
+        const { rows } = await this.db.query<{ registration_no: number }>(
+          `UPDATE users
+              SET registration_no = COALESCE(registration_no, $3),
+                  registered_at   = COALESCE(registered_at, now()),
+                  complete        = $2,
+                  blocked_at      = NULL
+            WHERE id = $1
+            RETURNING registration_no`,
+          [userId, complete, randomRegistrationNo()],
+        );
+        return rows[0]!.registration_no;
+      } catch (err) {
+        if (!isUniqueViolation(err) || attempt === 29) throw err;
+      }
+    }
+    throw new Error('не удалось подобрать свободный номер регистрации');
   }
 
   async markBlocked(userId: number): Promise<void> {
@@ -199,36 +223,44 @@ export class UsersRepo {
 
   /**
    * Участник, которого заводит служитель: своего чата с ботом у него нет,
-   * поэтому platform_user_id синтетический, а chat_id пустой.
-   *
-   * Номер регистрации берём из последовательности один раз через CTE и используем
-   * и для platform_user_id, и для registration_no — раньше здесь стояло два
-   * отдельных nextval() на одну и ту же последовательность, и каждая ручная
-   * регистрация съедала лишний номер, оставляя дыру в нумерации у бота.
+   * поэтому platform_user_id синтетический, а chat_id пустой. Номер регистрации
+   * такой же случайный, как и в боте (см. randomRegistrationNo); он же идёт
+   * в platform_user_id, поэтому и то и другое подбирается в одной попытке.
    */
   async createManual(input: ManualRegistrationInput & { platform: PlatformName; byAdminId: string }): Promise<UserRow> {
-    const { rows } = await this.db.query<UserRow>(
-      `WITH seq AS (SELECT nextval('registration_no_seq')::int AS no)
-       INSERT INTO users (platform, platform_user_id, chat_id, full_name, phone, church, mdg_status,
-                          location, age, preferred_contact, admin_comment, registered_by,
-                          registration_no, registered_at, complete, consent_at)
-       SELECT $1, 'manual:' || no, '', $2, $3, $4, $5, $6, $7, $8, $9, $10, no, now(), true, now()
-         FROM seq
-       RETURNING *`,
-      [
-        input.platform,
-        input.fio,
-        input.phone,
-        input.church ?? null,
-        input.mdgStatus ?? null,
-        input.location ?? null,
-        input.age ?? null,
-        input.preferredContact ?? null,
-        input.comment ?? null,
-        input.byAdminId,
-      ],
-    );
-    return rows[0]!;
+    for (let attempt = 0; attempt < 30; attempt++) {
+      try {
+        const no = randomRegistrationNo();
+        // Номер передаём двумя параметрами: один участвует в конкатенации с текстом
+        // (platform_user_id), другой идёт в целочисленную колонку — тот же $N на
+        // оба места pg-driver трактует как один тип и падает на несовпадении.
+        const { rows } = await this.db.query<UserRow>(
+          `INSERT INTO users (platform, platform_user_id, chat_id, full_name, phone, church, mdg_status,
+                              location, age, preferred_contact, admin_comment, registered_by,
+                              registration_no, registered_at, complete, consent_at)
+           VALUES ($1, 'manual:' || $11::text, '', $2, $3, $4, $5, $6, $7, $8, $9, $10, $12, now(), true, now())
+           RETURNING *`,
+          [
+            input.platform,
+            input.fio,
+            input.phone,
+            input.church ?? null,
+            input.mdgStatus ?? null,
+            input.location ?? null,
+            input.age ?? null,
+            input.preferredContact ?? null,
+            input.comment ?? null,
+            input.byAdminId,
+            no,
+            no,
+          ],
+        );
+        return rows[0]!;
+      } catch (err) {
+        if (!isUniqueViolation(err) || attempt === 29) throw err;
+      }
+    }
+    throw new Error('не удалось подобрать свободный номер регистрации');
   }
 
   async markKitIssued(userId: number, byAdminId: string): Promise<void> {

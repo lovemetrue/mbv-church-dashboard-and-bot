@@ -64,7 +64,14 @@ const seedGroup = (status: string, phone = PHONE) =>
   );
 
 describe('заявка на открытие группы: сверка телефона', () => {
-  test('второй аккаунт с тем же номером второй заявки не создаёт', async () => {
+  /*
+   * Раньше открытая заявка по телефону блокировала повторную регистрацию с любого
+   * аккаунта — но заявка могла остаться «В работе» в дашборде и после того, как
+   * саму группу закрыли, и бот отказывал в регистрации человеку, которого по
+   * дашборду «как будто и нет в ведущих». По правкам церкви эту сверку убрали:
+   * теперь смотрим только на действующую группу реестра (ниже).
+   */
+  test('второй аккаунт с тем же номером тоже может подать заявку — сверка по заявке убрана', async () => {
     await seedUser(db, { id: '111', phone: PHONE });
     await router.handle(tapLead('111'));
     expect(await leadRequests()).toBe(1);
@@ -73,8 +80,7 @@ describe('заявка на открытие группы: сверка теле
     await seedUser(db, { id: '222', platform: 'max', phone: PHONE });
     await router.handle(tapLead('222', 'max'));
 
-    expect(await leadRequests()).toBe(1);
-    expect(max.textsTo('222').join('\n')).toContain(T.leadPhoneHasRequest);
+    expect(await leadRequests()).toBe(2);
   });
 
   test('в анкете отказ приходит сразу на выборе, а не после района и возраста', async () => {
@@ -139,17 +145,6 @@ describe('заявка на открытие группы: сверка теле
 
     expect(await leadRequests()).toBe(1);
     expect(tg.textsTo('111').join('\n')).toContain(T.leadRequestPending);
-  });
-
-  test('закрытая заявка не мешает подать новую', async () => {
-    await seedUser(db, { id: '111', phone: PHONE });
-    await router.handle(tapLead('111'));
-    await db.query(`UPDATE requests SET status = 'Исполнена'`);
-
-    await seedUser(db, { id: '222', platform: 'max', phone: PHONE });
-    await router.handle(tapLead('222', 'max'));
-
-    expect(await leadRequests()).toBe(2);
   });
 
   test('на время кампании ведущий действующей группы может открыть ещё одну', async () => {

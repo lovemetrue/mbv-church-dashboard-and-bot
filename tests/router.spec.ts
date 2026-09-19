@@ -109,33 +109,45 @@ describe('регистрация через роутер', () => {
     await registerLeader();
 
     const u = await dbUser();
-    expect(u['registration_no']).toBe(1);
+    expect(u['registration_no']).toBeGreaterThanOrEqual(1000);
+    expect(u['registration_no']).toBeLessThanOrEqual(9999);
     expect(u['registered_at']).toBeInstanceOf(Date);
     expect(u).toMatchObject({ mdg_status: 'leader', complete: true });
   });
 
-  test('после регистрации приходит QR-код с номером', async () => {
+  test('после регистрации приходит QR-код с номером в подписи', async () => {
     await registerLeader();
 
     expect(tg.photos).toHaveLength(1);
-    expect(tg.photos[0]?.name).toBe('registration-1.png');
-    expect(tg.textsTo(USER).join('\n')).toContain('1');
+    const no = (await dbUser())['registration_no'];
+    expect(tg.photos[0]?.name).toBe(`registration-${no}.png`);
+    expect(tg.photos[0]?.caption).toContain(`Ваш номер регистрации: ${no}`);
   });
 
-  test('благодарность идёт после номера регистрации, а не перед ним', async () => {
+  test('карточка с QR несёт все заполненные данные — можно переслать или распечатать одним сообщением', async () => {
+    await registerLeader();
+
+    const caption = tg.photos[0]?.caption ?? '';
+    expect(caption).toContain('ФИО: Иванов Иван Иванович');
+    expect(caption).toContain('Телефон: +7 900 123-45-67');
+    expect(caption).toContain('Заявка: веду Малую группу');
+  });
+
+  test('благодарность идёт после карточки регистрации с номером, а не перед ней', async () => {
     // Раньше человек читал «Спасибо за ваше желание…», и только потом узнавал номер:
-    // сначала итог ветки, потом сама регистрация — обратный порядок.
+    // сначала итог ветки, потом сама регистрация — обратный порядок. Теперь номер
+    // не отдельным сообщением, а в подписи к карточке — проверяем, что карточка
+    // (фото) уже отправлена к моменту, когда уходит текст с итогом ветки.
     await answerRequired();
     await router.handle(tap(CB.mdgOpen));
     await router.handle(text('Приморский, м. Пионерская'));
     await router.handle(tap('age:2'));
+    tg.photos.length = 0;
     await router.handle(tap(CB.confirm));
 
-    const texts = tg.textsTo(USER);
-    const номер = texts.findIndex((t) => t.includes('Ваш номер регистрации'));
-    const итог = texts.findIndex((t) => t.includes('открыть свой дом и своё сердце'));
-    expect(номер).toBeGreaterThanOrEqual(0);
-    expect(итог).toBeGreaterThan(номер);
+    expect(tg.photos).toHaveLength(1);
+    expect(tg.photos[0]?.caption).toContain('Ваш номер регистрации');
+    expect(tg.textsTo(USER).join('\n')).toContain('открыть свой дом и своё сердце');
   });
 
   test('номера регистрации не повторяются', async () => {
@@ -143,7 +155,8 @@ describe('регистрация через роутер', () => {
     await registerLeader('777');
 
     const { rows } = await db.query('SELECT registration_no FROM users ORDER BY registration_no');
-    expect(rows.map((r) => (r as { registration_no: number }).registration_no)).toEqual([1, 2]);
+    const nos = rows.map((r) => (r as { registration_no: number }).registration_no);
+    expect(new Set(nos).size).toBe(2);
   });
 
   test('ветка «ищу группу» сохраняет район и возрастную категорию', async () => {
@@ -189,7 +202,8 @@ describe('регистрация через роутер', () => {
     await router.handle(tap(CB.confirm));
 
     const u = await dbUser();
-    expect(u).toMatchObject({ mdg_status: 'leader', complete: true, registration_no: 1 });
+    expect(u).toMatchObject({ mdg_status: 'leader', complete: true });
+    expect(u['registration_no']).toBeGreaterThanOrEqual(1000);
     expect(u['location']).toBeNull();
   });
 
@@ -394,5 +408,42 @@ describe('админские команды', () => {
   test('/whoami сообщает id, чтобы можно было прописать админа', async () => {
     await router.handle(text('/whoami'));
     expect(tg.textsTo(USER).join('\n')).toContain(USER);
+  });
+});
+
+/** Меню и команды служителя — только в Telegram (по правкам церкви). */
+describe('меню служителя в MAX', () => {
+  const MAX_ADMIN = '777';
+  const maxCtx = (id = MAX_ADMIN): UpdateCtx => ({ platform: 'max', platformUserId: id, chatId: id });
+
+  test('тот же id, что админ в Telegram, в MAX прав служителя не получает', async () => {
+    const max = new FakePlatform('max');
+    const deps2 = createDeps({
+      ...deps.raw,
+      platforms: new Map<PlatformName, Platform>([['telegram', tg], ['max', max]]),
+      admins: new Map([['telegram', [ADMIN]], ['max', [MAX_ADMIN]]]),
+    });
+    const router2 = new Router(deps2);
+
+    await router2.handle({ kind: 'start', ctx: maxCtx() });
+
+    // Обычное меню участника, а не клавиатура служителя: подтверждение согласия — первый шаг анкеты.
+    expect(max.actionMenus).toEqual([]);
+    expect(max.sent.some((m) => m.text.includes('Меню служителя'))).toBe(false);
+  });
+
+  test('команда /kit в MAX не отвечает как служителю', async () => {
+    const max = new FakePlatform('max');
+    const deps2 = createDeps({
+      ...deps.raw,
+      platforms: new Map<PlatformName, Platform>([['telegram', tg], ['max', max]]),
+      admins: new Map([['telegram', [ADMIN]], ['max', [MAX_ADMIN]]]),
+    });
+    const router2 = new Router(deps2);
+
+    await router2.handle({ kind: 'text', ctx: maxCtx(), text: '/kit' });
+
+    // Без прав служителя /kit — просто незнакомая команда, как для любого участника.
+    expect(max.sent.some((m) => m.text.includes('Не знаю такую команду'))).toBe(true);
   });
 });

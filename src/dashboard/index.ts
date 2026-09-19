@@ -103,6 +103,7 @@ async function main(): Promise<void> {
         mdgStatus: user.mdg_status,
       };
     },
+    deleteRegistration: (id) => users.archive(id),
     exportUsers: async () => usersToCsv(await users.exportRows()),
   });
 

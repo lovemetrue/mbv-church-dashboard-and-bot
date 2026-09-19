@@ -334,3 +334,11 @@ describe('в «Регистрации» видно, выдан ли набор, 
     expect(html).toContain('state.regSort === th.dataset.key');
   });
 });
+
+describe('регистрацию можно убрать прямо из списка', () => {
+  test('у каждой строки есть кнопка «Убрать», тем же приёмом, что и у групп/участников/заявок', () => {
+    const block = html.slice(html.indexOf('function renderRegistration'), html.indexOf('function renderRegistration') + 2400);
+    expect(block).toContain('class="btn-quiet row-del"');
+    expect(block).toContain("wireRowEditing('#regBody', 'registration'");
+  });
+});

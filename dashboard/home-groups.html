@@ -1667,7 +1667,13 @@ function renderRegistration() {
       <td>${u.kit_issued_at
         ? '<span class="pill live"><i></i>Да</span>'
         : '<span class="pill closed"><i></i>Нет</span>'}</td>
-      <td><a href="${cardSrc}" target="_blank" rel="noopener"><img class="reg-qr" src="${qrSrc}" alt="QR №${u.registration_no}" loading="lazy"></a></td>
+      <td>
+        <a href="${cardSrc}" target="_blank" rel="noopener"><img class="reg-qr" src="${qrSrc}" alt="QR №${u.registration_no}" loading="lazy"></a>
+        <div class="row-actions">
+          <button class="btn-quiet row-del" data-id="${u.id}" data-name="${esc(u.full_name ?? '')}">🗑 Убрать</button>
+          <span class="form-msg row-msg" data-id="registration-${u.id}"></span>
+        </div>
+      </td>
     </tr>`;
   }).join('');
   $('#regFoot').textContent = `${registeredUsers.length} ${plural(registeredUsers.length, 'участник', 'участника', 'участников')}`;
@@ -1677,6 +1683,10 @@ function renderRegistration() {
     else delete th.dataset.dir;
     th.querySelector('.arrow').textContent = state.regDir > 0 ? '↑' : '↓';
   });
+
+  // Убрать регистрацию — тот же armed-клик и sendRow, что и у групп/участников/
+  // заявок (wireRowEditing), только без формы правки: анкету тут не редактируют.
+  wireRowEditing('#regBody', 'registration', new Map(rows.map((u) => [u.id, u])));
 }
 
 document.querySelectorAll('thead th.sortable-reg').forEach((th) => {

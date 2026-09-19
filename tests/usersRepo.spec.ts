@@ -117,4 +117,39 @@ describe('список регистраций для дашборда', () => {
     expect(list.find((r) => r.full_name === 'Из бота')?.has_chat).toBe(true);
     expect(list.find((r) => r.full_name === 'Из дашборда')?.has_chat).toBe(false);
   });
+
+  test('убранная (архивная) регистрация в список не попадает', async () => {
+    const id = await seedUser(db, { id: '1', fio: 'Убрали по ошибке' });
+    await repo.archive(id);
+
+    expect(await repo.listRegistered()).toEqual([]);
+  });
+});
+
+describe('удаление регистрации из дашборда', () => {
+  // Мягкое удаление, как у групп/участников/заявок: запись остаётся в базе,
+  // просто помечается archived_at и перестаёт считаться активным участником.
+  test('первый раз убирает и возвращает true, повторно — false', async () => {
+    const id = await seedUser(db, { id: '1' });
+    expect(await repo.archive(id)).toBe(true);
+    expect(await repo.archive(id)).toBe(false);
+  });
+
+  test('несуществующий id возвращает false', async () => {
+    expect(await repo.archive(999999)).toBe(false);
+  });
+
+  test('убранного не считаем получателем рассылки', async () => {
+    const id = await seedUser(db, { id: '1', platform: 'telegram' });
+    await repo.archive(id);
+
+    expect(await repo.recipients('telegram')).toEqual([]);
+  });
+
+  test('убранный не попадает в выгрузку для церкви', async () => {
+    const id = await seedUser(db, { id: '1', fio: 'Убрали' });
+    await repo.archive(id);
+
+    expect(await repo.exportRows()).toEqual([]);
+  });
 });

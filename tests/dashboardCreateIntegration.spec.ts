@@ -93,6 +93,7 @@ beforeAll(async () => {
         mdgStatus: user.mdg_status,
       };
     },
+    deleteRegistration: (id) => users.archive(id),
     exportUsers: async () => usersToCsv(await users.exportRows()),
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
@@ -611,5 +612,44 @@ describe('регистрация участника из дашборда', () =
     const cookie = await login();
     const r = await fetch(`${base}/registration/card?id=999999`, { headers: { cookie } });
     expect(r.status).toBe(404);
+  });
+
+  test('убирает регистрацию мягко — запись остаётся в базе, но пропадает из списка', async () => {
+    const created = await usersRepo.createManual({
+      platform: 'telegram', byAdminId: 'дашборд', fio: 'Убрать Меня', phone: '+79001112235',
+    });
+    const cookie = await login();
+
+    const r = await post('/registration/delete', { id: String(created.id) }, cookie);
+    expect(r.status).toBe(200);
+
+    expect(await usersRepo.listRegistered()).toEqual([]);
+    const { rows } = await db.query('SELECT archived_at FROM users WHERE id = $1', [created.id]);
+    expect(rows[0]!.archived_at).not.toBeNull();
+  });
+
+  test('повторное и несуществующее удаление отвечают 404', async () => {
+    const created = await usersRepo.createManual({
+      platform: 'telegram', byAdminId: 'дашборд', fio: 'Ещё Раз', phone: '+79001112236',
+    });
+    const cookie = await login();
+    await post('/registration/delete', { id: String(created.id) }, cookie);
+
+    const again = await post('/registration/delete', { id: String(created.id) }, cookie);
+    expect(again.status).toBe(404);
+    const missing = await post('/registration/delete', { id: '999999' }, cookie);
+    expect(missing.status).toBe(404);
+  });
+
+  test('без сессии не убирает', async () => {
+    const created = await usersRepo.createManual({
+      platform: 'telegram', byAdminId: 'дашборд', fio: 'Без Сессии', phone: '+79001112237',
+    });
+    const r = await fetch(`${base}/registration/delete`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ id: String(created.id) }),
+    });
+    expect(r.status).toBe(401);
   });
 });

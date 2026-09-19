@@ -63,6 +63,8 @@ export interface DashboardDeps {
   registrationQr?: (id: number) => Promise<Buffer | null>;
   /** Данные для печатной карточки регистрации (QR и все заполненные поля разом). */
   registrationCard?: (id: number) => Promise<RegistrationCardInfo | null>;
+  /** Убрать регистрацию со страницы. false — её нет или уже убрали. */
+  deleteRegistration?: (id: number) => Promise<boolean>;
   /** Выгрузка участников кампании в CSV. */
   exportUsers?: () => Promise<string>;
 }
@@ -441,6 +443,34 @@ export function createDashboardServer(deps: DashboardDeps) {
           return;
         }
         send(res, 200, registrationCardPage(info, `${MOUNT}/registration/qr?id=${cardId}`));
+        return;
+      }
+
+      /* Убрать регистрацию (заведена по ошибке, дубль, человек попросил).
+         Мягкое удаление — та же схема, что у группы/участника/заявки ниже. */
+      if (path === '/registration/delete') {
+        if (req.method !== 'POST') {
+          send(res, 404, loginPage());
+          return;
+        }
+        if (!(await deps.auth.verify(sid))) {
+          send(res, 401, loginPage('Сессия истекла. Войдите заново.'));
+          return;
+        }
+        if (!deps.deleteRegistration) {
+          send(res, 404, loginPage());
+          return;
+        }
+
+        const id = parseId(new URLSearchParams(await readBody(req)), 'регистрации');
+        if (!id.ok) {
+          send(res, 400, id.error);
+          return;
+        }
+
+        const removed = await deps.deleteRegistration(id.value);
+        logger.info({ id: id.value, removed }, 'дашборд: регистрация убрана');
+        send(res, removed ? 200 : 404, removed ? 'ok' : 'Запись не найдена или уже убрана');
         return;
       }
 

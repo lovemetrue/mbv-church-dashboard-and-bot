@@ -1146,13 +1146,15 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
             <th class="sortable-reg" data-key="phone">Телефон <span class="arrow">↓</span></th>
             <th class="sortable-reg" data-key="church">Церковь <span class="arrow">↓</span></th>
             <th class="sortable-reg" data-key="mdg_status">Заявка <span class="arrow">↓</span></th>
+            <th class="sortable-reg" data-key="age">Возраст <span class="arrow">↓</span></th>
+            <th class="sortable-reg" data-key="location">Место <span class="arrow">↓</span></th>
             <th class="sortable-reg" data-key="kit_issued_at">Выдан набор <span class="arrow">↓</span></th>
             <th>QR</th>
           </tr>
         </thead>
         <tbody id="regBody">
-          <tr class="sk-tr"><td colspan="7"><i class="sk"></i></td></tr>
-          <tr class="sk-tr"><td colspan="7"><i class="sk"></i></td></tr>
+          <tr class="sk-tr"><td colspan="9"><i class="sk"></i></td></tr>
+          <tr class="sk-tr"><td colspan="9"><i class="sk"></i></td></tr>
         </tbody>
       </table>
     </div>
@@ -1665,6 +1667,8 @@ function renderRegistration() {
       <td>${u.phone ? `<a class="tel" href="tel:${esc(u.phone)}">${esc(fmtPhone(u.phone))}</a>` : '—'}</td>
       <td>${esc(u.church) || '—'}</td>
       <td>${u.mdg_status ? esc(MDG_STATUS_LABEL[u.mdg_status]) : '—'}</td>
+      <td>${esc(u.age) || '—'}</td>
+      <td>${esc(u.location) || '—'}</td>
       <td>${u.kit_issued_at
         ? '<span class="pill live"><i></i>Да</span>'
         : '<span class="pill closed"><i></i>Нет</span>'}</td>

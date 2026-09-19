@@ -295,7 +295,7 @@ describe('номер заявки виден в таблице и по нему 
 describe('QR в дашборде ведёт на печатную карточку, а не на голый PNG', () => {
   test('миниатюра в таблице «Регистрация» открывает карточку по клику', () => {
     expect(html).toContain('registration/card?id=');
-    const block = html.slice(html.indexOf('function renderRegistration'), html.indexOf('function renderRegistration') + 1400);
+    const block = html.slice(html.indexOf('function renderRegistration'), html.indexOf('function renderRegistration') + 1700);
     expect(block).toContain('href="${cardSrc}"');
     expect(block).toContain('src="${qrSrc}"');
   });
@@ -322,10 +322,21 @@ describe('в «Регистрации» видно, выдан ли набор, 
 
   test('все столбцы таблицы кликабельны для сортировки', () => {
     const theadStart = html.indexOf('id="regBody"');
-    const theadBlock = html.slice(theadStart - 700, theadStart);
-    for (const key of ['registration_no', 'full_name', 'phone', 'church', 'mdg_status', 'kit_issued_at']) {
+    const theadBlock = html.slice(theadStart - 900, theadStart);
+    for (const key of ['registration_no', 'full_name', 'phone', 'church', 'mdg_status', 'age', 'location', 'kit_issued_at']) {
       expect(theadBlock).toContain(`class="sortable-reg" data-key="${key}"`);
     }
+  });
+
+  test('«Возраст» и «Место» стоят перед «Выдан набор»', () => {
+    const theadStart = html.indexOf('id="regBody"');
+    const theadBlock = html.slice(theadStart - 900, theadStart);
+    const ageAt = theadBlock.indexOf('data-key="age"');
+    const placeAt = theadBlock.indexOf('data-key="location"');
+    const kitAt = theadBlock.indexOf('data-key="kit_issued_at"');
+    expect(ageAt).toBeGreaterThan(-1);
+    expect(placeAt).toBeGreaterThan(ageAt);
+    expect(kitAt).toBeGreaterThan(placeAt);
   });
 
   test('клик по заголовку сортирует, повторный клик разворачивает', () => {
@@ -337,7 +348,7 @@ describe('в «Регистрации» видно, выдан ли набор, 
 
 describe('регистрацию можно удалить прямо из списка — жёстко, не архивируя', () => {
   test('у каждой строки есть кнопка «Удалить», вайринг тот же, что у групп/участников/заявок', () => {
-    const block = html.slice(html.indexOf('function renderRegistration'), html.indexOf('function renderRegistration') + 2400);
+    const block = html.slice(html.indexOf('function renderRegistration'), html.indexOf('function renderRegistration') + 2700);
     expect(block).toContain('class="btn-quiet row-del"');
     expect(block).toContain('🗑 Удалить');
     expect(block).toContain("wireRowEditing('#regBody', 'registration'");

@@ -71,6 +71,8 @@ export interface RegisteredParticipant {
   /** У кого чата с ботом нет — не бот, а служитель завёл. */
   has_chat: boolean;
   kit_issued_at: Date | null;
+  age: string | null;
+  location: string | null;
 }
 
 /**
@@ -356,7 +358,7 @@ export class UsersRepo {
   async listRegistered(): Promise<RegisteredParticipant[]> {
     const { rows } = await this.db.query<RegisteredParticipant>(
       `SELECT id, registration_no, full_name, phone, church, mdg_status, registered_at,
-              chat_id <> '' AS has_chat, kit_issued_at
+              chat_id <> '' AS has_chat, kit_issued_at, age, location
          FROM users
         WHERE registration_no IS NOT NULL
         ORDER BY registration_no DESC`,

@@ -124,6 +124,16 @@ describe('список регистраций для дашборда', () => {
 
     expect(await repo.listRegistered()).toEqual([]);
   });
+
+  test('несёт возраст и район из анкеты', async () => {
+    await repo.createManual({
+      platform: 'telegram', byAdminId: 'дашборд', fio: 'С анкетой', phone: '+79001112239',
+      location: 'Приморский', age: '25-40',
+    });
+
+    const [row] = await repo.listRegistered();
+    expect(row).toMatchObject({ location: 'Приморский', age: '25-40' });
+  });
 });
 
 describe('удаление регистрации из дашборда', () => {

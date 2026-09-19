@@ -118,37 +118,44 @@ describe('список регистраций для дашборда', () => {
     expect(list.find((r) => r.full_name === 'Из дашборда')?.has_chat).toBe(false);
   });
 
-  test('убранная (архивная) регистрация в список не попадает', async () => {
+  test('удалённая регистрация в список не попадает', async () => {
     const id = await seedUser(db, { id: '1', fio: 'Убрали по ошибке' });
-    await repo.archive(id);
+    await repo.delete(id);
 
     expect(await repo.listRegistered()).toEqual([]);
   });
 });
 
 describe('удаление регистрации из дашборда', () => {
-  // Мягкое удаление, как у групп/участников/заявок: запись остаётся в базе,
-  // просто помечается archived_at и перестаёт считаться активным участником.
-  test('первый раз убирает и возвращает true, повторно — false', async () => {
+  // Жёсткое удаление — по явному решению: в отличие от групп/участников/заявок,
+  // запись физически стирается из базы, а не помечается архивной.
+  test('первый раз удаляет и возвращает true, повторно — false', async () => {
     const id = await seedUser(db, { id: '1' });
-    expect(await repo.archive(id)).toBe(true);
-    expect(await repo.archive(id)).toBe(false);
+    expect(await repo.delete(id)).toBe(true);
+    expect(await repo.delete(id)).toBe(false);
   });
 
   test('несуществующий id возвращает false', async () => {
-    expect(await repo.archive(999999)).toBe(false);
+    expect(await repo.delete(999999)).toBe(false);
   });
 
-  test('убранного не считаем получателем рассылки', async () => {
+  test('запись действительно стирается из базы, а не помечается', async () => {
+    const id = await seedUser(db, { id: '1' });
+    await repo.delete(id);
+
+    expect(await repo.findById(id)).toBeNull();
+  });
+
+  test('удалённого не считаем получателем рассылки', async () => {
     const id = await seedUser(db, { id: '1', platform: 'telegram' });
-    await repo.archive(id);
+    await repo.delete(id);
 
     expect(await repo.recipients('telegram')).toEqual([]);
   });
 
-  test('убранный не попадает в выгрузку для церкви', async () => {
+  test('удалённый не попадает в выгрузку для церкви', async () => {
     const id = await seedUser(db, { id: '1', fio: 'Убрали' });
-    await repo.archive(id);
+    await repo.delete(id);
 
     expect(await repo.exportRows()).toEqual([]);
   });

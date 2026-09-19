@@ -1670,7 +1670,7 @@ function renderRegistration() {
       <td>
         <a href="${cardSrc}" target="_blank" rel="noopener"><img class="reg-qr" src="${qrSrc}" alt="QR №${u.registration_no}" loading="lazy"></a>
         <div class="row-actions">
-          <button class="btn-quiet row-del" data-id="${u.id}" data-name="${esc(u.full_name ?? '')}">🗑 Убрать</button>
+          <button class="btn-quiet row-del" data-id="${u.id}" data-name="${esc(u.full_name ?? '')}">🗑 Удалить</button>
           <span class="form-msg row-msg" data-id="registration-${u.id}"></span>
         </div>
       </td>
@@ -1684,8 +1684,9 @@ function renderRegistration() {
     th.querySelector('.arrow').textContent = state.regDir > 0 ? '↑' : '↓';
   });
 
-  // Убрать регистрацию — тот же armed-клик и sendRow, что и у групп/участников/
-  // заявок (wireRowEditing), только без формы правки: анкету тут не редактируют.
+  // Тот же armed-клик и sendRow, что и у групп/участников/заявок (wireRowEditing),
+  // только без формы правки: анкету тут не редактируют. Удаление при этом жёсткое
+  // (см. wireRowEditing — там же особый текст подтверждения для 'registration').
   wireRowEditing('#regBody', 'registration', new Map(rows.map((u) => [u.id, u])));
 }
 
@@ -2394,6 +2395,10 @@ function wireRowEditing(bodySel, kind, rowsById) {
     };
   });
 
+  // Регистрацию удаляют жёстко (не архивируют, как остальные три вида), поэтому
+  // у неё отдельная, более явная формулировка — не спутать с обратимым «убрать».
+  const hardDelete = kind === 'registration';
+  const idleLabel = hardDelete ? '🗑 Удалить' : '🗑 Убрать';
   body.querySelectorAll('.row-del').forEach((btn) => {
     btn.onclick = (e) => {
       e.stopPropagation();
@@ -2401,17 +2406,19 @@ function wireRowEditing(bodySel, kind, rowsById) {
       if (btn.dataset.armed !== '1') {
         btn.dataset.armed = '1';
         btn.classList.add('armed');
-        btn.textContent = `Точно убрать${btn.dataset.name ? ' ' + btn.dataset.name : ''}?`;
+        btn.textContent = hardDelete
+          ? `Удалить навсегда${btn.dataset.name ? ' ' + btn.dataset.name : ''}?`
+          : `Точно убрать${btn.dataset.name ? ' ' + btn.dataset.name : ''}?`;
         setTimeout(() => {
           if (btn.dataset.armed === '1') {
             btn.dataset.armed = '';
             btn.classList.remove('armed');
-            btn.textContent = '🗑 Убрать';
+            btn.textContent = idleLabel;
           }
         }, 4000);
         return;
       }
-      sendRow(btn, `${kind}/delete`, new URLSearchParams({ id: btn.dataset.id }), 'Убрано.');
+      sendRow(btn, `${kind}/delete`, new URLSearchParams({ id: btn.dataset.id }), hardDelete ? 'Удалено.' : 'Убрано.');
     };
   });
 }

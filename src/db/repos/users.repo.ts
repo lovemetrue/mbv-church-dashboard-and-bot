@@ -29,8 +29,6 @@ export interface UserRow {
   kit_issued_at: Date | null;
   kit_issued_by: string | null;
   blocked_at: Date | null;
-  /** Регистрацию убрали из дашборда — мягкое удаление, запись не стирается. */
-  archived_at: Date | null;
   created_at: Date;
 }
 
@@ -215,7 +213,7 @@ export class UsersRepo {
   async searchByName(query: string, limit = 10): Promise<UserRow[]> {
     const { rows } = await this.db.query<UserRow>(
       `SELECT * FROM users
-        WHERE registration_no IS NOT NULL AND archived_at IS NULL AND full_name ILIKE '%' || $1 || '%'
+        WHERE registration_no IS NOT NULL AND full_name ILIKE '%' || $1 || '%'
         ORDER BY full_name
         LIMIT $2`,
       [query.trim(), limit],
@@ -272,12 +270,13 @@ export class UsersRepo {
     );
   }
 
-  /** Убрать регистрацию из дашборда: как archive() у групп/участников/заявок. */
-  async archive(id: number): Promise<boolean> {
-    const { rowCount } = await this.db.query(
-      `UPDATE users SET archived_at = now() WHERE id = $1 AND archived_at IS NULL`,
-      [id],
-    );
+  /**
+   * Удалить регистрацию из дашборда — жёстко, по явному решению церкви, в отличие
+   * от групп/участников/заявок (там archive() — мягкое удаление). ON DELETE CASCADE
+   * у sessions/requests/deliveries сам подчистит всё, что ссылалось на этого users.id.
+   */
+  async delete(id: number): Promise<boolean> {
+    const { rowCount } = await this.db.query('DELETE FROM users WHERE id = $1', [id]);
     return (rowCount ?? 0) > 0;
   }
 
@@ -285,7 +284,7 @@ export class UsersRepo {
   async recipients(platform: PlatformName): Promise<Recipient[]> {
     const { rows } = await this.db.query<Recipient>(
       `SELECT id, chat_id FROM users
-        WHERE platform = $1 AND registration_no IS NOT NULL AND blocked_at IS NULL AND archived_at IS NULL
+        WHERE platform = $1 AND registration_no IS NOT NULL AND blocked_at IS NULL
           -- Участник, которого заводил служитель, чата с ботом не имеет: писать некуда.
           AND chat_id <> ''
         ORDER BY id`,
@@ -324,7 +323,6 @@ export class UsersRepo {
               count(*) FILTER (WHERE blocked_at IS NOT NULL)::int                   AS blocked,
               count(*) FILTER (WHERE registration_no IS NULL)::int                  AS unfinished
          FROM users
-        WHERE archived_at IS NULL
         GROUP BY platform
         ORDER BY platform`,
     );
@@ -349,7 +347,7 @@ export class UsersRepo {
   /** Выгрузка для церкви: все, кому присвоен номер регистрации. */
   async exportRows(): Promise<UserRow[]> {
     const { rows } = await this.db.query<UserRow>(
-      `SELECT * FROM users WHERE registration_no IS NOT NULL AND archived_at IS NULL ORDER BY registration_no`,
+      `SELECT * FROM users WHERE registration_no IS NOT NULL ORDER BY registration_no`,
     );
     return rows;
   }
@@ -360,7 +358,7 @@ export class UsersRepo {
       `SELECT id, registration_no, full_name, phone, church, mdg_status, registered_at,
               chat_id <> '' AS has_chat, kit_issued_at
          FROM users
-        WHERE registration_no IS NOT NULL AND archived_at IS NULL
+        WHERE registration_no IS NOT NULL
         ORDER BY registration_no DESC`,
     );
     return rows;

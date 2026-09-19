@@ -93,7 +93,7 @@ beforeAll(async () => {
         mdgStatus: user.mdg_status,
       };
     },
-    deleteRegistration: (id) => users.archive(id),
+    deleteRegistration: (id) => users.delete(id),
     exportUsers: async () => usersToCsv(await users.exportRows()),
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
@@ -614,7 +614,7 @@ describe('регистрация участника из дашборда', () =
     expect(r.status).toBe(404);
   });
 
-  test('убирает регистрацию мягко — запись остаётся в базе, но пропадает из списка', async () => {
+  test('удаляет регистрацию жёстко — записи не остаётся в базе', async () => {
     const created = await usersRepo.createManual({
       platform: 'telegram', byAdminId: 'дашборд', fio: 'Убрать Меня', phone: '+79001112235',
     });
@@ -624,8 +624,8 @@ describe('регистрация участника из дашборда', () =
     expect(r.status).toBe(200);
 
     expect(await usersRepo.listRegistered()).toEqual([]);
-    const { rows } = await db.query('SELECT archived_at FROM users WHERE id = $1', [created.id]);
-    expect(rows[0]!.archived_at).not.toBeNull();
+    const { rows } = await db.query('SELECT id FROM users WHERE id = $1', [created.id]);
+    expect(rows).toHaveLength(0);
   });
 
   test('повторное и несуществующее удаление отвечают 404', async () => {

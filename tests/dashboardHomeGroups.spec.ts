@@ -335,10 +335,18 @@ describe('в «Регистрации» видно, выдан ли набор, 
   });
 });
 
-describe('регистрацию можно убрать прямо из списка', () => {
-  test('у каждой строки есть кнопка «Убрать», тем же приёмом, что и у групп/участников/заявок', () => {
+describe('регистрацию можно удалить прямо из списка — жёстко, не архивируя', () => {
+  test('у каждой строки есть кнопка «Удалить», вайринг тот же, что у групп/участников/заявок', () => {
     const block = html.slice(html.indexOf('function renderRegistration'), html.indexOf('function renderRegistration') + 2400);
     expect(block).toContain('class="btn-quiet row-del"');
+    expect(block).toContain('🗑 Удалить');
     expect(block).toContain("wireRowEditing('#regBody', 'registration'");
+  });
+
+  test('подтверждение для registration явно предупреждает о безвозвратности, не как у остальных', () => {
+    const block = html.slice(html.indexOf('function wireRowEditing'), html.indexOf('function wireRowEditing') + 1600);
+    expect(block).toContain("kind === 'registration'");
+    expect(block).toContain('Удалить навсегда');
+    expect(block).toContain('Точно убрать');
   });
 });

@@ -25,7 +25,8 @@ const request = (patch: Partial<RequestWithUser> = {}): RequestWithUser => ({
   ...patch,
 });
 
-const lines = (r: RequestWithUser) => formatRequest(r).split('\n');
+const DASHBOARD_URL = 'http://5.23.48.25:8090/groups';
+const lines = (r: RequestWithUser) => formatRequest(r, DASHBOARD_URL).split('\n');
 
 describe('сообщение служителю о заявке', () => {
   test('район и возраст идут отдельными строками', () => {
@@ -39,39 +40,39 @@ describe('сообщение служителю о заявке', () => {
   });
 
   test('возраст показан категорией: анкета спрашивает её, а не число', () => {
-    expect(formatRequest(request({ age: '25-40' }))).toContain('25-40');
-    expect(formatRequest(request({ age: null }))).toContain('не указан');
+    expect(formatRequest(request({ age: '25-40' }), DASHBOARD_URL)).toContain('25-40');
+    expect(formatRequest(request({ age: null }), DASHBOARD_URL)).toContain('не указан');
   });
 
   test('телефон показан в читаемом виде', () => {
-    expect(formatRequest(request())).toContain('+7 900 123-45-67');
+    expect(formatRequest(request(), DASHBOARD_URL)).toContain('+7 900 123-45-67');
   });
 
   test('разметка жирным на месте, а текст участника экранирован', () => {
-    const text = formatRequest(request({ type: 'question', text: 'а если <b>так</b> & вот так?' }));
+    const text = formatRequest(request({ type: 'question', text: 'а если <b>так</b> & вот так?' }), DASHBOARD_URL);
     expect(text).toContain('<b>');
     expect(text).toContain('&lt;b&gt;так&lt;/b&gt; &amp; вот так?');
   });
 
   test('имя участника тоже экранируется', () => {
-    const text = formatRequest(request({ full_name: '<script> Иван' }));
+    const text = formatRequest(request({ full_name: '<script> Иван' }), DASHBOARD_URL);
     expect(text).toContain('&lt;script&gt;');
     expect(text).not.toContain('<script>');
   });
 
   test('текст участника подписан словом «Сообщение»', () => {
-    const text = formatRequest(request({ type: 'question', text: 'Когда выдают материалы?' }));
+    const text = formatRequest(request({ type: 'question', text: 'Когда выдают материалы?' }), DASHBOARD_URL);
     expect(text).toContain('Сообщение');
     expect(text).toContain('Когда выдают материалы?');
     expect(text).not.toContain('Текст:');
   });
 
   test('заявка без текста не показывает пустое сообщение', () => {
-    expect(formatRequest(request())).not.toContain('Сообщение:');
+    expect(formatRequest(request(), DASHBOARD_URL)).not.toContain('Сообщение:');
   });
 
   test('в заявке есть имя, телефон и подсказка, как её закрыть', () => {
-    const text = formatRequest(request());
+    const text = formatRequest(request(), DASHBOARD_URL);
     expect(text).toContain('Панов Дмитрий');
     expect(text).toContain('+7 900 123-45-67');
     // Закрывают заявку в дашборде: команды /close в боте больше нет.
@@ -80,7 +81,13 @@ describe('сообщение служителю о заявке', () => {
   });
 
   test('видно, из какого мессенджера пришла заявка', () => {
-    expect(formatRequest(request())).toContain('Telegram');
-    expect(formatRequest(request({ platform: 'max', username: null }))).toContain('MAX');
+    expect(formatRequest(request(), DASHBOARD_URL)).toContain('Telegram');
+    expect(formatRequest(request({ platform: 'max', username: null }), DASHBOARD_URL)).toContain('MAX');
+  });
+
+  test('есть ссылка на эту заявку в дашборде — по номеру, который совпадает с колонкой «№»', () => {
+    const text = formatRequest(request(), DASHBOARD_URL);
+    expect(text).toContain(`href="${DASHBOARD_URL}?request=7"`);
+    expect(text).toContain('Открыть заявку в дашборде');
   });
 });

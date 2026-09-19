@@ -278,3 +278,20 @@ describe('после загрузки страницы открыта вклад
     expect(html).toContain("view: 'requests'");
   });
 });
+
+describe('номер заявки виден в таблице и по нему можно перейти по ссылке', () => {
+  test('в шапке таблицы заявок есть колонка «№»', () => {
+    expect(html).toContain('data-key="id">№');
+  });
+
+  test('строка заявки несёт номер и в ячейке, и в data-атрибуте для перехода по ссылке', () => {
+    expect(html).toContain('data-req-id="${r.id}"');
+    expect(html).toContain('№${r.id}');
+  });
+
+  test('переход по «?request=» открывает вкладку «Заявки» и разворачивает нужную строку', () => {
+    expect(html).toContain('openRequestFromUrl');
+    expect(html).toContain("new URLSearchParams(location.search).get('request')");
+    expect(html).toContain('#reqBody tr.row[data-req-id="${id}"]');
+  });
+});

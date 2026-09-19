@@ -392,6 +392,9 @@ td.num-cell { font-family: var(--mono); font-variant-numeric: tabular-nums; colo
 tbody tr.row { cursor: pointer; }
 tbody tr.row .caret { display: inline-block; width: 9px; margin-right: 5px; color: var(--text-3); transition: transform .15s; }
 tbody tr.row.open .caret { transform: rotate(90deg); color: var(--text-2); }
+/* Подсветка строки, на которую перешли по ссылке из уведомления в Telegram/MAX. */
+tbody tr.row.flash td { animation: flash-row 1.2s ease-out 2; }
+@keyframes flash-row { 0% { background: var(--accent); } 100% { background: transparent; } }
 /* Отступ задаём только padding у ячейки, а margin у <dl> гасим в ноль.
    Иначе часть отступа приходит из браузерного значения по умолчанию для dl,
    а оно у браузеров разное: в Safari отступ был, в Chrome блок прилипал
@@ -920,6 +923,7 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
       <table>
         <thead>
           <tr>
+            <th class="sortable-req" data-key="id">№ <span class="arrow">↓</span></th>
             <th class="sortable-req" data-key="date">Дата <span class="arrow">↓</span></th>
             <th class="sortable-req" data-key="fio">Человек <span class="arrow">↓</span></th>
             <th class="sortable-req" data-key="phone">Телефон <span class="arrow">↓</span></th>
@@ -930,10 +934,10 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
           </tr>
         </thead>
         <tbody id="reqBody">
-          <tr class="sk-tr"><td colspan="7"><i class="sk"></i></td></tr>
-          <tr class="sk-tr"><td colspan="7"><i class="sk"></i></td></tr>
-          <tr class="sk-tr"><td colspan="7"><i class="sk"></i></td></tr>
-          <tr class="sk-tr"><td colspan="7"><i class="sk"></i></td></tr>
+          <tr class="sk-tr"><td colspan="8"><i class="sk"></i></td></tr>
+          <tr class="sk-tr"><td colspan="8"><i class="sk"></i></td></tr>
+          <tr class="sk-tr"><td colspan="8"><i class="sk"></i></td></tr>
+          <tr class="sk-tr"><td colspan="8"><i class="sk"></i></td></tr>
         </tbody>
       </table>
     </div>
@@ -1932,7 +1936,8 @@ function renderRequests() {
   });
   $('#reqBody').innerHTML = rows.map((r) => {
     const [cls, label] = REQUEST_PILL[r.status] || ['draft', r.status];
-    return `<tr class="row">
+    return `<tr class="row" data-req-id="${r.id}">
+      <td class="mono" style="color:var(--text-3)">№${r.id}</td>
       <td class="mono" style="color:var(--text-3);white-space:nowrap">${ruDate(r.date)}</td>
       <td class="strong"><span class="caret">›</span>${r.fio ? esc(r.fio) : '<span style="color:var(--text-3)">без имени</span>'}</td>
       <td>${phoneCell(r)}</td>
@@ -1941,7 +1946,7 @@ function renderRequests() {
       <td>${esc(r.recommended) || '—'}</td>
       <td><span class="pill ${cls}"><i></i>${esc(label)}</span></td>
     </tr>
-    <tr class="detail hidden"><td colspan="7">${requestDetails(r)}</td></tr>`;
+    <tr class="detail hidden"><td colspan="8">${requestDetails(r)}</td></tr>`;
   }).join('');
 
   $('#reqBody').querySelectorAll('tr.row').forEach((tr) => {
@@ -2644,4 +2649,26 @@ applyView();
 countUp = false;
 // Скелетоны сняты: дальше пустой блок значит «нет данных», а не «грузится».
 document.documentElement.dataset.ready = '';
+
+/*
+ * Ссылка из уведомления в Telegram/MAX: «?request=42» открывает вкладку «Заявки»
+ * сразу на нужной строке — раньше в уведомлении был только номер, а найти по нему
+ * заявку в дашборде было нечем (колонки «№» не было вовсе).
+ */
+(function openRequestFromUrl() {
+  const id = Number(new URLSearchParams(location.search).get('request'));
+  if (!id) return;
+
+  state.view = 'requests';
+  document.querySelectorAll('.nav button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.view === 'requests')));
+  applyView();
+
+  const tr = document.querySelector(`#reqBody tr.row[data-req-id="${id}"]`);
+  if (!tr) return;
+  tr.classList.add('open');
+  tr.nextElementSibling.classList.remove('hidden');
+  tr.scrollIntoView({ block: 'center' });
+  tr.classList.add('flash');
+  setTimeout(() => tr.classList.remove('flash'), 2400);
+})();
 </script>

@@ -18,3 +18,6 @@ export const i = (value: string | number | null | undefined): string => `<i>${es
 
 /** Моноширинный фрагмент: удобно для команд, которые служитель копирует. */
 export const code = (value: string | number | null | undefined): string => `<code>${esc(value)}</code>`;
+
+/** Ссылка с подписью. Адрес собирает код, а не участник, но экранируем и его — не помешает. */
+export const link = (url: string, text: string): string => `<a href="${esc(url)}">${esc(text)}</a>`;

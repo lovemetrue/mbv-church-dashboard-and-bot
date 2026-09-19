@@ -259,3 +259,22 @@ describe('регистрация участника из дашборда', () =
     expect(html).toContain('reg-qr');
   });
 });
+
+describe('декоративная кнопка города убрана из шапки', () => {
+  test('cityChip нет ни в разметке, ни в стилях', () => {
+    expect(html).not.toContain('cityChip');
+    expect(html).not.toContain('Санкт-Петербург</button>');
+  });
+});
+
+describe('после загрузки страницы открыта вкладка «Заявки»', () => {
+  test('вкладка «Заявки» отмечена выбранной, а не «Домашние группы»', () => {
+    expect(html).toContain('data-view="requests">Заявки</button>');
+    expect(html).toMatch(/aria-selected="true" data-view="requests"/);
+    expect(html).toMatch(/aria-selected="false" data-view="all"/);
+  });
+
+  test('начальный view в состоянии — requests', () => {
+    expect(html).toContain("view: 'requests'");
+  });
+});

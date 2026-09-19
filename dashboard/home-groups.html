@@ -465,10 +465,10 @@ a.tel:hover { color: var(--accent-hi); border-bottom-color: var(--accent); }
   /*
    * В правой группе оставляем только то, что работает и нужно с телефона:
    * выгрузку и «Выйти» (её вставляет сервер). «Весь период» — подсказка, а не
-   * фильтр; город и шестерёнка вообще заглушки; аватар — украшение. На 375px
+   * фильтр; шестерёнка вообще заглушка; аватар — украшение. На 375px
    * они выдавливали страницу за экран: 385px против 375px видимых.
    */
-  #cityChip, .topbar .icon-btn, #rangeBtn, .topbar-right .avatar { display: none; }
+  .topbar .icon-btn, #rangeBtn, .topbar-right .avatar { display: none; }
   /* Подпись чипа на узком экране рвётся на две строки и раздувает шапку:
      оставляем иконку — рядом только одна кнопка, спутать не с чем. */
   #exportLink span { display: none; }
@@ -574,8 +574,8 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
 
   <nav class="nav" role="tablist" aria-label="Разделы">
     <button role="tab" aria-selected="false" data-view="analytics">Аналитика</button>
-    <button role="tab" aria-selected="true" data-view="all">Домашние группы</button>
-    <button role="tab" aria-selected="false" data-view="requests">Заявки</button>
+    <button role="tab" aria-selected="false" data-view="all">Домашние группы</button>
+    <button role="tab" aria-selected="true" data-view="requests">Заявки</button>
     <button role="tab" aria-selected="false" data-view="campaign">40 дней</button>
     <button role="tab" aria-selected="false" data-view="coordinators">Участники</button>
     <button role="tab" aria-selected="false" data-view="registration">Регистрация</button>
@@ -591,10 +591,6 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
     <button class="chip" id="rangeBtn">
       <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></svg>
       <span id="rangeLabel">Весь период</span>
-    </button>
-    <button class="chip" id="cityChip">
-      <svg viewBox="0 0 24 24"><path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11Z"/><circle cx="12" cy="10" r="2.6"/></svg>
-      Санкт-Петербург
     </button>
     <button class="icon-btn" aria-label="Настройки">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-2.87 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.87-1.2l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15H4.5a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 11.5 4.1V4a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.87 1.2l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.9 11h.1a2 2 0 1 1 0 4Z"/></svg>
@@ -1213,7 +1209,7 @@ const MDG_STATUS_LABEL = {
 };
 
 const state = {
-  district: null, status: '', campaign: '', sort: 'people', dir: -1, view: 'all', request: null, groupId: null,
+  district: null, status: '', campaign: '', sort: 'people', dir: -1, view: 'requests', request: null, groupId: null,
   reqSort: 'date', reqDir: -1,
 };
 const $ = (s) => document.querySelector(s);

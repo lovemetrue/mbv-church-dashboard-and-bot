@@ -6,6 +6,7 @@ import {
   parseRegistrationForm, parseRequestForm, parseRequestStatus, parseRequestUpdate,
 } from './forms.js';
 import { loginPage } from './loginPage.js';
+import { registrationCardPage, type RegistrationCardInfo } from './registrationCard.js';
 import { SessionService } from './sessions.js';
 import { logger } from '../logger.js';
 
@@ -60,6 +61,8 @@ export interface DashboardDeps {
   createRegistration?: (input: unknown) => Promise<number>;
   /** QR для выдачи набора. null — такой регистрации нет. */
   registrationQr?: (id: number) => Promise<Buffer | null>;
+  /** Данные для печатной карточки регистрации (QR и все заполненные поля разом). */
+  registrationCard?: (id: number) => Promise<RegistrationCardInfo | null>;
   /** Выгрузка участников кампании в CSV. */
   exportUsers?: () => Promise<string>;
 }
@@ -402,6 +405,42 @@ export function createDashboardServer(deps: DashboardDeps) {
         }
         res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store' });
         res.end(png);
+        return;
+      }
+
+      /*
+       * Печатная карточка: QR и все заполненные данные одной страницей. Открыв
+       * голый QR (маршрут выше), служитель видел только штрихкод без имени и
+       * телефона — эта страница специально для того, чтобы распечатать или
+       * переслать всё сразу, как в подписи к фото в Telegram.
+       */
+      if (path === '/registration/card') {
+        if (req.method !== 'GET') {
+          send(res, 404, loginPage());
+          return;
+        }
+        if (!(await deps.auth.verify(sid))) {
+          send(res, 401, loginPage('Сессия истекла. Войдите заново.'));
+          return;
+        }
+        if (!deps.registrationCard) {
+          send(res, 404, loginPage());
+          return;
+        }
+
+        const cardIdRaw = url.searchParams.get('id') ?? '';
+        const cardId = Number(cardIdRaw);
+        if (!/^\d+$/.test(cardIdRaw) || !Number.isSafeInteger(cardId) || cardId <= 0) {
+          send(res, 400, 'Неверный номер участника.');
+          return;
+        }
+
+        const info = await deps.registrationCard(cardId);
+        if (!info) {
+          send(res, 404, 'Регистрация не найдена.');
+          return;
+        }
+        send(res, 200, registrationCardPage(info, `${MOUNT}/registration/qr?id=${cardId}`));
         return;
       }
 

@@ -295,3 +295,17 @@ describe('номер заявки виден в таблице и по нему 
     expect(html).toContain('#reqBody tr.row[data-req-id="${id}"]');
   });
 });
+
+describe('QR в дашборде ведёт на печатную карточку, а не на голый PNG', () => {
+  test('миниатюра в таблице «Регистрация» открывает карточку по клику', () => {
+    expect(html).toContain('registration/card?id=');
+    const block = html.slice(html.indexOf('function renderRegistration'), html.indexOf('function renderRegistration') + 900);
+    expect(block).toContain('href="${cardSrc}"');
+    expect(block).toContain('src="${qrSrc}"');
+  });
+
+  test('QR сразу после заведения регистрации тоже ссылается на карточку', () => {
+    const block = html.slice(html.indexOf('wireRegistrationForm'), html.indexOf('wireRegistrationForm') + 2200);
+    expect(block).toContain('registration/card?id=');
+  });
+});

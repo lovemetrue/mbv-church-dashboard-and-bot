@@ -82,6 +82,17 @@ beforeAll(async () => {
       if (!user?.registration_no) return null;
       return qrPng(`Регистрация №${user.registration_no}`);
     },
+    registrationCard: async (id) => {
+      const user = await users.findById(id);
+      if (!user?.registration_no) return null;
+      return {
+        registrationNo: user.registration_no,
+        fullName: user.full_name,
+        phone: user.phone,
+        church: user.church,
+        mdgStatus: user.mdg_status,
+      };
+    },
     exportUsers: async () => usersToCsv(await users.exportRows()),
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
@@ -573,6 +584,32 @@ describe('регистрация участника из дашборда', () =
   test('QR для несуществующей регистрации отвечает 404', async () => {
     const cookie = await login();
     const r = await fetch(`${base}/registration/qr?id=999999`, { headers: { cookie } });
+    expect(r.status).toBe(404);
+  });
+
+  test('печатная карточка несёт QR и все заполненные данные разом, а не только номер', async () => {
+    const created = await usersRepo.createManual({
+      platform: 'telegram', byAdminId: 'дашборд', fio: 'Сидорова Анна Петровна', phone: '+79001112234',
+      church: 'МБВ (Колизей)', mdgStatus: 'open',
+    });
+
+    const anon = await fetch(`${base}/registration/card?id=${created.id}`);
+    expect(anon.status).toBe(401);
+
+    const cookie = await login();
+    const r = await fetch(`${base}/registration/card?id=${created.id}`, { headers: { cookie } });
+    expect(r.status).toBe(200);
+    const html = await r.text();
+    expect(html).toContain('Сидорова Анна Петровна');
+    expect(html).toContain('+7 900 111-22-34');
+    expect(html).toContain('МБВ (Колизей)');
+    expect(html).toContain('готов открыть Малую группу');
+    expect(html).toContain(`registration/qr?id=${created.id}`);
+  });
+
+  test('печатная карточка для несуществующей регистрации отвечает 404', async () => {
+    const cookie = await login();
+    const r = await fetch(`${base}/registration/card?id=999999`, { headers: { cookie } });
     expect(r.status).toBe(404);
   });
 });

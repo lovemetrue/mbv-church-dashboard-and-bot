@@ -1645,13 +1645,16 @@ function renderCoordinators() {
 function renderRegistration() {
   $('#regBody').innerHTML = registeredUsers.map((u) => {
     const qrSrc = `${window.HG_BASE ?? './'}registration/qr?id=${u.id}`;
+    // Миниатюра ведёт не на голый PNG, а на печатную карточку: там же имя,
+    // телефон, церковь и заявка — всё, что нужно переслать или распечатать разом.
+    const cardSrc = `${window.HG_BASE ?? './'}registration/card?id=${u.id}`;
     return `<tr>
       <td class="mono">№${u.registration_no}</td>
       <td class="strong">${esc(u.full_name) || '—'}</td>
       <td>${u.phone ? `<a class="tel" href="tel:${esc(u.phone)}">${esc(fmtPhone(u.phone))}</a>` : '—'}</td>
       <td>${esc(u.church) || '—'}</td>
       <td>${u.mdg_status ? esc(MDG_STATUS_LABEL[u.mdg_status]) : '—'}</td>
-      <td><a href="${qrSrc}" target="_blank" rel="noopener"><img class="reg-qr" src="${qrSrc}" alt="QR №${u.registration_no}" loading="lazy"></a></td>
+      <td><a href="${cardSrc}" target="_blank" rel="noopener"><img class="reg-qr" src="${qrSrc}" alt="QR №${u.registration_no}" loading="lazy"></a></td>
     </tr>`;
   }).join('');
   $('#regFoot').textContent = `${registeredUsers.length} ${plural(registeredUsers.length, 'участник', 'участника', 'участников')}`;
@@ -2529,7 +2532,9 @@ wireForm('#coordinatorForm', '#coordinatorMsg', 'coordinator/create', 'Учас�
         const id = (await r.text()).trim();
         msg.className = 'form-msg ok';
         msg.textContent = 'Зарегистрирован. Покажите QR — служитель отсканирует его при выдаче набора.';
-        qrBox.innerHTML = `<img src="${(window.HG_BASE ?? './')}registration/qr?id=${id}" alt="QR регистрации">`;
+        const cardHref = `${(window.HG_BASE ?? './')}registration/card?id=${id}`;
+        qrBox.innerHTML = `<img src="${(window.HG_BASE ?? './')}registration/qr?id=${id}" alt="QR регистрации">
+          <p style="margin:10px 0 0"><a href="${cardHref}" target="_blank" rel="noopener">Открыть карточку со всеми данными — переслать или распечатать</a></p>`;
         form.reset();
       } else {
         msg.className = 'form-msg err';

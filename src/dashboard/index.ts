@@ -92,6 +92,17 @@ async function main(): Promise<void> {
       if (!user?.registration_no) return null;
       return qrPng(`Регистрация №${user.registration_no}`);
     },
+    registrationCard: async (id) => {
+      const user = await users.findById(id);
+      if (!user?.registration_no) return null;
+      return {
+        registrationNo: user.registration_no,
+        fullName: user.full_name,
+        phone: user.phone,
+        church: user.church,
+        mdgStatus: user.mdg_status,
+      };
+    },
     exportUsers: async () => usersToCsv(await users.exportRows()),
   });
 

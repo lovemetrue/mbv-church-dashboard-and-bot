@@ -20,13 +20,21 @@ export class FakePlatform implements Platform {
   readonly actionMenus: { chatId: string; commands: string[] }[] = [];
   readonly contactRequests: string[] = [];
   private readonly script = new Map<string, (SendError | null)[]>();
+  // Своя очередь для фото: у sendMessage и sendPhoto разное число вызовов на
+  // один и тот же chatId за ход диалога, и общая очередь сбивала бы позицию.
+  private readonly photoScript = new Map<string, (SendError | null)[]>();
   private handler?: (u: IncomingUpdate) => Promise<void>;
 
   constructor(readonly name: PlatformName = 'telegram') {}
 
-  /** Задаёт исходы последовательных отправок в этот чат: null это успех. */
+  /** Задаёт исходы последовательных текстовых отправок в этот чат: null это успех. */
   program(chatId: string, ...outcomes: (SendError | null)[]): void {
     this.script.set(chatId, [...outcomes]);
+  }
+
+  /** То же самое, но для sendPhoto — отдельно от текстовых сообщений. */
+  programPhoto(chatId: string, ...outcomes: (SendError | null)[]): void {
+    this.photoScript.set(chatId, [...outcomes]);
   }
 
   async start(): Promise<void> {}
@@ -65,6 +73,8 @@ export class FakePlatform implements Platform {
   }
 
   async sendPhoto(chatId: string, photo: OutFile, caption?: string): Promise<void> {
+    const planned = this.photoScript.get(chatId)?.shift() ?? null;
+    if (planned) throw planned;
     this.photos.push({ chatId, name: photo.name, size: photo.content.length, caption });
   }
 

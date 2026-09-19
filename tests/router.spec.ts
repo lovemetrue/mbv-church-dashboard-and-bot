@@ -3,7 +3,7 @@ import type { Pool } from 'pg';
 import { Router } from '../src/core/router.js';
 import { createDeps, type Deps } from '../src/deps.js';
 import { CB } from '../src/core/texts.js';
-import type { IncomingUpdate, PlatformName, Platform, UpdateCtx } from '../src/core/platform.js';
+import { SendError, type IncomingUpdate, type PlatformName, type Platform, type UpdateCtx } from '../src/core/platform.js';
 import type { Logger } from '../src/logger.js';
 import { FakePlatform } from './helpers/fakePlatform.js';
 import { seedUser, setupTestDb, truncateAll } from './helpers/testDb.js';
@@ -131,6 +131,20 @@ describe('регистрация через роутер', () => {
     expect(caption).toContain('ФИО: Иванов Иван Иванович');
     expect(caption).toContain('Телефон: +7 900 123-45-67');
     expect(caption).toContain('Заявка: веду Малую группу');
+  });
+
+  test('если фото с QR не отправилось, номер и все данные всё равно уходят текстом', async () => {
+    // Например, MAX отверг сообщение с фото: платформа не мешает разбору
+    // регистрации, но без подстраховки человек узнал бы только номер, а не всю
+    // сводку, которую в обычном случае несёт подпись к карточке.
+    tg.programPhoto(USER, new SendError('other', 'платформа отклонила фото'));
+    await registerLeader();
+
+    expect(tg.photos).toHaveLength(0);
+    const text = tg.textsTo(USER).join('\n');
+    expect(text).toContain('Ваш номер регистрации');
+    expect(text).toContain('ФИО: Иванов Иван Иванович');
+    expect(text).toContain('Заявка: веду Малую группу');
   });
 
   test('благодарность идёт после карточки регистрации с номером, а не перед ней', async () => {

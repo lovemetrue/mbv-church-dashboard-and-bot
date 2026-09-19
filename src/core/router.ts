@@ -296,8 +296,11 @@ export class Router {
       // текстом.
       this.deps.logger.error({ err, registrationNo }, 'не удалось отправить карточку регистрации');
       try {
+        // Без фото, но с теми же данными: человеку нужен не только номер,
+        // а полная сводка — так же, как если бы карточка отправилась.
         await platform.sendMessage(chatId, {
-          text: `${T.registeredTitle}\n\n${T.registrationNo(registrationNo)}`,
+          text: [T.registeredTitle, '', T.registrationNo(registrationNo), '', ...profileRows(draft), '', T.kitByQr(KIT_DATE)]
+            .join('\n'),
         });
       } catch (fallbackErr) {
         this.deps.logger.error({ err: fallbackErr, registrationNo }, 'не удалось отправить даже номер регистрации');

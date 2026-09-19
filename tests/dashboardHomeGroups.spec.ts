@@ -194,3 +194,68 @@ describe('фавикон', () => {
     expect(html).toContain("(window.HG_BASE ?? './') + 'assets/computer.png'");
   });
 });
+
+describe('в заявке видны ответы анкеты бота', () => {
+  test('церковь и статус по МДГ показаны в подробностях заявки', () => {
+    const block = html.slice(html.indexOf('function requestDetails'), html.indexOf('function requestDetails') + 800);
+    expect(block).toContain("['Церковь', r.church]");
+    expect(block).toContain('r.mdg_status');
+  });
+
+  test('подписи МДГ те же, что в боте', () => {
+    expect(html).toContain('const MDG_STATUS_LABEL');
+    expect(html).toContain('готов открыть Малую группу');
+  });
+});
+
+describe('«Куда направляем» — выбор из групп, а не свободный текст', () => {
+  test('поле собрано из списка домашних групп, а не набрано текстом', () => {
+    const block = html.slice(html.indexOf("name: 'recommended'"), html.indexOf("name: 'recommended'") + 200);
+    expect(block).toContain('RECOMMENDED_OPTIONS');
+    expect(block).toContain('pairs:');
+  });
+
+  test('пустой выбор возможен — рекомендация даётся не сразу', () => {
+    expect(html).toContain('— не рекомендовано —');
+  });
+
+  test('список составлен из групп плюс уже стоящие значения', () => {
+    expect(html).toContain('const RECOMMENDED_OPTIONS = [...new Set([');
+    expect(html).toContain('groups.map((g) => g.leader)');
+  });
+});
+
+describe('регистрация участника из дашборда', () => {
+  test('своя вкладка в навигации', () => {
+    expect(html).toContain('data-view="registration">Регистрация</button>');
+    expect(html).toContain("registration: 'Регистрация'");
+  });
+
+  test('таблица регистраций на своей вкладке, форма — в «Добавить»', () => {
+    expect(html).toContain('data-section="registration"');
+    expect(html).toContain('id="regBody"');
+    expect(html).toContain('function renderRegistration()');
+    expect(html).toContain('id="registrationForm"');
+  });
+
+  test('форма собрана из тех же вопросов, что и анкета бота', () => {
+    expect(html).toContain('const REGISTRATION_FIELDS');
+    expect(html).toContain("name: 'fio'");
+    expect(html).toContain("name: 'phone'");
+    expect(html).toContain("name: 'mdgStatus'");
+  });
+
+  test('QR показывается сразу на странице, без перезагрузки формы', () => {
+    expect(html).toContain('id="registrationQr"');
+    expect(html).toContain("'registration/create'");
+    expect(html).toContain('registration/qr?id=');
+    // Остальные формы дашборда перезагружают страницу после успеха — эта нет,
+    // иначе показанный QR тут же стёрло бы.
+    const block = html.slice(html.indexOf('wireRegistrationForm'), html.indexOf('wireRegistrationForm') + 1800);
+    expect(block).not.toContain('location.reload');
+  });
+
+  test('QR доступен и в общем списке регистраций, не только сразу после заведения', () => {
+    expect(html).toContain('reg-qr');
+  });
+});

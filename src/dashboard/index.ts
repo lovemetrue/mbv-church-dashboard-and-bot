@@ -1,12 +1,13 @@
 import { CoordinatorsRepo } from '../db/repos/coordinators.repo.js';
 import { GroupsRepo } from '../db/repos/groups.repo.js';
 import { RequestsRepo } from '../db/repos/requests.repo.js';
-import { UsersRepo } from '../db/repos/users.repo.js';
+import { UsersRepo, type ManualRegistrationInput } from '../db/repos/users.repo.js';
 import { usersToCsv } from '../core/csv.js';
 import { campaignStats } from './campaignStats.js';
 import { CampaignRepo } from '../db/repos/campaign.repo.js';
 import { DeliveriesRepo } from '../db/repos/deliveries.repo.js';
 import { createPool } from '../db/pool.js';
+import { qrPng } from '../core/qr.js';
 import { RedisSessionStore } from './redisStore.js';
 import { createDashboardServer } from './server.js';
 import { SessionService } from './sessions.js';
@@ -63,6 +64,7 @@ async function main(): Promise<void> {
       requests: await requests.forDashboard(),
       coordinators: await coordinators.listActive(),
       leaderCandidates: await users.leaderCandidates(),
+      users: await users.listRegistered(),
       campaign: await campaignStats({ users, requests, campaign, deliveries }, schedule),
     }),
     deleteGroup: async (id) => (await groups.archive(id)) !== null,
@@ -77,6 +79,19 @@ async function main(): Promise<void> {
     createCoordinator: async (input) => (await coordinators.create(input as never)).id,
     updateCoordinator: async (id, input) => (await coordinators.update(id, input as never)) !== null,
     deleteCoordinator: (id) => coordinators.archive(id),
+    // Своего чата с ботом у такого участника нет: платформа тут условная, только
+    // чтобы удовлетворить ограничение схемы. «дашборд» вместо id служителя — вход
+    // там по паролю, а не по учётке конкретного человека.
+    createRegistration: async (input) =>
+      (await users.createManual({ ...(input as ManualRegistrationInput), platform: 'telegram', byAdminId: 'дашборд' })).id,
+    // QR без диплинка: дашборд не знает, из какого он бота, а у зарегистрированного
+    // тут человека чата с ботом всё равно нет. Служитель сканирует его своим
+    // телефоном при выдаче набора — так же, как карточку регистрации из бота.
+    registrationQr: async (id) => {
+      const user = await users.findById(id);
+      if (!user?.registration_no) return null;
+      return qrPng(`Регистрация №${user.registration_no}`);
+    },
     exportUsers: async () => usersToCsv(await users.exportRows()),
   });
 

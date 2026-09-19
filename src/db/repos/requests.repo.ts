@@ -88,6 +88,9 @@ export interface DashboardRequest {
   /** Текст вопроса, если заявка пришла из бота. */
   text: string | null;
   origin: 'таблица' | 'бот' | 'ui';
+  /** Ответы из анкеты бота: какую церковь посещает и что выбрал про Малую группу. */
+  church: string | null;
+  mdg_status: MdgStatus | null;
 }
 
 /** Что можно заполнить в форме дашборда. */
@@ -262,6 +265,7 @@ export class RequestsRepo {
       extra: string | null; recommended: string | null; recommended_at: string | null;
       final_group: string | null; cancel_reason: string | null; attendance: string | null;
       type: RequestType; text: string | null; origin: 'таблица' | 'бот' | 'ui';
+      church: string | null; mdg_status: MdgStatus | null;
     }>(
       `SELECT r.id, r.group_id,
               coalesce(r.fio, u.full_name) AS fio,
@@ -274,7 +278,9 @@ export class RequestsRepo {
               coalesce(r.age, u.age::text) AS age,
               coalesce(r.place, u.location) AS place,
               r.source, r.ministry, r.note, r.extra, r.recommended, r.recommended_at,
-              r.final_group, r.cancel_reason, r.attendance, r.type, r.text, r.origin
+              r.final_group, r.cancel_reason, r.attendance, r.type, r.text, r.origin,
+              -- Ответы из анкеты бота: у заявок из таблицы церкви участника нет, будет null.
+              u.church, u.mdg_status
          FROM requests r
          LEFT JOIN users u ON u.id = r.user_id
         WHERE r.archived_at IS NULL

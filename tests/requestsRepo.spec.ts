@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import type { Pool } from 'pg';
 import { RequestsRepo } from '../src/db/repos/requests.repo.js';
 import { GroupsRepo } from '../src/db/repos/groups.repo.js';
-import { setupTestDb, truncateAll } from './helpers/testDb.js';
+import { seedUser, setupTestDb, truncateAll } from './helpers/testDb.js';
 
 /**
  * Связь заявки с группой (group_id): отдельный файл, потому что до сих пор
@@ -64,5 +64,21 @@ describe('заявка ссылается на домашнюю группу', (
 
     await requests.setStatus(id, 'В работе');
     expect((await requests.forDashboard())[0]!.group_id).toBe(group.id);
+  });
+});
+
+describe('ответы анкеты бота видны на заявке', () => {
+  test('церковь и статус по МДГ приходят от участника, а не пустуют', async () => {
+    const userId = await seedUser(db, { id: '900', church: 'МБВ (Колизей)', mdgStatus: 'open' });
+    const created = await requests.create(userId, 'lead_group');
+
+    const [row] = await requests.forDashboard();
+    expect(row).toMatchObject({ id: created.id, church: 'МБВ (Колизей)', mdg_status: 'open' });
+  });
+
+  test('у заявки из таблицы церкви (без участника) оба поля пустые', async () => {
+    await requests.createFromDashboard(REQUEST_MIN);
+    const [row] = await requests.forDashboard();
+    expect(row).toMatchObject({ church: null, mdg_status: null });
   });
 });

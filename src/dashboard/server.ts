@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import {
   parseCoordinatorForm, parseCoordinatorUpdate, parseGroupForm, parseGroupUpdate, parseId,
-  parseRequestForm, parseRequestStatus, parseRequestUpdate,
+  parseRegistrationForm, parseRequestForm, parseRequestStatus, parseRequestUpdate,
 } from './forms.js';
 import { loginPage } from './loginPage.js';
 import { SessionService } from './sessions.js';
@@ -19,11 +19,15 @@ export interface DashboardData {
   coordinators: readonly object[];
   /** Зарегистрированные участники, готовые открыть группу или предоставить дом. */
   leaderCandidates: readonly object[];
+  /** Все, кому присвоен номер регистрации: и через бота, и вручную из дашборда. */
+  users: readonly object[];
   /** Показатели кампании: то, что раньше показывала команда /stats в боте. */
   campaign?: object | null;
 }
 
-const EMPTY_DATA: DashboardData = { groups: [], requests: [], coordinators: [], leaderCandidates: [], campaign: null };
+const EMPTY_DATA: DashboardData = {
+  groups: [], requests: [], coordinators: [], leaderCandidates: [], users: [], campaign: null,
+};
 
 export interface DashboardDeps {
   auth: SessionService;
@@ -52,6 +56,10 @@ export interface DashboardDeps {
   updateCoordinator?: (id: number, input: unknown) => Promise<boolean>;
   /** Убрать координатора со страницы. false — его нет или уже убрали. */
   deleteCoordinator?: (id: number) => Promise<boolean>;
+  /** Зарегистрировать участника из дашборда. Возвращает id новой записи. */
+  createRegistration?: (input: unknown) => Promise<number>;
+  /** QR для выдачи набора. null — такой регистрации нет. */
+  registrationQr?: (id: number) => Promise<Buffer | null>;
   /** Выгрузка участников кампании в CSV. */
   exportUsers?: () => Promise<string>;
 }
@@ -334,6 +342,66 @@ export function createDashboardServer(deps: DashboardDeps) {
         const removed = await deps.deleteCoordinator(id.value);
         logger.info({ id: id.value, removed }, 'дашборд: участник убран');
         send(res, removed ? 200 : 404, removed ? 'ok' : 'Запись не найдена или уже убрана');
+        return;
+      }
+
+      /* Регистрация из дашборда — для тех, кто заполнил анкету на бумаге и своего
+         чата с ботом не имеет. QR отдаётся тут же, отдельным маршрутом: страница
+         показывает его сразу, без похода в чат бота. */
+      if (path === '/registration/create') {
+        if (req.method !== 'POST') {
+          send(res, 404, loginPage());
+          return;
+        }
+        if (!(await deps.auth.verify(sid))) {
+          send(res, 401, loginPage('Сессия истекла. Войдите заново.'));
+          return;
+        }
+        if (!deps.createRegistration) {
+          send(res, 404, loginPage());
+          return;
+        }
+
+        const parsed = parseRegistrationForm(new URLSearchParams(await readBody(req)));
+        if (!parsed.ok) {
+          send(res, 400, parsed.error);
+          return;
+        }
+
+        const id = await deps.createRegistration(parsed.value);
+        logger.info({ id }, 'дашборд: участник зарегистрирован');
+        send(res, 200, String(id));
+        return;
+      }
+
+      if (path === '/registration/qr') {
+        if (req.method !== 'GET') {
+          send(res, 404, loginPage());
+          return;
+        }
+        if (!(await deps.auth.verify(sid))) {
+          send(res, 401, loginPage('Сессия истекла. Войдите заново.'));
+          return;
+        }
+        if (!deps.registrationQr) {
+          send(res, 404, loginPage());
+          return;
+        }
+
+        const idRaw = url.searchParams.get('id') ?? '';
+        const id = Number(idRaw);
+        if (!/^\d+$/.test(idRaw) || !Number.isSafeInteger(id) || id <= 0) {
+          send(res, 400, 'Неверный номер участника.');
+          return;
+        }
+
+        const png = await deps.registrationQr(id);
+        if (!png) {
+          send(res, 404, 'Регистрация не найдена.');
+          return;
+        }
+        res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store' });
+        res.end(png);
         return;
       }
 

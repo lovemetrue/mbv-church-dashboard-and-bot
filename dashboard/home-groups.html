@@ -404,6 +404,10 @@ tbody tr.detail > td { padding: 16px; background: var(--surface-2); }
 .detail-grid .wide { grid-column: 1 / -1; }
 a.tel { color: var(--text); text-decoration: none; border-bottom: 1px solid var(--border-strong); white-space: nowrap; }
 a.tel:hover { color: var(--accent-hi); border-bottom-color: var(--accent); }
+/* Миниатюра QR в списке регистраций: видна без клика, полный размер — по клику
+   (target="_blank"), удобно быстро показать человеку на планшете. */
+.reg-qr { width: 40px; height: 40px; border-radius: 6px; display: block; background: #fff; padding: 2px; }
+#registrationQr img { width: 220px; height: 220px; border-radius: 10px; background: #fff; padding: 8px; margin-top: 10px; }
 
 @media (max-width: 1180px) {
   .kpis { grid-template-columns: repeat(3, 1fr); }
@@ -574,6 +578,7 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
     <button role="tab" aria-selected="false" data-view="requests">Заявки</button>
     <button role="tab" aria-selected="false" data-view="campaign">40 дней</button>
     <button role="tab" aria-selected="false" data-view="coordinators">Участники</button>
+    <button role="tab" aria-selected="false" data-view="registration">Регистрация</button>
     <button role="tab" aria-selected="false" data-view="new">Добавить</button>
   </nav>
 
@@ -986,6 +991,23 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
       </div>
     </form>
   </section>
+
+  <section class="card form-card" data-section="new">
+    <div class="card-head" style="padding:0">
+      <div>
+        <h2 class="card-title">Новая регистрация</h2>
+        <p class="card-sub">Для тех, кто заполнил анкету на бумаге и своего чата с ботом не имеет — QR появится сразу здесь</p>
+      </div>
+    </div>
+    <form id="registrationForm" autocomplete="off">
+      <div id="registrationFields"></div>
+      <div class="form-foot">
+        <button class="btn-primary" type="submit">Зарегистрировать</button>
+        <span class="form-msg" id="registrationMsg"></span>
+      </div>
+      <div id="registrationQr"></div>
+    </form>
+  </section>
   <!-- 40-дневная кампания ------------------------------------------------- -->
   <section class="kpis" data-section="campaign">
     <div class="card kpi">
@@ -1102,6 +1124,38 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
     </div>
     <div class="table-foot" id="coordFoot"></div>
   </section>
+
+  <!-- Регистрация ---------------------------------------------------------
+       Для тех, кто заполнил анкету на бумаге и своего чата с ботом не имеет —
+       например, регистрация с планшета на месте. QR показывается тут же на
+       странице: служитель сканирует его своим телефоном при выдаче набора. -->
+  <section class="card" data-section="registration">
+    <div class="card-head">
+      <div>
+        <h2 class="card-title">Регистрация</h2>
+        <p class="card-sub" id="regSub">Участники кампании</p>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>№</th>
+            <th>ФИО</th>
+            <th>Телефон</th>
+            <th>Церковь</th>
+            <th>Малая группа</th>
+            <th>QR</th>
+          </tr>
+        </thead>
+        <tbody id="regBody">
+          <tr class="sk-tr"><td colspan="6"><i class="sk"></i></td></tr>
+          <tr class="sk-tr"><td colspan="6"><i class="sk"></i></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-foot" id="regFoot"></div>
+  </section>
 </main>
 
 <div id="tip" role="status"></div>
@@ -1144,6 +1198,19 @@ const REQUEST_PILL = {
 };
 
 const MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+
+/**
+ * Что человек выбрал в анкете бота про Малую группу — про одного человека,
+ * в единственном числе. Не путать с MDG_LABEL ниже: та же анкета, но для
+ * легенды графика по кампании нужна была множественная форма («Готовы…»).
+ */
+const MDG_STATUS_LABEL = {
+  open: 'готов открыть Малую группу',
+  home: 'готов предоставить свой дом для Малой группы',
+  join: 'хочет присоединиться к Малой группе',
+  member: 'уже состоит в Малой группе',
+  leader: 'ведёт Малую группу',
+};
 
 const state = {
   district: null, status: '', campaign: '', sort: 'people', dir: -1, view: 'all', request: null, groupId: null,
@@ -1574,6 +1641,22 @@ function renderCoordinators() {
   $('#coordFoot').textContent = `${coordinators.length} ${plural(coordinators.length, 'участник', 'участника', 'участников')}`;
 }
 
+/* ── регистрация ──────────────────────────────────────────────────────── */
+function renderRegistration() {
+  $('#regBody').innerHTML = registeredUsers.map((u) => {
+    const qrSrc = `${window.HG_BASE ?? './'}registration/qr?id=${u.id}`;
+    return `<tr>
+      <td class="mono">№${u.registration_no}</td>
+      <td class="strong">${esc(u.full_name) || '—'}</td>
+      <td>${u.phone ? `<a class="tel" href="tel:${esc(u.phone)}">${esc(fmtPhone(u.phone))}</a>` : '—'}</td>
+      <td>${esc(u.church) || '—'}</td>
+      <td>${u.mdg_status ? esc(MDG_STATUS_LABEL[u.mdg_status]) : '—'}</td>
+      <td><a href="${qrSrc}" target="_blank" rel="noopener"><img class="reg-qr" src="${qrSrc}" alt="QR №${u.registration_no}" loading="lazy"></a></td>
+    </tr>`;
+  }).join('');
+  $('#regFoot').textContent = `${registeredUsers.length} ${plural(registeredUsers.length, 'участник', 'участника', 'участников')}`;
+}
+
 /* ── сборка ───────────────────────────────────────────────────────────── */
 
 /* ── заявки ───────────────────────────────────────────────────────────────
@@ -1582,6 +1665,7 @@ function renderCoordinators() {
    это отдельный поток работы, а не срез по группам.                        */
 const requests = DATA.requests ?? [];
 const coordinators = DATA.coordinators ?? [];
+const registeredUsers = DATA.users ?? [];
 
 /**
  * Варианты для «Ответственный»: список координаторов плюс — если текущее
@@ -1612,6 +1696,10 @@ function requestDetails(r) {
     // Заявка из бота, где человек не дошёл до вопроса об имени: строка в списке пустая,
     // и без пояснения непонятно, чья она.
     ['Откуда заявка', r.origin === 'бот' ? 'из бота' : r.origin === 'ui' ? 'заведена в дашборде' : 'из таблицы церкви'],
+    // Ответы из анкеты бота: какую церковь посещает и что выбрал про Малую группу.
+    // У заявок из таблицы церкви участника в боте нет — оба поля пустые.
+    ['Церковь', r.church],
+    ['Малая группа', r.mdg_status ? MDG_STATUS_LABEL[r.mdg_status] : null],
     ['Возраст', r.age],
     ['Источник', r.source],
     ['Служение', r.ministry],
@@ -1958,6 +2046,7 @@ function renderAll() {
 
   renderTable();
   renderCoordinators();
+  renderRegistration();
 
   const note = $('#filterNote');
   if (state.district) {
@@ -2132,6 +2221,14 @@ const RESPONSIBLE_OPTIONS = [...new Set([
   ...requests.map((r) => r.responsible).filter(Boolean),
 ])];
 
+/* «Куда направляем» — выбор из домашних групп, а не свободный текст: опечатка тут
+   означает, что человека отправят не туда. Плюс уже стоящие значения, которых нет
+   среди действующих групп (группа закрылась, но запись остаётся читаемой). */
+const RECOMMENDED_OPTIONS = [...new Set([
+  ...groups.map((g) => g.leader),
+  ...requests.map((r) => r.recommended).filter(Boolean),
+])];
+
 const REQUEST_FIELDS = [
   { name: 'fio', label: 'ФИО', required: true, wide: true, from: 'fio', placeholder: 'Петров Пётр Петрович' },
   { name: 'type', label: 'О чём заявка', required: true, pairs: FORM_REQUEST_TYPES, from: 'type' },
@@ -2146,7 +2243,8 @@ const REQUEST_FIELDS = [
   { name: 'source', label: 'Источник заявки', from: 'source', placeholder: 'Сайт церкви' },
   { name: 'ministry', label: 'Служение', from: 'ministry', placeholder: 'Колизей 13:00' },
   { name: 'requestedAt', label: 'Дата заявки', type: 'date', from: 'date' },
-  { name: 'recommended', label: 'Рекомендованная группа', from: 'recommended' },
+  { name: 'recommended', label: 'Рекомендованная группа',
+    pairs: [['', '— не рекомендовано —'], ...RECOMMENDED_OPTIONS.map((n) => [n, n])], from: 'recommended' },
   { name: 'recommendedAt', label: 'Дата рекомендации', type: 'date', from: 'recommended_at' },
   { name: 'finalGroup', label: 'Ходит в группу', from: 'final_group' },
   { name: 'cancelReason', label: 'Причина аннулирования', from: 'cancel_reason' },
@@ -2158,6 +2256,19 @@ const REQUEST_FIELDS = [
 const COORDINATOR_FIELDS = [
   { name: 'name', label: 'ФИО', required: true, wide: true, from: 'name', placeholder: 'Петрова Мария' },
   { name: 'role', label: 'Роль', required: true, wide: true, from: 'role', placeholder: 'Координатор малых групп' },
+];
+
+/* Для тех, кто заполнил анкету на бумаге: те же вопросы, что задаёт бот, но
+   своего чата с ботом у такого участника нет — регистрация только отсюда. */
+const REGISTRATION_FIELDS = [
+  { name: 'fio', label: 'ФИО', required: true, wide: true, from: 'full_name', placeholder: 'Петрова Мария Ивановна' },
+  { name: 'phone', label: 'Телефон', required: true, from: 'phone', placeholder: '+7 900 111-22-33' },
+  { name: 'church', label: 'Церковь', from: 'church', placeholder: 'МБВ (Колизей)' },
+  { name: 'mdgStatus', label: 'Малая группа',
+    pairs: [['', '— не спрошено —'], ...Object.entries(MDG_STATUS_LABEL).map(([k, v]) => [k, v])], from: 'mdg_status' },
+  { name: 'location', label: 'Район', from: 'location', placeholder: 'Приморский' },
+  { name: 'age', label: 'Возраст', from: 'age', placeholder: '35-50' },
+  { name: 'comment', label: 'Комментарий', type: 'textarea', wide: true, from: 'comment' },
 ];
 
 /** Разметка одного поля с подставленным значением. */
@@ -2381,10 +2492,57 @@ $('#groupFields').innerHTML = formFieldsHtml(GROUP_FIELDS, null, 'g');
 wireLeaderCandidatePicker($('#groupForm'));
 $('#requestFields').innerHTML = formFieldsHtml(REQUEST_FIELDS, null, 'r');
 $('#coordinatorFields').innerHTML = formFieldsHtml(COORDINATOR_FIELDS, null, 'c');
+$('#registrationFields').innerHTML = formFieldsHtml(REGISTRATION_FIELDS, null, 'reg');
 
 wireForm('#groupForm', '#groupMsg', 'group/create', 'Группа добавлена.');
 wireForm('#requestForm', '#requestMsg', 'request/create', 'Заявка добавлена.');
 wireForm('#coordinatorForm', '#coordinatorMsg', 'coordinator/create', 'Участник добавлен.');
+
+/*
+ * Регистрация не перезагружает страницу, как остальные формы: QR нужен сразу же,
+ * на экране, чтобы показать его человеку с планшета — reload его тут же стёр бы.
+ * Список на вкладке «Регистрация» просто останется неактуальным до обновления
+ * страницы, это ожидаемо.
+ */
+(function wireRegistrationForm() {
+  const form = $('#registrationForm');
+  const msg = $('#registrationMsg');
+  const qrBox = $('#registrationQr');
+  if (!form) return;
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const button = form.querySelector('button[type="submit"]');
+    button.disabled = true;
+    msg.className = 'form-msg';
+    msg.textContent = 'Регистрируем…';
+    qrBox.innerHTML = '';
+
+    try {
+      const r = await fetch((window.HG_BASE ?? './') + 'registration/create', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams(new FormData(form)),
+      });
+      if (r.ok) {
+        const id = (await r.text()).trim();
+        msg.className = 'form-msg ok';
+        msg.textContent = 'Зарегистрирован. Покажите QR — служитель отсканирует его при выдаче набора.';
+        qrBox.innerHTML = `<img src="${(window.HG_BASE ?? './')}registration/qr?id=${id}" alt="QR регистрации">`;
+        form.reset();
+      } else {
+        msg.className = 'form-msg err';
+        msg.textContent = r.status === 401
+          ? 'Сессия истекла — обновите страницу и войдите заново.'
+          : (await r.text()) || `Не получилось сохранить (${r.status}).`;
+      }
+    } catch {
+      msg.className = 'form-msg err';
+      msg.textContent = 'Нет связи с сервером.';
+    }
+    button.disabled = false;
+  };
+})();
 
 /* Какие секции видны на выбранной вкладке.
    Заявки — отдельный поток: показываются только на своей вкладке, и там не место
@@ -2415,6 +2573,7 @@ const PAGE_TITLES = {
   requests: 'Заявки',
   campaign: '40 дней',
   coordinators: 'Участники',
+  registration: 'Регистрация',
   new: 'Добавить',
 };
 
@@ -2428,7 +2587,7 @@ function applyView() {
   renderEpigraph();
   // Заявки и формы — отдельные потоки: показываются только на своих вкладках,
   // и там не место показателям по группам.
-  const EXCLUSIVE = ['requests', 'new', 'campaign', 'coordinators'];
+  const EXCLUSIVE = ['requests', 'new', 'campaign', 'coordinators', 'registration'];
   const exclusive = EXCLUSIVE.includes(state.view) ? state.view : null;
   document.querySelectorAll('[data-section]').forEach((s) => {
     const tags = s.dataset.section.split(' ');

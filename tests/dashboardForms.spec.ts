@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'vitest';
-import { parseCoordinatorForm, parseCoordinatorUpdate, parseGroupForm, parseRequestForm } from '../src/dashboard/forms.js';
+import {
+  parseCoordinatorForm, parseCoordinatorUpdate, parseGroupForm, parseRegistrationForm, parseRequestForm,
+} from '../src/dashboard/forms.js';
 
 const form = (o: Record<string, string>) => new URLSearchParams(o);
 
@@ -172,5 +174,44 @@ describe('форма участника (координатора)', () => {
     const r = parseCoordinatorUpdate(form({ id: '5', name: 'Петрова Мария', role: 'Координатор' }));
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.value).toEqual({ id: 5, input: { name: 'Петрова Мария', role: 'Координатор' } });
+  });
+});
+
+describe('форма регистрации участника (для тех, у кого нет чата с ботом)', () => {
+  test('ФИО и телефон — минимум, которого достаточно', () => {
+    const r = parseRegistrationForm(form({ fio: 'Петрова Мария', phone: '+7 900 111-22-33' }));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value).toMatchObject({ fio: 'Петрова Мария', phone: '+79001112233' });
+  });
+
+  test('без ФИО не принимается', () => {
+    const r = parseRegistrationForm(form({ phone: '+79001112233' }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain('ФИО');
+  });
+
+  test('без телефона не принимается: по нему опознают человека при выдаче набора', () => {
+    const r = parseRegistrationForm(form({ fio: 'Петрова Мария' }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain('телефон');
+  });
+
+  test('церковь и статус по МДГ — как в анкете бота', () => {
+    const r = parseRegistrationForm(form({
+      fio: 'Петрова Мария', phone: '+79001112233', church: 'МБВ (Колизей)', mdgStatus: 'open',
+    }));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value).toMatchObject({ church: 'МБВ (Колизей)', mdgStatus: 'open' });
+  });
+
+  test('придуманный статус по МДГ отвергается', () => {
+    const r = parseRegistrationForm(form({ fio: 'Петрова Мария', phone: '+79001112233', mdgStatus: 'придумано' }));
+    expect(r.ok).toBe(false);
+  });
+
+  test('статус по МДГ можно не выбирать', () => {
+    const r = parseRegistrationForm(form({ fio: 'Петрова Мария', phone: '+79001112233' }));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.mdgStatus).toBeUndefined();
   });
 });

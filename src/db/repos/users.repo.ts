@@ -47,6 +47,32 @@ export interface LeaderCandidate {
   age: string | null;
 }
 
+/** Что можно заполнить, регистрируя человека вручную — из дашборда или командой служителя. */
+export interface ManualRegistrationInput {
+  fio: string;
+  phone: string;
+  church?: string;
+  mdgStatus?: MdgStatus;
+  location?: string;
+  age?: string;
+  preferredContact?: string;
+  comment?: string;
+}
+
+/** Строка списка регистраций для дашборда: номер, ответы анкеты и статус выдачи набора. */
+export interface RegisteredParticipant {
+  id: number;
+  registration_no: number;
+  full_name: string | null;
+  phone: string | null;
+  church: string | null;
+  mdg_status: MdgStatus | null;
+  registered_at: Date;
+  /** У кого чата с ботом нет — не бот, а служитель завёл. */
+  has_chat: boolean;
+  kit_issued_at: Date | null;
+}
+
 /** Соответствие полей анкеты колонкам: список закрытый, поэтому SQL собирается безопасно. */
 const COLUMNS: Record<keyof ProfilePatch, string> = {
   fio: 'full_name',
@@ -174,25 +200,20 @@ export class UsersRepo {
   /**
    * Участник, которого заводит служитель: своего чата с ботом у него нет,
    * поэтому platform_user_id синтетический, а chat_id пустой.
+   *
+   * Номер регистрации берём из последовательности один раз через CTE и используем
+   * и для platform_user_id, и для registration_no — раньше здесь стояло два
+   * отдельных nextval() на одну и ту же последовательность, и каждая ручная
+   * регистрация съедала лишний номер, оставляя дыру в нумерации у бота.
    */
-  async createManual(input: {
-    platform: PlatformName;
-    byAdminId: string;
-    fio: string;
-    phone: string;
-    church?: string;
-    mdgStatus?: MdgStatus;
-    location?: string;
-    age?: string;
-    preferredContact?: string;
-    comment?: string;
-  }): Promise<UserRow> {
+  async createManual(input: ManualRegistrationInput & { platform: PlatformName; byAdminId: string }): Promise<UserRow> {
     const { rows } = await this.db.query<UserRow>(
-      `INSERT INTO users (platform, platform_user_id, chat_id, full_name, phone, church, mdg_status,
+      `WITH seq AS (SELECT nextval('registration_no_seq')::int AS no)
+       INSERT INTO users (platform, platform_user_id, chat_id, full_name, phone, church, mdg_status,
                           location, age, preferred_contact, admin_comment, registered_by,
                           registration_no, registered_at, complete, consent_at)
-       VALUES ($1, 'manual:' || nextval('registration_no_seq')::text, '', $2, $3, $4, $5, $6, $7, $8, $9, $10,
-               nextval('registration_no_seq')::int, now(), true, now())
+       SELECT $1, 'manual:' || no, '', $2, $3, $4, $5, $6, $7, $8, $9, $10, no, now(), true, now()
+         FROM seq
        RETURNING *`,
       [
         input.platform,
@@ -285,6 +306,18 @@ export class UsersRepo {
   async exportRows(): Promise<UserRow[]> {
     const { rows } = await this.db.query<UserRow>(
       `SELECT * FROM users WHERE registration_no IS NOT NULL ORDER BY registration_no`,
+    );
+    return rows;
+  }
+
+  /** Список регистраций для дашборда: свежие сверху, чтобы только что заведённая была видна сразу. */
+  async listRegistered(): Promise<RegisteredParticipant[]> {
+    const { rows } = await this.db.query<RegisteredParticipant>(
+      `SELECT id, registration_no, full_name, phone, church, mdg_status, registered_at,
+              chat_id <> '' AS has_chat, kit_issued_at
+         FROM users
+        WHERE registration_no IS NOT NULL
+        ORDER BY registration_no DESC`,
     );
     return rows;
   }

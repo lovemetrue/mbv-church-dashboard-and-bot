@@ -9,7 +9,10 @@ import { normalizePhone } from '../core/phone.js';
 import { REQUEST_STATUSES, type RequestInput, type RequestStatus } from '../db/repos/requests.repo.js';
 import type { GroupInput } from '../db/repos/groups.repo.js';
 import type { CoordinatorInput } from '../db/repos/coordinators.repo.js';
-import type { RequestType } from '../core/fsm.js';
+import type { ManualRegistrationInput } from '../db/repos/users.repo.js';
+import type { MdgStatus, RequestType } from '../core/fsm.js';
+
+const MDG_STATUSES: readonly MdgStatus[] = ['open', 'home', 'join', 'member', 'leader'];
 
 /**
  * Разбор форм дашборда.
@@ -227,4 +230,35 @@ export function parseCoordinatorUpdate(form: URLSearchParams): Parsed<{ id: numb
   const parsed = parseCoordinatorForm(form);
   if (!parsed.ok) return parsed;
   return { ok: true, value: { id: id.value, input: parsed.value } };
+}
+
+/**
+ * Регистрация участника кампании из дашборда — для тех, кто заполнил анкету
+ * на бумаге и своего чата с ботом не имеет. Телефон обязателен: это то, по чему
+ * служитель узнает человека при выдаче набора, если QR потерян.
+ */
+export function parseRegistrationForm(form: URLSearchParams): Parsed<ManualRegistrationInput> {
+  const fio = text(form, 'fio');
+  if (!fio) return { ok: false, error: 'Укажите ФИО.' };
+
+  const parsedPhone = phone(form).phone;
+  if (!parsedPhone) return { ok: false, error: 'Укажите телефон.' };
+
+  const mdgStatusRaw = form.get('mdgStatus')?.trim();
+  const mdgStatus = mdgStatusRaw ? oneOf(form, 'mdgStatus', MDG_STATUSES) : undefined;
+  if (mdgStatusRaw && !mdgStatus) return { ok: false, error: 'Малая группа выбирается из списка.' };
+
+  return {
+    ok: true,
+    value: {
+      fio,
+      phone: parsedPhone,
+      church: text(form, 'church') ?? undefined,
+      mdgStatus: mdgStatus ?? undefined,
+      location: text(form, 'location') ?? undefined,
+      age: text(form, 'age') ?? undefined,
+      preferredContact: text(form, 'preferredContact') ?? undefined,
+      comment: text(form, 'comment') ?? undefined,
+    },
+  };
 }

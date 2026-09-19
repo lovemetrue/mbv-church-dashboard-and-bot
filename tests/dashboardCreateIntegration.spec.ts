@@ -6,8 +6,9 @@ import { SessionService, type SessionStore } from '../src/dashboard/sessions.js'
 import { CoordinatorsRepo } from '../src/db/repos/coordinators.repo.js';
 import { GroupsRepo } from '../src/db/repos/groups.repo.js';
 import { RequestsRepo } from '../src/db/repos/requests.repo.js';
-import { UsersRepo } from '../src/db/repos/users.repo.js';
+import { UsersRepo, type ManualRegistrationInput } from '../src/db/repos/users.repo.js';
 import { usersToCsv } from '../src/core/csv.js';
+import { qrPng } from '../src/core/qr.js';
 import { setupTestDb, truncateAll } from './helpers/testDb.js';
 
 /**
@@ -21,6 +22,7 @@ let htmlPath: string;
 let requests: RequestsRepo;
 let groupsRepo: GroupsRepo;
 let coordinatorsRepo: CoordinatorsRepo;
+let usersRepo: UsersRepo;
 
 function memoryStore(): SessionStore {
   const data = new Map<string, string>();
@@ -49,6 +51,7 @@ beforeAll(async () => {
   const coordinators = new CoordinatorsRepo(db);
   coordinatorsRepo = coordinators;
   const users = new UsersRepo(db);
+  usersRepo = users;
 
   server = createDashboardServer({
     auth: new SessionService(memoryStore(), { password: 'пароль-для-теста', ttlSeconds: 600, maxAttempts: 5 }),
@@ -60,6 +63,7 @@ beforeAll(async () => {
       requests: await requests.forDashboard(),
       coordinators: await coordinators.listActive(),
       leaderCandidates: await users.leaderCandidates(),
+      users: await users.listRegistered(),
     }),
     createGroup: async (input) => (await groups.create(input as never, 'ui')).id,
     createRequest: (input) => requests.createFromDashboard(input as never),
@@ -71,6 +75,13 @@ beforeAll(async () => {
     createCoordinator: async (input) => (await coordinators.create(input as never)).id,
     updateCoordinator: async (id, input) => (await coordinators.update(id, input as never)) !== null,
     deleteCoordinator: (id) => coordinators.archive(id),
+    createRegistration: async (input) =>
+      (await users.createManual({ ...(input as ManualRegistrationInput), platform: 'telegram', byAdminId: 'дашборд' })).id,
+    registrationQr: async (id) => {
+      const user = await users.findById(id);
+      if (!user?.registration_no) return null;
+      return qrPng(`Регистрация №${user.registration_no}`);
+    },
     exportUsers: async () => usersToCsv(await users.exportRows()),
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
@@ -216,6 +227,17 @@ describe('форма заявки пишет в базу', () => {
 
     const html = await (await fetch(base, { headers: { cookie } })).text();
     expect(html).toContain('Петров Пётр Петрович');
+  });
+
+  test('заявка бота несёт ответы анкеты — церковь и статус по МДГ', async () => {
+    const cookie = await login();
+    const { seedUser } = await import('./helpers/testDb.js');
+    const userId = await seedUser(db, { id: '333', church: 'МБВ (Колизей)', mdgStatus: 'open' });
+    await requests.create(userId, 'lead_group');
+
+    const html = await (await fetch(base, { headers: { cookie } })).text();
+    expect(html).toContain('МБВ (Колизей)');
+    expect(html).toContain('"mdg_status":"open"');
   });
 });
 
@@ -492,6 +514,65 @@ describe('фавикон', () => {
 
   test('другой файл под /assets не отдаётся: маршрут знает только про иконку', async () => {
     const r = await fetch(`${base}/assets/other.png`);
+    expect(r.status).toBe(404);
+  });
+});
+
+describe('регистрация участника из дашборда', () => {
+  test('заведённый вручную участник получает номер и попадает в базу', async () => {
+    const cookie = await login();
+    const r = await post('/registration/create', {
+      fio: 'Петрова Мария Ивановна', phone: '+7 900 111-22-33', church: 'МБВ (Колизей)', mdgStatus: 'open',
+    }, cookie);
+    expect(r.status).toBe(200);
+
+    const { rows } = await db.query('SELECT * FROM users WHERE registration_no IS NOT NULL');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      full_name: 'Петрова Мария Ивановна',
+      phone: '+79001112233',
+      church: 'МБВ (Колизей)',
+      mdg_status: 'open',
+      chat_id: '',
+      complete: true,
+    });
+  });
+
+  test('отказ формы ничего не пишет', async () => {
+    const cookie = await login();
+    const r = await post('/registration/create', { fio: 'Кто-то' }, cookie);
+    expect(r.status).toBe(400);
+    const { rows } = await db.query('SELECT count(*)::int AS n FROM users');
+    expect(rows[0]).toMatchObject({ n: 0 });
+  });
+
+  test('без сессии не регистрирует', async () => {
+    const r = await fetch(`${base}/registration/create`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ fio: 'Кто-то', phone: '+79001112233' }),
+    });
+    expect(r.status).toBe(401);
+  });
+
+  test('QR отдаётся картинкой и виден только вошедшему', async () => {
+    const created = await usersRepo.createManual({
+      platform: 'telegram', byAdminId: 'дашборд', fio: 'Сидорова Анна', phone: '+79001112234',
+    });
+
+    const anon = await fetch(`${base}/registration/qr?id=${created.id}`);
+    expect(anon.status).toBe(401);
+
+    const cookie = await login();
+    const r = await fetch(`${base}/registration/qr?id=${created.id}`, { headers: { cookie } });
+    expect(r.status).toBe(200);
+    expect(r.headers.get('content-type')).toBe('image/png');
+    expect((await r.arrayBuffer()).byteLength).toBeGreaterThan(0);
+  });
+
+  test('QR для несуществующей регистрации отвечает 404', async () => {
+    const cookie = await login();
+    const r = await fetch(`${base}/registration/qr?id=999999`, { headers: { cookie } });
     expect(r.status).toBe(404);
   });
 });

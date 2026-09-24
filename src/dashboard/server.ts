@@ -181,6 +181,26 @@ export function createDashboardServer(deps: DashboardDeps) {
         return;
       }
 
+      // Эмблема церкви на печатной карточке регистрации (см. ниже) — в отличие от
+      // фавикона нужна только там, а та страница и так за паролем, поэтому здесь
+      // проверяем сессию, а не отдаём всем подряд.
+      if (path === '/assets/church-logo.png') {
+        if (!(await deps.auth.verify(sid))) {
+          res.writeHead(401);
+          res.end();
+          return;
+        }
+        try {
+          const png = await readFile(join(dirname(deps.htmlPath), 'assets', 'church-logo.png'));
+          res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store' });
+          res.end(png);
+        } catch {
+          res.writeHead(404);
+          res.end();
+        }
+        return;
+      }
+
       if (req.method === 'POST' && path === '/login') {
         const body = await readBody(req);
         const password = new URLSearchParams(body).get('password') ?? '';
@@ -442,7 +462,7 @@ export function createDashboardServer(deps: DashboardDeps) {
           send(res, 404, 'Регистрация не найдена.');
           return;
         }
-        send(res, 200, registrationCardPage(info, `${MOUNT}/registration/qr?id=${cardId}`));
+        send(res, 200, registrationCardPage(info, `${MOUNT}/registration/qr?id=${cardId}`, `${MOUNT}/assets/church-logo.png`));
         return;
       }
 

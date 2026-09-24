@@ -44,6 +44,8 @@ beforeAll(async () => {
   // Фавикон лежит рядом с home-groups.html — так же, как в /app/dashboard в продовом образе.
   mkdirSync(join(dirname(htmlPath), 'assets'));
   writeFileSync(join(dirname(htmlPath), 'assets', 'computer.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  // Эмблема церкви на печатной карточке регистрации — та страница за паролем, поэтому и картинка тоже.
+  writeFileSync(join(dirname(htmlPath), 'assets', 'church-logo.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
 
   const groups = new GroupsRepo(db);
   groupsRepo = groups;
@@ -530,6 +532,21 @@ describe('фавикон', () => {
   });
 });
 
+describe('эмблема на печатной карточке', () => {
+  test('без входа не отдаётся — в отличие от фавикона, нужна только на странице за паролем', async () => {
+    const r = await fetch(`${base}/assets/church-logo.png`);
+    expect(r.status).toBe(401);
+  });
+
+  test('со входом отдаётся картинкой', async () => {
+    const cookie = await login();
+    const r = await fetch(`${base}/assets/church-logo.png`, { headers: { cookie } });
+    expect(r.status).toBe(200);
+    expect(r.headers.get('content-type')).toBe('image/png');
+    expect(new Uint8Array(await r.arrayBuffer())).toEqual(new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+  });
+});
+
 describe('регистрация участника из дашборда', () => {
   test('заведённый вручную участник получает номер и попадает в базу', async () => {
     const cookie = await login();
@@ -606,6 +623,7 @@ describe('регистрация участника из дашборда', () =
     expect(html).toContain('МБВ (Колизей)');
     expect(html).toContain('готов открыть Малую группу');
     expect(html).toContain(`registration/qr?id=${created.id}`);
+    expect(html).toContain('assets/church-logo.png');
   });
 
   test('печатная карточка для несуществующей регистрации отвечает 404', async () => {

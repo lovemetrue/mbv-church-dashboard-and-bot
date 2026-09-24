@@ -11,6 +11,7 @@ const info = (patch: Partial<RegistrationCardInfo> = {}): RegistrationCardInfo =
 });
 
 const QR_URL = '/groups/registration/qr?id=42';
+const LOGO_URL = '/groups/assets/church-logo.png';
 
 /**
  * Печатная карточка — единственное место, куда теперь ведут и таблица
@@ -19,7 +20,7 @@ const QR_URL = '/groups/registration/qr?id=42';
  */
 describe('печатная карточка регистрации', () => {
   test('несёт номер, QR-картинку и все заполненные поля', () => {
-    const html = registrationCardPage(info(), QR_URL);
+    const html = registrationCardPage(info(), QR_URL, LOGO_URL);
     expect(html).toContain('3178');
     expect(html).toContain(`src="${QR_URL}"`);
     expect(html).toContain('Панов Дмитрий');
@@ -29,21 +30,31 @@ describe('печатная карточка регистрации', () => {
   });
 
   test('незаполненные телефон, церковь и заявку просто не показывает — не выдумывает прочерки', () => {
-    const html = registrationCardPage(info({ phone: null, church: null, mdgStatus: null }), QR_URL);
+    const html = registrationCardPage(info({ phone: null, church: null, mdgStatus: null }), QR_URL, LOGO_URL);
     expect(html).not.toContain('Телефон');
     expect(html).not.toContain('Церковь');
     expect(html).not.toContain('Заявка');
   });
 
   test('имя и церковь экранированы', () => {
-    const html = registrationCardPage(info({ fullName: '<script>', church: 'A & B' }), QR_URL);
+    const html = registrationCardPage(info({ fullName: '<script>', church: 'A & B' }), QR_URL, LOGO_URL);
     expect(html).not.toContain('<script>');
     expect(html).toContain('&lt;script&gt;');
     expect(html).toContain('A &amp; B');
   });
 
   test('без ФИО показывает честную заглушку, а не пустоту', () => {
-    const html = registrationCardPage(info({ fullName: null }), QR_URL);
+    const html = registrationCardPage(info({ fullName: null }), QR_URL, LOGO_URL);
     expect(html).toContain('не указано');
+  });
+
+  /**
+   * Жалоба служителей: печаталось мелко и с большими отступами по бокам —
+   * карточка тонула посреди пустого листа A4. Эмблема — по их же просьбе.
+   */
+  test('несёт эмблему церкви и размер страницы печати подогнан под саму карточку', () => {
+    const html = registrationCardPage(info(), QR_URL, LOGO_URL);
+    expect(html).toContain(`<img class="logo" src="${LOGO_URL}"`);
+    expect(html).toMatch(/@page\s*{\s*size:/);
   });
 });

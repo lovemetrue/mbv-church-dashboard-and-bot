@@ -102,6 +102,21 @@ describe('ответы анкеты бота видны на заявке', () =
     expect(row).toMatchObject({ id: created.id, church: 'МБВ (Колизей)', mdg_status: 'open' });
   });
 
+  /**
+   * Человек, который уже состоит в группе (или уже её ведёт), в анкете бота называет
+   * своего ведущего — раньше это записывалось в базу (leader_name), но на дашборде
+   * заявки не показывалось нигде, хотя служителю как раз важно знать, к кому человек
+   * уже прикреплён.
+   */
+  test('ведущий группы приходит от участника, если он его назвал в анкете', async () => {
+    const userId = await seedUser(db, { id: '901', mdgStatus: 'member' });
+    await db.query('UPDATE users SET leader_name = $1 WHERE id = $2', ['Смирнова Ольга', userId]);
+    const created = await requests.create(userId, 'already_member');
+
+    const [row] = await requests.forDashboard();
+    expect(row).toMatchObject({ id: created.id, leader_name: 'Смирнова Ольга' });
+  });
+
   test('у заявки из таблицы церкви (без участника) оба поля пустые', async () => {
     await requests.createFromDashboard(REQUEST_MIN);
     const [row] = await requests.forDashboard();

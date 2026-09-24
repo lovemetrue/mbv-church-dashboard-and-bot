@@ -91,6 +91,8 @@ export interface DashboardRequest {
   /** Ответы из анкеты бота: какую церковь посещает и что выбрал про Малую группу. */
   church: string | null;
   mdg_status: MdgStatus | null;
+  /** Кто ведущий у человека, если он уже состоит в группе или уже ведёт её — из анкеты бота. */
+  leader_name: string | null;
 }
 
 /** Что можно заполнить в форме дашборда. */
@@ -273,7 +275,7 @@ export class RequestsRepo {
       extra: string | null; recommended: string | null; recommended_at: string | null;
       final_group: string | null; cancel_reason: string | null; attendance: string | null;
       type: RequestType; text: string | null; origin: 'таблица' | 'бот' | 'ui';
-      church: string | null; mdg_status: MdgStatus | null;
+      church: string | null; mdg_status: MdgStatus | null; leader_name: string | null;
     }>(
       `SELECT r.id, r.group_id,
               coalesce(r.fio, u.full_name) AS fio,
@@ -288,7 +290,7 @@ export class RequestsRepo {
               r.source, r.ministry, r.note, r.extra, r.recommended, r.recommended_at,
               r.final_group, r.cancel_reason, r.attendance, r.type, r.text, r.origin,
               -- Ответы из анкеты бота: у заявок из таблицы церкви участника нет, будет null.
-              u.church, u.mdg_status
+              u.church, u.mdg_status, u.leader_name
          FROM requests r
          LEFT JOIN users u ON u.id = r.user_id
         WHERE r.archived_at IS NULL

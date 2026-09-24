@@ -102,6 +102,38 @@ describe('«Куда направляем»', () => {
   });
 });
 
+describe('«Возраст» — колонка в таблице заявок', () => {
+  test('колонка есть в шапке между «Телефон» и «Место»', () => {
+    const theadStart = html.indexOf('id="reqBody"');
+    const theadBlock = html.slice(theadStart - 700, theadStart);
+    const phoneAt = theadBlock.indexOf('data-key="phone"');
+    const ageAt = theadBlock.indexOf('data-key="age"');
+    const placeAt = theadBlock.indexOf('data-key="place"');
+    expect(phoneAt).toBeGreaterThan(-1);
+    expect(ageAt).toBeGreaterThan(phoneAt);
+    expect(placeAt).toBeGreaterThan(ageAt);
+  });
+
+  // Раньше возраст показывался только в раскрытых подробностях — теперь он
+  // и так на виду колонкой, второй раз то же самое поле там не нужно.
+  test('в раскрытых подробностях возраст больше не дублируется', () => {
+    const fn = html.slice(html.indexOf('function requestDetails'), html.indexOf('function requestDetails') + 1200);
+    expect(fn).not.toContain("['Возраст'");
+  });
+});
+
+/**
+ * Человек, который уже состоит в группе (или уже её ведёт), называет ведущего в
+ * анкете бота (leader_name у участника) — служителю важно видеть, к кому человек
+ * уже прикреплён, а не только то, что он «уже состоит».
+ */
+describe('«Ведущий группы» в раскрытых подробностях заявки', () => {
+  test('показывает leader_name участника', () => {
+    const fn = html.slice(html.indexOf('function requestDetails'), html.indexOf('function requestDetails') + 1200);
+    expect(fn).toContain("['Ведущий группы', r.leader_name]");
+  });
+});
+
 /**
  * Возраст в форме заявки — те же категории, что бот спрашивает в анкете
  * (AGE_GROUPS), а не свободный текст: иначе в дашборде и в боте завелись бы два
@@ -123,7 +155,7 @@ describe('возраст в форме заявки — выпадающий с�
 
 describe('сортировка заявок по столбцам', () => {
   test('каждый заголовок таблицы заявок кликабелен для сортировки', () => {
-    const keys = ['date', 'fio', 'phone', 'place', 'group_id', 'recommended', 'status'];
+    const keys = ['date', 'fio', 'phone', 'age', 'place', 'group_id', 'recommended', 'status'];
     for (const key of keys) {
       expect(html, `нет сортируемого заголовка для ${key}`).toContain(`class="sortable-req" data-key="${key}"`);
     }

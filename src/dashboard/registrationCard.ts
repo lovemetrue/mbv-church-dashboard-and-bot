@@ -26,8 +26,11 @@ export interface RegistrationCardInfo {
  * бокам». 1 CSS-px печатается как 1/96 дюйма, поэтому 420px здесь и 130mm в
  * @page — одна и та же ширина, только в разных единицах для экрана и для
  * печати. Высоту `size` не умеет ставить в «auto» вместе с шириной — понимает
- * только пару конкретных чисел, — поэтому 240mm подобраны с запасом под самую
- * длинную карточку (все четыре поля: ФИО, телефон, церковь, заявка).
+ * только пару конкретных чисел, — поэтому 260mm подобраны с запасом под самую
+ * длинную карточку (все четыре поля: ФИО, телефон, церковь, заявка). При
+ * изменении логотипа или шрифтов высоту содержимого стоит перемерить заново
+ * (см. `document.body.scrollHeight` под `@media print`) — печать молча уводит
+ * лишнее на вторую страницу, а не обрезает и не ругается.
  */
 export function registrationCardPage(info: RegistrationCardInfo, qrUrl: string, logoUrl: string): string {
   const rows: [string, string][] = [['ФИО', info.fullName ?? 'не указано']];
@@ -45,10 +48,10 @@ export function registrationCardPage(info: RegistrationCardInfo, qrUrl: string, 
 <meta name="robots" content="noindex, nofollow">
 <title>Регистрация №${info.registrationNo}</title>
 <style>
-  @page { size: 130mm 240mm; margin: 8mm; }
+  @page { size: 130mm 260mm; margin: 8mm; }
   body { margin: 24px auto; max-width: 420px; padding: 0 16px; color: #111; text-align: center;
          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; }
-  .logo { display: block; width: 210px; margin: 0 auto 16px; }
+  .logo { display: block; width: 263px; margin: 0 auto 16px; }
   h1 { font-size: 26px; margin: 0 0 6px; }
   .no { color: #444; font-size: 19px; margin: 0 0 20px; }
   .no b { color: #111; }

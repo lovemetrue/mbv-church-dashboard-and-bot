@@ -65,6 +65,32 @@ describe('заявка ссылается на домашнюю группу', (
     await requests.setStatus(id, 'В работе');
     expect((await requests.forDashboard())[0]!.group_id).toBe(group.id);
   });
+
+  /**
+   * Баг из дашборда: назначили группу через быструю правку, затем выбрали в
+   * выпадающем списке «— группа не назначена —» и сохранили — прочерк не
+   * возвращался. Причина была в `coalesce($5, group_id)`: явный null от
+   * пустого <select> неотличим от «поле вообще не передали», и coalesce
+   * оставлял старое значение. Форма всегда шлёт все три поля, так что явный
+   * null здесь — не «не указано», а «снять выбор».
+   */
+  test('setStatus с явным null возвращает группу на «не назначена»', async () => {
+    const group = await groups.create(GROUP_MIN, 'ui');
+    const id = await requests.createFromDashboard(REQUEST_MIN);
+
+    await requests.setStatus(id, 'В работе', null, group.id);
+    await requests.setStatus(id, 'В работе', null, null);
+    expect((await requests.forDashboard())[0]!.group_id).toBeNull();
+  });
+
+  /** Тот же баг, но для ответственного — тем же select с пустой опцией. */
+  test('setStatus с явным null снимает и ответственного', async () => {
+    const id = await requests.createFromDashboard(REQUEST_MIN);
+
+    await requests.setStatus(id, 'В работе', 'Иванова Мария');
+    await requests.setStatus(id, 'В работе', null);
+    expect((await requests.forDashboard())[0]!.responsible).toBeNull();
+  });
 });
 
 describe('ответы анкеты бота видны на заявке', () => {

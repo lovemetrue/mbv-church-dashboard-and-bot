@@ -175,6 +175,14 @@ export class RequestsRepo {
   /**
    * Быстрая смена статуса из списка — самое частое действие служителя.
    * Отдельно от полной правки, чтобы не гонять двадцать полей ради одного.
+   *
+   * `responsible`/`groupId` — необязательные параметры на случай вызова без них
+   * (тогда поле не трогаем), а не просто «может быть null»: форма дашборда шлёт
+   * их всегда, и пустой <select> — это явный null, означающий «снять выбор».
+   * Раньше это писалось через coalesce($3, responsible), но coalesce не видит
+   * разницы между «параметр не передали» и «передали null», и снятый в форме
+   * выбор (группы или ответственного) молча возвращался к прежнему значению.
+   * Различаем через отдельный флаг «поле присутствует» ($6/$7).
    */
   async setStatus(
     id: number,
@@ -186,12 +194,12 @@ export class RequestsRepo {
     const { rowCount } = await this.db.query(
       `UPDATE requests
           SET status = $2,
-              responsible = coalesce($3, responsible),
-              group_id = coalesce($5, group_id),
+              responsible = CASE WHEN $6 THEN $3 ELSE responsible END,
+              group_id = CASE WHEN $7 THEN $5 ELSE group_id END,
               handled_by = CASE WHEN $4 THEN 'дашборд' ELSE handled_by END,
               handled_at = CASE WHEN $4 THEN now() ELSE handled_at END
         WHERE id = $1 AND archived_at IS NULL`,
-      [id, status, responsible ?? null, closing, groupId ?? null],
+      [id, status, responsible ?? null, closing, groupId ?? null, responsible !== undefined, groupId !== undefined],
     );
     return (rowCount ?? 0) > 0;
   }

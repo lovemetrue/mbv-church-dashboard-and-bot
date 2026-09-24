@@ -312,7 +312,7 @@ describe('в «Регистрации» видно, выдан ли набор, 
   });
 
   test('ячейка — пилюля «Да» зелёным или «Нет» красным, тем же стилем, что и статусы', () => {
-    const block = html.slice(html.indexOf('function renderRegistration'), html.indexOf('function renderRegistration') + 1400);
+    const block = html.slice(html.indexOf('function renderRegistration'), html.indexOf('function renderRegistration') + 1600);
     expect(block).toContain('kit_issued_at');
     expect(block).toContain('pill live');
     expect(block).toContain('>Да<');
@@ -348,7 +348,7 @@ describe('в «Регистрации» видно, выдан ли набор, 
 
 describe('регистрацию можно удалить прямо из списка — жёстко, не архивируя', () => {
   test('у каждой строки есть кнопка «Удалить», вайринг тот же, что у групп/участников/заявок', () => {
-    const block = html.slice(html.indexOf('function renderRegistration'), html.indexOf('function renderRegistration') + 2700);
+    const block = html.slice(html.indexOf('function renderRegistration'), html.indexOf('function renderRegistration') + 3300);
     expect(block).toContain('class="btn-quiet row-del"');
     expect(block).toContain('🗑 Удалить');
     expect(block).toContain("wireRowEditing('#regBody', 'registration'");
@@ -359,6 +359,24 @@ describe('регистрацию можно удалить прямо из сп�
     expect(block).toContain("kind === 'registration'");
     expect(block).toContain('Удалить навсегда');
     expect(block).toContain('Точно убрать');
+  });
+
+  /**
+   * Раньше кнопка «Удалить» стояла прямо в строке рядом с QR — крупная и на виду,
+   * легко нажималась случайно при выдаче набора. Теперь она, как у групп и заявок,
+   * убрана в раскрывающуюся строку с подробностями и по умолчанию не видна.
+   */
+  test('кнопка «Удалить» не в основной строке, а в раскрывающихся подробностях', () => {
+    const block = html.slice(html.indexOf('function renderRegistration'), html.indexOf('function renderRegistration') + 3300);
+    const rowAt = block.indexOf('<tr class="row">');
+    const detailAt = block.indexOf('<tr class="detail hidden">');
+    const delAt = block.indexOf('class="btn-quiet row-del"');
+    expect(rowAt).toBeGreaterThan(-1);
+    expect(detailAt).toBeGreaterThan(rowAt);
+    expect(delAt).toBeGreaterThan(detailAt);
+    // Основная строка кликабельна и раскрывает подробности — тот же приём, что у групп/заявок.
+    expect(block).toContain("tr.classList.toggle('open')");
+    expect(block).toContain("tr.nextElementSibling.classList.toggle('hidden')");
   });
 });
 

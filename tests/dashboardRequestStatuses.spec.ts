@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import { REQUEST_STATUSES } from '../src/db/repos/requests.repo.js';
+import { AGE_GROUPS } from '../src/core/texts.js';
 
 /**
  * Дашборд обязан знать все статусы заявок.
@@ -98,6 +99,25 @@ describe('«Ответственный» — выпадающий список, 
 describe('«Куда направляем»', () => {
   test('колонка есть в шапке и показывает существующее поле «Рекомендованная группа»', () => {
     expect(html).toMatch(/<th[^>]*>Куда направляем/);
+  });
+});
+
+/**
+ * Возраст в форме заявки — те же категории, что бот спрашивает в анкете
+ * (AGE_GROUPS), а не свободный текст: иначе в дашборде и в боте завелись бы два
+ * разных словаря одного и того же поля.
+ */
+describe('возраст в форме заявки — выпадающий список из анкеты', () => {
+  test('категории в дашборде совпадают с анкетой бота', () => {
+    const form = literal('FORM_AGE_GROUPS');
+    for (const group of AGE_GROUPS) {
+      expect(form, `категории «${group}» из анкеты нет в форме заявки`).toContain(`'${group}'`);
+    }
+  });
+
+  test('поле «Возраст» у заявки — select, а не текстовый ввод', () => {
+    const fields = literal('REQUEST_FIELDS');
+    expect(fields).toMatch(/name: 'age'[\s\S]*?pairs: \[\['', /);
   });
 });
 

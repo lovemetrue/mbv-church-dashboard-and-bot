@@ -948,16 +948,17 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
   <section class="card form-card" data-section="new">
     <div class="card-head" style="padding:0">
       <div>
-        <h2 class="card-title">Новая домашняя группа</h2>
-        <p class="card-sub">Обязательны ведущий, район, формат и статус — остальное можно заполнить позже</p>
+        <h2 class="card-title">Новая регистрация</h2>
+        <p class="card-sub">Для тех, кто заполнил анкету на бумаге и своего чата с ботом не имеет — QR появится сразу здесь</p>
       </div>
     </div>
-    <form id="groupForm" autocomplete="off">
-      <div id="groupFields"></div>
+    <form id="registrationForm" autocomplete="off">
+      <div id="registrationFields"></div>
       <div class="form-foot">
-        <button class="btn-primary" type="submit">Добавить группу</button>
-        <span class="form-msg" id="groupMsg"></span>
+        <button class="btn-primary" type="submit">Зарегистрировать</button>
+        <span class="form-msg" id="registrationMsg"></span>
       </div>
+      <div id="registrationQr"></div>
     </form>
   </section>
 
@@ -980,6 +981,22 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
   <section class="card form-card" data-section="new">
     <div class="card-head" style="padding:0">
       <div>
+        <h2 class="card-title">Новая домашняя группа</h2>
+        <p class="card-sub">Обязательны ведущий, район, формат и статус — остальное можно заполнить позже</p>
+      </div>
+    </div>
+    <form id="groupForm" autocomplete="off">
+      <div id="groupFields"></div>
+      <div class="form-foot">
+        <button class="btn-primary" type="submit">Добавить группу</button>
+        <span class="form-msg" id="groupMsg"></span>
+      </div>
+    </form>
+  </section>
+
+  <section class="card form-card" data-section="new">
+    <div class="card-head" style="padding:0">
+      <div>
         <h2 class="card-title">Новый участник</h2>
         <p class="card-sub">Координатор группы или ответственный по заявкам — один человек годится на обе роли</p>
       </div>
@@ -990,23 +1007,6 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
         <button class="btn-primary" type="submit">Добавить участника</button>
         <span class="form-msg" id="coordinatorMsg"></span>
       </div>
-    </form>
-  </section>
-
-  <section class="card form-card" data-section="new">
-    <div class="card-head" style="padding:0">
-      <div>
-        <h2 class="card-title">Новая регистрация</h2>
-        <p class="card-sub">Для тех, кто заполнил анкету на бумаге и своего чата с ботом не имеет — QR появится сразу здесь</p>
-      </div>
-    </div>
-    <form id="registrationForm" autocomplete="off">
-      <div id="registrationFields"></div>
-      <div class="form-foot">
-        <button class="btn-primary" type="submit">Зарегистрировать</button>
-        <span class="form-msg" id="registrationMsg"></span>
-      </div>
-      <div id="registrationQr"></div>
     </form>
   </section>
   <!-- 40-дневная кампания ------------------------------------------------- -->
@@ -1661,9 +1661,12 @@ function renderRegistration() {
     // Миниатюра ведёт не на голый PNG, а на печатную карточку: там же имя,
     // телефон, церковь и заявка — всё, что нужно переслать или распечатать разом.
     const cardSrc = `${window.HG_BASE ?? './'}registration/card?id=${u.id}`;
-    return `<tr>
+    // Удаление — раскрывающееся свойство строки, как у групп/заявок/участников:
+    // кнопка на виду в каждой строке слишком крупная рядом с QR и провоцирует
+    // случайные нажатия на планшете при выдаче набора.
+    return `<tr class="row">
       <td class="mono">№${u.registration_no}</td>
-      <td class="strong">${esc(u.full_name) || '—'}</td>
+      <td class="strong"><span class="caret">›</span>${esc(u.full_name) || '—'}</td>
       <td>${u.phone ? `<a class="tel" href="tel:${esc(u.phone)}">${esc(fmtPhone(u.phone))}</a>` : '—'}</td>
       <td>${esc(u.church) || '—'}</td>
       <td>${u.mdg_status ? esc(MDG_STATUS_LABEL[u.mdg_status]) : '—'}</td>
@@ -1674,12 +1677,12 @@ function renderRegistration() {
         : '<span class="pill closed"><i></i>Нет</span>'}</td>
       <td>
         <a href="${cardSrc}" target="_blank" rel="noopener"><img class="reg-qr" src="${qrSrc}" alt="QR №${u.registration_no}" loading="lazy"></a>
-        <div class="row-actions">
-          <button class="btn-quiet row-del" data-id="${u.id}" data-name="${esc(u.full_name ?? '')}">🗑 Удалить</button>
-          <span class="form-msg row-msg" data-id="registration-${u.id}"></span>
-        </div>
       </td>
-    </tr>`;
+    </tr>
+    <tr class="detail hidden"><td colspan="9"><dl class="detail-grid"><div class="wide row-actions">
+      <button class="btn-quiet row-del" data-id="${u.id}" data-name="${esc(u.full_name ?? '')}">🗑 Удалить</button>
+      <span class="form-msg row-msg" data-id="registration-${u.id}"></span>
+    </div></dl></td></tr>`;
   }).join('');
   $('#regFoot').textContent = `${registeredUsers.length} ${plural(registeredUsers.length, 'участник', 'участника', 'участников')}`;
 
@@ -1687,6 +1690,16 @@ function renderRegistration() {
     if (th.dataset.key === state.regSort) th.dataset.dir = state.regDir;
     else delete th.dataset.dir;
     th.querySelector('.arrow').textContent = state.regDir > 0 ? '↑' : '↓';
+  });
+
+  // Клик по строке раскрывает удаление; клик по QR или самой кнопке не должен
+  // при этом переключать строку — тот же приём, что и в «Группах»/«Заявках».
+  $('#regBody').querySelectorAll('tr.row').forEach((tr) => {
+    tr.onclick = (e) => {
+      if (e.target.closest('a, .row-actions')) return;
+      tr.classList.toggle('open');
+      tr.nextElementSibling.classList.toggle('hidden');
+    };
   });
 
   // Тот же armed-клик и sendRow, что и у групп/участников/заявок (wireRowEditing),
@@ -2223,6 +2236,9 @@ const FORM_DISTRICTS = [
 const FORM_FORMATS = ['Основная церковь', 'Молодежная', 'Приватная (Закрытая)', 'Служение'];
 const FORM_GROUP_STATUSES = ['Функционирует', 'Потенциальная', 'На паузе', 'Закрыта', 'Недвижимость'];
 const FORM_REQUEST_STATUSES = ['Новая', 'В ожидании', 'В работе', 'На контроле', 'Исполнена', 'Аннулирована'];
+/* Те же категории, что в анкете бота (см. AGE_GROUPS в src/core/texts.ts) — список
+   продублирован, потому что страница дашборда не импортирует код бота (см. CLAUDE.md). */
+const FORM_AGE_GROUPS = ['подростки (до 18 лет)', '18-25', '25-40', '40-55', '55-65', '65+'];
 const FORM_REQUEST_TYPES = [
   ['join_group', 'Хочет в домашнюю группу'],
   ['lead_group', 'Готов открыть группу'],
@@ -2278,13 +2294,23 @@ const RECOMMENDED_OPTIONS = [...new Set([
   ...requests.map((r) => r.recommended).filter(Boolean),
 ])];
 
+/* Возраст — те же категории, что в анкете бота (FORM_AGE_GROUPS), плюс уже
+   встречающиеся в заявках значения не по анкете: пришли из таблицы церкви как
+   попало («37 лет», «40.0», ...), и выбор в форме не должен молча заменить такую
+   запись на первую категорию из списка (тот же приём, что у RECOMMENDED_OPTIONS). */
+const REQUEST_AGE_OPTIONS = [...new Set([
+  ...FORM_AGE_GROUPS,
+  ...requests.map((r) => r.age).filter(Boolean),
+])];
+
 const REQUEST_FIELDS = [
   { name: 'fio', label: 'ФИО', required: true, wide: true, from: 'fio', placeholder: 'Петров Пётр Петрович' },
   { name: 'type', label: 'О чём заявка', required: true, pairs: FORM_REQUEST_TYPES, from: 'type' },
   { name: 'status', label: 'Статус', required: true, options: FORM_REQUEST_STATUSES, from: 'status' },
   { name: 'responsible', label: 'Ответственный', options: RESPONSIBLE_OPTIONS, from: 'responsible' },
   { name: 'phone', label: 'Телефон', from: 'phone', placeholder: '+7 921 000-11-22' },
-  { name: 'age', label: 'Возраст', from: 'age', placeholder: '35-45 лет' },
+  { name: 'age', label: 'Возраст',
+    pairs: [['', '— не указан —'], ...REQUEST_AGE_OPTIONS.map((a) => [a, a])], from: 'age' },
   { name: 'place', label: 'Место', from: 'place', placeholder: 'Дыбенко' },
   { name: 'groupId', label: 'Домашняя группа',
     pairs: [['', '— не назначена —'], ...groups.map((g) => [String(g.id), `${g.leader} · ${groupCode(g.id)}`])],

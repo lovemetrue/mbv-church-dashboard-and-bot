@@ -1,0 +1,96 @@
+name: CI/CD
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: Проверки (typecheck, тесты, сборка образа)
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ci-tests-${{ github.ref }}
+      cancel-in-progress: true
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: church
+          POSTGRES_PASSWORD: church
+          POSTGRES_DB: church40
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U church -d church40"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgres://church:church@localhost:5433/church40
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Типы (tsc --noEmit)
+        run: npm run typecheck
+
+      - name: Сборка (tsc в dist/)
+        run: npm run build
+
+      - name: Тесты (vitest, живой Postgres)
+        run: npm test
+
+      # Прод-деплой (scripts/deploy.sh) собирает этот же Dockerfile прямо на
+      # сервере — если он не соберётся, деплой упадёт уже после git pull.
+      # Проверяем это здесь, до мержа.
+      - name: Docker-образ собирается
+        run: docker build -t church40bot:ci .
+
+  deploy:
+    name: Деплой на сервер
+    needs: test
+    # Деплоим только после мержа в main — не на каждый пуш в PR-ветку.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      # Без cancel-in-progress: если мерж случится второй раз, пока первый
+      # деплой ещё выкладывается, второй дождётся очереди, а не оборвёт первый
+      # на середине docker compose up.
+      group: production-deploy
+      cancel-in-progress: false
+
+    steps:
+      - name: Загрузить SSH-ключ
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_DEPLOY_KEY }}
+
+      - name: Запомнить ключ хоста
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "${{ secrets.SSH_HOST_PORT }}" -H "${{ secrets.SSH_HOST_IP }}" >> ~/.ssh/known_hosts
+
+      # Бэкап и git pull — прямо здесь, а не в scripts/deploy.sh: в первый раз,
+      # когда deploy.sh ещё не лежит на сервере, git pull должен успеть его
+      # принести до попытки запуска. scripts/backup.sh на сервере уже есть
+      # (см. README «Бэкапы») — берём тот, что там лежит, без обновления.
+      - name: Бэкап, git pull, выкладка bot → dashboard
+        run: |
+          ssh -p "${{ secrets.SSH_HOST_PORT }}" "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST_IP }}" '
+            set -eu
+            cd "${{ secrets.SSH_DEPLOY_PATH }}"
+            ./scripts/backup.sh
+            git pull --ff-only origin main
+            ./scripts/deploy.sh
+          '

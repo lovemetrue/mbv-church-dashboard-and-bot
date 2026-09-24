@@ -340,6 +340,24 @@ docker compose exec -T db pg_dump -Fc -U church church40 > church40.dump
 docker compose exec -T db pg_restore -U church -d church40 --clean --if-exists < church40.dump
 ```
 
+### Автодеплой из GitHub Actions
+
+Разовый перенос выше нужен только один раз — дальше `.github/workflows/ci.yml` сам
+выкладывает каждый мерж в `main`: на PR гоняет `typecheck` + тесты + сборку образа, а
+после мержа по SSH заходит на сервер и вызывает `scripts/deploy.sh` — тот поднимает
+`bot`, дожидается в его логе строки «схема базы актуальна» (значит, миграции применены)
+и только тогда поднимает `dashboard`. Перед этим отрабатывает `scripts/backup.sh`.
+
+Нужны пять секретов репозитория (Settings → Secrets and variables → Actions):
+`SSH_DEPLOY_KEY` (приватный ключ отдельной пары, не личный), `SSH_HOST_IP`,
+`SSH_HOST_PORT`, `SSH_USER`, `SSH_DEPLOY_PATH` (путь вида `/opt/church40bot` — тот,
+куда сделан `git clone` выше). Публичная половина ключа должна лежать в
+`~/.ssh/authorized_keys` пользователя `SSH_USER` на сервере.
+
+Чтобы красный CI реально блокировал мерж, а не просто светил крестиком, в Settings →
+Branches → правило для `main` нужно включить Require status checks to pass и выбрать
+джобу `test`.
+
 ## Дашборд домашних групп
 
 Отдельный сервис `dashboard` из того же образа: `node dist/dashboard/index.js`. Отдаёт

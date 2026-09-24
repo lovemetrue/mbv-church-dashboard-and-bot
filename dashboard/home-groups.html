@@ -928,6 +928,7 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
             <th class="sortable-req" data-key="date">Дата <span class="arrow">↓</span></th>
             <th class="sortable-req" data-key="fio">Человек <span class="arrow">↓</span></th>
             <th class="sortable-req" data-key="phone">Телефон <span class="arrow">↓</span></th>
+            <th class="sortable-req" data-key="age">Возраст <span class="arrow">↓</span></th>
             <th class="sortable-req" data-key="place">Место <span class="arrow">↓</span></th>
             <th class="sortable-req" data-key="group_id">Домашняя группа <span class="arrow">↓</span></th>
             <th class="sortable-req" data-key="recommended">Куда направляем <span class="arrow">↓</span></th>
@@ -935,10 +936,10 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
           </tr>
         </thead>
         <tbody id="reqBody">
-          <tr class="sk-tr"><td colspan="8"><i class="sk"></i></td></tr>
-          <tr class="sk-tr"><td colspan="8"><i class="sk"></i></td></tr>
-          <tr class="sk-tr"><td colspan="8"><i class="sk"></i></td></tr>
-          <tr class="sk-tr"><td colspan="8"><i class="sk"></i></td></tr>
+          <tr class="sk-tr"><td colspan="9"><i class="sk"></i></td></tr>
+          <tr class="sk-tr"><td colspan="9"><i class="sk"></i></td></tr>
+          <tr class="sk-tr"><td colspan="9"><i class="sk"></i></td></tr>
+          <tr class="sk-tr"><td colspan="9"><i class="sk"></i></td></tr>
         </tbody>
       </table>
     </div>
@@ -1759,7 +1760,6 @@ function requestDetails(r) {
     // У заявок из таблицы церкви участника в боте нет — оба поля пустые.
     ['Церковь', r.church],
     ['Заявка', r.mdg_status ? MDG_STATUS_LABEL[r.mdg_status] : null],
-    ['Возраст', r.age],
     ['Источник', r.source],
     ['Служение', r.ministry],
     ['Рекомендованная группа', r.recommended],
@@ -2000,12 +2000,13 @@ function renderRequests() {
       <td class="mono" style="color:var(--text-3);white-space:nowrap">${ruDate(r.date)}</td>
       <td class="strong"><span class="caret">›</span>${r.fio ? esc(r.fio) : '<span style="color:var(--text-3)">без имени</span>'}</td>
       <td>${phoneCell(r)}</td>
+      <td>${esc(r.age) || '—'}</td>
       <td>${esc(r.place) || '—'}</td>
       <td>${groupLabel(r.group_id)}</td>
       <td>${esc(r.recommended) || '—'}</td>
       <td><span class="pill ${cls}"><i></i>${esc(label)}</span></td>
     </tr>
-    <tr class="detail hidden"><td colspan="8">${requestDetails(r)}</td></tr>`;
+    <tr class="detail hidden"><td colspan="9">${requestDetails(r)}</td></tr>`;
   }).join('');
 
   $('#reqBody').querySelectorAll('tr.row').forEach((tr) => {

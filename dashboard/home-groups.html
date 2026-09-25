@@ -931,15 +931,14 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
             <th class="sortable-req" data-key="age">Возраст <span class="arrow">↓</span></th>
             <th class="sortable-req" data-key="place">Место <span class="arrow">↓</span></th>
             <th class="sortable-req" data-key="group_id">Домашняя группа <span class="arrow">↓</span></th>
-            <th class="sortable-req" data-key="recommended">Куда направляем <span class="arrow">↓</span></th>
             <th class="sortable-req" data-key="status">Статус <span class="arrow">↓</span></th>
           </tr>
         </thead>
         <tbody id="reqBody">
-          <tr class="sk-tr"><td colspan="9"><i class="sk"></i></td></tr>
-          <tr class="sk-tr"><td colspan="9"><i class="sk"></i></td></tr>
-          <tr class="sk-tr"><td colspan="9"><i class="sk"></i></td></tr>
-          <tr class="sk-tr"><td colspan="9"><i class="sk"></i></td></tr>
+          <tr class="sk-tr"><td colspan="8"><i class="sk"></i></td></tr>
+          <tr class="sk-tr"><td colspan="8"><i class="sk"></i></td></tr>
+          <tr class="sk-tr"><td colspan="8"><i class="sk"></i></td></tr>
+          <tr class="sk-tr"><td colspan="8"><i class="sk"></i></td></tr>
         </tbody>
       </table>
     </div>
@@ -1137,6 +1136,18 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
         <h2 class="card-title">Регистрация</h2>
         <p class="card-sub" id="regSub">Участники кампании</p>
       </div>
+      <!-- Тот же вопрос, что задаёт бот про Малую группу, и в том же порядке,
+           что кнопки в его клавиатуре (mdgKeyboard): ведущий → состоит →
+           готов открыть → даёт дом → хочет присоединиться. -->
+      <div class="seg" id="segReg">
+        <button aria-selected="true" data-mdg="">Все</button>
+        <button data-mdg="leader">Ведущие</button>
+        <button data-mdg="member">Состоят</button>
+        <button data-mdg="open">Готовы открыть</button>
+        <button data-mdg="home">Дают дом</button>
+        <button data-mdg="join">Ищут группу</button>
+        <button data-mdg="none">Без заявки</button>
+      </div>
     </div>
     <div class="table-scroll">
       <table>
@@ -1217,10 +1228,20 @@ const MDG_STATUS_LABEL = {
   leader: 'ведёт Малую группу',
 };
 
+/** Короткие подписи для переключателя «Регистрация» — те же кнопки, что в #segReg. */
+const REG_MDG_FILTER_LABEL = {
+  leader: 'Ведущие',
+  member: 'Состоят',
+  open: 'Готовы открыть',
+  home: 'Дают дом',
+  join: 'Ищут группу',
+  none: 'Без заявки',
+};
+
 const state = {
   district: null, status: '', campaign: '', sort: 'people', dir: -1, view: 'requests', request: null, groupId: null,
   reqSort: 'date', reqDir: -1,
-  regSort: 'registration_no', regDir: -1,
+  regSort: 'registration_no', regDir: -1, regMdg: null,
 };
 const $ = (s) => document.querySelector(s);
 const groups = DATA.groups;
@@ -1651,12 +1672,14 @@ function renderCoordinators() {
 function renderRegistration() {
   // По умолчанию свежие сверху; клик по заголовку переключает на выбранный столбец —
   // тот же приём, что и в «Заявках» (state.reqSort/reqDir).
-  const rows = [...registeredUsers].sort((a, b) => {
-    const k = state.regSort;
-    const av = a[k] ?? '', bv = b[k] ?? '';
-    if (av === bv) return 0;
-    return (av > bv ? 1 : -1) * state.regDir;
-  });
+  const rows = registeredUsers
+    .filter((u) => !state.regMdg || (state.regMdg === 'none' ? !u.mdg_status : u.mdg_status === state.regMdg))
+    .sort((a, b) => {
+      const k = state.regSort;
+      const av = a[k] ?? '', bv = b[k] ?? '';
+      if (av === bv) return 0;
+      return (av > bv ? 1 : -1) * state.regDir;
+    });
   $('#regBody').innerHTML = rows.map((u) => {
     const qrSrc = `${window.HG_BASE ?? './'}registration/qr?id=${u.id}`;
     // Миниатюра ведёт не на голый PNG, а на печатную карточку: там же имя,
@@ -1685,7 +1708,8 @@ function renderRegistration() {
       <span class="form-msg row-msg" data-id="registration-${u.id}"></span>
     </div></dl></td></tr>`;
   }).join('');
-  $('#regFoot').textContent = `${registeredUsers.length} ${plural(registeredUsers.length, 'участник', 'участника', 'участников')}`;
+  $('#regFoot').textContent = `${rows.length} ${plural(rows.length, 'участник', 'участника', 'участников')}`;
+  $('#regSub').textContent = state.regMdg ? `Заявка: ${REG_MDG_FILTER_LABEL[state.regMdg]}` : 'Участники кампании';
 
   document.querySelectorAll('thead th.sortable-reg').forEach((th) => {
     if (th.dataset.key === state.regSort) th.dataset.dir = state.regDir;
@@ -2005,10 +2029,9 @@ function renderRequests() {
       <td>${esc(r.age) || '—'}</td>
       <td>${esc(r.place) || '—'}</td>
       <td>${groupLabel(r.group_id)}</td>
-      <td>${esc(r.recommended) || '—'}</td>
       <td><span class="pill ${cls}"><i></i>${esc(label)}</span></td>
     </tr>
-    <tr class="detail hidden"><td colspan="9">${requestDetails(r)}</td></tr>`;
+    <tr class="detail hidden"><td colspan="8">${requestDetails(r)}</td></tr>`;
   }).join('');
 
   $('#reqBody').querySelectorAll('tr.row').forEach((tr) => {
@@ -2080,6 +2103,15 @@ document.querySelectorAll('#segRequest button').forEach((b) => {
     b.setAttribute('aria-selected', 'true');
     state.request = b.dataset.req;
     renderRequests();
+  };
+});
+
+document.querySelectorAll('#segReg button').forEach((b) => {
+  b.onclick = () => {
+    document.querySelectorAll('#segReg button').forEach((x) => x.setAttribute('aria-selected', 'false'));
+    b.setAttribute('aria-selected', 'true');
+    state.regMdg = b.dataset.mdg;
+    renderRegistration();
   };
 });
 

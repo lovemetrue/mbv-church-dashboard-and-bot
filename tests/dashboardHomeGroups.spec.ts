@@ -295,7 +295,7 @@ describe('номер заявки виден в таблице и по нему 
 describe('QR в дашборде ведёт на печатную карточку, а не на голый PNG', () => {
   test('миниатюра в таблице «Регистрация» открывает карточку по клику', () => {
     expect(html).toContain('registration/card?id=');
-    const block = html.slice(html.indexOf('function renderRegistration'), html.indexOf('function renderRegistration') + 1700);
+    const block = html.slice(html.indexOf('function renderRegistration'), html.indexOf('function renderRegistration') + 1900);
     expect(block).toContain('href="${cardSrc}"');
     expect(block).toContain('src="${qrSrc}"');
   });
@@ -312,7 +312,7 @@ describe('в «Регистрации» видно, выдан ли набор, 
   });
 
   test('ячейка — пилюля «Да» зелёным или «Нет» красным, тем же стилем, что и статусы', () => {
-    const block = html.slice(html.indexOf('function renderRegistration'), html.indexOf('function renderRegistration') + 1600);
+    const block = html.slice(html.indexOf('function renderRegistration'), html.indexOf('function renderRegistration') + 1800);
     expect(block).toContain('kit_issued_at');
     expect(block).toContain('pill live');
     expect(block).toContain('>Да<');
@@ -348,7 +348,7 @@ describe('в «Регистрации» видно, выдан ли набор, 
 
 describe('регистрацию можно удалить прямо из списка — жёстко, не архивируя', () => {
   test('у каждой строки есть кнопка «Удалить», вайринг тот же, что у групп/участников/заявок', () => {
-    const block = html.slice(html.indexOf('function renderRegistration'), html.indexOf('function renderRegistration') + 3300);
+    const block = html.slice(html.indexOf('function renderRegistration'), html.indexOf('function renderRegistration') + 3500);
     expect(block).toContain('class="btn-quiet row-del"');
     expect(block).toContain('🗑 Удалить');
     expect(block).toContain("wireRowEditing('#regBody', 'registration'");

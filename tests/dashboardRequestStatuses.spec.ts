@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import { REQUEST_STATUSES } from '../src/db/repos/requests.repo.js';
-import { AGE_GROUPS } from '../src/core/texts.js';
+import { AGE_GROUPS, MDG_LABEL } from '../src/core/texts.js';
 
 /**
  * Дашборд обязан знать все статусы заявок.
@@ -96,9 +96,21 @@ describe('«Ответственный» — выпадающий список, 
   });
 });
 
-describe('«Куда направляем»', () => {
-  test('колонка есть в шапке и показывает существующее поле «Рекомендованная группа»', () => {
-    expect(html).toMatch(/<th[^>]*>Куда направляем/);
+/**
+ * Колонка дублировала «Домашняя группа»: рекомендация видна звёздочкой в её
+ * же выпадающем списке (см. тест «рекомендация помечена звёздочкой» выше),
+ * а отдельное поле «Рекомендованная группа» остаётся в форме правки и в
+ * раскрытых подробностях — убрана только колонка из основной таблицы.
+ */
+describe('«Куда направляем» — колонки в таблице заявок больше нет', () => {
+  test('заголовка колонки нет', () => {
+    expect(html).not.toMatch(/<th[^>]*>Куда направляем/);
+  });
+
+  test('поле «Рекомендованная группа» осталось в форме правки и в подробностях', () => {
+    expect(html).toContain('— не рекомендовано —');
+    const fn = html.slice(html.indexOf('function requestDetails'), html.indexOf('function requestDetails') + 1200);
+    expect(fn).toContain("['Рекомендованная группа', r.recommended]");
   });
 });
 
@@ -155,7 +167,7 @@ describe('возраст в форме заявки — выпадающий с�
 
 describe('сортировка заявок по столбцам', () => {
   test('каждый заголовок таблицы заявок кликабелен для сортировки', () => {
-    const keys = ['date', 'fio', 'phone', 'age', 'place', 'group_id', 'recommended', 'status'];
+    const keys = ['date', 'fio', 'phone', 'age', 'place', 'group_id', 'status'];
     for (const key of keys) {
       expect(html, `нет сортируемого заголовка для ${key}`).toContain(`class="sortable-req" data-key="${key}"`);
     }
@@ -167,5 +179,44 @@ describe('сортировка заявок по столбцам', () => {
     expect(html).toContain("querySelectorAll('thead th.sortable-req')");
     expect(html).toContain('state.reqSort');
     expect(html).toContain('state.reqDir');
+  });
+});
+
+/**
+ * Фильтр «Заявка» на вкладке «Регистрация» — та же анкета, что бот спрашивает
+ * про Малую группу (mdg_status), и в том же порядке, что кнопки в его
+ * клавиатуре (mdgKeyboard): ведущий → состоит → готов открыть → даёт дом →
+ * хочет присоединиться. Плюс «Без заявки» для тех, кого не спрашивали, —
+ * иначе такие участники не попадали бы ни под один фильтр (та же ловушка,
+ * что уже чинили для статусов заявок, см. «у каждого статуса есть кнопка
+ * фильтра» выше).
+ */
+describe('фильтр «Заявка» на «Регистрации»', () => {
+  test('кнопка есть для каждого статуса анкеты бота, ни один не потерян', () => {
+    const seg = html.slice(html.indexOf('id="segReg"'), html.indexOf('id="segReg"') + 600);
+    for (const status of Object.keys(MDG_LABEL)) {
+      expect(seg, `нет кнопки фильтра для статуса «${status}»`).toContain(`data-mdg="${status}"`);
+    }
+    expect(seg).toContain('data-mdg="none"');
+    expect(seg).toContain('data-mdg=""');
+  });
+
+  test('порядок кнопок — как в клавиатуре бота (mdgKeyboard)', () => {
+    const seg = html.slice(html.indexOf('id="segReg"'), html.indexOf('id="segReg"') + 600);
+    const order = ['leader', 'member', 'open', 'home', 'join'].map((k) => seg.indexOf(`data-mdg="${k}"`));
+    for (let i = 1; i < order.length; i++) {
+      expect(order[i], 'порядок кнопок разошёлся с mdgKeyboard бота').toBeGreaterThan(order[i - 1]);
+    }
+  });
+
+  test('клик по кнопке меняет state.regMdg и перерисовывает регистрацию', () => {
+    expect(html).toContain('state.regMdg = b.dataset.mdg');
+    expect(html).toMatch(/state\.regMdg = b\.dataset\.mdg;\s*renderRegistration\(\);/);
+  });
+
+  test('список фильтруется по mdg_status, «Без заявки» — по отсутствию значения', () => {
+    const fn = html.slice(html.indexOf('function renderRegistration'), html.indexOf('function renderRegistration') + 600);
+    expect(fn).toContain('state.regMdg');
+    expect(fn).toContain("state.regMdg === 'none'");
   });
 });

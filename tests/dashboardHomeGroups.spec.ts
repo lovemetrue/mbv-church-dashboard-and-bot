@@ -21,9 +21,9 @@ describe('переименования вкладок', () => {
 });
 
 describe('порядок и заголовок вкладок', () => {
-  test('порядок: Аналитика, Заявки, Домашние группы, 40 дней, Участники', () => {
+  test('порядок: Аналитика, Регистрация, Заявки, Домашние группы, 40 дней, Участники', () => {
     const at = (view: string) => html.indexOf(`data-view="${view}"`);
-    const order = ['analytics', 'requests', 'all', 'campaign', 'coordinators'].map(at);
+    const order = ['analytics', 'registration', 'requests', 'all', 'campaign', 'coordinators'].map(at);
     order.forEach((pos) => expect(pos).toBeGreaterThan(-1));
     for (let i = 1; i < order.length; i++) expect(order[i]).toBeGreaterThan(order[i - 1]!);
   });
@@ -223,14 +223,13 @@ describe('«Куда направляем» — выбор из групп, а �
 
 describe('регистрация участника из дашборда', () => {
   /**
-   * Раньше у «Регистрации» была своя вкладка в общей навигации «/groups» —
-   * теперь у неё отдельный адрес, «/registration» (см. describe ниже), а из
-   * общей навигации кнопку убрали совсем: там её было легко проглядеть среди
-   * остальных шести вкладок.
+   * У «Регистрации» есть и своя вкладка внутри общей навигации «/groups» (со
+   * списком участников — им пользуются служители, уже вошедшие в весь
+   * дашборд), и отдельный адрес «/registration» без списка (см. describe
+   * ниже) — им можно поделиться шире, не открывая доступ к чужим телефонам.
    */
-  test('своей вкладки в общей навигации больше нет — у раздела свой адрес', () => {
-    expect(html).not.toContain('data-view="registration">Регистрация</button>');
-    // PAGE_TITLES не трогаем: тот же ключ нужен для заголовка на «/registration».
+  test('своя вкладка в навигации на месте', () => {
+    expect(html).toContain('data-view="registration">Регистрация</button>');
     expect(html).toContain("registration: 'Регистрация'");
   });
 
@@ -501,5 +500,25 @@ describe('отдельная страница «/registration» — тот же 
 
   test('заголовок вкладки браузера меняется на «Регистрация…», а не остаётся про домашние группы', () => {
     expect(html).toContain("if (STANDALONE === 'registration') document.title =");
+  });
+
+  /**
+   * Ссылку на «/registration» можно дать людям, которым не нужно видеть список
+   * всех участников кампании и их телефоны (включая пасторов и служителей) —
+   * список и выгрузка CSV поэтому там скрыты. Сервер к тому же не кладёт эти
+   * данные в HG_LIVE вовсе (см. dashboardServer.spec.ts) — здесь проверяем,
+   * что и вёрстка их прячет, на случай если разметке будет что показывать.
+   */
+  test('список регистраций и ссылка на выгрузку CSV скрыты CSS-ом по data-атрибуту', () => {
+    expect(html).toContain(
+      'html[data-standalone="registration"] #registrationListSection,\n' +
+      'html[data-standalone="registration"] #exportLink { display: none; }',
+    );
+  });
+
+  test('список регистраций обёрнут в id="registrationListSection", которым управляет CSS выше', () => {
+    const at = html.indexOf('id="regBody"');
+    const sectionAt = html.lastIndexOf('<section', at);
+    expect(html.slice(sectionAt, at)).toContain('id="registrationListSection"');
   });
 });

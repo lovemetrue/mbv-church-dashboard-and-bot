@@ -685,4 +685,22 @@ describe('регистрация участника из дашборда — о
     });
     expect(r.status).toBe(401);
   });
+
+  /**
+   * Смысл отдельной ссылки — давать её людям, которым нельзя видеть список
+   * участников кампании и чужие телефоны (в том числе пасторов). Заводим
+   * настоящую запись через настоящую базу и проверяем, что открытие страницы
+   * «/registration» её не выдаёт — ни в списке (которого там нет), ни где-то
+   * ещё в HTML, например через HG_LIVE.
+   */
+  test('открытие страницы не выдаёт ни одной настоящей записи из базы — ни в списке, ни в HG_LIVE', async () => {
+    await usersRepo.createManual({
+      platform: 'telegram', byAdminId: 'дашборд', fio: 'Пастор Секретный', phone: '+79001112299',
+    });
+    const cookie = await login(regBase);
+    const html = await (await fetch(regBase, { headers: { cookie } })).text();
+    expect(html).not.toContain('Пастор Секретный');
+    expect(html).not.toContain('+79001112299');
+    expect(html).toContain('"users":[]');
+  });
 });

@@ -3,6 +3,7 @@ import { GroupsRepo } from '../db/repos/groups.repo.js';
 import { RequestsRepo } from '../db/repos/requests.repo.js';
 import { UsersRepo, type ManualRegistrationInput } from '../db/repos/users.repo.js';
 import { usersToCsv } from '../core/csv.js';
+import { allChurchOptions } from '../core/churches.js';
 import { campaignStats } from './campaignStats.js';
 import { CampaignRepo } from '../db/repos/campaign.repo.js';
 import { DeliveriesRepo } from '../db/repos/deliveries.repo.js';
@@ -66,6 +67,7 @@ async function main(): Promise<void> {
       leaderCandidates: await users.leaderCandidates(),
       users: await users.listRegistered(),
       campaign: await campaignStats({ users, requests, campaign, deliveries }, schedule),
+      churchOptions: allChurchOptions(),
     }),
     deleteGroup: async (id) => (await groups.archive(id)) !== null,
     // Что заведено в дашборде, помечается source='ui': видно, откуда взялась запись,

@@ -1,5 +1,11 @@
-/** Страница входа. Оформлена как дашборд: тот же фон, шрифт и акцент. */
-export function loginPage(error?: string): string {
+/**
+ * Страница входа. Оформлена как дашборд: тот же фон, шрифт и акцент.
+ *
+ * `mount` — куда слать форму: у «/groups» и «/registration» отдельные сессии
+ * (кука привязана к своему пути), поэтому и форма входа должна бить в тот же
+ * адрес, с которого её открыли, иначе логин с одной страницы не пускал бы на неё же.
+ */
+export function loginPage(error?: string, mount = '/groups'): string {
   return `<!doctype html>
 <html lang="ru"><head>
 <meta charset="utf-8">
@@ -35,7 +41,7 @@ export function loginPage(error?: string): string {
          color:var(--bad); background:rgba(248,81,73,.1); border:1px solid rgba(248,81,73,.22); }
 </style></head>
 <body>
-  <form method="post" action="/groups/login">
+  <form method="post" action="${mount}/login">
     <span class="mark" aria-hidden="true">
       <svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V21h13V9.5"/><path d="M12 21v-5"/></svg>
     </span>

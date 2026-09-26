@@ -21,9 +21,9 @@ describe('переименования вкладок', () => {
 });
 
 describe('порядок и заголовок вкладок', () => {
-  test('порядок: Аналитика, Регистрация, Заявки, Домашние группы, 40 дней, Участники', () => {
+  test('порядок: Аналитика, Заявки, Домашние группы, 40 дней, Участники', () => {
     const at = (view: string) => html.indexOf(`data-view="${view}"`);
-    const order = ['analytics', 'registration', 'requests', 'all', 'campaign', 'coordinators'].map(at);
+    const order = ['analytics', 'requests', 'all', 'campaign', 'coordinators'].map(at);
     order.forEach((pos) => expect(pos).toBeGreaterThan(-1));
     for (let i = 1; i < order.length; i++) expect(order[i]).toBeGreaterThan(order[i - 1]!);
   });
@@ -222,8 +222,15 @@ describe('«Куда направляем» — выбор из групп, а �
 });
 
 describe('регистрация участника из дашборда', () => {
-  test('своя вкладка в навигации', () => {
-    expect(html).toContain('data-view="registration">Регистрация</button>');
+  /**
+   * Раньше у «Регистрации» была своя вкладка в общей навигации «/groups» —
+   * теперь у неё отдельный адрес, «/registration» (см. describe ниже), а из
+   * общей навигации кнопку убрали совсем: там её было легко проглядеть среди
+   * остальных шести вкладок.
+   */
+  test('своей вкладки в общей навигации больше нет — у раздела свой адрес', () => {
+    expect(html).not.toContain('data-view="registration">Регистрация</button>');
+    // PAGE_TITLES не трогаем: тот же ключ нужен для заголовка на «/registration».
     expect(html).toContain("registration: 'Регистрация'");
   });
 
@@ -232,7 +239,7 @@ describe('регистрация участника из дашборда', () =
    * участниками, а список регистраций — на своей вкладке: заводить и смотреть
    * приходилось в разных местах. Теперь оба — один раздел «Регистрация».
    */
-  test('и таблица регистраций, и форма заведения — на одной вкладке «Регистрация»', () => {
+  test('и таблица регистраций, и форма заведения — в одном разделе «Регистрация»', () => {
     expect(html).toContain('id="regBody"');
     expect(html).toContain('function renderRegistration()');
     const formAt = html.indexOf('id="registrationForm"');
@@ -250,6 +257,15 @@ describe('регистрация участника из дашборда', () =
     expect(html).toContain("name: 'leaderName'");
   });
 
+  /** Церковь и возраст — выпадающие списки, а не свободный текст: опечатка в
+   *  свободном тексте потерялась бы в статистике, а вариантов и так конечный набор. */
+  test('церковь и возраст — выпадающие списки, а не свободный текст', () => {
+    const block = html.slice(html.indexOf('const REGISTRATION_CHURCH_OPTIONS'), html.indexOf('const REGISTRATION_FIELDS') + 1200);
+    expect(block).toContain('const REGISTRATION_CHURCH_OPTIONS = DATA.churchOptions');
+    expect(block).toMatch(/name: 'church',\s*label: 'Церковь',\s*\n\s*pairs: \[\['', '— не указана —'\], \.\.\.REGISTRATION_CHURCH_OPTIONS/);
+    expect(block).toMatch(/name: 'age',\s*label: 'Возраст',\s*\n\s*pairs: \[\['', '— не указан —'\], \.\.\.FORM_AGE_GROUPS/);
+  });
+
   /**
    * Путь бота (см. awaitMdg в fsm.ts): «member» спрашивает ведущего, «open/home/
    * join» — район и возраст, «leader» не спрашивает больше ничего. Форма — одна
@@ -265,8 +281,8 @@ describe('регистрация участника из дашборда', () =
 
   test('QR показывается сразу на странице, без перезагрузки формы', () => {
     expect(html).toContain('id="registrationQr"');
-    expect(html).toContain("'registration/create'");
-    expect(html).toContain('registration/qr?id=');
+    expect(html).toContain("+ 'create'");
+    expect(html).toContain('}qr?id=');
     // Остальные формы дашборда перезагружают страницу после успеха — эта нет,
     // иначе показанный QR тут же стёрло бы.
     const block = html.slice(html.indexOf('wireRegistrationForm'), html.indexOf('wireRegistrationForm') + 1800);
@@ -292,8 +308,8 @@ describe('после загрузки страницы открыта вклад
     expect(html).toMatch(/aria-selected="false" data-view="all"/);
   });
 
-  test('начальный view в состоянии — requests', () => {
-    expect(html).toContain("view: 'requests'");
+  test('начальный view в состоянии — requests, кроме отдельной страницы регистрации', () => {
+    expect(html).toContain("view: STANDALONE === 'registration' ? 'registration' : 'requests'");
   });
 });
 
@@ -316,7 +332,7 @@ describe('номер заявки виден в таблице и по нему 
 
 describe('QR в дашборде ведёт на печатную карточку, а не на голый PNG', () => {
   test('миниатюра в таблице «Регистрация» открывает карточку по клику', () => {
-    expect(html).toContain('registration/card?id=');
+    expect(html).toContain('}card?id=');
     const block = html.slice(html.indexOf('function renderRegistration'), html.indexOf('function renderRegistration') + 1900);
     expect(block).toContain('href="${cardSrc}"');
     expect(block).toContain('src="${qrSrc}"');
@@ -324,7 +340,7 @@ describe('QR в дашборде ведёт на печатную карточк
 
   test('QR сразу после заведения регистрации тоже ссылается на карточку', () => {
     const block = html.slice(html.indexOf('wireRegistrationForm'), html.indexOf('wireRegistrationForm') + 2200);
-    expect(block).toContain('registration/card?id=');
+    expect(block).toContain('}card?id=');
   });
 });
 
@@ -462,5 +478,28 @@ describe('фильтр по статусу группы — несколько �
     // И карта районов, и реестр, и ранжирование должны спрашивать один и тот же фильтр.
     const uses = [...html.matchAll(/statusMatches\(g\.status\)/g)].length;
     expect(uses).toBeGreaterThanOrEqual(4);
+  });
+});
+
+/**
+ * Страница одна на два адреса («/groups» и «/registration» — см.
+ * src/dashboard/server.ts), но на «/registration» сервер кладёт в неё флаг
+ * window.HG_STANDALONE: без него обе страницы показывали бы один и тот же
+ * дашборд целиком, с навигацией по всем разделам, что на отдельном адресе
+ * регистрации не нужно и сбивает с толку.
+ */
+describe('отдельная страница «/registration» — тот же файл в специальном режиме', () => {
+  test('флаг STANDALONE читается из window.HG_STANDALONE и выставляется на <html> как можно раньше', () => {
+    const block = html.slice(html.indexOf('const DATA = window.HG_LIVE'), html.indexOf('const DATA = window.HG_LIVE') + 500);
+    expect(block).toContain('const STANDALONE = window.HG_STANDALONE ?? null;');
+    expect(block).toContain("document.documentElement.dataset.standalone = STANDALONE ?? '';");
+  });
+
+  test('CSS прячет навигацию по data-атрибуту, а не по JS-переключению каждой кнопки', () => {
+    expect(html).toContain('html[data-standalone="registration"] .nav { display: none; }');
+  });
+
+  test('заголовок вкладки браузера меняется на «Регистрация…», а не остаётся про домашние группы', () => {
+    expect(html).toContain("if (STANDALONE === 'registration') document.title =");
   });
 });

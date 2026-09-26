@@ -8,6 +8,7 @@ import { SessionService, type SessionStore } from '../src/dashboard/sessions.js'
 
 const MARKER = 'СЕКРЕТНЫЙ-ДАШБОРД-116-ГРУПП';
 let base: string;
+let regBase: string;
 let live: unknown = [];
 let liveRequests: Record<string, unknown>[] = [];
 let liveCoordinators: Record<string, unknown>[] = [];
@@ -15,6 +16,7 @@ let deleted: number[] = [];
 let deleteResult = true;
 let createdGroups: unknown[] = [];
 let createdRequests: unknown[] = [];
+let createdRegistrations: unknown[] = [];
 let exportRows = 'номер,фио\n1,Иванов\n';
 let server: ReturnType<typeof createDashboardServer>;
 
@@ -54,16 +56,27 @@ beforeAll(async () => {
       createdRequests.push(input);
       return 43;
     },
+    createRegistration: async (input: unknown) => {
+      createdRegistrations.push(input);
+      return 44;
+    },
+    registrationQr: async () => Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+    registrationCard: async () => ({
+      registrationNo: 44, fullName: 'Тест Тестов', phone: null, church: null, mdgStatus: null,
+    }),
+    deleteRegistration: async () => true,
     exportUsers: async () => exportRows,
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
-  base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/groups`;
+  const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  base = `${origin}/groups`;
+  regBase = `${origin}/registration`;
 });
 
 afterAll(() => { server.close(); });
 
-const login = (password: string) =>
-  fetch(`${base}/login`, {
+const login = (password: string, loginBase = base) =>
+  fetch(`${loginBase}/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-real-ip': '10.0.0.1' },
     body: new URLSearchParams({ password }),
@@ -398,5 +411,75 @@ describe('выгрузка участников', () => {
     expect(r.headers.get('content-type')).toContain('text/csv');
     expect(r.headers.get('content-disposition')).toContain('attachment');
     expect(await r.text()).toContain('Иванов');
+  });
+
+  test('доступна и на «/registration» — участники кампании общие для обоих приложений', async () => {
+    const sid = (await login('очень-секретно', regBase)).headers.get('set-cookie')!.split(';')[0]!;
+    const r = await fetch(`${regBase}/export.csv`, { headers: { cookie: sid } });
+    expect(r.status).toBe(200);
+    expect(await r.text()).toContain('Иванов');
+  });
+});
+
+/**
+ * «Новая регистрация» раньше жила формой внутри «/groups» — теперь это
+ * отдельное приложение на своём адресе, за отдельным входом (своя кука со
+ * своим Path), но тем же файлом страницы и тем же паролем.
+ */
+describe('отдельное приложение «/registration»', () => {
+  test('без входа отдаётся форма входа, а не данные, и форма ведёт на /registration/login', async () => {
+    const r = await fetch(regBase);
+    const body = await r.text();
+    expect(r.status).toBe(200);
+    expect(body).toContain('Пароль');
+    expect(body).not.toContain(MARKER);
+    expect(body).toContain('action="/registration/login"');
+  });
+
+  test('кука сессии привязана к /registration, а не к /groups', async () => {
+    const r = await login('очень-секретно', regBase);
+    const setCookie = r.headers.get('set-cookie') ?? '';
+    expect(setCookie).toContain('Path=/registration');
+    expect(setCookie).not.toContain('Path=/groups');
+  });
+
+  test('со входом отдаётся тот же файл страницы, но со страницей в режиме HG_STANDALONE', async () => {
+    const sid = (await login('очень-секретно', regBase)).headers.get('set-cookie')!.split(';')[0]!;
+    const html = await (await fetch(regBase, { headers: { cookie: sid } })).text();
+    expect(html).toContain(MARKER);
+    expect(html).toContain('window.HG_STANDALONE = "registration"');
+    expect(html).toContain('window.HG_BASE = "/registration/"');
+  });
+
+  test('маршруты «/groups» (например, группу завести) на «/registration» не отвечают', async () => {
+    const sid = (await login('очень-секретно', regBase)).headers.get('set-cookie')!.split(';')[0]!;
+    createdGroups = [];
+    const r = await fetch(`${regBase}/group/create`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: sid },
+      body: new URLSearchParams({ leader: 'Кто-то', district: 'Невский', format: 'Молодежная', status: 'Функционирует' }),
+    });
+    expect(r.status).toBe(404);
+    expect(createdGroups).toEqual([]);
+  });
+
+  test('заведение регистрации работает только на «/registration», а не на «/groups»', async () => {
+    createdRegistrations = [];
+    const regSid = (await login('очень-секретно', regBase)).headers.get('set-cookie')!.split(';')[0]!;
+    const r = await fetch(`${regBase}/create`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: regSid },
+      body: new URLSearchParams({ fio: 'Петрова Мария', phone: '+79001112233' }),
+    });
+    expect(r.status).toBe(200);
+    expect(createdRegistrations).toEqual([{ fio: 'Петрова Мария', phone: '+79001112233' }]);
+
+    const groupsSid = (await login('очень-секретно')).headers.get('set-cookie')!.split(';')[0]!;
+    const onOldMount = await fetch(`${base}/create`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: groupsSid },
+      body: new URLSearchParams({ fio: 'Кто-то', phone: '+79001112234' }),
+    });
+    expect(onOldMount.status).toBe(404);
   });
 });

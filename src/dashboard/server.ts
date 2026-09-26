@@ -11,8 +11,20 @@ import { SessionService } from './sessions.js';
 import { logger } from '../logger.js';
 
 const COOKIE = 'hg_sid';
-/** Путь монтирования за nginx. Внутри сервиса пути нормализуются к корню. */
-const MOUNT = '/groups';
+/**
+ * Два приложения за одним сервисом, каждое на своём пути монтирования у nginx.
+ * «/registration» вынесена из «/groups» отдельной страницей — свой урок, что
+ * забытая кнопка регистрации в общей форме терялась среди остальных. У сессий
+ * разные куки (Path равен своему префиксу), поэтому вход общий паролем, но
+ * не переносится автоматически со страницы на страницу.
+ */
+const MOUNTS = ['/groups', '/registration'] as const;
+type Mount = (typeof MOUNTS)[number];
+const DEFAULT_MOUNT: Mount = '/groups';
+
+function resolveMount(pathname: string): Mount {
+  return pathname === '/registration' || pathname.startsWith('/registration/') ? '/registration' : DEFAULT_MOUNT;
+}
 
 export interface DashboardData {
   groups: readonly object[];
@@ -24,10 +36,12 @@ export interface DashboardData {
   users: readonly object[];
   /** Показатели кампании: то, что раньше показывала команда /stats в боте. */
   campaign?: object | null;
+  /** Церкви одним списком — для выпадающего списка в форме регистрации. */
+  churchOptions: readonly string[];
 }
 
 const EMPTY_DATA: DashboardData = {
-  groups: [], requests: [], coordinators: [], leaderCandidates: [], users: [], campaign: null,
+  groups: [], requests: [], coordinators: [], leaderCandidates: [], users: [], campaign: null, churchOptions: [],
 };
 
 export interface DashboardDeps {
@@ -112,9 +126,9 @@ function send(res: ServerResponse, status: number, body: string, headers: Record
  * из файла, без сервера. Поэтому кнопку добавляем на отдаче. Стиль берём у штатного .chip,
  * место — в правой части шапки; если шапки нет, кнопка просто прижимается к углу.
  */
-export function withLogout(html: string): string {
+export function withLogout(html: string, mount: Mount = DEFAULT_MOUNT): string {
   const snippet = `
-<form class="hg-logout" action="${MOUNT}/logout" method="post"><button class="chip" type="submit">Выйти</button></form>
+<form class="hg-logout" action="${mount}/logout" method="post"><button class="chip" type="submit">Выйти</button></form>
 <style>
   .hg-logout { position: fixed; top: 14px; right: 16px; z-index: 60; margin: 0; }
   .topbar-right .hg-logout { position: static; }
@@ -139,24 +153,31 @@ export function withLogout(html: string): string {
  * Заодно сообщаем странице префикс монтирования. Без него запросы со страницы
  * уходят не туда: адрес «/groups» без косой черты разрешает относительный путь
  * от корня, и «leader/delete» превращается в «/leader/delete».
+ *
+ * «/registration» отдаёт тот же файл, что и «/groups» (страница одна на оба
+ * адреса — так не пришлось заводить второй экземпляр общих стилей и скрипта),
+ * поэтому странице нужно ещё и сказать, в каком она режиме: window.HG_STANDALONE
+ * прячет навигацию и показывает только раздел регистрации, минуя остальной дашборд.
  */
-export function withLive(html: string, data: DashboardData): string {
+export function withLive(html: string, data: DashboardData, mount: Mount = DEFAULT_MOUNT): string {
   const json = JSON.stringify(data).replace(/</g, '\\u003c');
-  const block = `<script>window.HG_LIVE = ${json}; window.HG_BASE = ${JSON.stringify(MOUNT + '/')};</script>\n`;
+  const standalone = mount === '/registration' ? '"registration"' : 'null';
+  const block = `<script>window.HG_LIVE = ${json}; window.HG_BASE = ${JSON.stringify(mount + '/')}; window.HG_STANDALONE = ${standalone};</script>\n`;
   const at = html.indexOf('<script>');
   return at === -1 ? block + html : html.slice(0, at) + block + html.slice(at);
 }
 
 export function createDashboardServer(deps: DashboardDeps) {
-  const cookie = (sid: string, maxAge: number) =>
-    `${COOKIE}=${sid}; HttpOnly; SameSite=Lax; Path=${MOUNT}; Max-Age=${maxAge}` +
+  const cookie = (sid: string, maxAge: number, mount: Mount) =>
+    `${COOKIE}=${sid}; HttpOnly; SameSite=Lax; Path=${mount}; Max-Age=${maxAge}` +
     (deps.secureCookie ? '; Secure' : '');
 
   return createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? '/', 'http://localhost');
       // За nginx путь приходит вместе с префиксом монтирования.
-      const path = url.pathname.replace(new RegExp(`^${MOUNT}`), '') || '/';
+      const mount = resolveMount(url.pathname);
+      const path = url.pathname.slice(mount.length) || '/';
       const sid = SessionService.readCookie(req.headers.cookie, COOKIE);
 
       if (path === '/health') {
@@ -211,31 +232,31 @@ export function createDashboardServer(deps: DashboardDeps) {
           logger.warn({ ip, lockedOut: result.lockedOut === true }, 'дашборд: неудачный вход');
           send(res, 401, loginPage(result.lockedOut
             ? 'Слишком много попыток. Подождите 15 минут.'
-            : 'Неверный пароль.'));
+            : 'Неверный пароль.', mount));
           return;
         }
 
-        logger.info({ ip }, 'дашборд: вход выполнен');
-        send(res, 303, '', { location: MOUNT, 'set-cookie': cookie(result.sid!, deps.sessionTtlSeconds) });
+        logger.info({ ip, mount }, 'дашборд: вход выполнен');
+        send(res, 303, '', { location: mount, 'set-cookie': cookie(result.sid!, deps.sessionTtlSeconds, mount) });
         return;
       }
 
       /* Формы создания. Проверки те же, что у удаления: только POST, живая сессия,
          затем разбор. Тело крупнее — в комментарий к группе влезает много текста. */
-      if (path === '/group/create' || path === '/request/create') {
+      if (mount === '/groups' && (path === '/group/create' || path === '/request/create')) {
         if (req.method !== 'POST') {
-          send(res, 404, loginPage());
+          send(res, 404, loginPage(undefined, mount));
           return;
         }
         if (!(await deps.auth.verify(sid))) {
-          send(res, 401, loginPage('Сессия истекла. Войдите заново.'));
+          send(res, 401, loginPage('Сессия истекла. Войдите заново.', mount));
           return;
         }
 
         const isGroup = path === '/group/create';
         const handler = isGroup ? deps.createGroup : deps.createRequest;
         if (!handler) {
-          send(res, 404, loginPage());
+          send(res, 404, loginPage(undefined, mount));
           return;
         }
 
@@ -262,17 +283,17 @@ export function createDashboardServer(deps: DashboardDeps) {
       }
 
       /* Быстрая смена статуса заявки: то, что раньше делала команда /close. */
-      if (path === '/request/status') {
+      if (mount === '/groups' && path === '/request/status') {
         if (req.method !== 'POST') {
-          send(res, 404, loginPage());
+          send(res, 404, loginPage(undefined, mount));
           return;
         }
         if (!(await deps.auth.verify(sid))) {
-          send(res, 401, loginPage('Сессия истекла. Войдите заново.'));
+          send(res, 401, loginPage('Сессия истекла. Войдите заново.', mount));
           return;
         }
         if (!deps.setRequestStatus) {
-          send(res, 404, loginPage());
+          send(res, 404, loginPage(undefined, mount));
           return;
         }
 
@@ -291,17 +312,17 @@ export function createDashboardServer(deps: DashboardDeps) {
 
       /* Координаторы: тот же список людей, что стоит и «Координатором» у группы,
          и «Ответственным» у заявки — один человек годится на обе роли. */
-      if (path === '/coordinator/create') {
+      if (mount === '/groups' && path === '/coordinator/create') {
         if (req.method !== 'POST') {
-          send(res, 404, loginPage());
+          send(res, 404, loginPage(undefined, mount));
           return;
         }
         if (!(await deps.auth.verify(sid))) {
-          send(res, 401, loginPage('Сессия истекла. Войдите заново.'));
+          send(res, 401, loginPage('Сессия истекла. Войдите заново.', mount));
           return;
         }
         if (!deps.createCoordinator) {
-          send(res, 404, loginPage());
+          send(res, 404, loginPage(undefined, mount));
           return;
         }
 
@@ -317,17 +338,17 @@ export function createDashboardServer(deps: DashboardDeps) {
         return;
       }
 
-      if (path === '/coordinator/update') {
+      if (mount === '/groups' && path === '/coordinator/update') {
         if (req.method !== 'POST') {
-          send(res, 404, loginPage());
+          send(res, 404, loginPage(undefined, mount));
           return;
         }
         if (!(await deps.auth.verify(sid))) {
-          send(res, 401, loginPage('Сессия истекла. Войдите заново.'));
+          send(res, 401, loginPage('Сессия истекла. Войдите заново.', mount));
           return;
         }
         if (!deps.updateCoordinator) {
-          send(res, 404, loginPage());
+          send(res, 404, loginPage(undefined, mount));
           return;
         }
 
@@ -344,17 +365,17 @@ export function createDashboardServer(deps: DashboardDeps) {
         return;
       }
 
-      if (path === '/coordinator/delete') {
+      if (mount === '/groups' && path === '/coordinator/delete') {
         if (req.method !== 'POST') {
-          send(res, 404, loginPage());
+          send(res, 404, loginPage(undefined, mount));
           return;
         }
         if (!(await deps.auth.verify(sid))) {
-          send(res, 401, loginPage('Сессия истекла. Войдите заново.'));
+          send(res, 401, loginPage('Сессия истекла. Войдите заново.', mount));
           return;
         }
         if (!deps.deleteCoordinator) {
-          send(res, 404, loginPage());
+          send(res, 404, loginPage(undefined, mount));
           return;
         }
 
@@ -370,20 +391,25 @@ export function createDashboardServer(deps: DashboardDeps) {
         return;
       }
 
-      /* Регистрация из дашборда — для тех, кто заполнил анкету на бумаге и своего
-         чата с ботом не имеет. QR отдаётся тут же, отдельным маршрутом: страница
-         показывает его сразу, без похода в чат бота. */
-      if (path === '/registration/create') {
+      /*
+       * Приложение «/registration» — для тех, кто заполнил анкету на бумаге и
+       * своего чата с ботом не имеет. Раньше форма заведения жила внутри
+       * «/groups», теперь это отдельная страница на своём адресе — маршруты
+       * ниже относятся только к ней, поэтому под «/groups» их больше нет.
+       * QR и карточка отдаются тут же, отдельными маршрутами: страница
+       * показывает их сразу, без похода в чат бота.
+       */
+      if (mount === '/registration' && path === '/create') {
         if (req.method !== 'POST') {
-          send(res, 404, loginPage());
+          send(res, 404, loginPage(undefined, mount));
           return;
         }
         if (!(await deps.auth.verify(sid))) {
-          send(res, 401, loginPage('Сессия истекла. Войдите заново.'));
+          send(res, 401, loginPage('Сессия истекла. Войдите заново.', mount));
           return;
         }
         if (!deps.createRegistration) {
-          send(res, 404, loginPage());
+          send(res, 404, loginPage(undefined, mount));
           return;
         }
 
@@ -399,17 +425,17 @@ export function createDashboardServer(deps: DashboardDeps) {
         return;
       }
 
-      if (path === '/registration/qr') {
+      if (mount === '/registration' && path === '/qr') {
         if (req.method !== 'GET') {
-          send(res, 404, loginPage());
+          send(res, 404, loginPage(undefined, mount));
           return;
         }
         if (!(await deps.auth.verify(sid))) {
-          send(res, 401, loginPage('Сессия истекла. Войдите заново.'));
+          send(res, 401, loginPage('Сессия истекла. Войдите заново.', mount));
           return;
         }
         if (!deps.registrationQr) {
-          send(res, 404, loginPage());
+          send(res, 404, loginPage(undefined, mount));
           return;
         }
 
@@ -436,17 +462,17 @@ export function createDashboardServer(deps: DashboardDeps) {
        * телефона — эта страница специально для того, чтобы распечатать или
        * переслать всё сразу, как в подписи к фото в Telegram.
        */
-      if (path === '/registration/card') {
+      if (mount === '/registration' && path === '/card') {
         if (req.method !== 'GET') {
-          send(res, 404, loginPage());
+          send(res, 404, loginPage(undefined, mount));
           return;
         }
         if (!(await deps.auth.verify(sid))) {
-          send(res, 401, loginPage('Сессия истекла. Войдите заново.'));
+          send(res, 401, loginPage('Сессия истекла. Войдите заново.', mount));
           return;
         }
         if (!deps.registrationCard) {
-          send(res, 404, loginPage());
+          send(res, 404, loginPage(undefined, mount));
           return;
         }
 
@@ -462,24 +488,24 @@ export function createDashboardServer(deps: DashboardDeps) {
           send(res, 404, 'Регистрация не найдена.');
           return;
         }
-        send(res, 200, registrationCardPage(info, `${MOUNT}/registration/qr?id=${cardId}`, `${MOUNT}/assets/church-logo.png`));
+        send(res, 200, registrationCardPage(info, `${mount}/qr?id=${cardId}`, `${mount}/assets/church-logo.png`));
         return;
       }
 
       /* Удалить регистрацию (заведена по ошибке, дубль, человек попросил).
          В отличие от группы/участника/заявки ниже — удаление жёсткое, по явному
          решению церкви: запись физически стирается, а не архивируется. */
-      if (path === '/registration/delete') {
+      if (mount === '/registration' && path === '/delete') {
         if (req.method !== 'POST') {
-          send(res, 404, loginPage());
+          send(res, 404, loginPage(undefined, mount));
           return;
         }
         if (!(await deps.auth.verify(sid))) {
-          send(res, 401, loginPage('Сессия истекла. Войдите заново.'));
+          send(res, 401, loginPage('Сессия истекла. Войдите заново.', mount));
           return;
         }
         if (!deps.deleteRegistration) {
-          send(res, 404, loginPage());
+          send(res, 404, loginPage(undefined, mount));
           return;
         }
 
@@ -497,20 +523,20 @@ export function createDashboardServer(deps: DashboardDeps) {
 
       /* Правка и удаление прямо в списках. Проверки везде одни: только POST,
          живая сессия, затем разбор. Удаление мягкое — запись остаётся в базе. */
-      if (path === '/group/update' || path === '/request/update') {
+      if (mount === '/groups' && (path === '/group/update' || path === '/request/update')) {
         if (req.method !== 'POST') {
-          send(res, 404, loginPage());
+          send(res, 404, loginPage(undefined, mount));
           return;
         }
         if (!(await deps.auth.verify(sid))) {
-          send(res, 401, loginPage('Сессия истекла. Войдите заново.'));
+          send(res, 401, loginPage('Сессия истекла. Войдите заново.', mount));
           return;
         }
 
         const isGroup = path === '/group/update';
         const handler = isGroup ? deps.updateGroup : deps.updateRequest;
         if (!handler) {
-          send(res, 404, loginPage());
+          send(res, 404, loginPage(undefined, mount));
           return;
         }
 
@@ -536,20 +562,20 @@ export function createDashboardServer(deps: DashboardDeps) {
         return;
       }
 
-      if (path === '/group/delete' || path === '/request/delete') {
+      if (mount === '/groups' && (path === '/group/delete' || path === '/request/delete')) {
         if (req.method !== 'POST') {
-          send(res, 404, loginPage());
+          send(res, 404, loginPage(undefined, mount));
           return;
         }
         if (!(await deps.auth.verify(sid))) {
-          send(res, 401, loginPage('Сессия истекла. Войдите заново.'));
+          send(res, 401, loginPage('Сессия истекла. Войдите заново.', mount));
           return;
         }
 
         const isGroup = path === '/group/delete';
         const handler = isGroup ? deps.deleteGroup : deps.deleteRequest;
         if (!handler) {
-          send(res, 404, loginPage());
+          send(res, 404, loginPage(undefined, mount));
           return;
         }
 
@@ -565,14 +591,16 @@ export function createDashboardServer(deps: DashboardDeps) {
         return;
       }
 
-      /* Выгрузка участников. GET допустим: это чтение, ничего не меняет. */
+      /* Выгрузка участников. GET допустим: это чтение, ничего не меняет.
+         Доступна на обоих приложениях — участники кампании общие что для
+         «/groups», что для «/registration». */
       if (path === '/export.csv') {
         if (!(await deps.auth.verify(sid))) {
-          send(res, 401, loginPage('Сессия истекла. Войдите заново.'));
+          send(res, 401, loginPage('Сессия истекла. Войдите заново.', mount));
           return;
         }
         if (!deps.exportUsers) {
-          send(res, 404, loginPage());
+          send(res, 404, loginPage(undefined, mount));
           return;
         }
         const csv = await deps.exportUsers();
@@ -587,17 +615,17 @@ export function createDashboardServer(deps: DashboardDeps) {
          Только POST: по GET её могла бы стереть любая картинка на сторонней странице.
          Кука SameSite=Lax на межсайтовый POST не отправляется, поэтому отдельного
          токена здесь не нужно. Удаление мягкое — запись остаётся в базе. */
-      if (path === '/leader/delete') {   // прежний адрес удаления группы: не ломаем закладки
+      if (mount === '/groups' && path === '/leader/delete') {   // прежний адрес удаления группы: не ломаем закладки
         if (req.method !== 'POST') {
-          send(res, 404, loginPage());
+          send(res, 404, loginPage(undefined, mount));
           return;
         }
         if (!(await deps.auth.verify(sid))) {
-          send(res, 401, loginPage('Сессия истекла. Войдите заново.'));
+          send(res, 401, loginPage('Сессия истекла. Войдите заново.', mount));
           return;
         }
         if (!deps.deleteGroup) {
-          send(res, 404, loginPage());
+          send(res, 404, loginPage(undefined, mount));
           return;
         }
 
@@ -616,17 +644,17 @@ export function createDashboardServer(deps: DashboardDeps) {
 
       if (req.method === 'POST' && path === '/logout') {
         await deps.auth.logout(sid);
-        send(res, 303, '', { location: MOUNT, 'set-cookie': cookie('', 0) });
+        send(res, 303, '', { location: mount, 'set-cookie': cookie('', 0, mount) });
         return;
       }
 
       if (path !== '/' && path !== '') {
-        send(res, 404, loginPage());
+        send(res, 404, loginPage(undefined, mount));
         return;
       }
 
       if (!(await deps.auth.verify(sid))) {
-        send(res, 200, loginPage());
+        send(res, 200, loginPage(undefined, mount));
         return;
       }
 
@@ -640,7 +668,7 @@ export function createDashboardServer(deps: DashboardDeps) {
       } catch (err) {
         logger.error({ err: (err as Error).message }, 'дашборд: не удалось прочитать данные из базы');
       }
-      send(res, 200, withLive(withLogout(html), data));
+      send(res, 200, withLive(withLogout(html, mount), data, mount));
     } catch (err) {
       logger.error({ err: (err as Error).message }, 'дашборд: ошибка обработки запроса');
       if (!res.headersSent) send(res, 500, loginPage('Что-то пошло не так. Попробуйте ещё раз.'));

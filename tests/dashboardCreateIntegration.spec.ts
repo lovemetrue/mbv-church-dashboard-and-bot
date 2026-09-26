@@ -9,6 +9,7 @@ import { RequestsRepo } from '../src/db/repos/requests.repo.js';
 import { UsersRepo, type ManualRegistrationInput } from '../src/db/repos/users.repo.js';
 import { usersToCsv } from '../src/core/csv.js';
 import { qrPng } from '../src/core/qr.js';
+import { allChurchOptions } from '../src/core/churches.js';
 import { setupTestDb, truncateAll } from './helpers/testDb.js';
 
 /**
@@ -17,6 +18,7 @@ import { setupTestDb, truncateAll } from './helpers/testDb.js';
  */
 let db: Pool;
 let base: string;
+let regBase: string;
 let server: ReturnType<typeof createDashboardServer>;
 let htmlPath: string;
 let requests: RequestsRepo;
@@ -66,6 +68,7 @@ beforeAll(async () => {
       coordinators: await coordinators.listActive(),
       leaderCandidates: await users.leaderCandidates(),
       users: await users.listRegistered(),
+      churchOptions: allChurchOptions(),
     }),
     createGroup: async (input) => (await groups.create(input as never, 'ui')).id,
     createRequest: (input) => requests.createFromDashboard(input as never),
@@ -99,7 +102,11 @@ beforeAll(async () => {
     exportUsers: async () => usersToCsv(await users.exportRows()),
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
-  base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/groups`;
+  const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  base = `${origin}/groups`;
+  // «Регистрация» — отдельное приложение на своём адресе (см. src/dashboard/server.ts),
+  // со своим входом: кука привязана к своему Path, вход общий на /groups не переносится.
+  regBase = `${origin}/registration`;
 });
 
 afterAll(async () => {
@@ -109,8 +116,8 @@ afterAll(async () => {
 
 beforeEach(async () => { await truncateAll(db); });
 
-const login = async () => {
-  const r = await fetch(`${base}/login`, {
+const login = async (loginBase = base) => {
+  const r = await fetch(`${loginBase}/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-real-ip': '10.0.0.2' },
     body: new URLSearchParams({ password: 'пароль-для-теста' }),
@@ -119,8 +126,8 @@ const login = async () => {
   return r.headers.get('set-cookie')!.split(';')[0]!;
 };
 
-const post = (path: string, fields: Record<string, string>, cookie: string) =>
-  fetch(`${base}${path}`, {
+const post = (path: string, fields: Record<string, string>, cookie: string, postBase = base) =>
+  fetch(`${postBase}${path}`, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded', cookie },
     body: new URLSearchParams(fields),
@@ -547,12 +554,12 @@ describe('эмблема на печатной карточке', () => {
   });
 });
 
-describe('регистрация участника из дашборда', () => {
+describe('регистрация участника из дашборда — отдельное приложение /registration', () => {
   test('заведённый вручную участник получает номер и попадает в базу', async () => {
-    const cookie = await login();
-    const r = await post('/registration/create', {
+    const cookie = await login(regBase);
+    const r = await post('/create', {
       fio: 'Петрова Мария Ивановна', phone: '+7 900 111-22-33', church: 'МБВ (Колизей)', mdgStatus: 'open',
-    }, cookie);
+    }, cookie, regBase);
     expect(r.status).toBe(200);
 
     const { rows } = await db.query('SELECT * FROM users WHERE registration_no IS NOT NULL');
@@ -568,15 +575,15 @@ describe('регистрация участника из дашборда', () =
   });
 
   test('отказ формы ничего не пишет', async () => {
-    const cookie = await login();
-    const r = await post('/registration/create', { fio: 'Кто-то' }, cookie);
+    const cookie = await login(regBase);
+    const r = await post('/create', { fio: 'Кто-то' }, cookie, regBase);
     expect(r.status).toBe(400);
     const { rows } = await db.query('SELECT count(*)::int AS n FROM users');
     expect(rows[0]).toMatchObject({ n: 0 });
   });
 
   test('без сессии не регистрирует', async () => {
-    const r = await fetch(`${base}/registration/create`, {
+    const r = await fetch(`${regBase}/create`, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ fio: 'Кто-то', phone: '+79001112233' }),
@@ -584,24 +591,32 @@ describe('регистрация участника из дашборда', () =
     expect(r.status).toBe(401);
   });
 
+  // Раньше маршрут жил под «/groups/registration/create» — теперь регистрация не
+  // отвечает под старым приложением вовсе, у неё свой адрес целиком.
+  test('под «/groups» маршрут больше не отвечает', async () => {
+    const cookie = await login();
+    const r = await post('/create', { fio: 'Кто-то', phone: '+79001112233' }, cookie);
+    expect(r.status).toBe(404);
+  });
+
   test('QR отдаётся картинкой и виден только вошедшему', async () => {
     const created = await usersRepo.createManual({
       platform: 'telegram', byAdminId: 'дашборд', fio: 'Сидорова Анна', phone: '+79001112234',
     });
 
-    const anon = await fetch(`${base}/registration/qr?id=${created.id}`);
+    const anon = await fetch(`${regBase}/qr?id=${created.id}`);
     expect(anon.status).toBe(401);
 
-    const cookie = await login();
-    const r = await fetch(`${base}/registration/qr?id=${created.id}`, { headers: { cookie } });
+    const cookie = await login(regBase);
+    const r = await fetch(`${regBase}/qr?id=${created.id}`, { headers: { cookie } });
     expect(r.status).toBe(200);
     expect(r.headers.get('content-type')).toBe('image/png');
     expect((await r.arrayBuffer()).byteLength).toBeGreaterThan(0);
   });
 
   test('QR для несуществующей регистрации отвечает 404', async () => {
-    const cookie = await login();
-    const r = await fetch(`${base}/registration/qr?id=999999`, { headers: { cookie } });
+    const cookie = await login(regBase);
+    const r = await fetch(`${regBase}/qr?id=999999`, { headers: { cookie } });
     expect(r.status).toBe(404);
   });
 
@@ -611,24 +626,24 @@ describe('регистрация участника из дашборда', () =
       church: 'МБВ (Колизей)', mdgStatus: 'open',
     });
 
-    const anon = await fetch(`${base}/registration/card?id=${created.id}`);
+    const anon = await fetch(`${regBase}/card?id=${created.id}`);
     expect(anon.status).toBe(401);
 
-    const cookie = await login();
-    const r = await fetch(`${base}/registration/card?id=${created.id}`, { headers: { cookie } });
+    const cookie = await login(regBase);
+    const r = await fetch(`${regBase}/card?id=${created.id}`, { headers: { cookie } });
     expect(r.status).toBe(200);
     const html = await r.text();
     expect(html).toContain('Сидорова Анна Петровна');
     expect(html).toContain('+7 900 111-22-34');
     expect(html).toContain('МБВ (Колизей)');
     expect(html).toContain('готов открыть Малую группу');
-    expect(html).toContain(`registration/qr?id=${created.id}`);
-    expect(html).toContain('assets/church-logo.png');
+    expect(html).toContain(`/registration/qr?id=${created.id}`);
+    expect(html).toContain('/registration/assets/church-logo.png');
   });
 
   test('печатная карточка для несуществующей регистрации отвечает 404', async () => {
-    const cookie = await login();
-    const r = await fetch(`${base}/registration/card?id=999999`, { headers: { cookie } });
+    const cookie = await login(regBase);
+    const r = await fetch(`${regBase}/card?id=999999`, { headers: { cookie } });
     expect(r.status).toBe(404);
   });
 
@@ -636,9 +651,9 @@ describe('регистрация участника из дашборда', () =
     const created = await usersRepo.createManual({
       platform: 'telegram', byAdminId: 'дашборд', fio: 'Убрать Меня', phone: '+79001112235',
     });
-    const cookie = await login();
+    const cookie = await login(regBase);
 
-    const r = await post('/registration/delete', { id: String(created.id) }, cookie);
+    const r = await post('/delete', { id: String(created.id) }, cookie, regBase);
     expect(r.status).toBe(200);
 
     expect(await usersRepo.listRegistered()).toEqual([]);
@@ -650,12 +665,12 @@ describe('регистрация участника из дашборда', () =
     const created = await usersRepo.createManual({
       platform: 'telegram', byAdminId: 'дашборд', fio: 'Ещё Раз', phone: '+79001112236',
     });
-    const cookie = await login();
-    await post('/registration/delete', { id: String(created.id) }, cookie);
+    const cookie = await login(regBase);
+    await post('/delete', { id: String(created.id) }, cookie, regBase);
 
-    const again = await post('/registration/delete', { id: String(created.id) }, cookie);
+    const again = await post('/delete', { id: String(created.id) }, cookie, regBase);
     expect(again.status).toBe(404);
-    const missing = await post('/registration/delete', { id: '999999' }, cookie);
+    const missing = await post('/delete', { id: '999999' }, cookie, regBase);
     expect(missing.status).toBe(404);
   });
 
@@ -663,7 +678,7 @@ describe('регистрация участника из дашборда', () =
     const created = await usersRepo.createManual({
       platform: 'telegram', byAdminId: 'дашборд', fio: 'Без Сессии', phone: '+79001112237',
     });
-    const r = await fetch(`${base}/registration/delete`, {
+    const r = await fetch(`${regBase}/delete`, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ id: String(created.id) }),

@@ -82,6 +82,9 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .brand b { font-size: 14px; font-weight: 600; letter-spacing: -.01em; }
 
 .nav { display: flex; gap: 2px; }
+/* Страница «/registration» — тот же файл, что и «/groups», в отдельном режиме
+   (window.HG_STANDALONE): переключать тут нечего, вкладка ровно одна. */
+html[data-standalone="registration"] .nav { display: none; }
 .nav button {
   padding: 6px 11px; border-radius: var(--r-sm);
   color: var(--text-2); font-size: 13px; font-weight: 500;
@@ -575,9 +578,11 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
     <b>Миссия&nbsp;"Благая Весть"</b>
   </div>
 
+  <!-- Регистрация отсюда убрана: у неё теперь свой адрес, /registration —
+       та же страница, но в отдельном режиме (см. window.HG_STANDALONE ниже
+       и src/dashboard/server.ts). -->
   <nav class="nav" role="tablist" aria-label="Разделы">
     <button role="tab" aria-selected="false" data-view="analytics">Аналитика</button>
-    <button role="tab" aria-selected="false" data-view="registration">Регистрация</button>
     <button role="tab" aria-selected="true" data-view="requests">Заявки</button>
     <button role="tab" aria-selected="false" data-view="all">Домашние группы</button>
     <button role="tab" aria-selected="false" data-view="campaign">40 дней</button>
@@ -1118,8 +1123,9 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
        Для тех, кто заполнил анкету на бумаге и своего чата с ботом не имеет —
        например, регистрация с планшета на месте. QR показывается тут же на
        странице: служитель сканирует его своим телефоном при выдаче набора.
-       Форма заведения раньше жила в общем «Добавить» — перенесена сюда, к
-       своему же списку: заводить и смотреть регистрации теперь один раздел. -->
+       Разметка здесь общая с «/groups» (один файл на оба адреса), но видна
+       только на «/registration» — своём отдельном адресе, без общей навигации
+       (см. window.HG_STANDALONE и src/dashboard/server.ts). -->
   <section class="card form-card" data-section="registration">
     <div class="card-head" style="padding:0">
       <div>
@@ -1188,6 +1194,15 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
    перед этим скриптом. Пустые наборы — это открытие файла без сервера. */
 const DATA = window.HG_LIVE ?? { groups: [], requests: [], coordinators: [] };
 
+/*
+ * Один файл на два адреса: «/registration» — та же страница, что и «/groups»,
+ * но без вкладок, показывает только раздел регистрации. Ставим атрибут сразу,
+ * до отрисовки, чтобы CSS успел спрятать навигацию без мигания (см. .nav выше).
+ */
+const STANDALONE = window.HG_STANDALONE ?? null;
+document.documentElement.dataset.standalone = STANDALONE ?? '';
+if (STANDALONE === 'registration') document.title = 'Регистрация участников МБВ';
+
 /* Районы Петербурга разложены по сетке примерно как на карте: север сверху,
    залив слева, юго-восток снизу. Схема, а не географические контуры: не нужны
    внешние тайлы и ключи, читается на телефоне и работает офлайн. */
@@ -1246,7 +1261,8 @@ const REG_MDG_FILTER_LABEL = {
 };
 
 const state = {
-  district: null, statuses: [], campaign: '', sort: 'people', dir: -1, view: 'requests', request: null, groupId: null,
+  district: null, statuses: [], campaign: '', sort: 'people', dir: -1,
+  view: STANDALONE === 'registration' ? 'registration' : 'requests', request: null, groupId: null,
   reqSort: 'date', reqDir: -1,
   regSort: 'registration_no', regDir: -1, regMdg: null,
 };
@@ -1693,10 +1709,10 @@ function renderRegistration() {
       return (av > bv ? 1 : -1) * state.regDir;
     });
   $('#regBody').innerHTML = rows.map((u) => {
-    const qrSrc = `${window.HG_BASE ?? './'}registration/qr?id=${u.id}`;
+    const qrSrc = `${window.HG_BASE ?? './'}qr?id=${u.id}`;
     // Миниатюра ведёт не на голый PNG, а на печатную карточку: там же имя,
     // телефон, церковь и заявка — всё, что нужно переслать или распечатать разом.
-    const cardSrc = `${window.HG_BASE ?? './'}registration/card?id=${u.id}`;
+    const cardSrc = `${window.HG_BASE ?? './'}card?id=${u.id}`;
     // Удаление — раскрывающееся свойство строки, как у групп/заявок/участников:
     // кнопка на виду в каждой строке слишком крупная рядом с QR и провоцирует
     // случайные нажатия на планшете при выдаче набора.
@@ -2391,12 +2407,18 @@ const COORDINATOR_FIELDS = [
   { name: 'role', label: 'Роль', required: true, wide: true, from: 'role', placeholder: 'Координатор малых групп' },
 ];
 
+/* Церкви одним списком с сервера (allChurchOptions() в src/core/churches.ts):
+   у бота это два экрана меню («какая церковь» → «какая другая»), в дашборде
+   такого меню нет, поэтому оба экрана положены в один выпадающий список. */
+const REGISTRATION_CHURCH_OPTIONS = DATA.churchOptions ?? [];
+
 /* Для тех, кто заполнил анкету на бумаге: те же вопросы, что задаёт бот, но
    своего чата с ботом у такого участника нет — регистрация только отсюда. */
 const REGISTRATION_FIELDS = [
   { name: 'fio', label: 'ФИО', required: true, wide: true, from: 'full_name', placeholder: 'Петрова Мария Ивановна' },
   { name: 'phone', label: 'Телефон', required: true, from: 'phone', placeholder: '+7 900 111-22-33' },
-  { name: 'church', label: 'Церковь', from: 'church', placeholder: 'МБВ (Колизей)' },
+  { name: 'church', label: 'Церковь',
+    pairs: [['', '— не указана —'], ...REGISTRATION_CHURCH_OPTIONS.map((c) => [c, c])], from: 'church' },
   { name: 'mdgStatus', label: 'Заявка',
     pairs: [['', '— не спрошено —'], ...Object.entries(MDG_STATUS_LABEL).map(([k, v]) => [k, v])], from: 'mdg_status' },
   // Дальше — та же ветка вопросов, что и в анкете бота (см. awaitMdg в fsm.ts):
@@ -2404,7 +2426,8 @@ const REGISTRATION_FIELDS = [
   // не спрашивает больше ничего. Видимость переключает applyRegistrationBranching().
   { name: 'leaderName', label: 'Ведущий группы', from: 'leader_name', placeholder: 'Иванова Мария' },
   { name: 'location', label: 'Район', from: 'location', placeholder: 'Приморский' },
-  { name: 'age', label: 'Возраст', from: 'age', placeholder: '35-50' },
+  { name: 'age', label: 'Возраст',
+    pairs: [['', '— не указан —'], ...FORM_AGE_GROUPS.map((a) => [a, a])], from: 'age' },
   { name: 'comment', label: 'Комментарий', type: 'textarea', wide: true, from: 'comment' },
 ];
 
@@ -2502,6 +2525,9 @@ function wireRowEditing(bodySel, kind, rowsById) {
   // у неё отдельная, более явная формулировка — не спутать с обратимым «убрать».
   const hardDelete = kind === 'registration';
   const idleLabel = hardDelete ? '🗑 Удалить' : '🗑 Убрать';
+  // У «регистрации» свой адрес (/registration), а не .../registration/delete
+  // под общим приложением — маршрут относительно него называется просто delete.
+  const deletePath = kind === 'registration' ? 'delete' : `${kind}/delete`;
   body.querySelectorAll('.row-del').forEach((btn) => {
     btn.onclick = (e) => {
       e.stopPropagation();
@@ -2521,7 +2547,7 @@ function wireRowEditing(bodySel, kind, rowsById) {
         }, 4000);
         return;
       }
-      sendRow(btn, `${kind}/delete`, new URLSearchParams({ id: btn.dataset.id }), hardDelete ? 'Удалено.' : 'Убрано.');
+      sendRow(btn, deletePath, new URLSearchParams({ id: btn.dataset.id }), hardDelete ? 'Удалено.' : 'Убрано.');
     };
   });
 }
@@ -2694,7 +2720,7 @@ wireForm('#coordinatorForm', '#coordinatorMsg', 'coordinator/create', 'Учас�
     qrBox.innerHTML = '';
 
     try {
-      const r = await fetch((window.HG_BASE ?? './') + 'registration/create', {
+      const r = await fetch((window.HG_BASE ?? './') + 'create', {
         method: 'POST',
         headers: { 'content-type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams(new FormData(form)),
@@ -2703,8 +2729,8 @@ wireForm('#coordinatorForm', '#coordinatorMsg', 'coordinator/create', 'Учас�
         const id = (await r.text()).trim();
         msg.className = 'form-msg ok';
         msg.textContent = 'Зарегистрирован. Покажите QR — служитель отсканирует его при выдаче набора.';
-        const cardHref = `${(window.HG_BASE ?? './')}registration/card?id=${id}`;
-        qrBox.innerHTML = `<img src="${(window.HG_BASE ?? './')}registration/qr?id=${id}" alt="QR регистрации">
+        const cardHref = `${(window.HG_BASE ?? './')}card?id=${id}`;
+        qrBox.innerHTML = `<img src="${(window.HG_BASE ?? './')}qr?id=${id}" alt="QR регистрации">
           <p style="margin:10px 0 0"><a href="${cardHref}" target="_blank" rel="noopener">Открыть карточку со всеми данными — переслать или распечатать</a></p>`;
         form.reset();
         // reset() возвращает «Заявку» к «не спрошено», но не шлёт change —

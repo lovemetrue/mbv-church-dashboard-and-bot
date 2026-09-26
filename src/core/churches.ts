@@ -60,3 +60,17 @@ export function churchByIndex(index: number): string | null {
 export function otherChurchByIndex(index: number): string | null {
   return otherChurchOptions()[index] ?? null;
 }
+
+/**
+ * Все церкви одним списком — для выпадающего списка в дашборде, где нет
+ * двухуровневого меню бота (сначала общий список, потом «Другая церковь»).
+ * Ни одно значение, которое мог бы прислать бот, тут не теряется: просто
+ * оба экрана положены рядом, а не друг за другом.
+ */
+export function allChurchOptions(): string[] {
+  return [
+    ...churchOptions().filter((c) => c !== OTHER_CHURCH && c !== NO_CHURCH),
+    ...otherChurchOptions(),
+    NO_CHURCH,
+  ];
+}

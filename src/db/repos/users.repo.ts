@@ -53,6 +53,8 @@ export interface ManualRegistrationInput {
   phone: string;
   church?: string;
   mdgStatus?: MdgStatus;
+  /** Кто ведущий у человека, если он уже состоит в группе — как в анкете бота. */
+  leaderName?: string;
   location?: string;
   age?: string;
   preferredContact?: string;
@@ -237,10 +239,10 @@ export class UsersRepo {
         // (platform_user_id), другой идёт в целочисленную колонку — тот же $N на
         // оба места pg-driver трактует как один тип и падает на несовпадении.
         const { rows } = await this.db.query<UserRow>(
-          `INSERT INTO users (platform, platform_user_id, chat_id, full_name, phone, church, mdg_status,
+          `INSERT INTO users (platform, platform_user_id, chat_id, full_name, phone, church, mdg_status, leader_name,
                               location, age, preferred_contact, admin_comment, registered_by,
                               registration_no, registered_at, complete, consent_at)
-           VALUES ($1, 'manual:' || $11::text, '', $2, $3, $4, $5, $6, $7, $8, $9, $10, $12, now(), true, now())
+           VALUES ($1, 'manual:' || $12::text, '', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $13, now(), true, now())
            RETURNING *`,
           [
             input.platform,
@@ -248,6 +250,7 @@ export class UsersRepo {
             input.phone,
             input.church ?? null,
             input.mdgStatus ?? null,
+            input.leaderName ?? null,
             input.location ?? null,
             input.age ?? null,
             input.preferredContact ?? null,

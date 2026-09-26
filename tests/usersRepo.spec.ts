@@ -93,6 +93,18 @@ describe('ручная регистрация участника', () => {
     });
     expect(u).toMatchObject({ church: 'МБВ (Колизей)', mdg_status: 'open' });
   });
+
+  /**
+   * Тот же вопрос, что бот задаёт «уже состоящим в группе» (см. awaitLeaderName
+   * в fsm.ts) — форма ручной регистрации теперь повторяет эту ветку анкеты.
+   */
+  test('ведущий группы сохраняется, если его назвали', async () => {
+    const u = await repo.createManual({
+      platform: 'telegram', byAdminId: 'дашборд', fio: 'Кузнецова Ольга', phone: '+79001112240',
+      mdgStatus: 'member', leaderName: 'Смирнова Ольга Викторовна',
+    });
+    expect(u).toMatchObject({ mdg_status: 'member', leader_name: 'Смирнова Ольга Викторовна' });
+  });
 });
 
 describe('список регистраций для дашборда', () => {

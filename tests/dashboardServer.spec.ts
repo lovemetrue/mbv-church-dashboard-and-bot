@@ -413,11 +413,12 @@ describe('выгрузка участников', () => {
     expect(await r.text()).toContain('Иванов');
   });
 
-  test('доступна и на «/registration» — участники кампании общие для обоих приложений', async () => {
+  // Файл несёт телефоны всех участников — ссылку на «/registration» можно дать
+  // людям, которым чужие контакты видеть незачем, поэтому там выгрузки нет.
+  test('под «/registration» не отвечает', async () => {
     const sid = (await login('очень-секретно', regBase)).headers.get('set-cookie')!.split(';')[0]!;
     const r = await fetch(`${regBase}/export.csv`, { headers: { cookie: sid } });
-    expect(r.status).toBe(200);
-    expect(await r.text()).toContain('Иванов');
+    expect(r.status).toBe(404);
   });
 });
 
@@ -449,6 +450,39 @@ describe('отдельное приложение «/registration»', () => {
     expect(html).toContain(MARKER);
     expect(html).toContain('window.HG_STANDALONE = "registration"');
     expect(html).toContain('window.HG_BASE = "/registration/"');
+  });
+
+  /**
+   * Смысл отдельной ссылки — в том, что её можно дать людям, которым нельзя
+   * видеть список участников кампании и их телефоны (включая пасторов и
+   * служителей). Мало спрятать список версткой: сервер не должен класть эти
+   * данные в HG_LIVE вообще, иначе их видно через «Просмотр кода страницы».
+   */
+  test('HG_LIVE на «/registration» не несёт ни групп, ни заявок, ни списка участников — только справочник церквей', async () => {
+    live = [{ leader: 'Ведущий Из Базы' }];
+    liveRequests = [{ fio: 'Заявка Из Базы' }];
+    liveCoordinators = [{ name: 'Координатор Из Базы', role: 'Координатор малых групп' }];
+
+    const sid = (await login('очень-секретно', regBase)).headers.get('set-cookie')!.split(';')[0]!;
+    const html = await (await fetch(regBase, { headers: { cookie: sid } })).text();
+
+    expect(html).not.toContain('Ведущий Из Базы');
+    expect(html).not.toContain('Заявка Из Базы');
+    expect(html).not.toContain('Координатор Из Базы');
+    expect(html).toContain('"groups":[]');
+    expect(html).toContain('"requests":[]');
+    expect(html).toContain('"coordinators":[]');
+    expect(html).toContain('"users":[]');
+    expect(html).toContain('"churchOptions":[');
+    // И наоборот: тот же живой набор всё ещё виден на «/groups» — это не общая
+    // поломка данных, а изоляция именно «/registration».
+    const groupsSid = (await login('очень-секретно')).headers.get('set-cookie')!.split(';')[0]!;
+    const groupsHtml = await (await fetch(base, { headers: { cookie: groupsSid } })).text();
+    expect(groupsHtml).toContain('Ведущий Из Базы');
+
+    live = [];
+    liveRequests = [];
+    liveCoordinators = [];
   });
 
   test('маршруты «/groups» (например, группу завести) на «/registration» не отвечают', async () => {

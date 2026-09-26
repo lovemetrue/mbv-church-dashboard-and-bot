@@ -9,6 +9,7 @@ import { loginPage } from './loginPage.js';
 import { registrationCardPage, type RegistrationCardInfo } from './registrationCard.js';
 import { SessionService } from './sessions.js';
 import { logger } from '../logger.js';
+import { allChurchOptions } from '../core/churches.js';
 
 const COOKIE = 'hg_sid';
 /**
@@ -592,9 +593,9 @@ export function createDashboardServer(deps: DashboardDeps) {
       }
 
       /* Выгрузка участников. GET допустим: это чтение, ничего не меняет.
-         Доступна на обоих приложениях — участники кампании общие что для
-         «/groups», что для «/registration». */
-      if (path === '/export.csv') {
+         Только «/groups»: файл несёт телефоны всех участников, а «/registration» —
+         ссылка, которую можно дать людям, которым чужие контакты видеть незачем. */
+      if (mount === '/groups' && path === '/export.csv') {
         if (!(await deps.auth.verify(sid))) {
           send(res, 401, loginPage('Сессия истекла. Войдите заново.', mount));
           return;
@@ -660,13 +661,23 @@ export function createDashboardServer(deps: DashboardDeps) {
 
       // Файл читаем на каждый запрос: дашборд можно обновить, не перезапуская сервис.
       const html = await readFile(deps.htmlPath, 'utf8');
-      // База может быть недоступна — дашборд должен открыться и сказать об этом,
-      // а не отдать пятисотую.
-      let data = EMPTY_DATA;
-      try {
-        data = (await deps.data?.()) ?? EMPTY_DATA;
-      } catch (err) {
-        logger.error({ err: (err as Error).message }, 'дашборд: не удалось прочитать данные из базы');
+      let data: DashboardData;
+      if (mount === '/registration') {
+        // «/registration» — ссылка для самостоятельной регистрации, которую можно
+        // дать людям вне круга служителей с паролем от всего дашборда. Ей нельзя
+        // отдавать ни список участников, ни чьи-то ещё телефоны (группы, заявки,
+        // кандидаты в ведущие) — только справочник церквей для выпадающего списка,
+        // и без обращения к базе: этой странице сами данные не нужны вовсе.
+        data = { ...EMPTY_DATA, churchOptions: allChurchOptions() };
+      } else {
+        // База может быть недоступна — дашборд должен открыться и сказать об этом,
+        // а не отдать пятисотую.
+        data = EMPTY_DATA;
+        try {
+          data = (await deps.data?.()) ?? EMPTY_DATA;
+        } catch (err) {
+          logger.error({ err: (err as Error).message }, 'дашборд: не удалось прочитать данные из базы');
+        }
       }
       send(res, 200, withLive(withLogout(html, mount), data, mount));
     } catch (err) {

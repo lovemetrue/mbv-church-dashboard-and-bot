@@ -85,6 +85,13 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 /* Страница «/registration» — тот же файл, что и «/groups», в отдельном режиме
    (window.HG_STANDALONE): переключать тут нечего, вкладка ровно одна. */
 html[data-standalone="registration"] .nav { display: none; }
+/* Список регистраций и выгрузка CSV показывают чужие телефоны — этой ссылкой
+   можно поделиться шире, чем паролем от всего дашборда, поэтому на ней их
+   не должно быть видно совсем (сервер к тому же не кладёт эти данные в
+   HG_LIVE — см. src/dashboard/server.ts, — это скрытие на случай, если
+   разметка когда-нибудь всё же получит что показать). */
+html[data-standalone="registration"] #registrationListSection,
+html[data-standalone="registration"] #exportLink { display: none; }
 .nav button {
   padding: 6px 11px; border-radius: var(--r-sm);
   color: var(--text-2); font-size: 13px; font-weight: 500;
@@ -578,11 +585,13 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
     <b>Миссия&nbsp;"Благая Весть"</b>
   </div>
 
-  <!-- Регистрация отсюда убрана: у неё теперь свой адрес, /registration —
-       та же страница, но в отдельном режиме (см. window.HG_STANDALONE ниже
-       и src/dashboard/server.ts). -->
+  <!-- Помимо этой вкладки регистрация доступна и по отдельной ссылке,
+       /registration, — та же форма, но без списка участников и их телефонов
+       (см. window.HG_STANDALONE ниже и src/dashboard/server.ts): ту ссылку
+       можно давать людям, которым не нужно видеть чужие контакты. -->
   <nav class="nav" role="tablist" aria-label="Разделы">
     <button role="tab" aria-selected="false" data-view="analytics">Аналитика</button>
+    <button role="tab" aria-selected="false" data-view="registration">Регистрация</button>
     <button role="tab" aria-selected="true" data-view="requests">Заявки</button>
     <button role="tab" aria-selected="false" data-view="all">Домашние группы</button>
     <button role="tab" aria-selected="false" data-view="campaign">40 дней</button>
@@ -1123,9 +1132,13 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
        Для тех, кто заполнил анкету на бумаге и своего чата с ботом не имеет —
        например, регистрация с планшета на месте. QR показывается тут же на
        странице: служитель сканирует его своим телефоном при выдаче набора.
-       Разметка здесь общая с «/groups» (один файл на оба адреса), но видна
-       только на «/registration» — своём отдельном адресе, без общей навигации
-       (см. window.HG_STANDALONE и src/dashboard/server.ts). -->
+
+       Форма живёт в двух местах: вкладкой внутри «/groups» (здесь, со списком
+       ниже) и отдельной страницей на «/registration» — той же разметкой в
+       режиме window.HG_STANDALONE (см. src/dashboard/server.ts), но БЕЗ списка
+       участников: на «/registration» сервер вообще не кладёт в HG_LIVE ни
+       список регистраций, ни телефоны — эту ссылку можно давать людям, которым
+       незачем видеть чужие контакты (в том числе служителей и пасторов). -->
   <section class="card form-card" data-section="registration">
     <div class="card-head" style="padding:0">
       <div>
@@ -1143,7 +1156,9 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
     </form>
   </section>
 
-  <section class="card" data-section="registration">
+  <!-- Список — только на «/groups»: на «/registration» его прячет CSS ниже,
+       и данных для него там всё равно нет (см. комментарий выше). -->
+  <section class="card" data-section="registration" id="registrationListSection">
     <div class="card-head">
       <div>
         <h2 class="card-title">Регистрация</h2>

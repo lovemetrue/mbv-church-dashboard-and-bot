@@ -834,11 +834,16 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
         <h2 class="card-title">Недавняя активность</h2>
         <p class="card-sub" id="tableSub">Группы сети</p>
       </div>
+      <!-- В отличие от «Заявок»/«Регистрации» тут можно отметить сразу несколько
+           статусов галочками (например, «Потенциальная» и «Функционирует») —
+           «Все» просто снимает остальные отметки, а не переключает одну из них. -->
       <div class="seg" id="segStatus">
         <button aria-selected="true" data-status="">Все</button>
         <button data-status="Функционирует">Действующие</button>
+        <button data-status="Потенциальная">Потенциальная</button>
         <button data-status="На паузе">На паузе</button>
         <button data-status="Закрыта">Закрытые</button>
+        <button data-status="Недвижимость">Недвижимость</button>
       </div>
       <div class="seg" id="segCampaign">
         <button aria-selected="true" data-campaign="">Все</button>
@@ -945,23 +950,6 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
     <div class="table-foot" id="reqFoot"></div>
   </section>
   <!-- Добавить ------------------------------------------------------------ -->
-  <section class="card form-card" data-section="new">
-    <div class="card-head" style="padding:0">
-      <div>
-        <h2 class="card-title">Новая регистрация</h2>
-        <p class="card-sub">Для тех, кто заполнил анкету на бумаге и своего чата с ботом не имеет — QR появится сразу здесь</p>
-      </div>
-    </div>
-    <form id="registrationForm" autocomplete="off">
-      <div id="registrationFields"></div>
-      <div class="form-foot">
-        <button class="btn-primary" type="submit">Зарегистрировать</button>
-        <span class="form-msg" id="registrationMsg"></span>
-      </div>
-      <div id="registrationQr"></div>
-    </form>
-  </section>
-
   <section class="card form-card" data-section="new">
     <div class="card-head" style="padding:0">
       <div>
@@ -1129,7 +1117,26 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
   <!-- Регистрация ---------------------------------------------------------
        Для тех, кто заполнил анкету на бумаге и своего чата с ботом не имеет —
        например, регистрация с планшета на месте. QR показывается тут же на
-       странице: служитель сканирует его своим телефоном при выдаче набора. -->
+       странице: служитель сканирует его своим телефоном при выдаче набора.
+       Форма заведения раньше жила в общем «Добавить» — перенесена сюда, к
+       своему же списку: заводить и смотреть регистрации теперь один раздел. -->
+  <section class="card form-card" data-section="registration">
+    <div class="card-head" style="padding:0">
+      <div>
+        <h2 class="card-title">Новая регистрация</h2>
+        <p class="card-sub">Тот же путь, что в анкете бота: поля появляются по мере ответов</p>
+      </div>
+    </div>
+    <form id="registrationForm" autocomplete="off">
+      <div id="registrationFields"></div>
+      <div class="form-foot">
+        <button class="btn-primary" type="submit">Зарегистрировать</button>
+        <span class="form-msg" id="registrationMsg"></span>
+      </div>
+      <div id="registrationQr"></div>
+    </form>
+  </section>
+
   <section class="card" data-section="registration">
     <div class="card-head">
       <div>
@@ -1239,10 +1246,13 @@ const REG_MDG_FILTER_LABEL = {
 };
 
 const state = {
-  district: null, status: '', campaign: '', sort: 'people', dir: -1, view: 'requests', request: null, groupId: null,
+  district: null, statuses: [], campaign: '', sort: 'people', dir: -1, view: 'requests', request: null, groupId: null,
   reqSort: 'date', reqDir: -1,
   regSort: 'registration_no', regDir: -1, regMdg: null,
 };
+
+/** Пусто — показать все статусы; иначе группа должна попасть в один из отмеченных. */
+const statusMatches = (status) => state.statuses.length === 0 || state.statuses.includes(status);
 const $ = (s) => document.querySelector(s);
 const groups = DATA.groups;
 
@@ -1289,7 +1299,7 @@ const countBy = (rows, key) => {
 function visible() {
   return groups.filter((g) =>
     (!state.district || g.district === state.district) &&
-    (!state.status || g.status === state.status) &&
+    statusMatches(g.status) &&
     (!state.campaign || (state.campaign === 'yes' ? g.campaign_registered : !g.campaign_registered)));
 }
 
@@ -1299,7 +1309,7 @@ function visible() {
  */
 function visibleIgnoringDistrict() {
   return groups.filter((g) =>
-    (!state.status || g.status === state.status) &&
+    statusMatches(g.status) &&
     (!state.campaign || (state.campaign === 'yes' ? g.campaign_registered : !g.campaign_registered)));
 }
 
@@ -1394,7 +1404,7 @@ function renderKpi() {
 
 /* ── карта ────────────────────────────────────────────────────────────── */
 function renderMap() {
-  const byDistrict = new Map(countBy(groups.filter((g) => !state.status || g.status === state.status), 'district'));
+  const byDistrict = new Map(countBy(groups.filter((g) => statusMatches(g.status)), 'district'));
   const max = Math.max(1, ...byDistrict.values());
 
   // Плитки тоже досчитывают от нуля. Шаг задержки маленький: восемнадцать плиток
@@ -1430,12 +1440,14 @@ function renderMap() {
 
 /* ── ранжированные бары по районам ────────────────────────────────────── */
 function renderRanks() {
-  const rows = groups.filter((g) => !state.status || g.status === state.status);
+  const rows = groups.filter((g) => statusMatches(g.status));
   const ranked = countBy(rows, 'district');
   const total = rows.length || 1;
   const max = Math.max(1, ...ranked.map((r) => r[1]));
 
-  $('#ranksSub').textContent = state.status ? `Срез: ${state.status.toLowerCase()}` : 'Все группы сети';
+  $('#ranksSub').textContent = state.statuses.length
+    ? `Срез: ${state.statuses.join(', ').toLowerCase()}`
+    : 'Все группы сети';
   const box = $('#ranks');
   box.innerHTML = '';
 
@@ -2153,11 +2165,22 @@ function renderAll() {
 /* ── события ──────────────────────────────────────────────────────────── */
 $('#filterClear').onclick = () => { state.district = null; renderAll(); };
 
+// Множественный выбор: «Все» сбрасывает остальные отметки, любая другая кнопка
+// переключается сама по себе, не трогая соседние (в отличие от #segRequest/#segReg,
+// где кнопки взаимоисключающие).
 document.querySelectorAll('#segStatus button').forEach((b) => {
   b.onclick = () => {
-    document.querySelectorAll('#segStatus button').forEach((x) => x.setAttribute('aria-selected', 'false'));
-    b.setAttribute('aria-selected', 'true');
-    state.status = b.dataset.status;
+    if (b.dataset.status === '') {
+      state.statuses = [];
+    } else {
+      const i = state.statuses.indexOf(b.dataset.status);
+      if (i === -1) state.statuses.push(b.dataset.status); else state.statuses.splice(i, 1);
+    }
+    document.querySelectorAll('#segStatus button').forEach((x) => {
+      x.setAttribute('aria-selected', String(
+        x.dataset.status === '' ? state.statuses.length === 0 : state.statuses.includes(x.dataset.status),
+      ));
+    });
     renderAll();
   };
 });
@@ -2376,10 +2399,24 @@ const REGISTRATION_FIELDS = [
   { name: 'church', label: 'Церковь', from: 'church', placeholder: 'МБВ (Колизей)' },
   { name: 'mdgStatus', label: 'Заявка',
     pairs: [['', '— не спрошено —'], ...Object.entries(MDG_STATUS_LABEL).map(([k, v]) => [k, v])], from: 'mdg_status' },
+  // Дальше — та же ветка вопросов, что и в анкете бота (см. awaitMdg в fsm.ts):
+  // «member» спрашивает ведущего, «open/home/join» — район и возраст, «leader»
+  // не спрашивает больше ничего. Видимость переключает applyRegistrationBranching().
+  { name: 'leaderName', label: 'Ведущий группы', from: 'leader_name', placeholder: 'Иванова Мария' },
   { name: 'location', label: 'Район', from: 'location', placeholder: 'Приморский' },
   { name: 'age', label: 'Возраст', from: 'age', placeholder: '35-50' },
   { name: 'comment', label: 'Комментарий', type: 'textarea', wide: true, from: 'comment' },
 ];
+
+/** Какие поля формы регистрации видны при каком выборе «Заявки» — как в анкете бота. */
+const REGISTRATION_MDG_BRANCH = {
+  '': [],
+  leader: [],
+  member: ['leaderName'],
+  open: ['location', 'age'],
+  home: ['location', 'age'],
+  join: ['location', 'age'],
+};
 
 /** Разметка одного поля с подставленным значением. */
 function fieldHtml(f, row, idPrefix) {
@@ -2610,6 +2647,28 @@ $('#requestFields').innerHTML = formFieldsHtml(REQUEST_FIELDS, null, 'r');
 $('#coordinatorFields').innerHTML = formFieldsHtml(COORDINATOR_FIELDS, null, 'c');
 $('#registrationFields').innerHTML = formFieldsHtml(REGISTRATION_FIELDS, null, 'reg');
 
+/**
+ * Показывает только те поля формы регистрации, которые бот в этой же ветке
+ * анкеты действительно спрашивает (см. REGISTRATION_MDG_BRANCH выше). Скрытое
+ * поле не отправляется как пустое молча — оно физически исключено из формы
+ * (disabled), иначе сохранился бы, например, «Ведущий группы» от предыдущего
+ * выбора «Заявки», который пользователь уже сменил на «Готов открыть».
+ */
+function applyRegistrationBranching() {
+  const select = document.getElementById('reg-mdgStatus');
+  if (!select) return;
+  const visible = new Set(REGISTRATION_MDG_BRANCH[select.value] ?? []);
+  for (const name of ['leaderName', 'location', 'age']) {
+    const input = document.getElementById(`reg-${name}`);
+    if (!input) continue;
+    const show = visible.has(name);
+    input.closest('.field').classList.toggle('hidden', !show);
+    input.disabled = !show;
+  }
+}
+document.getElementById('reg-mdgStatus')?.addEventListener('change', applyRegistrationBranching);
+applyRegistrationBranching();
+
 wireForm('#groupForm', '#groupMsg', 'group/create', 'Группа добавлена.');
 wireForm('#requestForm', '#requestMsg', 'request/create', 'Заявка добавлена.');
 wireForm('#coordinatorForm', '#coordinatorMsg', 'coordinator/create', 'Участник добавлен.');
@@ -2648,6 +2707,9 @@ wireForm('#coordinatorForm', '#coordinatorMsg', 'coordinator/create', 'Учас�
         qrBox.innerHTML = `<img src="${(window.HG_BASE ?? './')}registration/qr?id=${id}" alt="QR регистрации">
           <p style="margin:10px 0 0"><a href="${cardHref}" target="_blank" rel="noopener">Открыть карточку со всеми данными — переслать или распечатать</a></p>`;
         form.reset();
+        // reset() возвращает «Заявку» к «не спрошено», но не шлёт change —
+        // без этого поля от предыдущего выбора остались бы видны.
+        applyRegistrationBranching();
       } else {
         msg.className = 'form-msg err';
         msg.textContent = r.status === 401

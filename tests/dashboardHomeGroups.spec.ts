@@ -227,18 +227,40 @@ describe('регистрация участника из дашборда', () =
     expect(html).toContain("registration: 'Регистрация'");
   });
 
-  test('таблица регистраций на своей вкладке, форма — в «Добавить»', () => {
-    expect(html).toContain('data-section="registration"');
+  /**
+   * Раньше форма заведения жила в общем «Добавить» вместе с заявками/группами/
+   * участниками, а список регистраций — на своей вкладке: заводить и смотреть
+   * приходилось в разных местах. Теперь оба — один раздел «Регистрация».
+   */
+  test('и таблица регистраций, и форма заведения — на одной вкладке «Регистрация»', () => {
     expect(html).toContain('id="regBody"');
     expect(html).toContain('function renderRegistration()');
-    expect(html).toContain('id="registrationForm"');
+    const formAt = html.indexOf('id="registrationForm"');
+    expect(formAt).toBeGreaterThan(-1);
+    const sectionAt = html.lastIndexOf('<section', formAt);
+    expect(html.slice(sectionAt, formAt)).toContain('data-section="registration"');
+    expect(html.slice(sectionAt, formAt)).not.toContain('data-section="new"');
   });
 
-  test('форма собрана из тех же вопросов, что и анкета бота', () => {
+  test('форма собрана из тех же вопросов, что и анкета бота, включая ветку про ведущего', () => {
     expect(html).toContain('const REGISTRATION_FIELDS');
     expect(html).toContain("name: 'fio'");
     expect(html).toContain("name: 'phone'");
     expect(html).toContain("name: 'mdgStatus'");
+    expect(html).toContain("name: 'leaderName'");
+  });
+
+  /**
+   * Путь бота (см. awaitMdg в fsm.ts): «member» спрашивает ведущего, «open/home/
+   * join» — район и возраст, «leader» не спрашивает больше ничего. Форма — одна
+   * страница, но лишние поля для выбранной ветки скрыты, а не просто есть.
+   */
+  test('поля показываются по ветке анкеты — как у бота, а не все сразу', () => {
+    expect(html).toContain('const REGISTRATION_MDG_BRANCH');
+    expect(html).toMatch(/member:\s*\['leaderName'\]/);
+    expect(html).toMatch(/open:\s*\['location', 'age'\]/);
+    expect(html).toContain('function applyRegistrationBranching');
+    expect(html).toContain("document.getElementById('reg-mdgStatus')?.addEventListener('change', applyRegistrationBranching)");
   });
 
   test('QR показывается сразу на странице, без перезагрузки формы', () => {
@@ -400,5 +422,45 @@ describe('на «Заявках» только KPI и сама таблица, �
       const sectionAt = html.lastIndexOf('<section', titleAt);
       expect(html.slice(sectionAt, sectionAt + 200)).toContain('data-section="analytics"');
     }
+  });
+});
+
+/**
+ * Раньше «На паузе»/«Закрытые»/«Действующие» были единственными доступными
+ * фильтрами по статусу группы (без «Потенциальная» и «Недвижимость» — те два
+ * статуса отобрать в реестре было нечем), и выбор был взаимоисключающим, как
+ * у статусов заявок. Теперь фильтр — чекбоксы: можно отметить сразу несколько,
+ * например «Потенциальная» и «Функционирует».
+ */
+describe('фильтр по статусу группы — несколько галочек одновременно', () => {
+  test('кнопка есть для всех пяти статусов группы, ни один не потерян', () => {
+    const seg = html.slice(html.indexOf('id="segStatus"'), html.indexOf('id="segStatus"') + 500);
+    for (const status of ['Функционирует', 'Потенциальная', 'На паузе', 'Закрыта', 'Недвижимость']) {
+      expect(seg, `нет кнопки фильтра для статуса «${status}»`).toContain(`data-status="${status}"`);
+    }
+    expect(seg).toContain('data-status=""');
+  });
+
+  test('клик по конкретному статусу не снимает отметки с остальных — это чекбоксы, а не переключатель', () => {
+    const fn = html.slice(html.indexOf("querySelectorAll('#segStatus button')"),
+      html.indexOf("querySelectorAll('#segStatus button')") + 600);
+    // У #segRequest/#segReg клик сперва снимает aria-selected со всех кнопок —
+    // здесь этого быть не должно, статусы переключаются по отдельности.
+    expect(fn).not.toMatch(/forEach\(\(x\) => x\.setAttribute\('aria-selected', 'false'\)\)/);
+    expect(fn).toContain('state.statuses.push');
+    expect(fn).toContain('state.statuses.splice');
+  });
+
+  test('«Все» очищает список отмеченных статусов, а не просто выбирает пустую строку', () => {
+    const fn = html.slice(html.indexOf("querySelectorAll('#segStatus button')"),
+      html.indexOf("querySelectorAll('#segStatus button')") + 600);
+    expect(fn).toContain('state.statuses = []');
+  });
+
+  test('фильтрация группы проверяет вхождение в отмеченные статусы, а не равенство одному', () => {
+    expect(html).toContain('const statusMatches = (status) => state.statuses.length === 0 || state.statuses.includes(status);');
+    // И карта районов, и реестр, и ранжирование должны спрашивать один и тот же фильтр.
+    const uses = [...html.matchAll(/statusMatches\(g\.status\)/g)].length;
+    expect(uses).toBeGreaterThanOrEqual(4);
   });
 });

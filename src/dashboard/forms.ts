@@ -257,6 +257,7 @@ export function parseRegistrationForm(form: URLSearchParams): Parsed<ManualRegis
       phone: parsedPhone,
       church: text(form, 'church') ?? undefined,
       mdgStatus: mdgStatus ?? undefined,
+      leaderName: text(form, 'leaderName') ?? undefined,
       location: text(form, 'location') ?? undefined,
       age: text(form, 'age') ?? undefined,
       preferredContact: text(form, 'preferredContact') ?? undefined,

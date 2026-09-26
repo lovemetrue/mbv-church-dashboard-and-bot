@@ -214,4 +214,12 @@ describe('форма регистрации участника (для тех, �
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.value.mdgStatus).toBeUndefined();
   });
+
+  test('ведущий группы — тот же вопрос, что и в анкете бота для «уже состою»', () => {
+    const r = parseRegistrationForm(form({
+      fio: 'Петрова Мария', phone: '+79001112233', mdgStatus: 'member', leaderName: 'Смирнова Ольга',
+    }));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.leaderName).toBe('Смирнова Ольга');
+  });
 });

@@ -44,12 +44,13 @@ export interface RequestWithUser {
   leader_name: string | null;
   registration_no: number | null;
   preferred_contact: string | null;
+  origin: 'таблица' | 'бот' | 'ui';
 }
 
 // LEFT JOIN, а не JOIN: у заявки из таблицы церкви участника в боте нет.
 // coalesce берёт данные участника, если он есть, иначе то, что записано в самой заявке.
 const WITH_USER = `
-  SELECT r.id, r.type, r.text, r.status, r.created_at,
+  SELECT r.id, r.type, r.text, r.status, r.created_at, r.origin,
          u.id AS user_id, u.platform, u.chat_id,
          coalesce(u.phone, r.phone) AS phone,
          coalesce(u.full_name, r.fio) AS full_name,
@@ -124,10 +125,15 @@ export interface RequestInput {
 export class RequestsRepo {
   constructor(private readonly db: Pool) {}
 
-  async create(userId: number, type: RequestType, text?: string): Promise<RequestWithUser> {
+  /**
+   * `origin` по умолчанию — 'бот': этим методом заводит заявку router.ts на каждый
+   * ответ анкеты. Ручная регистрация из дашборда — тот же человек, тот же тип
+   * заявки, но пришла она не из чата, поэтому передаёт 'ui' явно.
+   */
+  async create(userId: number, type: RequestType, text?: string, origin: 'таблица' | 'бот' | 'ui' = 'бот'): Promise<RequestWithUser> {
     const { rows } = await this.db.query<{ id: number }>(
-      'INSERT INTO requests (user_id, type, text) VALUES ($1, $2, $3) RETURNING id',
-      [userId, type, text ?? null],
+      'INSERT INTO requests (user_id, type, text, origin) VALUES ($1, $2, $3, $4) RETURNING id',
+      [userId, type, text ?? null, origin],
     );
     const created = await this.findById(rows[0]!.id);
     return created!;

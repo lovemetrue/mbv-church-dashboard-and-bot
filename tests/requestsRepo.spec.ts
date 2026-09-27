@@ -128,4 +128,20 @@ describe('ответы анкеты бота видны на заявке', () =
     const created = await requests.create(userId, 'already_leader');
     expect(created.type).toBe('already_leader');
   });
+
+  /**
+   * По умолчанию заявку заводит бот (router.ts на каждый ответ анкеты), поэтому
+   * origin без явного указания остаётся 'бот'. Ручная регистрация из дашборда
+   * (src/dashboard/index.ts) передаёт 'ui' явно — иначе такая заявка выглядела бы
+   * так, будто пришла из чата, хотя её завёл служитель или волонтёр.
+   */
+  test('origin по умолчанию — «бот», а с явным указанием — тот, что передали', async () => {
+    const userId = await seedUser(db, { id: '902', mdgStatus: 'join' });
+    const fromBot = await requests.create(userId, 'join_group');
+    expect(fromBot.origin).toBe('бот');
+
+    const userId2 = await seedUser(db, { id: '903', mdgStatus: 'join' });
+    const fromDashboard = await requests.create(userId2, 'join_group', undefined, 'ui');
+    expect(fromDashboard.origin).toBe('ui');
+  });
 });

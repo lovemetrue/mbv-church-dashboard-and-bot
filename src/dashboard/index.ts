@@ -4,6 +4,7 @@ import { RequestsRepo } from '../db/repos/requests.repo.js';
 import { UsersRepo, type ManualRegistrationInput } from '../db/repos/users.repo.js';
 import { usersToCsv } from '../core/csv.js';
 import { allChurchOptions } from '../core/churches.js';
+import { mdgRequestType } from '../core/fsm.js';
 import { campaignStats } from './campaignStats.js';
 import { CampaignRepo } from '../db/repos/campaign.repo.js';
 import { DeliveriesRepo } from '../db/repos/deliveries.repo.js';
@@ -84,8 +85,18 @@ async function main(): Promise<void> {
     // Своего чата с ботом у такого участника нет: платформа тут условная, только
     // чтобы удовлетворить ограничение схемы. «дашборд» вместо id служителя — вход
     // там по паролю, а не по учётке конкретного человека.
-    createRegistration: async (input) =>
-      (await users.createManual({ ...(input as ManualRegistrationInput), platform: 'telegram', byAdminId: 'дашборд' })).id,
+    createRegistration: async (input) => {
+      const created = await users.createManual({
+        ...(input as ManualRegistrationInput), platform: 'telegram', byAdminId: 'дашборд',
+      });
+      // Тот же принцип, что и у бота (см. mdgRequestType, showSummary в fsm.ts):
+      // ответ про малую группу заводит заявку служителю — иначе человек, которого
+      // зарегистрировали вручную по ссылке /registration, для «Заявок» невидим,
+      // хотя в боте та же анкета создала бы заявку сразу.
+      const requestType = mdgRequestType((input as ManualRegistrationInput).mdgStatus);
+      if (requestType) await requests.create(created.id, requestType, undefined, 'ui');
+      return created.id;
+    },
     // QR без диплинка: дашборд не знает, из какого он бота, а у зарегистрированного
     // тут человека чата с ботом всё равно нет. Служитель сканирует его своим
     // телефоном при выдаче набора — так же, как карточку регистрации из бота.

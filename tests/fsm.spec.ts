@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { handleUpdate, type Draft, type FsmResult, type FsmState } from '../src/core/fsm.js';
+import { handleUpdate, mdgRequestType, type Draft, type FsmResult, type FsmState } from '../src/core/fsm.js';
 import { CB, T } from '../src/core/texts.js';
 import type { IncomingUpdate, UpdateCtx } from '../src/core/platform.js';
 
@@ -579,5 +579,25 @@ describe('кнопка «Задать вопрос»', () => {
     const r = run('menu', {}, tap(CB.menuAsk), { registered: false });
     expect(r.state).not.toBe('await_question');
     expect(r.effects.some((e) => e.kind === 'create_request')).toBe(false);
+  });
+});
+
+/**
+ * Общая с ручной регистрацией из дашборда (src/dashboard/index.ts): человек,
+ * которого завели вручную по ссылке /registration, должен появиться в «Заявках»
+ * тем же типом, что и прошедший ту же анкету в чате бота.
+ */
+describe('mdgRequestType — какую заявку заводить по ответу про малую группу', () => {
+  test('join → join_group, open/home → lead_group, member/leader — свои типы', () => {
+    expect(mdgRequestType('join')).toBe('join_group');
+    expect(mdgRequestType('open')).toBe('lead_group');
+    expect(mdgRequestType('home')).toBe('lead_group');
+    expect(mdgRequestType('member')).toBe('already_member');
+    expect(mdgRequestType('leader')).toBe('already_leader');
+  });
+
+  test('без ответа про малую группу — заявки не заводим', () => {
+    expect(mdgRequestType(undefined)).toBeNull();
+    expect(mdgRequestType(null)).toBeNull();
   });
 });

@@ -72,6 +72,23 @@ export type ProfilePatch = Omit<Draft, 'consent' | 'phoneAttempts'>;
 export type RequestType = 'join_group' | 'lead_group' | 'question' | 'already_member' | 'already_leader';
 
 /**
+ * Какую заявку заводить по ответу про малую группу — общая для бота (showSummary
+ * ниже) и для ручной регистрации из дашборда (src/dashboard/index.ts): человек,
+ * которого завели вручную и который «хочет присоединиться» или «уже ведёт»,
+ * должен появиться в «Заявках» точно так же, как если бы прошёл анкету сам.
+ */
+export function mdgRequestType(mdgStatus: MdgStatus | null | undefined): RequestType | null {
+  switch (mdgStatus) {
+    case 'join': return 'join_group';
+    case 'open':
+    case 'home': return 'lead_group';
+    case 'member': return 'already_member';
+    case 'leader': return 'already_leader';
+    default: return null;
+  }
+}
+
+/**
  * Почему нельзя подать заявку на открытие группы; null — можно.
  *
  * pending — заявка этого же аккаунта ещё не закрыта. Остальные два — сверка по
@@ -505,19 +522,12 @@ function awaitConfirm(
   // Любой ответ про малую группу заводит заявку служителю — даже «уже состою»/
   // «уже веду» и даже когда телефон совпал с действующей группой реестра.
   // Раньше в этих случаях заявки не было вообще: служитель не видел ни самого
-  // обращения, ни повода его перепроверить.
+  // обращения, ни повода его перепроверить. Какой тип завести — см. mdgRequestType,
+  // общую с ручной регистрацией из дашборда.
   const offersGroup = draft.mdgStatus === 'open' || draft.mdgStatus === 'home';
-  if (draft.mdgStatus === 'join' && !alreadyOpen('join_group')) {
-    effects.push({ kind: 'create_request', type: 'join_group' });
-  }
-  if (offersGroup) {
-    effects.push({ kind: 'create_request', type: 'lead_group' });
-  }
-  if (draft.mdgStatus === 'member') {
-    effects.push({ kind: 'create_request', type: 'already_member' });
-  }
-  if (draft.mdgStatus === 'leader') {
-    effects.push({ kind: 'create_request', type: 'already_leader' });
+  const requestType = mdgRequestType(draft.mdgStatus);
+  if (requestType && !(requestType === 'join_group' && alreadyOpen('join_group'))) {
+    effects.push({ kind: 'create_request', type: requestType });
   }
 
   // Совпадение с действующей группой заявку больше не отменяет — только меняет,

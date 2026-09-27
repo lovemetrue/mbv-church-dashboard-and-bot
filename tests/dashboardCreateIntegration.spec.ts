@@ -10,6 +10,7 @@ import { UsersRepo, type ManualRegistrationInput } from '../src/db/repos/users.r
 import { usersToCsv } from '../src/core/csv.js';
 import { qrPng } from '../src/core/qr.js';
 import { allChurchOptions } from '../src/core/churches.js';
+import { mdgRequestType } from '../src/core/fsm.js';
 import { setupTestDb, truncateAll } from './helpers/testDb.js';
 
 /**
@@ -80,8 +81,14 @@ beforeAll(async () => {
     createCoordinator: async (input) => (await coordinators.create(input as never)).id,
     updateCoordinator: async (id, input) => (await coordinators.update(id, input as never)) !== null,
     deleteCoordinator: (id) => coordinators.archive(id),
-    createRegistration: async (input) =>
-      (await users.createManual({ ...(input as ManualRegistrationInput), platform: 'telegram', byAdminId: 'дашборд' })).id,
+    createRegistration: async (input) => {
+      const created = await users.createManual({
+        ...(input as ManualRegistrationInput), platform: 'telegram', byAdminId: 'дашборд',
+      });
+      const requestType = mdgRequestType((input as ManualRegistrationInput).mdgStatus);
+      if (requestType) await requests.create(created.id, requestType, undefined, 'ui');
+      return created.id;
+    },
     registrationQr: async (id) => {
       const user = await users.findById(id);
       if (!user?.registration_no) return null;
@@ -580,6 +587,56 @@ describe('регистрация участника из дашборда — о
     expect(r.status).toBe(400);
     const { rows } = await db.query('SELECT count(*)::int AS n FROM users');
     expect(rows[0]).toMatchObject({ n: 0 });
+  });
+
+  /**
+   * Раньше ручная регистрация из дашборда никогда не заводила заявку: человек,
+   * ответивший «хочу присоединиться» или «уже веду», просто не появлялся в
+   * «Заявках», хотя та же анкета в чате бота создала бы заявку сразу (см.
+   * mdgRequestType в src/core/fsm.ts). Коллега это и заметил — с /registration
+   * заявки как будто «не приходили».
+   */
+  test('заявка «Заявки» заводится тем же типом, что и у бота, и с origin=ui', async () => {
+    const cookie = await login(regBase);
+    const r = await post('/create', {
+      fio: 'Хочет Присоединиться', phone: '+79001112240', mdgStatus: 'join',
+    }, cookie, regBase);
+    expect(r.status).toBe(200);
+
+    const { rows } = await db.query(
+      `SELECT type, origin, user_id FROM requests r
+       JOIN users u ON u.id = r.user_id WHERE u.full_name = $1`,
+      ['Хочет Присоединиться'],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ type: 'join_group', origin: 'ui' });
+  });
+
+  test('без ответа про малую группу заявка не заводится вовсе', async () => {
+    const cookie = await login(regBase);
+    const r = await post('/create', { fio: 'Без Заявки', phone: '+79001112241' }, cookie, regBase);
+    expect(r.status).toBe(200);
+
+    const { rows } = await db.query(
+      `SELECT r.id FROM requests r JOIN users u ON u.id = r.user_id WHERE u.full_name = $1`,
+      ['Без Заявки'],
+    );
+    expect(rows).toHaveLength(0);
+  });
+
+  test('«уже состою» и «уже веду» тоже заводят заявку — не только «хочу присоединиться»', async () => {
+    const cookie = await login(regBase);
+    await post('/create', { fio: 'Уже Состоит', phone: '+79001112242', mdgStatus: 'member' }, cookie, regBase);
+    await post('/create', { fio: 'Уже Ведёт', phone: '+79001112243', mdgStatus: 'leader' }, cookie, regBase);
+
+    const { rows } = await db.query(
+      `SELECT u.full_name, r.type FROM requests r JOIN users u ON u.id = r.user_id
+       WHERE u.full_name IN ('Уже Состоит', 'Уже Ведёт') ORDER BY u.full_name`,
+    );
+    expect(rows).toEqual([
+      { full_name: 'Уже Ведёт', type: 'already_leader' },
+      { full_name: 'Уже Состоит', type: 'already_member' },
+    ]);
   });
 
   test('без сессии не регистрирует', async () => {

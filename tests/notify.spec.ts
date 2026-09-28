@@ -92,6 +92,21 @@ describe('сообщение служителю о заявке', () => {
     expect(formatRequest(request({ platform: 'max', username: null }), DASHBOARD_URL)).toContain('MAX');
   });
 
+  /**
+   * У заявки без участника в боте (заведена кнопкой «Заявка» в дашборде, а не
+   * через регистрацию) LEFT JOIN в RequestsRepo не находит пользователя, и
+   * platform приходит null, хотя тип этого не допускает — без явного разбора
+   * сообщение тихо показало бы «💬 undefined».
+   */
+  test('заявка без участника в боте не показывает «undefined» вместо мессенджера', () => {
+    // Тип platform не допускает null, но LEFT JOIN в RequestsRepo его всё же отдаёт —
+    // приводим явно, как это фактически приходит из базы для заявки без участника.
+    const noUser = { ...request(), platform: null, user_id: null, username: null } as unknown as RequestWithUser;
+    const text = formatRequest(noUser, DASHBOARD_URL);
+    expect(text).not.toContain('undefined');
+    expect(text).toContain('дашборд');
+  });
+
   test('есть ссылка на эту заявку в дашборде — по номеру, который совпадает с колонкой «№»', () => {
     const text = formatRequest(request(), DASHBOARD_URL);
     expect(text).toContain(`href="${DASHBOARD_URL}?request=7"`);

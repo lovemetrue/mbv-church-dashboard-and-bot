@@ -1,10 +1,15 @@
 import { CoordinatorsRepo } from '../db/repos/coordinators.repo.js';
 import { GroupsRepo } from '../db/repos/groups.repo.js';
-import { RequestsRepo } from '../db/repos/requests.repo.js';
+import { RequestsRepo, type RequestWithUser } from '../db/repos/requests.repo.js';
 import { UsersRepo, type ManualRegistrationInput } from '../db/repos/users.repo.js';
 import { usersToCsv } from '../core/csv.js';
 import { allChurchOptions } from '../core/churches.js';
 import { mdgRequestType } from '../core/fsm.js';
+import { splitAdminIds } from '../admin/access.js';
+import { AdminNotifier } from '../admin/notify.js';
+import { TelegramAdapter } from '../adapters/telegram.adapter.js';
+import { MaxAdapter } from '../adapters/max.adapter.js';
+import type { Platform, PlatformName } from '../core/platform.js';
 import { campaignStats } from './campaignStats.js';
 import { CampaignRepo } from '../db/repos/campaign.repo.js';
 import { DeliveriesRepo } from '../db/repos/deliveries.repo.js';
@@ -13,6 +18,7 @@ import { qrPng } from '../core/qr.js';
 import { RedisSessionStore } from './redisStore.js';
 import { createDashboardServer } from './server.js';
 import { SessionService } from './sessions.js';
+import { createDeps } from '../deps.js';
 import { logger } from '../logger.js';
 
 const env = (name: string, fallback?: string): string => {
@@ -53,6 +59,42 @@ async function main(): Promise<void> {
     timezone: env('TIMEZONE', 'Europe/Moscow'),
   };
 
+  /*
+   * Уведомление служителю о заявке — то же самое, что бот шлёт при заявке из чата
+   * (AdminNotifier), только вызывается здесь, при заведении заявки из дашборда
+   * (вручную через «Заявку» или через ответ про малую группу при регистрации).
+   * Дашборд и бот — один образ с общим .env (см. docker-compose.yml), поэтому
+   * токены и ADMIN_IDS те же самые; polling (bot.start()) при этом не запускаем —
+   * дашборд заявки не принимает и не должен опрашивать платформы за ботом.
+   */
+  const platforms = new Map<PlatformName, Platform>();
+  const admins = new Map<PlatformName, string[]>();
+  for (const name of env('ENABLED_PLATFORMS', 'telegram').split(',').map((s) => s.trim().toLowerCase())) {
+    if (name !== 'telegram' && name !== 'max') continue;
+    const token = env(name === 'telegram' ? 'BOT_TOKEN_TELEGRAM' : 'BOT_TOKEN_MAX', '');
+    // Токен бот уже проверил на своём старте — если его нет, молча не уведомляем
+    // этой платформой, а не роняем из-за этого весь дашборд.
+    if (!token) continue;
+    platforms.set(
+      name,
+      name === 'telegram' ? new TelegramAdapter(token) : new MaxAdapter(token, logger, env('MAX_API_URL', 'https://platform-api.max.ru')),
+    );
+    admins.set(name, splitAdminIds(env(name === 'telegram' ? 'ADMIN_IDS_TELEGRAM' : 'ADMIN_IDS_MAX', '').split(',')).ids);
+  }
+  const notifier = new AdminNotifier(createDeps({
+    db, platforms, admins, schedule, broadcastRate: 20,
+    dashboardUrl: env('DASHBOARD_URL', 'http://5.23.48.25:8090/groups'),
+  }));
+
+  /** Уведомление не должно ронять сохранение заявки — участнику важнее, чем служителю. */
+  const notifySafely = async (request: RequestWithUser): Promise<void> => {
+    try {
+      await notifier.notifyRequest(request);
+    } catch (err) {
+      logger.error({ err: (err as Error).message, requestId: request.id }, 'дашборд: не удалось уведомить служителя о заявке');
+    }
+  };
+
   const auth = new SessionService(store, { password, ttlSeconds, maxAttempts: 5 });
   const server = createDashboardServer({
     auth,
@@ -74,7 +116,14 @@ async function main(): Promise<void> {
     // Что заведено в дашборде, помечается source='ui': видно, откуда взялась запись,
     // и импорт выгрузки такие строки не затирает.
     createGroup: async (input) => (await groups.create(input as never, 'ui')).id,
-    createRequest: (input) => requests.createFromDashboard(input as never),
+    createRequest: async (input) => {
+      const id = await requests.createFromDashboard(input as never);
+      // Заявка из «Добавить» — тот же повод уведомить служителя, что и заявка из
+      // чата с ботом (см. notifySafely выше): иначе её видно только зайдя в дашборд.
+      const created = await requests.findById(id);
+      if (created) await notifySafely(created);
+      return id;
+    },
     updateRequest: (id, patch) => requests.updateFromDashboard(id, patch as never),
     deleteRequest: (id) => requests.archive(id),
     setRequestStatus: (id, status, responsible, groupId) => requests.setStatus(id, status as never, responsible, groupId),
@@ -92,9 +141,13 @@ async function main(): Promise<void> {
       // Тот же принцип, что и у бота (см. mdgRequestType, showSummary в fsm.ts):
       // ответ про малую группу заводит заявку служителю — иначе человек, которого
       // зарегистрировали вручную по ссылке /registration, для «Заявок» невидим,
-      // хотя в боте та же анкета создала бы заявку сразу.
+      // хотя в боте та же анкета создала бы заявку сразу. И там, и здесь заявка
+      // сразу же уходит уведомлением служителю в Telegram/MAX.
       const requestType = mdgRequestType((input as ManualRegistrationInput).mdgStatus);
-      if (requestType) await requests.create(created.id, requestType, undefined, 'ui');
+      if (requestType) {
+        const request = await requests.create(created.id, requestType, undefined, 'ui');
+        await notifySafely(request);
+      }
       return created.id;
     },
     // QR без диплинка: дашборд не знает, из какого он бота, а у зарегистрированного

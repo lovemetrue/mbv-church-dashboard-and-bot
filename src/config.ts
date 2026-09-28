@@ -28,7 +28,8 @@ const schema = z.object({
   // Адрес API MAX. Значение по умолчанию — рабочий хост; см. комментарий в max.adapter.ts.
   MAX_API_URL: z.string().url().default('https://platform-api.max.ru'),
   // Куда отправлять служителя за статистикой, заявками и заведением групп.
-  DASHBOARD_URL: z.string().url().default('https://bloodofjesus.ru/groups'),
+  // Домена пока нет — сайт открывают по IP и порту напрямую.
+  DASHBOARD_URL: z.string().url().default('http://5.23.48.25:8090/groups'),
 
   ADMIN_IDS_TELEGRAM: idList,
   ADMIN_IDS_MAX: idList,

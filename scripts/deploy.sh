@@ -34,4 +34,19 @@ docker compose up -d --build dashboard
 # изменении конфигурации всё равно нужно.
 docker compose up -d
 
+# Таймер бэкапа (deploy/systemd/) переустанавливаем на каждый деплой, чтобы правки
+# юнитов доезжали до сервера сами. Root тут не гарантирован: пользователь деплоя может
+# быть в группе docker без sudo, тогда просто печатаем, что делать руками, и не роняем
+# деплой — сам deploy.sh про Google Drive и systemd ничего не знает и знать не должен.
+if [ "$(id -u)" = "0" ] || sudo -n true 2>/dev/null; then
+  SUDO=""
+  [ "$(id -u)" = "0" ] || SUDO="sudo"
+  $SUDO cp deploy/systemd/church40-backup.service deploy/systemd/church40-backup.timer /etc/systemd/system/
+  $SUDO systemctl daemon-reload
+  $SUDO systemctl enable --now church40-backup.timer
+  echo "таймер бэкапа обновлён"
+else
+  echo "нет root/sudo — таймер бэкапа не обновлён, поставьте вручную по deploy/systemd/README.md" >&2
+fi
+
 echo "деплой завершён: $(git rev-parse --short HEAD)"

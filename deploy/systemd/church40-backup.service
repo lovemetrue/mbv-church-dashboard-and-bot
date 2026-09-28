@@ -1,0 +1,8 @@
+[Unit]
+Description=Бэкап базы church40 на Google Drive
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/church40bot
+ExecStart=/opt/church40bot/scripts/backup.sh

@@ -439,16 +439,24 @@ POST-ом (чтобы чужая страница не разлогинивал�
 ./scripts/backup.sh
 ```
 
-Кладёт сжатый дамп в `backups/`, хранит две недели. На сервере поставить в cron:
-
-```bash
-0 3 * * * cd /opt/church40bot && ./scripts/backup.sh >> backups/backup.log 2>&1
-```
+Кладёт сжатый дамп в `backups/` (локально хранит две недели, на случай если заливка не
+удалась) и заливает его на Google Drive поверх предыдущего — второй версии там не
+копится, старая заменяется новой при каждом запуске. Раньше бэкап был шагом деплоя в CI,
+теперь это отдельный systemd-таймер на сервере (`deploy/systemd/`), запускается раз в
+сутки сам по себе, без привязки к выкладкам. `scripts/deploy.sh` переустанавливает его
+юниты на каждый деплой; первоначальная настройка remote'а для Google Drive — разовая
+ручная операция, описана в `deploy/systemd/README.md`.
 
 Восстановление:
 
 ```bash
 docker compose exec -T db pg_restore -U church -d church40 --clean --if-exists < backups/файл.dump
+```
+
+Или сначала скачать актуальную копию с Drive:
+
+```bash
+rclone copyto gdrive:church40-backups/church40.dump backups/из-drive.dump
 ```
 
 ## Как это устроено

@@ -81,16 +81,15 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -p "${{ secrets.SSH_HOST_PORT }}" -H "${{ secrets.SSH_HOST_IP }}" >> ~/.ssh/known_hosts
 
-      # Бэкап и git pull — прямо здесь, а не в scripts/deploy.sh: в первый раз,
-      # когда deploy.sh ещё не лежит на сервере, git pull должен успеть его
-      # принести до попытки запуска. scripts/backup.sh на сервере уже есть
-      # (см. README «Бэкапы») — берём тот, что там лежит, без обновления.
-      - name: Бэкап, git pull, выкладка bot → dashboard
+      # git pull — прямо здесь, а не в scripts/deploy.sh: в первый раз, когда
+      # deploy.sh ещё не лежит на сервере, git pull должен успеть его принести
+      # до попытки запуска. Бэкап при деплое больше не делаем — теперь это
+      # отдельный systemd-таймер на сервере (см. deploy/systemd/), а не шаг CI.
+      - name: git pull, выкладка bot → dashboard
         run: |
           ssh -p "${{ secrets.SSH_HOST_PORT }}" "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST_IP }}" '
             set -eu
             cd "${{ secrets.SSH_DEPLOY_PATH }}"
-            ./scripts/backup.sh
             git pull --ff-only origin main
             ./scripts/deploy.sh
           '

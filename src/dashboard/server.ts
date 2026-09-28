@@ -393,14 +393,17 @@ export function createDashboardServer(deps: DashboardDeps) {
       }
 
       /*
-       * Приложение «/registration» — для тех, кто заполнил анкету на бумаге и
-       * своего чата с ботом не имеет. Раньше форма заведения жила внутри
-       * «/groups», теперь это отдельная страница на своём адресе — маршруты
-       * ниже относятся только к ней, поэтому под «/groups» их больше нет.
+       * Регистрация — для тех, кто заполнил анкету на бумаге и своего чата с
+       * ботом не имеет. Маршруты общие для «/groups» (вкладка «Регистрация»,
+       * со списком рядом) и «/registration» (отдельная страница, без списка) —
+       * страница одна и та же (см. window.HG_STANDALONE), и её форма шлёт
+       * запросы относительно своего текущего HG_BASE, каким бы мог он ни был.
+       * Раньше маршруты были только под «/registration», и с вкладки внутри
+       * «/groups» заведение регистрации отвечало 404.
        * QR и карточка отдаются тут же, отдельными маршрутами: страница
        * показывает их сразу, без похода в чат бота.
        */
-      if (mount === '/registration' && path === '/create') {
+      if (path === '/create') {
         if (req.method !== 'POST') {
           send(res, 404, loginPage(undefined, mount));
           return;
@@ -426,7 +429,7 @@ export function createDashboardServer(deps: DashboardDeps) {
         return;
       }
 
-      if (mount === '/registration' && path === '/qr') {
+      if (path === '/qr') {
         if (req.method !== 'GET') {
           send(res, 404, loginPage(undefined, mount));
           return;
@@ -463,7 +466,7 @@ export function createDashboardServer(deps: DashboardDeps) {
        * телефона — эта страница специально для того, чтобы распечатать или
        * переслать всё сразу, как в подписи к фото в Telegram.
        */
-      if (mount === '/registration' && path === '/card') {
+      if (path === '/card') {
         if (req.method !== 'GET') {
           send(res, 404, loginPage(undefined, mount));
           return;
@@ -496,7 +499,7 @@ export function createDashboardServer(deps: DashboardDeps) {
       /* Удалить регистрацию (заведена по ошибке, дубль, человек попросил).
          В отличие от группы/участника/заявки ниже — удаление жёсткое, по явному
          решению церкви: запись физически стирается, а не архивируется. */
-      if (mount === '/registration' && path === '/delete') {
+      if (path === '/delete') {
         if (req.method !== 'POST') {
           send(res, 404, loginPage(undefined, mount));
           return;

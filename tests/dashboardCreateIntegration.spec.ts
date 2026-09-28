@@ -707,12 +707,20 @@ describe('регистрация участника из дашборда — о
     expect(r.status).toBe(401);
   });
 
-  // Раньше маршрут жил под «/groups/registration/create» — теперь регистрация не
-  // отвечает под старым приложением вовсе, у неё свой адрес целиком.
-  test('под «/groups» маршрут больше не отвечает', async () => {
+  /**
+   * Раньше маршрут отвечал только под «/registration» — с вкладки «Регистрация»
+   * внутри «/groups» (см. renderRegistration/wireRegistrationForm в home-groups.html,
+   * они общие для обоих адресов) заведение регистрации отвечало 404, хотя форма
+   * там тоже есть и её тоже отправляют. Служитель получал в ответ HTML страницы
+   * входа вместо номера регистрации.
+   */
+  test('работает и под «/groups» — там тоже есть вкладка «Регистрация» с той же формой', async () => {
     const cookie = await login();
-    const r = await post('/create', { fio: 'Кто-то', phone: '+79001112233' }, cookie);
-    expect(r.status).toBe(404);
+    const r = await post('/create', { fio: 'Из Вкладки Групп', phone: '+79001112233' }, cookie);
+    expect(r.status).toBe(200);
+
+    const { rows } = await db.query('SELECT full_name FROM users WHERE full_name = $1', ['Из Вкладки Групп']);
+    expect(rows).toHaveLength(1);
   });
 
   test('QR отдаётся картинкой и виден только вошедшему', async () => {

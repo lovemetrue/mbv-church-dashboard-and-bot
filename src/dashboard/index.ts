@@ -85,6 +85,13 @@ async function main(): Promise<void> {
     db, platforms, admins, schedule, broadcastRate: 20,
     dashboardUrl: env('DASHBOARD_URL', 'http://5.23.48.25:8090/groups'),
   }));
+  // Без этой строки в логе не отличить «уведомления настроены, но не доходят» от
+  // «дашборд вообще не увидел токены/ADMIN_IDS» — второе тихо проходит мимо.
+  if (notifier.hasAdmins()) {
+    logger.info({ platforms: [...platforms.keys()] }, 'дашборд: уведомления о заявках служителю включены');
+  } else {
+    logger.warn('дашборд: ADMIN_IDS/токен платформы не заданы — заявки, заведённые в дашборде, никого не уведомят');
+  }
 
   /** Уведомление не должно ронять сохранение заявки — участнику важнее, чем служителю. */
   const notifySafely = async (request: RequestWithUser): Promise<void> => {

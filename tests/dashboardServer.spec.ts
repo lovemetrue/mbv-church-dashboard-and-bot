@@ -497,7 +497,13 @@ describe('отдельное приложение «/registration»', () => {
     expect(createdGroups).toEqual([]);
   });
 
-  test('заведение регистрации работает только на «/registration», а не на «/groups»', async () => {
+  /**
+   * У «Регистрации» есть и вкладка внутри «/groups» (со списком рядом), и
+   * отдельная страница на «/registration» (без списка) — общая форма, общий
+   * маршрут заведения. Раньше маршрут отвечал только под «/registration»: с
+   * вкладки внутри «/groups» заведение регистрации молча отвечало 404.
+   */
+  test('заведение регистрации работает и на «/registration», и на «/groups»', async () => {
     createdRegistrations = [];
     const regSid = (await login('очень-секретно', regBase)).headers.get('set-cookie')!.split(';')[0]!;
     const r = await fetch(`${regBase}/create`, {
@@ -506,14 +512,18 @@ describe('отдельное приложение «/registration»', () => {
       body: new URLSearchParams({ fio: 'Петрова Мария', phone: '+79001112233' }),
     });
     expect(r.status).toBe(200);
-    expect(createdRegistrations).toEqual([{ fio: 'Петрова Мария', phone: '+79001112233' }]);
 
     const groupsSid = (await login('очень-секретно')).headers.get('set-cookie')!.split(';')[0]!;
-    const onOldMount = await fetch(`${base}/create`, {
+    const onGroups = await fetch(`${base}/create`, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: groupsSid },
-      body: new URLSearchParams({ fio: 'Кто-то', phone: '+79001112234' }),
+      body: new URLSearchParams({ fio: 'Из Вкладки Групп', phone: '+79001112234' }),
     });
-    expect(onOldMount.status).toBe(404);
+    expect(onGroups.status).toBe(200);
+
+    expect(createdRegistrations).toEqual([
+      { fio: 'Петрова Мария', phone: '+79001112233' },
+      { fio: 'Из Вкладки Групп', phone: '+79001112234' },
+    ]);
   });
 });

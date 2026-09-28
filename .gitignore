@@ -6,6 +6,7 @@ dist/
 .env.*.bak
 *.env.bak
 backups/
+gdrive.json
 *.log
 .DS_Store
 _preview.html

@@ -24,12 +24,16 @@ const PLATFORM_LABEL = { telegram: 'Telegram', max: 'MAX' } as const;
  */
 export function formatRequest(r: RequestWithUser, dashboardUrl: string): string {
   const nick = r.username ? ` (@${esc(r.username)})` : '';
+  // У заявки без участника в боте (заведена в дашборде кнопкой «Заявка», а не
+  // через регистрацию) LEFT JOIN не находит пользователя, и r.platform — null,
+  // хотя тип этого не допускает. PLATFORM_LABEL[null] тихо дал бы «undefined».
+  const platformLabel = r.platform ? PLATFORM_LABEL[r.platform] : 'дашборд';
   const lines = [
     `🔔 ${b(`Заявка №${r.id}`)} · ${esc(TYPE_LABEL[r.type])}`,
     '',
     `👤 ${b(r.full_name ?? 'без имени')}`,
     `📞 ${esc(formatPhone(r.phone)) || 'телефон не указан'}`,
-    `💬 ${PLATFORM_LABEL[r.platform]}${nick}`,
+    `💬 ${platformLabel}${nick}`,
   ];
 
   if (r.registration_no !== null) lines.push(`🎫 Регистрация №${r.registration_no}`);

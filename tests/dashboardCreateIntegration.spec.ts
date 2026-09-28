@@ -11,6 +11,10 @@ import { usersToCsv } from '../src/core/csv.js';
 import { qrPng } from '../src/core/qr.js';
 import { allChurchOptions } from '../src/core/churches.js';
 import { mdgRequestType } from '../src/core/fsm.js';
+import { AdminNotifier } from '../src/admin/notify.js';
+import { createDeps } from '../src/deps.js';
+import type { Platform, PlatformName } from '../src/core/platform.js';
+import { FakePlatform } from './helpers/fakePlatform.js';
 import { setupTestDb, truncateAll } from './helpers/testDb.js';
 
 /**
@@ -26,6 +30,9 @@ let requests: RequestsRepo;
 let groupsRepo: GroupsRepo;
 let coordinatorsRepo: CoordinatorsRepo;
 let usersRepo: UsersRepo;
+/** Служитель, которому дашборд уведомляет о новой заявке — та же роль, что ADMIN_IDS_TELEGRAM у бота. */
+const ADMIN = '111';
+let tg: FakePlatform;
 
 function memoryStore(): SessionStore {
   const data = new Map<string, string>();
@@ -58,6 +65,16 @@ beforeAll(async () => {
   const users = new UsersRepo(db);
   usersRepo = users;
 
+  tg = new FakePlatform('telegram');
+  const notifier = new AdminNotifier(createDeps({
+    db,
+    platforms: new Map<PlatformName, Platform>([['telegram', tg]]),
+    admins: new Map([['telegram', [ADMIN]]]),
+    schedule: { startDate: '2026-11-01', broadcastTime: '07:00', totalDays: 40, timezone: 'Europe/Moscow' },
+    broadcastRate: 1000,
+  }));
+  const notifySafely = (request: Awaited<ReturnType<RequestsRepo['create']>>) => notifier.notifyRequest(request);
+
   server = createDashboardServer({
     auth: new SessionService(memoryStore(), { password: 'пароль-для-теста', ttlSeconds: 600, maxAttempts: 5 }),
     htmlPath,
@@ -72,7 +89,12 @@ beforeAll(async () => {
       churchOptions: allChurchOptions(),
     }),
     createGroup: async (input) => (await groups.create(input as never, 'ui')).id,
-    createRequest: (input) => requests.createFromDashboard(input as never),
+    createRequest: async (input) => {
+      const id = await requests.createFromDashboard(input as never);
+      const created = await requests.findById(id);
+      if (created) await notifySafely(created);
+      return id;
+    },
     updateRequest: (id, patch) => requests.updateFromDashboard(id, patch as never),
     deleteGroup: async (id) => (await groups.archive(id)) !== null,
     updateGroup: async (id, input) => (await groups.update(id, input as never)) !== null,
@@ -86,7 +108,10 @@ beforeAll(async () => {
         ...(input as ManualRegistrationInput), platform: 'telegram', byAdminId: 'дашборд',
       });
       const requestType = mdgRequestType((input as ManualRegistrationInput).mdgStatus);
-      if (requestType) await requests.create(created.id, requestType, undefined, 'ui');
+      if (requestType) {
+        const request = await requests.create(created.id, requestType, undefined, 'ui');
+        await notifySafely(request);
+      }
       return created.id;
     },
     registrationQr: async (id) => {
@@ -121,7 +146,7 @@ afterAll(async () => {
   await db.end();
 });
 
-beforeEach(async () => { await truncateAll(db); });
+beforeEach(async () => { await truncateAll(db); tg.sent.length = 0; });
 
 const login = async (loginBase = base) => {
   const r = await fetch(`${loginBase}/login`, {
@@ -266,6 +291,21 @@ describe('форма заявки пишет в базу', () => {
     const html = await (await fetch(base, { headers: { cookie } })).text();
     expect(html).toContain('МБВ (Колизей)');
     expect(html).toContain('"mdg_status":"open"');
+  });
+
+  /**
+   * Заявка, заведённая кнопкой «Заявка» в «Добавить», раньше служителя ничем не
+   * уведомляла — увидеть её можно было, только зайдя в дашборд. Теперь то же
+   * уведомление, что и у заявки из чата с ботом.
+   */
+  test('заявка из формы «Добавить» тоже уходит уведомлением служителю', async () => {
+    const cookie = await login();
+    await post('/request/create', {
+      fio: 'Уведомить Из Добавить', type: 'join_group', status: 'Новая', phone: '+79001112245',
+    }, cookie);
+
+    expect(tg.sent).toHaveLength(1);
+    expect(tg.sent[0]!.text).toContain('Уведомить Из Добавить');
   });
 });
 
@@ -622,6 +662,25 @@ describe('регистрация участника из дашборда — о
       ['Без Заявки'],
     );
     expect(rows).toHaveLength(0);
+
+    // Без заявки и уведомлять некого — раньше это проверялось только косвенно.
+    expect(tg.sent).toEqual([]);
+  });
+
+  /**
+   * Тот же повод для уведомления, что и у заявки из чата с ботом (см.
+   * adminNotifyChat.spec.ts): служитель узнаёт о заявке сразу, а не только
+   * зайдя в дашборд.
+   */
+  test('о заявке из регистрации служитель узнаёт уведомлением, как и о заявке от бота', async () => {
+    const cookie = await login(regBase);
+    await post('/create', {
+      fio: 'Уведомить Обо Мне', phone: '+79001112244', mdgStatus: 'join',
+    }, cookie, regBase);
+
+    expect(tg.sent).toHaveLength(1);
+    expect(tg.sent[0]!.text).toContain('Уведомить Обо Мне');
+    expect(tg.sent[0]!.text).toContain('заявка в домашнюю группу');
   });
 
   test('«уже состою» и «уже веду» тоже заводят заявку — не только «хочу присоединиться»', async () => {

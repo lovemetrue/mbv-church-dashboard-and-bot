@@ -82,7 +82,8 @@ export function createDeps(input: DepsInput): Deps {
     maintenance: new MaintenanceRepo(db),
     allowDbReset: input.allowDbReset ?? false,
     requestsRetentionDays: input.requestsRetentionDays ?? 90,
-    dashboardUrl: input.dashboardUrl ?? 'https://bloodofjesus.ru/groups',
+    // Домена пока нет — сайт открывают по IP и порту напрямую.
+    dashboardUrl: input.dashboardUrl ?? 'http://5.23.48.25:8090/groups',
     logger,
     raw: input,
   };

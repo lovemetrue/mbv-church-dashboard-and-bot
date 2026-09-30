@@ -522,3 +522,58 @@ describe('отдельная страница «/registration» — тот же 
     expect(html.slice(sectionAt, at)).toContain('id="registrationListSection"');
   });
 });
+
+describe('«Заявки»: фильтр по виду заявки и по ответственному', () => {
+  const head = () => html.slice(html.indexOf('id="segRequest"') - 200, html.indexOf('id="segRequest"') + 2200);
+
+  test('под статусами есть тот же переключатель видов заявки, что и в «Регистрации»', () => {
+    const seg = html.slice(html.indexOf('id="segReqMdg"'), html.indexOf('id="segReqMdg"') + 900);
+    for (const v of ['', 'leader', 'member', 'open', 'home', 'join', 'none']) {
+      expect(seg, `нет кнопки вида «${v}»`).toContain(`data-mdg="${v}"`);
+    }
+    expect(seg).toContain('>Без заявки<');
+  });
+
+  test('рядом с фильтром группы стоит фильтр «Ответственный»', () => {
+    expect(head()).toContain('id="reqOwnerFilter"');
+    expect(head()).toContain('id="reqGroupFilter"');
+  });
+
+  test('видимые заявки фильтруются по виду и по ответственному', () => {
+    const fn = html.slice(html.indexOf('function visibleRequests'), html.indexOf('function visibleRequests') + 700);
+    expect(fn).toContain('state.reqMdg');
+    expect(fn).toContain('state.owner');
+    expect(html).toContain("$('#reqOwnerFilter').onchange");
+    expect(html).toContain("querySelectorAll('#segReqMdg button')");
+  });
+});
+
+describe('«Домашние группы»: возраст, «Проверено» и порядок столбцов', () => {
+  const thead = () => html.slice(html.indexOf('id="tbody"') - 1300, html.indexOf('id="tbody"'));
+
+  test('порядок: Группа, 40 дней, Возраст, Участники, …, Обратная связь, Проверено, Статус', () => {
+    const keys = ['leader', 'campaign_registered', 'age', 'people', 'district', 'phone', 'coordinator',
+      'feedback_at', 'checked', 'status'];
+    const pos = keys.map((k) => thead().indexOf(`class="sortable" data-key="${k}"`));
+    pos.forEach((p, i) => expect(p, `нет столбца ${keys[i]}`).toBeGreaterThan(-1));
+    for (let i = 1; i < pos.length; i++) expect(pos[i], keys[i]).toBeGreaterThan(pos[i - 1]!);
+  });
+
+  test('«Проверено» — зелёное «Да» или красное «Нет», как «Выдан набор»', () => {
+    const fn = html.slice(html.indexOf('function renderTable'), html.indexOf('function renderTable') + 2500);
+    expect(fn).toContain('g.checked');
+    expect(fn).toContain('pill live');
+    expect(fn).toContain('pill closed');
+  });
+
+  test('число столбцов в раскрытой строке и заглушках совпадает с шапкой (10)', () => {
+    expect(html).toContain('<tr class="detail hidden"><td colspan="10">${details(g)}</td></tr>');
+    expect(html.slice(html.indexOf('id="tbody"'), html.indexOf('id="tbody"') + 200)).toContain('colspan="10"');
+  });
+
+  test('возраст и «Проверено» не дублируются в раскрытой строке', () => {
+    const fn = html.slice(html.indexOf('function details(g)'), html.indexOf('function details(g)') + 700);
+    expect(fn).not.toContain("['Возраст'");
+    expect(fn).not.toContain("['Проверено'");
+  });
+});

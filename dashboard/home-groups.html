@@ -290,7 +290,7 @@ td.num-cell { font-family: var(--mono); font-variant-numeric: tabular-nums; colo
 .pill.draft { color: var(--idle); background: rgba(110,118,129,.12); border-color: rgba(110,118,129,.25); }
 .pill.fresh { color: var(--fresh); background: rgba(79,195,210,.1); border-color: rgba(79,195,210,.24); }
 
-#reqGroupFilter {
+#reqGroupFilter, #reqOwnerFilter {
   background: var(--surface-3);
   border: 1px solid var(--accent);
   border-radius: 6px;
@@ -300,6 +300,8 @@ td.num-cell { font-family: var(--mono); font-variant-numeric: tabular-nums; colo
   padding: 4px 8px;
   cursor: pointer;
 }
+
+.head-col { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 
 .table-foot { padding: 11px 16px; color: var(--text-3); font-size: 12px; border-top: 1px solid var(--border); }
 
@@ -871,19 +873,21 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
           <tr>
             <th class="sortable" data-key="leader">Группа <span class="arrow">↓</span></th>
             <th class="sortable" data-key="campaign_registered">40 дней <span class="arrow">↓</span></th>
+            <th class="sortable" data-key="age">Возраст <span class="arrow">↓</span></th>
+            <th class="sortable" data-key="people">Участники <span class="arrow">↓</span></th>
             <th class="sortable" data-key="district">Район <span class="arrow">↓</span></th>
             <th class="sortable" data-key="phone">Телефон <span class="arrow">↓</span></th>
             <th class="sortable" data-key="coordinator">Координатор <span class="arrow">↓</span></th>
-            <th class="sortable" data-key="people">Участники <span class="arrow">↓</span></th>
             <th class="sortable" data-key="feedback_at">Обратная связь <span class="arrow">↓</span></th>
+            <th class="sortable" data-key="checked">Проверено <span class="arrow">↓</span></th>
             <th class="sortable" data-key="status">Статус <span class="arrow">↓</span></th>
           </tr>
         </thead>
         <tbody id="tbody">
-          <tr class="sk-tr"><td colspan="8"><i class="sk"></i></td></tr>
-          <tr class="sk-tr"><td colspan="8"><i class="sk"></i></td></tr>
-          <tr class="sk-tr"><td colspan="8"><i class="sk"></i></td></tr>
-          <tr class="sk-tr"><td colspan="8"><i class="sk"></i></td></tr>
+          <tr class="sk-tr"><td colspan="10"><i class="sk"></i></td></tr>
+          <tr class="sk-tr"><td colspan="10"><i class="sk"></i></td></tr>
+          <tr class="sk-tr"><td colspan="10"><i class="sk"></i></td></tr>
+          <tr class="sk-tr"><td colspan="10"><i class="sk"></i></td></tr>
         </tbody>
       </table>
     </div>
@@ -927,6 +931,7 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
       <!-- Порядок как в жизни заявки: пришла → ждёт → ведут → проверяют → закрыта.
            Статусы перечислены все: раньше «Новая», «В ожидании» и «Не указан» не
            попадали в переключатель, и отобрать эти заявки было нечем. -->
+      <div class="head-col">
       <div class="seg" id="segRequest">
         <button aria-selected="true" data-req="">Все</button>
         <button data-req="Новая">Новые</button>
@@ -937,7 +942,22 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
         <button data-req="Аннулирована">Аннулированы</button>
         <button data-req="Не указан">Без статуса</button>
       </div>
-      <select id="reqGroupFilter" aria-label="Фильтр по домашней группе"></select>
+      <!-- Вид заявки — тот же вопрос про Малую группу и те же кнопки, что в «Регистрации»:
+           у заявки из бота он приходит с анкетой, у заявки из таблицы церкви его нет («Без заявки»). -->
+      <div class="seg" id="segReqMdg">
+        <button aria-selected="true" data-mdg="">Все</button>
+        <button data-mdg="leader">Ведущие</button>
+        <button data-mdg="member">Состоят</button>
+        <button data-mdg="open">Готовы открыть</button>
+        <button data-mdg="home">Дают дом</button>
+        <button data-mdg="join">Ищут группу</button>
+        <button data-mdg="none">Без заявки</button>
+      </div>
+      </div>
+      <div class="head-col">
+        <select id="reqOwnerFilter" aria-label="Фильтр по ответственному"></select>
+        <select id="reqGroupFilter" aria-label="Фильтр по домашней группе"></select>
+      </div>
     </div>
     <div class="table-scroll">
       <table>
@@ -1278,7 +1298,7 @@ const REG_MDG_FILTER_LABEL = {
 const state = {
   district: null, statuses: [], campaign: '', sort: 'people', dir: -1,
   view: STANDALONE === 'registration' ? 'registration' : 'requests', request: null, groupId: null,
-  reqSort: 'date', reqDir: -1,
+  reqSort: 'date', reqDir: -1, reqMdg: null, owner: null,
   regSort: 'registration_no', regDir: -1, regMdg: null,
 };
 
@@ -1615,11 +1635,9 @@ function details(g) {
     ['День', g.day],
     ['Время', g.time],
     ['Состав', g.composition],
-    ['Возраст', g.age],
     ['Приём новых', g.open_to_new],
     ['Формат', g.format],
     ['Обучение', g.training],
-    ['Проверено', g.checked === undefined ? null : (g.checked ? 'да' : 'нет')],
   ].filter(([, v]) => v !== null && v !== undefined && v !== '');
 
   // Запись из таблицы показываем только когда она несёт что-то помимо цифр:
@@ -1647,6 +1665,7 @@ function renderTable() {
     const k = state.sort;
     let av = a[k] ?? '', bv = b[k] ?? '';
     if (k === 'people') { av = a.people || 0; bv = b.people || 0; }
+    if (k === 'checked') { av = Number(Boolean(a.checked)); bv = Number(Boolean(b.checked)); }
     if (av === bv) return 0;
     return (av > bv ? 1 : -1) * state.dir;
   });
@@ -1656,14 +1675,18 @@ function renderTable() {
     return `<tr class="row">
       <td class="strong"><span class="caret">\u203a</span>${esc(g.leader)} <span class="mono" style="color:var(--text-3)">${groupCode(g.id)}</span>${g.source && g.source !== 'таблица' ? ` <span class="src">${esc(g.source)}</span>` : ''}</td>
       <td>${g.campaign_registered ? '<span class="pill live"><i></i>40 дней</span>' : '—'}</td>
+      <td>${esc(g.age) || '\u2014'}</td>
+      <td class="num-cell">${g.people ?? '\u2014'}</td>
       <td>${esc(g.district)}${g.metro ? ` <span style="color:var(--text-3)">\u00b7 ${esc(g.metro.split(',')[0])}</span>` : ''}</td>
       <td>${phoneCell(g)}</td>
       <td>${esc(g.coordinator) || '\u2014'}</td>
-      <td class="num-cell">${g.people ?? '\u2014'}</td>
       <td class="mono" style="color:var(--text-3)">${ruDate(g.feedback_at)}</td>
+      <td>${g.checked
+        ? '<span class="pill live"><i></i>Да</span>'
+        : '<span class="pill closed"><i></i>Нет</span>'}</td>
       <td><span class="pill ${cls}"><i></i>${esc(label)}</span></td>
     </tr>
-    <tr class="detail hidden"><td colspan="8">${details(g)}</td></tr>`;
+    <tr class="detail hidden"><td colspan="10">${details(g)}</td></tr>`;
   }).join('');
 
   // Клик по строке раскрывает подробности; клик по телефону — это звонок,
@@ -1806,9 +1829,14 @@ function responsibleOptions(current) {
   return all.map((n) => `<option value="${esc(n)}"${n === current ? ' selected' : ''}>${esc(n)}</option>`).join('');
 }
 
+/** Значение пункта «Без ответственного» в фильтре: не пересекается с именем человека. */
+const NO_OWNER = '__none__';
+
 function visibleRequests() {
   return requests.filter((r) =>
     (!state.request || r.status === state.request) &&
+    (!state.reqMdg || (state.reqMdg === 'none' ? !r.mdg_status : r.mdg_status === state.reqMdg)) &&
+    (!state.owner || (state.owner === NO_OWNER ? !r.responsible : r.responsible === state.owner)) &&
     (!state.groupId || r.group_id === state.groupId));
 }
 
@@ -2123,7 +2151,9 @@ function renderRequests() {
   });
 
   $('#reqFoot').textContent = `${rows.length} ${plural(rows.length, 'заявка', 'заявки', 'заявок')}`;
-  $('#reqSub').textContent = state.request ? `Статус: ${state.request}` : 'Все заявки';
+  const subs = [state.request && `Статус: ${state.request}`, state.reqMdg && `Заявка: ${REG_MDG_FILTER_LABEL[state.reqMdg]}`,
+    state.owner && `Ответственный: ${state.owner === NO_OWNER ? 'не назначен' : state.owner}`].filter(Boolean);
+  $('#reqSub').textContent = subs.length ? subs.join(' · ') : 'Все заявки';
 
   document.querySelectorAll('thead th.sortable-req').forEach((th) => {
     if (th.dataset.key === state.reqSort) th.dataset.dir = state.reqDir;
@@ -2157,6 +2187,25 @@ document.querySelectorAll('#segReg button').forEach((b) => {
     renderRegistration();
   };
 });
+
+document.querySelectorAll('#segReqMdg button').forEach((b) => {
+  b.onclick = () => {
+    document.querySelectorAll('#segReqMdg button').forEach((x) => x.setAttribute('aria-selected', 'false'));
+    b.setAttribute('aria-selected', 'true');
+    state.reqMdg = b.dataset.mdg;
+    renderRequests();
+  };
+});
+
+// Ответственные: координаторы плюс те, кто стоит в заявках, но в реестре не значится.
+const owners = [...new Set([...coordinators.map((c) => c.name), ...requests.map((r) => r.responsible).filter(Boolean)])];
+$('#reqOwnerFilter').innerHTML = '<option value="">Ответственный</option>' +
+  `<option value="${NO_OWNER}">Без ответственного</option>` +
+  owners.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+$('#reqOwnerFilter').onchange = (e) => {
+  state.owner = e.target.value || null;
+  renderRequests();
+};
 
 $('#reqGroupFilter').innerHTML = '<option value="">Все группы</option>' +
   groups.map((g) => `<option value="${g.id}">${esc(g.leader)} · ${groupCode(g.id)}</option>`).join('');

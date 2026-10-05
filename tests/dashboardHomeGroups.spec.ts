@@ -577,3 +577,28 @@ describe('«Домашние группы»: возраст, «Проверен�
     expect(fn).not.toContain("['Проверено'");
   });
 });
+
+describe('после «Сохранить» страница перезагружается, но фильтры и место сохраняются', () => {
+  test('ни один перезагрузчик не вызывает location.reload напрямую, кроме общей функции', () => {
+    expect([...html.matchAll(/location\.reload\(\)/g)]).toHaveLength(1);
+    expect(html).toContain('function reloadKeepingState');
+  });
+
+  test('состояние кладётся в sessionStorage и читается при загрузке', () => {
+    expect(html).toContain("sessionStorage.setItem('hgState'");
+    expect(html).toContain("sessionStorage.getItem('hgState')");
+    const save = html.slice(html.indexOf('function reloadKeepingState'), html.indexOf('function reloadKeepingState') + 900);
+    for (const k of ['request', 'reqMdg', 'owner', 'groupId', 'statuses', 'campaign', 'view', 'scrollY']) {
+      expect(save, k).toContain(k);
+    }
+  });
+});
+
+describe('сессия входа живёт 30 дней по умолчанию', () => {
+  test('умолчание в коде, в .env.example и в README — 30', () => {
+    const idx = readFileSync(new URL('../src/dashboard/index.ts', import.meta.url), 'utf8');
+    expect(idx).toContain("env('DASHBOARD_SESSION_DAYS', '30')");
+    expect(readFileSync(new URL('../.env.example', import.meta.url), 'utf8')).toContain('DASHBOARD_SESSION_DAYS=30');
+    expect(readFileSync(new URL('../README.md', import.meta.url), 'utf8')).toMatch(/DASHBOARD_SESSION_DAYS.*30 дней/);
+  });
+});

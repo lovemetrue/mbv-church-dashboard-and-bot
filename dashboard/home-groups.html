@@ -2137,7 +2137,7 @@ function renderRequests() {
         if (r.ok) {
           msg.className = 'form-msg req-msg ok';
           msg.textContent = 'Сохранено.';
-          setTimeout(() => location.reload(), 600);
+          setTimeout(reloadKeepingState, 600);
           return;
         }
         msg.className = 'form-msg req-msg err';
@@ -2662,7 +2662,7 @@ async function sendRow(btn, path, body, doneText) {
     });
     if (r.ok) {
       if (msg) { msg.className = 'form-msg row-msg ok'; msg.textContent = doneText; }
-      setTimeout(() => location.reload(), 500);
+      setTimeout(reloadKeepingState, 500);
       return;
     }
     if (msg) {
@@ -2703,7 +2703,7 @@ function wireForm(formId, msgId, path, doneText) {
         msg.className = 'form-msg ok';
         msg.textContent = doneText;
         // Небольшая пауза, чтобы сообщение успели прочитать.
-        setTimeout(() => location.reload(), 700);
+        setTimeout(reloadKeepingState, 700);
         return;
       }
       msg.className = 'form-msg err';
@@ -2913,8 +2913,52 @@ $('#rangeBtn').onclick = () => {
   setTimeout(hideTip, 2600);
 };
 
+/**
+ * Перезагрузка после сохранения: данные приходят вшитыми в страницу, поэтому без неё
+ * правка не видна. Фильтры, вкладка, прокрутка и раскрытые заявки кладём в
+ * sessionStorage и поднимаем после загрузки — иначе каждое «Сохранить» сбрасывало всё.
+ */
+function reloadKeepingState() {
+  const { view, request, reqMdg, owner, groupId, statuses, campaign, district, regMdg, reqSort, reqDir } = state;
+  sessionStorage.setItem('hgState', JSON.stringify({
+    view, request, reqMdg, owner, groupId, statuses, campaign, district, regMdg, reqSort, reqDir,
+    scrollY: window.scrollY,
+    openReq: [...document.querySelectorAll('#reqBody tr.row.open')].map((tr) => tr.dataset.reqId),
+  }));
+  location.reload();
+}
+
+/** Поднять сохранённое: вызывается один раз после первой отрисовки. */
+function restoreState() {
+  const raw = sessionStorage.getItem('hgState');
+  if (!raw) return;
+  sessionStorage.removeItem('hgState');
+  const saved = JSON.parse(raw);
+  const { scrollY, openReq, ...rest } = saved;
+  Object.assign(state, rest);
+  const mark = (sel, attr, val) => document.querySelectorAll(`${sel} button`)
+    .forEach((b) => b.setAttribute('aria-selected', String((b.dataset[attr] ?? '') === (val ?? ''))));
+  mark('#segRequest', 'req', state.request);
+  mark('#segReqMdg', 'mdg', state.reqMdg);
+  mark('#segReg', 'mdg', state.regMdg);
+  mark('#segCampaign', 'campaign', state.campaign);
+  document.querySelectorAll('#segStatus button').forEach((b) => b.setAttribute('aria-selected',
+    String(b.dataset.status === '' ? state.statuses.length === 0 : state.statuses.includes(b.dataset.status))));
+  $('#reqOwnerFilter').value = state.owner ?? '';
+  $('#reqGroupFilter').value = state.groupId ?? '';
+  document.querySelectorAll('.nav button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.view === state.view)));
+  renderAll();
+  applyView();
+  for (const id of openReq) {
+    const tr = document.querySelector(`#reqBody tr.row[data-req-id="${id}"]`);
+    if (tr) { tr.classList.add('open'); tr.nextElementSibling.classList.remove('hidden'); }
+  }
+  scrollTo(0, scrollY);
+}
+
 renderAll();
 applyView();
+restoreState();
 countUp = false;
 // Скелетоны сняты: дальше пустой блок значит «нет данных», а не «грузится».
 document.documentElement.dataset.ready = '';

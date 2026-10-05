@@ -33,7 +33,7 @@ async function main(): Promise<void> {
   if (password.length < 8) throw new Error('DASHBOARD_PASSWORD короче восьми символов');
 
   const port = Number(env('DASHBOARD_PORT', '8090'));
-  const ttlDays = Number(env('DASHBOARD_SESSION_DAYS', '7'));
+  const ttlDays = Number(env('DASHBOARD_SESSION_DAYS', '30'));
   const ttlSeconds = Math.round(ttlDays * 86400);
 
   // Свой Valkey (сервис valkey в docker-compose.yml), ни с кем не общий.

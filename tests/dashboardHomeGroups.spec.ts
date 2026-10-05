@@ -91,9 +91,9 @@ describe('бейдж «40 дней» в реестре групп', () => {
   });
 
   test('есть фильтр по регистрации в кампании', () => {
-    expect(html).toContain('id="segCampaign"');
-    expect(html).toContain('data-campaign="yes"');
-    expect(html).toContain('data-campaign="no"');
+    const seg = html.slice(html.indexOf('id="segStatus"'), html.indexOf('id="segStatus"') + 1200);
+    expect(seg).toContain('data-campaign="yes">40 дней</button>');
+    expect(html).toContain("state.campaign = state.campaign ? '' : 'yes'");
   });
 });
 

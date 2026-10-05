@@ -860,11 +860,9 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
         <button data-status="На паузе">На паузе</button>
         <button data-status="Закрыта">Закрытые</button>
         <button data-status="Недвижимость">Недвижимость</button>
-      </div>
-      <div class="seg" id="segCampaign">
-        <button aria-selected="true" data-campaign="">Все</button>
-        <button data-campaign="yes">Зарегистрированы</button>
-        <button data-campaign="no">Не зарегистрированы</button>
+        <!-- Не статус группы, а отметка «40 дней»: включается так же галочкой и
+             сочетается с любыми статусами (показать только действующие из кампании). -->
+        <button data-campaign="yes">40 дней</button>
       </div>
     </div>
     <div class="table-scroll">
@@ -2250,28 +2248,26 @@ $('#filterClear').onclick = () => { state.district = null; renderAll(); };
 // где кнопки взаимоисключающие).
 document.querySelectorAll('#segStatus button').forEach((b) => {
   b.onclick = () => {
-    if (b.dataset.status === '') {
+    if (b.dataset.campaign) {
+      state.campaign = state.campaign ? '' : 'yes';
+    } else if (b.dataset.status === '') {
       state.statuses = [];
+      state.campaign = '';
     } else {
       const i = state.statuses.indexOf(b.dataset.status);
       if (i === -1) state.statuses.push(b.dataset.status); else state.statuses.splice(i, 1);
     }
-    document.querySelectorAll('#segStatus button').forEach((x) => {
-      x.setAttribute('aria-selected', String(
-        x.dataset.status === '' ? state.statuses.length === 0 : state.statuses.includes(x.dataset.status),
-      ));
-    });
+    syncStatusSeg();
     renderAll();
   };
 });
 
-document.querySelectorAll('#segCampaign button').forEach((b) => {
-  b.onclick = () => {
-    document.querySelectorAll('#segCampaign button').forEach((x) => x.setAttribute('aria-selected', 'false'));
-    b.setAttribute('aria-selected', 'true');
-    state.campaign = b.dataset.campaign;
-    renderAll();
-  };
+const syncStatusSeg = () => document.querySelectorAll('#segStatus button').forEach((x) => {
+  x.setAttribute('aria-selected', String(
+    x.dataset.campaign ? state.campaign === 'yes'
+      : x.dataset.status === '' ? state.statuses.length === 0 && !state.campaign
+      : state.statuses.includes(x.dataset.status),
+  ));
 });
 
 document.querySelectorAll('thead th.sortable').forEach((th) => {
@@ -2941,9 +2937,7 @@ function restoreState() {
   mark('#segRequest', 'req', state.request);
   mark('#segReqMdg', 'mdg', state.reqMdg);
   mark('#segReg', 'mdg', state.regMdg);
-  mark('#segCampaign', 'campaign', state.campaign);
-  document.querySelectorAll('#segStatus button').forEach((b) => b.setAttribute('aria-selected',
-    String(b.dataset.status === '' ? state.statuses.length === 0 : state.statuses.includes(b.dataset.status))));
+  syncStatusSeg();
   $('#reqOwnerFilter').value = state.owner ?? '';
   $('#reqGroupFilter').value = state.groupId ?? '';
   document.querySelectorAll('.nav button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.view === state.view)));

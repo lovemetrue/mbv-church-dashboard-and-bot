@@ -602,3 +602,30 @@ describe('сессия входа живёт 30 дней по умолчанию
     expect(readFileSync(new URL('../README.md', import.meta.url), 'utf8')).toMatch(/DASHBOARD_SESSION_DAYS.*30 дней/);
   });
 });
+
+describe('три темы оформления и переключатель в шапке', () => {
+  test('переключатель стоит в шапке вместо «Весь период»', () => {
+    expect(html).not.toContain('id="rangeBtn"');
+    expect(html).not.toContain('Весь период');
+    const bar = html.slice(html.indexOf('class="topbar-right"'), html.indexOf('class="topbar-right"') + 2500);
+    expect(bar).toContain('id="themeSwitch"');
+    for (const t of ['dark', 'light', 'gray']) expect(bar).toContain(`data-theme-set="${t}"`);
+  });
+
+  test('светлая и серая темы переопределяют палитру, тёмная остаётся по умолчанию', () => {
+    expect(html).toContain('html[data-theme="light"]');
+    expect(html).toContain('html[data-theme="gray"]');
+  });
+
+  test('выбор запоминается и применяется до отрисовки, без вспышки тёмной темы', () => {
+    const head = html.slice(0, html.indexOf('<style>'));
+    expect(head).toContain("localStorage.getItem('hgTheme')");
+    expect(html).toContain("localStorage.setItem('hgTheme'");
+  });
+
+  test('в стилях вне палитры не осталось жёстко вшитых белых/чёрных полупрозрачных цветов', () => {
+    const css = html.slice(html.indexOf('<style>'), html.indexOf('</style>'));
+    const outsidePalettes = css.replace(/:root\s*\{[^}]*\}/, '').replace(/html\[data-theme="\w+"\]\s*\{[^}]*\}/g, '');
+    expect(outsidePalettes).not.toMatch(/rgba\(\s*(255|0)\s*,\s*(255|0)\s*,\s*(255|0)\s*,/);
+  });
+});

@@ -629,3 +629,37 @@ describe('три темы оформления и переключатель в 
     expect(outsidePalettes).not.toMatch(/rgba\(\s*(255|0)\s*,\s*(255|0)\s*,\s*(255|0)\s*,/);
   });
 });
+
+describe('правки оформления и фильтров (06.10)', () => {
+  test('статус «Кампания»: кнопка фильтра, пилюля и пункт формы', () => {
+    const seg = html.slice(html.indexOf('id="segStatus"'), html.indexOf('id="segStatus"') + 900);
+    expect(seg).toContain('data-status="Кампания">Кампания</button>');
+    expect(html).toContain("'Кампания': ['live', 'Кампания']");
+    expect(html).toMatch(/FORM_GROUP_STATUSES = \[[^\]]*'Кампания'/);
+  });
+
+  test('«Кампания» входит в «Действующие» в KPI, как «Функционирует»', () => {
+    const fn = html.slice(html.indexOf('function renderKpi'), html.indexOf('function renderKpi') + 600);
+    expect(fn).toContain("g.status === 'Кампания'");
+  });
+
+  test('статусы заявок: Все, Новые, В работе, В ожидании, На контроле, Исполнены, Аннулированы, Без статуса', () => {
+    const seg = html.slice(html.indexOf('id="segRequest"'), html.indexOf('id="segRequest"') + 900);
+    const order = ['data-req=""', 'data-req="Новая"', 'data-req="В работе"', 'data-req="В ожидании"',
+      'data-req="На контроле"', 'data-req="Исполнена"', 'data-req="Аннулирована"', 'data-req="Не указан"'].map((k) => seg.indexOf(k));
+    order.forEach((p) => expect(p).toBeGreaterThan(-1));
+    for (let i = 1; i < order.length; i++) expect(order[i]).toBeGreaterThan(order[i - 1]!);
+  });
+
+  test('выпадающие списки в шапке «Заявок» не шире своей колонки', () => {
+    expect(html).toMatch(/#reqGroupFilter, #reqOwnerFilter \{[^}]*max-width: 100%/);
+    expect(html).toMatch(/#reqGroupFilter, #reqOwnerFilter \{[^}]*text-overflow: ellipsis/);
+  });
+
+  test('серая тема: основной текст почти белый; светлая: текст почти чёрный', () => {
+    const block = (name: string) => html.slice(html.indexOf(`html[data-theme="${name}"] {`), html.indexOf(`html[data-theme="${name}"] {`) + 1500);
+    expect(block('gray')).toContain('--text: #F7F7F8;');
+    expect(block('light')).toContain('--text: #0B0C0E;');
+    expect(block('light')).toContain('--text-2: #2F3238;');
+  });
+});

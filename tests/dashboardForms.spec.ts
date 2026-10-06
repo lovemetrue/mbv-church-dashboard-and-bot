@@ -55,6 +55,10 @@ describe('форма группы', () => {
     expect(r.ok).toBe(true);
   });
 
+  test('статус «Кампания» принимается формой', () => {
+    expect(parseGroupForm(form({ ...GROUP_MIN, status: 'Кампания' })).ok).toBe(true);
+  });
+
   test('число человек вне разумных границ отвергается', () => {
     expect(parseGroupForm(form({ ...GROUP_MIN, people: '0' })).ok).toBe(false);
     expect(parseGroupForm(form({ ...GROUP_MIN, people: '500' })).ok).toBe(false);

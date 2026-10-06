@@ -121,6 +121,14 @@ describe('заявка на открытие группы: сверка теле
     expect(tg.textsTo('111').join('\n')).toContain(T.leadPhoneIsLeader);
   });
 
+  test('группа со статусом «Кампания» считается действующей, как «Функционирует»', async () => {
+    await seedGroup('Кампания');
+    await seedUser(db, { id: '111', phone: PHONE });
+    await router.handle(tapLead('111'));
+
+    expect(tg.textsTo('111').join('\n')).toContain(T.leadPhoneIsLeader);
+  });
+
   test('ведущий закрытой группы открыть новую может', async () => {
     // Закрытая и приостановленная группа не мешают: у человека сейчас группы нет.
     await seedGroup('Закрыта');

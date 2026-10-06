@@ -70,9 +70,9 @@ html[data-theme="light"] {
   --surface-3: #E8E8EB;
   --border: rgba(16, 18, 22, .08);
   --border-strong: rgba(16, 18, 22, .15);
-  --text: #18191C;
-  --text-2: #5B5F67;
-  --text-3: #8C9098;
+  --text: #0B0C0E;
+  --text-2: #2F3238;
+  --text-3: #5A5E66;
   --accent: #5E6AD2;
   --accent-hi: #4652BF;
   --accent-soft: rgba(94, 106, 210, .11);
@@ -103,9 +103,9 @@ html[data-theme="gray"] {
   --surface-3: #35363A;
   --border: rgba(230, 230, 235, .08);
   --border-strong: rgba(230, 230, 235, .14);
-  --text: #E7E7E9;
-  --text-2: #A3A5AA;
-  --text-3: #74767C;
+  --text: #F7F7F8;
+  --text-2: #C4C6CB;
+  --text-3: #9A9CA3;
   --accent: #7D70E8;
   --accent-hi: #ACA3F8;
   --accent-soft: rgba(125, 112, 232, .2);
@@ -389,9 +389,11 @@ td.num-cell { font-family: var(--mono); font-variant-numeric: tabular-nums; colo
   font-size: 12.5px;
   padding: 4px 8px;
   cursor: pointer;
+  /* Длинное «Фамилия Имя · ДГ-0001» раньше растягивало список и выпирало за карточку. */
+  width: 260px; max-width: 100%; text-overflow: ellipsis;
 }
 
-.head-col { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.head-col { min-width: 0; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 
 .table-foot { padding: 11px 16px; color: var(--text-3); font-size: 12px; border-top: 1px solid var(--border); }
 
@@ -957,6 +959,7 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
         <button data-status="На паузе">На паузе</button>
         <button data-status="Закрыта">Закрытые</button>
         <button data-status="Недвижимость">Недвижимость</button>
+        <button data-status="Кампания">Кампания</button>
         <!-- Не статус группы, а отметка «40 дней»: включается так же галочкой и
              сочетается с любыми статусами (показать только действующие из кампании). -->
         <button data-campaign="yes">40 дней</button>
@@ -1030,8 +1033,8 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
       <div class="seg" id="segRequest">
         <button aria-selected="true" data-req="">Все</button>
         <button data-req="Новая">Новые</button>
-        <button data-req="В ожидании">В ожидании</button>
         <button data-req="В работе">В работе</button>
+        <button data-req="В ожидании">В ожидании</button>
         <button data-req="На контроле">На контроле</button>
         <button data-req="Исполнена">Исполнены</button>
         <button data-req="Аннулирована">Аннулированы</button>
@@ -1352,6 +1355,7 @@ const STATUS_PILL = {
   'Закрыта': ['closed', 'Закрыта'],
   'Потенциальная': ['draft', 'Потенциальная'],
   'Недвижимость': ['draft', 'Недвижимость'],
+  'Кампания': ['live', 'Кампания'],
 };
 /* Статусы заявок из листа «ЗАЯВКИ». Цвета по смыслу: исполнено — зелёный,
    в работе — акцент, на контроле — жёлтый, аннулировано — красный. */
@@ -1524,7 +1528,7 @@ function setNum(el, value, { suffix = '', decimals = 0, delay = 0, ms = 950 } = 
 function renderKpi() {
   // Район из карты — только фильтр таблицы ниже (visible()), KPI его не видят.
   const rows = visibleIgnoringDistrict();
-  const live = rows.filter((g) => g.status === 'Функционирует').length;
+  const live = rows.filter((g) => g.status === 'Функционирует' || g.status === 'Кампания').length;
   const paused = rows.filter((g) => g.status === 'На паузе').length;
   const closed = rows.filter((g) => g.status === 'Закрыта').length;
   const people = rows.reduce((s, g) => s + (g.people || 0), 0);
@@ -1545,7 +1549,7 @@ function renderKpi() {
   setNum($('#kpiPeople'), people, { delay: D * 5 });
   const withPeople = rows.filter((g) => g.people);
   setNum($('#kpiAvg'), withPeople.length ? people / withPeople.length : 0, { decimals: 1, delay: D * 4 });
-  setNum($('#eqNow'), rows.filter((g) => g.status === 'Функционирует' || g.status === 'На паузе').length);
+  setNum($('#eqNow'), rows.filter((g) => g.status === 'Функционирует' || g.status === 'Кампания' || g.status === 'На паузе').length);
 }
 
 /* ── карта ────────────────────────────────────────────────────────────── */
@@ -2465,7 +2469,7 @@ const FORM_DISTRICTS = [
   'Кронштадтский', 'Курортный', 'Ленинградская область', 'Онлайн', 'Не указан',
 ];
 const FORM_FORMATS = ['Основная церковь', 'Молодежная', 'Приватная (Закрытая)', 'Служение'];
-const FORM_GROUP_STATUSES = ['Функционирует', 'Потенциальная', 'На паузе', 'Закрыта', 'Недвижимость'];
+const FORM_GROUP_STATUSES = ['Функционирует', 'Потенциальная', 'На паузе', 'Закрыта', 'Недвижимость', 'Кампания'];
 const FORM_REQUEST_STATUSES = ['Новая', 'В ожидании', 'В работе', 'На контроле', 'Исполнена', 'Аннулирована'];
 /* Те же категории, что в анкете бота (см. AGE_GROUPS в src/core/texts.ts) — список
    продублирован, потому что страница дашборда не импортирует код бота (см. CLAUDE.md). */

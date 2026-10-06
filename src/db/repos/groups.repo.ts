@@ -237,7 +237,7 @@ export class GroupsRepo {
   async activeLeaderByPhone(phone: string): Promise<boolean> {
     const { rows } = await this.db.query(
       `SELECT 1 FROM groups
-        WHERE archived_at IS NULL AND status = 'Функционирует' AND $1 = ANY(phones)
+        WHERE archived_at IS NULL AND status IN ('Функционирует', 'Кампания') AND $1 = ANY(phones)
         LIMIT 1`,
       [phone],
     );

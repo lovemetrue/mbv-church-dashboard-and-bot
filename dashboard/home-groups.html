@@ -8,6 +8,8 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
 <script>
   // Тема ставится до стилей: иначе на светлой теме при каждой загрузке мелькала бы тёмная.
+  // Обычный вход не может удалять: сервер всё равно откажет, но кнопки лучше не показывать.
+  if (window.HG_CAN_DELETE === false) document.documentElement.dataset.noDelete = '';
   try { const t = localStorage.getItem('hgTheme'); if (t === 'light' || t === 'gray') document.documentElement.dataset.theme = t; } catch {}
 </script>
 
@@ -414,6 +416,7 @@ td.addr { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-spa
 .multi { display: flex; flex-wrap: wrap; gap: 6px 14px; }
 .field .multi label { display: inline-flex; align-items: center; gap: 6px; text-transform: none; letter-spacing: 0; font-size: 12.5px; color: var(--text-2); }
 .multi input { accent-color: var(--accent); }
+html[data-no-delete] .row-del { display: none !important; }
 .head-col { min-width: 0; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 
 .table-foot { padding: 11px 16px; color: var(--text-3); font-size: 12px; border-top: 1px solid var(--border); }

@@ -160,13 +160,16 @@ export function withLogout(html: string, mount: Mount = DEFAULT_MOUNT): string {
  * поэтому странице нужно ещё и сказать, в каком она режиме: window.HG_STANDALONE
  * прячет навигацию и показывает только раздел регистрации, минуя остальной дашборд.
  */
-export function withLive(html: string, data: DashboardData, mount: Mount = DEFAULT_MOUNT): string {
+export function withLive(html: string, data: DashboardData, mount: Mount = DEFAULT_MOUNT, canDelete = true): string {
   const json = JSON.stringify(data).replace(/</g, '\\u003c');
   const standalone = mount === '/registration' ? '"registration"' : 'null';
-  const block = `<script>window.HG_LIVE = ${json}; window.HG_BASE = ${JSON.stringify(mount + '/')}; window.HG_STANDALONE = ${standalone};</script>\n`;
+  const block = `<script>window.HG_LIVE = ${json}; window.HG_BASE = ${JSON.stringify(mount + '/')}; window.HG_STANDALONE = ${standalone}; window.HG_CAN_DELETE = ${canDelete};</script>\n`;
   const at = html.indexOf('<script>');
   return at === -1 ? block + html : html.slice(0, at) + block + html.slice(at);
 }
+
+/** Адреса, которые что-то удаляют: все под запретом для обычного входа. */
+const DELETE_PATHS = new Set(['/group/delete', '/leader/delete', '/request/delete', '/coordinator/delete', '/delete']);
 
 export function createDashboardServer(deps: DashboardDeps) {
   const cookie = (sid: string, maxAge: number, mount: Mount) =>
@@ -225,20 +228,32 @@ export function createDashboardServer(deps: DashboardDeps) {
 
       if (req.method === 'POST' && path === '/login') {
         const body = await readBody(req);
-        const password = new URLSearchParams(body).get('password') ?? '';
+        const form = new URLSearchParams(body);
+        const password = form.get('password') ?? '';
         const ip = clientIp(req);
-        const result = await deps.auth.login(password, ip);
+        const result = await deps.auth.login(password, ip, form.get('login') ?? undefined);
 
         if (!result.ok) {
           logger.warn({ ip, lockedOut: result.lockedOut === true }, 'дашборд: неудачный вход');
           send(res, 401, loginPage(result.lockedOut
             ? 'Слишком много попыток. Подождите 15 минут.'
-            : 'Неверный пароль.', mount));
+            : 'Неверный логин или пароль.', mount));
           return;
         }
 
         logger.info({ ip, mount }, 'дашборд: вход выполнен');
         send(res, 303, '', { location: mount, 'set-cookie': cookie(result.sid!, deps.sessionTtlSeconds, mount) });
+        return;
+      }
+
+      /* Удалять может только полный вход (super_mbv_admin). Проверка здесь, а не в каждом
+         обработчике: так новый адрес удаления не останется без неё по забывчивости, а
+         скрытая в странице кнопка не защита — запрос можно послать и руками. Без сессии
+         идём дальше: обработчик ответит 401 сам, как раньше. */
+      if (req.method === 'POST' && DELETE_PATHS.has(path) && (await deps.auth.verify(sid))
+          && (await deps.auth.roleOf(sid)) !== 'super') {
+        logger.warn({ path, mount }, 'дашборд: удаление отклонено — вход без права удаления');
+        send(res, 403, 'Удалять может только super_mbv_admin.');
         return;
       }
 
@@ -682,7 +697,7 @@ export function createDashboardServer(deps: DashboardDeps) {
           logger.error({ err: (err as Error).message }, 'дашборд: не удалось прочитать данные из базы');
         }
       }
-      send(res, 200, withLive(withLogout(html, mount), data, mount));
+      send(res, 200, withLive(withLogout(html, mount), data, mount, (await deps.auth.roleOf(sid)) === 'super'));
     } catch (err) {
       logger.error({ err: (err as Error).message }, 'дашборд: ошибка обработки запроса');
       if (!res.headersSent) send(res, 500, loginPage('Что-то пошло не так. Попробуйте ещё раз.'));

@@ -774,3 +774,10 @@ describe('правки оформления и фильтров (06.10)', () => 
     expect(block('light')).toContain('--text-2: #2F3238;');
   });
 });
+
+describe('кнопки удаления прячутся у обычного входа', () => {
+  test('страница читает HG_CAN_DELETE и ставит признак на <html>', () => {
+    expect(html).toContain('window.HG_CAN_DELETE === false');
+    expect(html).toContain('html[data-no-delete] .row-del { display: none !important; }');
+  });
+});

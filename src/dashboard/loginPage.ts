@@ -47,8 +47,10 @@ export function loginPage(error?: string, mount = '/groups'): string {
     </span>
     <h1>Home Groups Analytics</h1>
     <p class="sub">Статистика домашних групп. Доступ только для служителей.</p>
-    <label for="p">Пароль</label>
-    <input id="p" name="password" type="password" autocomplete="current-password" autofocus required>
+    <label for="l">Логин</label>
+    <input id="l" name="login" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" autofocus required>
+    <label for="p" style="margin-top:12px">Пароль</label>
+    <input id="p" name="password" type="password" autocomplete="current-password" required>
     <button type="submit">Войти</button>
     ${error ? `<p class="err">${error}</p>` : ''}
   </form>

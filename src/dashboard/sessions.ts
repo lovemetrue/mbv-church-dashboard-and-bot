@@ -12,8 +12,16 @@ export interface SessionStore {
   incr(key: string, ttlSeconds: number): Promise<number>;
 }
 
+export type Role = 'admin' | 'super';
+
 export interface SessionOptions {
+  /** Пароль обычного входа (логин `login`): всё, кроме удаления. */
   password: string;
+  /** Логин обычного входа. */
+  login?: string;
+  /** Пароль и логин полного входа: только он может удалять. Не заданы — удалять не может никто, кроме единственного входа в одиночном режиме (см. ниже). */
+  superPassword?: string;
+  superLogin?: string;
   /** Сколько живёт сессия без обращений. */
   ttlSeconds: number;
   /** Сколько неудачных попыток подряд с одного адреса до блокировки. */
@@ -25,6 +33,7 @@ export interface SessionOptions {
 export interface LoginResult {
   ok: boolean;
   sid?: string;
+  role?: Role;
   lockedOut?: boolean;
 }
 
@@ -53,20 +62,49 @@ export class SessionService {
     this.lockoutSeconds = opts.lockoutSeconds ?? 900;
   }
 
-  async login(password: string, ip: string): Promise<LoginResult> {
+  /**
+   * Какую роль даёт пара «логин, пароль». `username` не передан — проверяем только пароль
+   * (так входили до появления логинов); передан, даже пустой, — он должен совпасть.
+   * Если полный вход не настроен, единственный пароль даёт все права, как раньше.
+   */
+  private roleFor(password: string, username: string | undefined): Role | null {
+    const { password: regular, login = 'mbv_admin', superPassword, superLogin = 'super_mbv_admin' } = this.opts;
+    const nameOk = (expected: string) => username === undefined || sameSecret(username, expected);
+    // Оба сравнения выполняем всегда: по времени ответа нельзя понять, какой из аккаунтов угадан.
+    const isSuper = Boolean(superPassword) && sameSecret(password, superPassword!) && nameOk(superLogin);
+    const isRegular = sameSecret(password, regular) && nameOk(login);
+    if (isSuper) return 'super';
+    if (isRegular) return superPassword ? 'admin' : 'super';
+    return null;
+  }
+
+  async login(password: string, ip: string, username?: string): Promise<LoginResult> {
     const failKey = ATTEMPTS_PREFIX + ip;
     const failed = Number((await this.store.get(failKey)) ?? 0);
     if (failed >= this.opts.maxAttempts) return { ok: false, lockedOut: true };
 
-    if (!password || !sameSecret(password, this.opts.password)) {
+    const role = password ? this.roleFor(password, username) : null;
+    if (!role) {
       await this.store.incr(failKey, this.lockoutSeconds);
       return { ok: false };
     }
 
     await this.store.del(failKey);
     const sid = randomBytes(32).toString('base64url');
-    await this.store.set(SESSION_PREFIX + sid, String(Date.now()), this.opts.ttlSeconds);
-    return { ok: true, sid };
+    await this.store.set(SESSION_PREFIX + sid, JSON.stringify({ role, at: Date.now() }), this.opts.ttlSeconds);
+    return { ok: true, sid, role };
+  }
+
+  /** Роль сессии. Сессии, выданные до появления ролей, — обычные: удалять с них нельзя. */
+  async roleOf(sid: string | undefined): Promise<Role | null> {
+    if (!sid) return null;
+    const found = await this.store.get(SESSION_PREFIX + sid);
+    if (found === null) return null;
+    try {
+      return (JSON.parse(found) as { role?: Role }).role === 'super' ? 'super' : 'admin';
+    } catch {
+      return 'admin';
+    }
   }
 
   /** Проверяет сессию и продлевает её: активный человек не должен вылетать по таймеру. */

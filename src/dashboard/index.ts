@@ -31,6 +31,11 @@ const env = (name: string, fallback?: string): string => {
 async function main(): Promise<void> {
   const password = env('DASHBOARD_PASSWORD');
   if (password.length < 8) throw new Error('DASHBOARD_PASSWORD короче восьми символов');
+  // Без этого пароля обычный вход получил бы право удалять (см. SessionService.roleFor),
+  // поэтому не стартуем: молча открытое удаление хуже, чем остановка.
+  const superPassword = env('DASHBOARD_SUPER_PASSWORD');
+  if (superPassword.length < 12) throw new Error('DASHBOARD_SUPER_PASSWORD короче двенадцати символов');
+  if (superPassword === password) throw new Error('DASHBOARD_SUPER_PASSWORD совпадает с DASHBOARD_PASSWORD');
 
   const port = Number(env('DASHBOARD_PORT', '8090'));
   const ttlDays = Number(env('DASHBOARD_SESSION_DAYS', '30'));
@@ -102,7 +107,11 @@ async function main(): Promise<void> {
     }
   };
 
-  const auth = new SessionService(store, { password, ttlSeconds, maxAttempts: 5 });
+  const auth = new SessionService(store, {
+    password, login: env('DASHBOARD_LOGIN', 'mbv_admin'),
+    superPassword, superLogin: env('DASHBOARD_SUPER_LOGIN', 'super_mbv_admin'),
+    ttlSeconds, maxAttempts: 5,
+  });
   const server = createDashboardServer({
     auth,
     htmlPath: env('DASHBOARD_HTML', '/app/dashboard/home-groups.html'),

@@ -34,7 +34,6 @@ async function main(): Promise<void> {
   // Без этого пароля обычный вход получил бы право удалять (см. SessionService.roleFor),
   // поэтому не стартуем: молча открытое удаление хуже, чем остановка.
   const superPassword = env('DASHBOARD_SUPER_PASSWORD');
-  if (superPassword.length < 12) throw new Error('DASHBOARD_SUPER_PASSWORD короче двенадцати символов');
   if (superPassword === password) throw new Error('DASHBOARD_SUPER_PASSWORD совпадает с DASHBOARD_PASSWORD');
 
   const port = Number(env('DASHBOARD_PORT', '8090'));

@@ -548,33 +548,144 @@ describe('«Заявки»: фильтр по виду заявки и по от
   });
 });
 
-describe('«Домашние группы»: возраст, «Проверено» и порядок столбцов', () => {
-  const thead = () => html.slice(html.indexOf('id="tbody"') - 1300, html.indexOf('id="tbody"'));
+describe('«Домашние группы»: столбцы таблицы', () => {
+  const thead = () => html.slice(html.indexOf('id="tbody"') - 1700, html.indexOf('id="tbody"'));
+  const KEYS = ['id', 'leader', 'campaign_registered', 'age', 'people', 'district', 'address',
+    'composition', 'open_to_new', 'checked', 'status'];
 
-  test('порядок: Группа, 40 дней, Возраст, Участники, …, Обратная связь, Проверено, Статус', () => {
-    const keys = ['leader', 'campaign_registered', 'age', 'people', 'district', 'phone', 'coordinator',
-      'feedback_at', 'checked', 'status'];
-    const pos = keys.map((k) => thead().indexOf(`class="sortable" data-key="${k}"`));
-    pos.forEach((p, i) => expect(p, `нет столбца ${keys[i]}`).toBeGreaterThan(-1));
-    for (let i = 1; i < pos.length; i++) expect(pos[i], keys[i]).toBeGreaterThan(pos[i - 1]!);
+  test('порядок: №, Ведущий, 40 дней, Возраст, Участники, Район, Адрес, Формат группы, Приём новых, Проверено, Статус', () => {
+    const pos = KEYS.map((k) => thead().indexOf(`class="sortable" data-key="${k}"`));
+    pos.forEach((p, i) => expect(p, `нет столбца ${KEYS[i]}`).toBeGreaterThan(-1));
+    for (let i = 1; i < pos.length; i++) expect(pos[i], KEYS[i]).toBeGreaterThan(pos[i - 1]!);
+  });
+
+  test('«Телефон», «Координатор» и «Обратная связь» из шапки убраны', () => {
+    for (const k of ['phone', 'coordinator', 'feedback_at']) {
+      expect(thead(), k).not.toContain(`class="sortable" data-key="${k}"`);
+    }
+  });
+
+  test('номер группы — отдельный первый столбец, без имени ведущего', () => {
+    const fn = html.slice(html.indexOf('function renderTable'), html.indexOf('function renderTable') + 2600);
+    expect(fn).toMatch(/<td class="mono[^"]*">\$\{groupCode\(g\.id\)\}/);
+  });
+
+  test('соведущий — второй строкой под ведущим', () => {
+    const fn = html.slice(html.indexOf('function renderTable'), html.indexOf('function renderTable') + 2600);
+    expect(fn).toContain('g.co_leader');
   });
 
   test('«Проверено» — зелёное «Да» или красное «Нет», как «Выдан набор»', () => {
-    const fn = html.slice(html.indexOf('function renderTable'), html.indexOf('function renderTable') + 2500);
+    const fn = html.slice(html.indexOf('function renderTable'), html.indexOf('function renderTable') + 2600);
     expect(fn).toContain('g.checked');
     expect(fn).toContain('pill live');
     expect(fn).toContain('pill closed');
   });
 
-  test('число столбцов в раскрытой строке и заглушках совпадает с шапкой (10)', () => {
-    expect(html).toContain('<tr class="detail hidden"><td colspan="10">${details(g)}</td></tr>');
-    expect(html.slice(html.indexOf('id="tbody"'), html.indexOf('id="tbody"') + 200)).toContain('colspan="10"');
+  test('число столбцов в раскрытой строке и заглушках совпадает с шапкой (11)', () => {
+    expect(html).toContain('<tr class="detail hidden"><td colspan="11">${details(g)}</td></tr>');
+    expect(html.slice(html.indexOf('id="tbody"'), html.indexOf('id="tbody"') + 200)).toContain('colspan="11"');
   });
 
-  test('возраст и «Проверено» не дублируются в раскрытой строке', () => {
-    const fn = html.slice(html.indexOf('function details(g)'), html.indexOf('function details(g)') + 700);
-    expect(fn).not.toContain("['Возраст'");
-    expect(fn).not.toContain("['Проверено'");
+  test('в раскрытой строке: телефон, соведущий с телефоном, координатор, обратная связь', () => {
+    const fn = html.slice(html.indexOf('function details(g)'), html.indexOf('function details(g)') + 2200);
+    for (const label of ['Телефон', 'Соведущий', 'Телефон соведущего', 'Координатор', 'Обратная связь']) {
+      expect(fn, label).toContain(`'${label}'`);
+    }
+  });
+
+  test('то, что стало столбцом, из раскрытой строки убрано', () => {
+    const fn = html.slice(html.indexOf('function details(g)'), html.indexOf('function details(g)') + 2200);
+    for (const label of ['Возраст', 'Проверено', 'Приём новых', 'Состав', 'Адрес']) {
+      expect(fn, label).not.toContain(`['${label}'`);
+    }
+  });
+});
+
+describe('«Формат группы»: цветные метки и выбор из списка', () => {
+  const FORMATS = ['Смешанная', 'Мужская', 'Женская', 'Ментальная', 'Семейная', 'Служение', 'Приватная'];
+
+  test('в форме семь вариантов, как просили', () => {
+    const m = html.match(/const COMPOSITION_OPTIONS = \[([^\]]*)\]/);
+    expect(m).not.toBeNull();
+    const list = [...m![1]!.matchAll(/'([^']+)'/g)].map((x) => x[1]);
+    expect(list).toEqual(FORMATS);
+  });
+
+  test('цвета: женская — розовый, мужская — синий, смешанная — зелёный, ментальная — коричневый, семейная — жёлтый, служение и приватная — серый', () => {
+    const m = html.match(/const COMPOSITION_PILL = \{([^}]*)\}/);
+    expect(m).not.toBeNull();
+    const body = m![1]!;
+    const cls = (name: string) => new RegExp(`'${name}': '([a-z]+)'`).exec(body)?.[1];
+    expect(cls('Женская')).toBe('pink');
+    expect(cls('Мужская')).toBe('blue');
+    expect(cls('Смешанная')).toBe('live');
+    expect(cls('Ментальная')).toBe('brown');
+    expect(cls('Семейная')).toBe('pause');
+    expect(cls('Служение')).toBe('draft');
+    expect(cls('Приватная')).toBe('draft');
+  });
+
+  test('розовый, синий и коричневый есть в каждой теме, а не только в тёмной', () => {
+    for (const sel of [':root {', 'html[data-theme="light"] {', 'html[data-theme="gray"] {']) {
+      const block = html.slice(html.indexOf(sel), html.indexOf(sel) + 2600);
+      for (const v of ['--pink:', '--blue:', '--brown:']) expect(block, `${sel} ${v}`).toContain(v);
+    }
+    for (const c of ['pink', 'blue', 'brown']) expect(html).toContain(`.pill.${c} {`);
+  });
+
+  test('«Служение» и «Приватная» подхватываются и из прежнего поля «Формат» (тип группы)', () => {
+    const fn = html.slice(html.indexOf('function compositionTags'), html.indexOf('function compositionTags') + 900);
+    expect(fn).toContain("'Служение'");
+    expect(fn).toContain("'Приватная'");
+    expect(fn).toContain('g.format');
+  });
+
+  test('в форме правки состав выбирается галочками, несколько сразу', () => {
+    expect(html).toMatch(/name: 'composition', label: 'Формат группы', type: 'multi'/);
+    expect(html).toContain("f.type === 'multi'");
+  });
+
+  test('прежнее поле «Формат» (основная церковь / молодёжная) названо «Тип группы», чтобы не путать', () => {
+    expect(html).toContain("label: 'Тип группы'");
+    expect(html).toContain("['Тип группы', g.format]");
+  });
+});
+
+describe('«Приём новых», «Возраст» и «Координатор» в группах', () => {
+  test('«Приём новых» — выбор из «Да / Нет / По требованию», уже стоящее значение сохраняется', () => {
+    expect(html).toMatch(/name: 'openToNew', label: 'Приём новых',\s*pairsFor:/);
+    expect(html).toContain("['ДА', 'Да'], ['НЕТ', 'Нет'], ['По требованию', 'По требованию']");
+  });
+
+  test('«Приём новых» в таблице — цветная метка: да зелёным, нет красным, по требованию жёлтым', () => {
+    const m = html.match(/const OPEN_PILL = \{([^}]*)\}/);
+    expect(m).not.toBeNull();
+    expect(m![1]).toMatch(/'ДА': \['live'/);
+    expect(m![1]).toMatch(/'НЕТ': \['closed'/);
+    expect(m![1]).toMatch(/'По требованию': \['pause'/);
+  });
+
+  test('возраст группы выбирается из категорий кампании, а нестандартное текущее значение остаётся пунктом', () => {
+    expect(html).toMatch(/name: 'age', label: 'Возраст группы', pairsFor: \(row\) => currentPlusOptions\(FORM_AGE_GROUPS/);
+    expect(html).toContain('function currentPlusOptions');
+  });
+
+  test('поле «Координатор» остаётся в форме, а в таблице вместо него — фильтр по координатору', () => {
+    expect(html).toContain('id="groupCoordFilter"');
+    expect(html).toContain("$('#groupCoordFilter').onchange");
+    const vis = html.slice(html.indexOf('function visible()'), html.indexOf('function visible()') + 800);
+    expect(vis.match(/coordMatches\(g\)/g)!.length).toBe(2);
+  });
+
+  test('фильтр по координатору переживает «Сохранить»', () => {
+    const save = html.slice(html.indexOf('function reloadKeepingState'), html.indexOf('function reloadKeepingState') + 900);
+    expect(save).toContain('coord');
+  });
+
+  test('в форме есть соведущий и его телефон', () => {
+    expect(html).toContain("name: 'coLeader', label: 'Соведущий'");
+    expect(html).toContain("name: 'coLeaderPhone', label: 'Телефон соведущего'");
   });
 });
 
@@ -652,8 +763,8 @@ describe('правки оформления и фильтров (06.10)', () => 
   });
 
   test('выпадающие списки в шапке «Заявок» не шире своей колонки', () => {
-    expect(html).toMatch(/#reqGroupFilter, #reqOwnerFilter \{[^}]*max-width: 100%/);
-    expect(html).toMatch(/#reqGroupFilter, #reqOwnerFilter \{[^}]*text-overflow: ellipsis/);
+    expect(html).toMatch(/#reqGroupFilter, #reqOwnerFilter, #groupCoordFilter \{[^}]*max-width: 100%/);
+    expect(html).toMatch(/#reqGroupFilter, #reqOwnerFilter, #groupCoordFilter \{[^}]*text-overflow: ellipsis/);
   });
 
   test('серая тема: основной текст почти белый; светлая: текст почти чёрный', () => {

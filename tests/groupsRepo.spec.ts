@@ -79,6 +79,19 @@ describe('заведение групп', () => {
   });
 });
 
+describe('соведущий', () => {
+  test('сохраняется при заведении, правке и отдаётся дашборду; пустой — NULL', async () => {
+    const row = await repo.create({ ...MIN, coLeader: 'Петрова Анна', coLeaderPhone: '+79001112233' }, 'ui');
+    expect(row).toMatchObject({ co_leader: 'Петрова Анна', co_leader_phone: '+79001112233' });
+
+    const updated = await repo.update(row.id, { ...MIN, coLeader: 'Сидорова Ольга', coLeaderPhone: null });
+    expect(updated).toMatchObject({ co_leader: 'Сидорова Ольга', co_leader_phone: null });
+
+    const [g] = await repo.forDashboard();
+    expect(g).toMatchObject({ co_leader: 'Сидорова Ольга', co_leader_phone: null });
+  });
+});
+
 describe('данные для дашборда', () => {
   test('пустые поля приходят пустотой, а не пустой строкой', async () => {
     await repo.add(MIN, '999', 'telegram');

@@ -8,6 +8,37 @@ const form = (o: Record<string, string>) => new URLSearchParams(o);
 const GROUP_MIN = { leader: 'Иванова Мария', district: 'Невский', format: 'Молодежная', status: 'Функционирует' };
 const REQUEST_MIN = { fio: 'Петров Пётр', type: 'join_group', status: 'В работе' };
 
+describe('форма группы: соведущий и состав', () => {
+  test('соведущий и его телефон сохраняются', () => {
+    const r = parseGroupForm(new URLSearchParams({ ...GROUP_MIN, coLeader: 'Петрова Анна', coLeaderPhone: '8 900 111-22-33' }));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value).toMatchObject({ coLeader: 'Петрова Анна', coLeaderPhone: '+79001112233' });
+  });
+
+  test('телефон соведущего, который не разобрать, сохраняется как написан', () => {
+    const r = parseGroupForm(new URLSearchParams({ ...GROUP_MIN, coLeaderPhone: 'спросить у Анны' }));
+    if (r.ok) expect(r.value.coLeaderPhone).toBe('спросить у Анны');
+    expect(r.ok).toBe(true);
+  });
+
+  test('состав: несколько отмеченных значений склеиваются в канонической очерёдности', () => {
+    const f = new URLSearchParams(GROUP_MIN);
+    f.append('composition', 'Семейная');
+    f.append('composition', 'Женская');
+    const r = parseGroupForm(f);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.composition).toBe('Женская, Семейная');
+  });
+
+  test('состав: посторонние значения отбрасываются, пусто — NULL', () => {
+    const f = new URLSearchParams(GROUP_MIN);
+    f.append('composition', 'Марсианская');
+    const r = parseGroupForm(f);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.composition).toBeNull();
+  });
+});
+
 describe('форма группы', () => {
   test('минимальный набор проходит', () => {
     const r = parseGroupForm(form(GROUP_MIN));

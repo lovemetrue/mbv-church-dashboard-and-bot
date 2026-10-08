@@ -29,6 +29,8 @@ export interface GroupInput extends HomeGroupInput {
   day?: string | null;
   time?: string | null;
   coordinator?: string | null;
+  coLeader?: string | null;
+  coLeaderPhone?: string | null;
   feedbackAt?: string | null;
   comment?: string | null;
   training?: string | null;
@@ -54,6 +56,8 @@ export interface GroupRow {
   time: string | null;
   people: number | null;
   coordinator: string | null;
+  co_leader: string | null;
+  co_leader_phone: string | null;
   feedback_at: string | null;
   comment: string | null;
   training: string | null;
@@ -86,6 +90,8 @@ export interface DashboardGroup {
   time: string | null;
   people: number | null;
   coordinator: string | null;
+  co_leader: string | null;
+  co_leader_phone: string | null;
   feedback_at: string | null;
   comment: string | null;
   training: string | null;
@@ -101,7 +107,7 @@ export interface DashboardGroup {
 const COLUMNS = `no, leader, open_to_new, phone, phones, age, district, metro, address,
                  composition, day, "time", people, coordinator, feedback_at, comment,
                  training, format, status, checked, campaign_registered, source, added_by,
-                 added_platform`;
+                 added_platform, co_leader, co_leader_phone`;
 
 // Колонки типа date приходят строкой «2026-08-20» — так настроен пул (src/db/pool.ts).
 
@@ -122,7 +128,7 @@ export class GroupsRepo {
   ): Promise<GroupRow> {
     const { rows } = await this.db.query<GroupRow>(
       `INSERT INTO groups (${COLUMNS})
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
        RETURNING *`,
       [
         input.no ?? null,
@@ -149,6 +155,8 @@ export class GroupsRepo {
         source,
         addedBy,
         platform,
+        input.coLeader ?? null,
+        input.coLeaderPhone ?? null,
       ],
     );
     const row = rows[0]!;
@@ -171,6 +179,7 @@ export class GroupsRepo {
          district = $8, metro = $9, address = $10, composition = $11, day = $12,
          "time" = $13, people = $14, coordinator = $15, feedback_at = $16, comment = $17,
          training = $18, format = $19, status = $20, checked = $21, campaign_registered = $22,
+         co_leader = $23, co_leader_phone = $24,
          source = CASE WHEN source = 'таблица' THEN 'ui' ELSE source END
        WHERE id = $1 AND archived_at IS NULL
        RETURNING *`,
@@ -197,6 +206,8 @@ export class GroupsRepo {
         input.status,
         input.checked ?? null,
         input.campaignRegistered ?? false,
+        input.coLeader ?? null,
+        input.coLeaderPhone ?? null,
       ],
     );
     const row = rows[0];
@@ -310,6 +321,8 @@ export class GroupsRepo {
       time: r.time,
       people: r.people,
       coordinator: r.coordinator,
+      co_leader: r.co_leader,
+      co_leader_phone: r.co_leader_phone,
       feedback_at: r.feedback_at,
       comment: r.comment,
       training: r.training,

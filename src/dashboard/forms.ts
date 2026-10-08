@@ -1,5 +1,6 @@
 import {
   ALL_DISTRICTS,
+  COMPOSITIONS,
   ALL_GROUP_STATUSES,
   FORMATS,
   type GroupFormat,
@@ -51,6 +52,19 @@ function phone(form: URLSearchParams): { phone: string | null; phones: string[] 
   if (!raw) return { phone: null, phones: [] };
   const normalized = normalizePhone(raw);
   return normalized ? { phone: normalized, phones: [normalized] } : { phone: raw, phones: [] };
+}
+
+/** Телефон соведущего: разбирается — кладём в виде +7…, нет — как написано. */
+function phoneText(form: URLSearchParams, name: string): string | null {
+  const raw = text(form, name);
+  return raw ? (normalizePhone(raw) ?? raw) : null;
+}
+
+/** «Формат группы»: отмеченные галочками значения из списка, в порядке списка, через запятую. */
+function composition(form: URLSearchParams): string | null {
+  const picked = new Set(form.getAll('composition').map((v) => v.trim()));
+  const kept = COMPOSITIONS.filter((c) => picked.has(c));
+  return kept.length > 0 ? kept.join(', ') : null;
 }
 
 function oneOf<T extends string>(form: URLSearchParams, name: string, allowed: readonly T[]): T | null {
@@ -114,11 +128,13 @@ export function parseGroupForm(form: URLSearchParams): Parsed<GroupInput> {
       age: text(form, 'age'),
       metro: text(form, 'metro'),
       address: text(form, 'address'),
-      composition: text(form, 'composition'),
+      composition: composition(form),
       day: text(form, 'day'),
       time: text(form, 'time'),
       people,
       coordinator: text(form, 'coordinator'),
+      coLeader: text(form, 'coLeader'),
+      coLeaderPhone: phoneText(form, 'coLeaderPhone'),
       feedbackAt,
       comment: text(form, 'comment'),
       training: text(form, 'training'),

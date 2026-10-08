@@ -4,11 +4,15 @@ import { CampaignScheduler } from './broadcast/scheduler.js';
 import { splitAdminIds } from './admin/access.js';
 import { adminIds, loadConfig } from './config.js';
 import { Router } from './core/router.js';
+import { UpdateQueue } from './core/updateQueue.js';
 import type { Platform, PlatformName } from './core/platform.js';
 import { createPool } from './db/pool.js';
 import { runMigrations } from './db/migrate.js';
 import { createDeps } from './deps.js';
 import { logger } from './logger.js';
+
+/** Сколько апдейтов обрабатывается одновременно; меньше пула соединений с базой (см. db/pool.ts). */
+const UPDATE_CONCURRENCY = 16;
 
 async function main(): Promise<void> {
   const cfg = loadConfig();
@@ -63,9 +67,14 @@ async function main(): Promise<void> {
     logger,
   });
 
-  const router = new Router(deps);
+  const router = new Router(deps, { backgroundNotify: true });
+  // Разные люди обрабатываются одновременно (до 16 разом), один человек — по порядку:
+  // библиотеки опроса ждут обработчик, и без очереди сто человек стояли бы друг за другом.
+  const queue = new UpdateQueue(UPDATE_CONCURRENCY, (err) =>
+    logger.error({ err: err instanceof Error ? err.message : err }, 'ошибка обработки апдейта'));
   for (const platform of platforms.values()) {
-    platform.onUpdate((update) => router.handle(update));
+    platform.onUpdate((update) =>
+      queue.submit(`${update.ctx.platform}:${update.ctx.platformUserId}`, () => router.handle(update)));
     await platform.start();
   }
 
@@ -94,6 +103,9 @@ async function main(): Promise<void> {
     for (const platform of platforms.values()) {
       await platform.stop().catch((err) => logger.warn({ err }, 'ошибка остановки адаптера'));
     }
+    // Принятое в работу доделываем до конца: иначе анкета оборвётся на середине шага.
+    await queue.idle();
+    await router.drain();
     await db.end();
     process.exit(0);
   };

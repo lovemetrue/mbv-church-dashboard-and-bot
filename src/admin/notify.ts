@@ -3,6 +3,14 @@ import { formatPhone } from '../core/phone.js';
 import { MDG_SHORT } from '../core/texts.js';
 import type { RequestWithUser } from '../db/repos/requests.repo.js';
 import type { Deps } from '../deps.js';
+import { SendError, type Platform } from '../core/platform.js';
+
+/** Сколько раз пробуем доставить уведомление, если платформа отвечает «слишком часто». */
+const MAX_ATTEMPTS = 5;
+/** Потолок ожидания между попытками: платформа может попросить и минуту, но ждать столько незачем. */
+const MAX_WAIT_MS = 30_000;
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 const TYPE_LABEL: Record<RequestWithUser['type'], string> = {
   join_group: 'заявка в домашнюю группу',
@@ -71,11 +79,29 @@ export class AdminNotifier {
       const chats = await this.deps.users.chatIds(platformName, ids);
       for (const adminId of ids) {
         try {
-          await platform.sendMessage(chats.get(adminId) ?? adminId, { text, format: 'html' });
+          await this.sendWithRetry(platform, chats.get(adminId) ?? adminId, text);
         } catch (err) {
           // Недоступный админ не должен ломать обработку сообщения участника.
           this.deps.logger.warn({ platform: platformName, adminId, err }, 'не удалось уведомить админа');
         }
+      }
+    }
+  }
+
+  /**
+   * Когда заявки идут пачкой, платформа отвечает «слишком часто» и сообщает, сколько
+   * подождать. Раньше такое уведомление терялось: служитель узнавал о человеке только
+   * из дашборда. Ждём указанное время и повторяем; остальные ошибки (блокировка бота,
+   * чат не найден) от ожидания не пройдут, их отдаём сразу.
+   */
+  private async sendWithRetry(platform: Platform, chatId: string, text: string): Promise<void> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await platform.sendMessage(chatId, { text, format: 'html' });
+        return;
+      } catch (err) {
+        if (!(err instanceof SendError) || err.kind !== 'rate_limited' || attempt >= MAX_ATTEMPTS) throw err;
+        await sleep(Math.min(err.retryAfterMs ?? 1000, MAX_WAIT_MS));
       }
     }
   }

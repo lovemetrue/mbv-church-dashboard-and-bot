@@ -13,7 +13,8 @@ types.setTypeParser(types.builtins.DATE, (v) => v);
 export function createPool(databaseUrl: string): Pool {
   return new Pool({
     connectionString: databaseUrl,
-    max: 8,
+    // Бот обрабатывает до 16 апдейтов одновременно, и каждому нужно соединение; 8 было бы узко.
+    max: 20,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,
   });

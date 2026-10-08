@@ -34,13 +34,29 @@ function isStart(u: IncomingUpdate): boolean {
  * Связывает платформы, диалог и базу.
  * Здесь и только здесь исполняются эффекты, которые вернул FSM.
  */
+export interface RouterOptions {
+  /**
+   * Не ждать отправки уведомлений служителям. В боте при сотне людей разом служителю
+   * летит пачка сообщений и платформа просит подождать; если handle ждёт, каждое
+   * такое ожидание занимает место в очереди апдейтов и задерживает остальных. Тесты
+   * этот режим не включают: им нужно, чтобы уведомление ушло к моменту возврата.
+   */
+  backgroundNotify?: boolean;
+}
+
 export class Router {
   private readonly admin: AdminFlow;
   private readonly notifier: AdminNotifier;
+  private readonly background = new Set<Promise<void>>();
 
-  constructor(private readonly deps: Deps) {
+  constructor(private readonly deps: Deps, private readonly options: RouterOptions = {}) {
     this.admin = new AdminFlow(deps);
     this.notifier = new AdminNotifier(deps);
+  }
+
+  /** Ждёт уведомления, ушедшие в фон: нужно при остановке процесса и в тестах. */
+  async drain(): Promise<void> {
+    while (this.background.size > 0) await Promise.all([...this.background]);
   }
 
   async handle(incoming: IncomingUpdate): Promise<void> {
@@ -236,7 +252,15 @@ export class Router {
     if (admin && update.kind === 'start' && !asksContact) await this.admin.showMenu(update.ctx);
 
     for (const request of created) {
-      await this.notifier.notifyRequest(request);
+      if (!this.options.backgroundNotify) {
+        await this.notifier.notifyRequest(request);
+        continue;
+      }
+      const sending: Promise<void> = this.notifier
+        .notifyRequest(request)
+        .catch((err) => this.deps.logger.error({ err, requestId: request.id }, 'не удалось уведомить служителей о заявке'))
+        .finally(() => this.background.delete(sending));
+      this.background.add(sending);
     }
   }
 

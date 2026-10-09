@@ -197,4 +197,19 @@ describe('человек отвечает на приглашение', () => {
     expect(tg.textsTo('1').at(-1)).toBe(T.followUpLater);
     expect((await db.query(`SELECT schedule_raw FROM users WHERE platform_user_id = '1'`)).rows[0]).toEqual({ schedule_raw: null });
   });
+
+  test('ответ, пришедший позже суток после нажатия «Ответить», не записывается', async () => {
+    const id = await seedUser(db, { id: '1', mdgStatus: 'join' });
+    await router.handle(tap(CB.extraStart, '1'));
+    // Состояние диалога живёт в базе: «сутки назад» достаточно подвинуть там.
+    await db.query(
+      `UPDATE sessions SET data = jsonb_set(data, '{followUpAt}', to_jsonb($2::bigint)) WHERE user_id = $1`,
+      [id, Date.now() - 25 * 60 * 60 * 1000],
+    );
+
+    await router.handle(textAs('пн, ср - с 17 до 22', '1', 'telegram'));
+
+    expect((await db.query('SELECT schedule_raw FROM users WHERE id = $1', [id])).rows[0]).toEqual({ schedule_raw: null });
+    expect(tg.textsTo('1').at(-1)).toContain('«Ответить»');
+  });
 });

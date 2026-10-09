@@ -178,6 +178,7 @@ export class Router {
       openRequests,
       openQuestions,
       leadPhoneTaken,
+      now: Date.now(),
       extraQuestions: extraQuestionsEnabled(
         this.deps.extraQuestions,
         update.ctx.platform,

@@ -509,10 +509,11 @@ describe('отдельная страница «/registration» — тот же 
    * данные в HG_LIVE вовсе (см. dashboardServer.spec.ts) — здесь проверяем,
    * что и вёрстка их прячет, на случай если разметке будет что показывать.
    */
-  test('список регистраций и ссылка на выгрузку CSV скрыты CSS-ом по data-атрибуту', () => {
+  test('список регистраций и ссылки на выгрузки с телефонами (CSV, Excel) скрыты CSS-ом по data-атрибуту', () => {
     expect(html).toContain(
       'html[data-standalone="registration"] #registrationListSection,\n' +
-      'html[data-standalone="registration"] #exportLink { display: none; }',
+      'html[data-standalone="registration"] #exportLink,\n' +
+      'html[data-standalone="registration"] #matchingLink { display: none; }',
     );
   });
 

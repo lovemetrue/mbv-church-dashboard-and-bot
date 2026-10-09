@@ -2,6 +2,7 @@ import { DISTRICTS } from './groups.js';
 import {
   hardFailure,
   matchesDistrict,
+  matchesMetro,
   suggestGroups,
   type MatchGroup,
   type MatchOptions,
@@ -19,7 +20,9 @@ import {
  *
  * Те, кто хочет открыть группу, — это будущие новые группы: они идут первыми (правило «новые
  * группы в первую очередь»), у них 0 участников, а район и метро берутся из того, что
- * владелец написал о месте.
+ * владелец написал о месте. Человеку такая группа предлагается, только если совпал район или
+ * метро: у будущей группы нет ни возраста, ни числа участников, и без этого условия «новые
+ * первыми» отправило бы всех желающих к первому же владельцу в любом конце города.
  */
 
 export interface Seeker extends MatchPerson {
@@ -133,7 +136,11 @@ export function distribute(
   const assignments: Assignment[] = [];
 
   for (const seeker of seekers) {
-    const found = suggestGroups(seeker, [...current.values()], opts);
+    // Будущие группы владельцев — только те, что рядом с этим человеком.
+    const candidates = [...current.values()].filter(
+      (g) => !ownerByGroupId.has(g.id) || matchesDistrict(seeker.place, g.district) || matchesMetro(seeker.place, g.metro),
+    );
+    const found = suggestGroups(seeker, candidates, opts);
     const best = found[0];
 
     if (!best) {

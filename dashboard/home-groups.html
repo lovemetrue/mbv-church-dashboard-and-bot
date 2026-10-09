@@ -187,7 +187,8 @@ html[data-standalone="registration"] .nav { display: none; }
    HG_LIVE — см. src/dashboard/server.ts, — это скрытие на случай, если
    разметка когда-нибудь всё же получит что показать). */
 html[data-standalone="registration"] #registrationListSection,
-html[data-standalone="registration"] #exportLink { display: none; }
+html[data-standalone="registration"] #exportLink,
+html[data-standalone="registration"] #matchingLink { display: none; }
 .nav button {
   padding: 6px 11px; border-radius: var(--r-sm);
   color: var(--text-2); font-size: 13px; font-weight: 500;
@@ -613,8 +614,8 @@ a.tel:hover { color: var(--accent-hi); border-bottom-color: var(--accent); }
   .topbar .icon-btn, .topbar-right .avatar { display: none; }
   /* Подпись чипа на узком экране рвётся на две строки и раздувает шапку:
      оставляем иконку — рядом только одна кнопка, спутать не с чем. */
-  #exportLink span { display: none; }
-  #exportLink { padding: 0 9px; }
+  #exportLink span, #matchingLink span { display: none; }
+  #exportLink, #matchingLink { padding: 0 9px; }
 
 }
 @media (prefers-reduced-motion: reduce) {
@@ -733,6 +734,11 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
     <a class="chip" id="exportLink" href="export.csv" download>
       <svg viewBox="0 0 24 24"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></svg>
       <span>Участники CSV</span>
+    </a>
+    <!-- Разовое сопоставление желающих и групп: Excel с назначением, принципом и альтернативами. -->
+    <a class="chip" id="matchingLink" href="matching.xlsx" download>
+      <svg viewBox="0 0 24 24"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></svg>
+      <span>Сопоставление Excel</span>
     </a>
     <!-- Тема оформления: тёмная, светлая, серая. Выбор хранится в localStorage этого браузера. -->
     <div class="theme-switch" id="themeSwitch" role="radiogroup" aria-label="Тема оформления">
@@ -2963,6 +2969,8 @@ function wireForm(formId, msgId, path, doneText) {
 // относительная ссылка ушла бы в корень сайта.
 const exportLink = $('#exportLink');
 if (exportLink) exportLink.href = (window.HG_BASE ?? './') + 'export.csv';
+const matchingLink = $('#matchingLink');
+if (matchingLink) matchingLink.href = (window.HG_BASE ?? './') + 'matching.xlsx';
 
 // Страница живёт на «/groups» без косой черты: относительный href в <link> браузер
 // разрешает от корня сайта, а не от «/groups/» — так же, как у exportLink выше.

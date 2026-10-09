@@ -12,6 +12,7 @@ import { MaxAdapter } from '../adapters/max.adapter.js';
 import type { Platform, PlatformName } from '../core/platform.js';
 import { campaignIsActive } from '../broadcast/schedule.js';
 import { campaignStats } from './campaignStats.js';
+import { buildMatchingReport, matchingWorkbook } from './matchingReport.js';
 import { withSuggestions } from './suggestions.js';
 import { CampaignRepo } from '../db/repos/campaign.repo.js';
 import { DeliveriesRepo } from '../db/repos/deliveries.repo.js';
@@ -194,6 +195,15 @@ async function main(): Promise<void> {
     },
     deleteRegistration: (id) => users.delete(id),
     exportUsers: async () => usersToCsv(await users.exportRows()),
+    // Разовое сопоставление считается здесь же, на сервере дашборда: имена и телефоны никуда не уходят.
+    exportMatching: async () =>
+      matchingWorkbook(
+        buildMatchingReport({
+          requests: await requests.forDashboard(),
+          groups: await groups.forDashboard(),
+          campaignActive: campaignIsActive(new Date(), schedule),
+        }),
+      ),
   });
 
   server.listen(port, () => logger.info({ port, sessionDays: ttlDays }, 'дашборд запущен'));

@@ -32,3 +32,11 @@ describe('подбор группы в карточке заявки', () => {
     expect(html).toContain('g.do_not_refer');
   });
 });
+
+describe('кнопка сопоставления в шапке', () => {
+  test('ссылка на Excel есть, строится от HG_BASE и скрыта на «/registration»', () => {
+    expect(html).toContain('id="matchingLink"');
+    expect(html).toContain("matchingLink.href = (window.HG_BASE ?? './') + 'matching.xlsx'");
+    expect(html).toContain('html[data-standalone="registration"] #matchingLink');
+  });
+});

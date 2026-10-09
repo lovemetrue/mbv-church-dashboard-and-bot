@@ -18,6 +18,7 @@ let createdGroups: unknown[] = [];
 let createdRequests: unknown[] = [];
 let createdRegistrations: unknown[] = [];
 let exportRows = 'номер,фио\n1,Иванов\n';
+const matchingFile = Buffer.from('PK-fake-xlsx');
 let server: ReturnType<typeof createDashboardServer>;
 
 function memoryStore(): SessionStore {
@@ -40,6 +41,7 @@ beforeAll(async () => {
     htmlPath,
     sessionTtlSeconds: 600,
     secureCookie: false,
+    exportMatching: async () => matchingFile,
     data: async () => {
       if (live === 'boom') throw new Error('база недоступна');
       return { groups: live as Record<string, unknown>[], requests: liveRequests, coordinators: liveCoordinators };
@@ -418,6 +420,29 @@ describe('выгрузка участников', () => {
   test('под «/registration» не отвечает', async () => {
     const sid = (await login('очень-секретно', regBase)).headers.get('set-cookie')!.split(';')[0]!;
     const r = await fetch(`${regBase}/export.csv`, { headers: { cookie: sid } });
+    expect(r.status).toBe(404);
+  });
+});
+
+describe('сопоставление в Excel', () => {
+  test('без сессии не отдаётся', async () => {
+    const r = await fetch(`${base}/matching.xlsx`);
+    expect(r.status).toBe(401);
+  });
+
+  test('с сессией отдаёт файл Excel как вложение', async () => {
+    const sid = (await login('очень-секретно')).headers.get('set-cookie')!.split(';')[0]!;
+    const r = await fetch(`${base}/matching.xlsx`, { headers: { cookie: sid } });
+    expect(r.status).toBe(200);
+    expect(r.headers.get('content-type')).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    expect(r.headers.get('content-disposition')).toContain('attachment');
+    expect(Buffer.from(await r.arrayBuffer())).toEqual(matchingFile);
+  });
+
+  // В файле имена и телефоны, как и в выгрузке участников: через общую ссылку «/registration» его быть не должно.
+  test('под «/registration» не отвечает', async () => {
+    const sid = (await login('очень-секретно', regBase)).headers.get('set-cookie')!.split(';')[0]!;
+    const r = await fetch(`${regBase}/matching.xlsx`, { headers: { cookie: sid } });
     expect(r.status).toBe(404);
   });
 });

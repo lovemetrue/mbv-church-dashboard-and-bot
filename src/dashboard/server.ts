@@ -82,6 +82,8 @@ export interface DashboardDeps {
   deleteRegistration?: (id: number) => Promise<boolean>;
   /** Выгрузка участников кампании в CSV. */
   exportUsers?: () => Promise<string>;
+  /** Разовое сопоставление желающих и групп: готовый файл Excel. */
+  exportMatching?: () => Promise<Buffer>;
 }
 
 /** Адрес клиента: за nginx настоящий адрес приходит заголовком. */
@@ -106,7 +108,7 @@ function readBody(req: IncomingMessage, limit = 4096): Promise<string> {
   });
 }
 
-function send(res: ServerResponse, status: number, body: string, headers: Record<string, string> = {}): void {
+function send(res: ServerResponse, status: number, body: string | Buffer, headers: Record<string, string> = {}): void {
   res.writeHead(status, {
     'content-type': 'text/html; charset=utf-8',
     // Страница с персональными данными: в поиск ей нельзя, во фрейм тоже.
@@ -626,6 +628,25 @@ export function createDashboardServer(deps: DashboardDeps) {
         send(res, 200, csv, {
           'content-type': 'text/csv; charset=utf-8',
           'content-disposition': 'attachment; filename="participants.csv"',
+        });
+        return;
+      }
+
+      /* Разовое сопоставление желающих и групп в Excel. Как и выгрузка участников: GET допустим
+         (это чтение), только «/groups» — в файле имена и телефоны людей. */
+      if (mount === '/groups' && path === '/matching.xlsx') {
+        if (!(await deps.auth.verify(sid))) {
+          send(res, 401, loginPage('Сессия истекла. Войдите заново.', mount));
+          return;
+        }
+        if (!deps.exportMatching) {
+          send(res, 404, loginPage(undefined, mount));
+          return;
+        }
+        const file = await deps.exportMatching();
+        send(res, 200, file, {
+          'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'content-disposition': 'attachment; filename="matching.xlsx"',
         });
         return;
       }

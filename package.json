@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@maxhub/max-bot-api": "^0.2.5",
+    "exceljs": "^4.4.0",
     "grammy": "^1.45.1",
     "pg": "^8.13.1",
     "pino": "^9.5.0",

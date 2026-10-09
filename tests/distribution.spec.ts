@@ -113,6 +113,24 @@ describe('те, кто хочет открыть группу, — это буд
     expect(assignments[0]!.score).toBe(3);
   });
 
+  test('владелец в другом районе людей не получает: «новые первыми» не повод везти человека через город', () => {
+    const near = group({ district: 'Невский', metro: 'Дыбенко' });
+    const { assignments, ownerLoad } = distribute(
+      [seeker({ place: 'Невский, Дыбенко' })],
+      [near],
+      [owner({ place: 'Приморский, Пионерская' })],
+      IDLE,
+    );
+    expect(assignments[0]!.groupId).toBe(near.id);
+    expect(ownerLoad.get('o1')).toBe(0);
+  });
+
+  test('если человек не назвал место, группы владельцев ему не предлагаются', () => {
+    const existing = group();
+    const { assignments } = distribute([seeker({ place: null })], [existing], [owner()], IDLE);
+    expect(assignments[0]!.groupId).toBe(existing.id);
+  });
+
   test('владелец, не указавший место, группу не получает: непонятно, где она будет', () => {
     const { assignments } = distribute([seeker({ place: 'Приморский' })], [], [owner({ place: null })], IDLE);
     expect(assignments[0]!.groupId).toBeNull();

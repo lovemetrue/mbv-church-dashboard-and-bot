@@ -57,12 +57,12 @@ beforeEach(async () => {
 });
 
 /** Обязательные вопросы: согласие, ФИО, телефон, церковь. */
-async function answerRequired(id = USER): Promise<void> {
-  await router.handle(start(id));
-  await router.handle(tap(CB.consentYes, id));
-  await router.handle(text('Иванов Иван Иванович', id));
-  await router.handle(contact('79001234567', id));
-  await router.handle(tap('church:0', id));
+async function answerRequired(id = USER, r: Router = router): Promise<void> {
+  await r.handle(start(id));
+  await r.handle(tap(CB.consentYes, id));
+  await r.handle(text('Иванов Иван Иванович', id));
+  await r.handle(contact('79001234567', id));
+  await r.handle(tap('church:0', id));
 }
 
 /** Полная регистрация ведущего МДГ: у него нет уточняющих вопросов. */
@@ -204,6 +204,30 @@ describe('регистрация через роутер', () => {
       schedule_raw: 'пн, ср - с 17 до 22 часов',
       address_raw: 'ул Рылеева 32',
     });
+  });
+
+  test('при выключенных новых вопросах анкета идёт по-старому: после возраста сразу сводка', async () => {
+    const oldFlow = new Router(createDeps({ ...deps.raw, db, extraQuestions: 'off' }));
+    await answerRequired(USER, oldFlow);
+    await oldFlow.handle(tap(CB.mdgJoin));
+    await oldFlow.handle(text('Приморский'));
+    await oldFlow.handle(tap('age:2'));
+    await oldFlow.handle(tap(CB.confirm));
+
+    expect(await dbUser()).toMatchObject({ mdg_status: 'join', age: '25-40', schedule_raw: null });
+    expect((await db.query('SELECT 1 FROM requests')).rowCount).toBe(1);
+  });
+
+  test('новые вопросы включены только для человека из списка', async () => {
+    const pilot = new Router(createDeps({ ...deps.raw, db, extraQuestions: `telegram:${USER}` }));
+    await answerRequired(USER, pilot);
+    await pilot.handle(tap(CB.mdgJoin));
+    await pilot.handle(text('Приморский'));
+    await pilot.handle(tap('age:2'));
+    await pilot.handle(text('по вечерам'));
+    await pilot.handle(text('ул Рылеева 32'));
+    await pilot.handle(tap(CB.confirm));
+    expect(await dbUser()).toMatchObject({ schedule_raw: 'по вечерам', address_raw: 'ул Рылеева 32' });
   });
 
   test('если время и адрес пропущены, в базе остаётся пусто', async () => {

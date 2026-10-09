@@ -58,6 +58,9 @@ const schema = z.object({
     .default('false')
     .transform((v) => /^(1|true|yes|да)$/i.test(v.trim())),
 
+  // Кому показывать вопросы про удобное время и адрес: all, off или список id (см. core/rollout.ts).
+  // По умолчанию выключено: выложили код — участники ничего нового не увидели, пока не включат.
+  EXTRA_QUESTIONS: z.string().default('off'),
   TIMEZONE: z.string().default('Europe/Moscow'),
   LOG_LEVEL: z.string().default('info'),
 });

@@ -686,6 +686,21 @@ describe('удобное время и адрес (необязательные 
     expect(said(next)).toContain('будет проходить');
   });
 
+  test('если вопросы для этого человека выключены, после возраста сразу сводка, как раньше', () => {
+    // Так включают новые вопросы по одному человеку: остальные проходят прежнюю анкету.
+    const r = run('await_age', { ...joiner, age: undefined }, tap('age:2'), { extraQuestions: false });
+    expect(r.state).toBe('summary');
+    expect(r.draft.age).toBe('25-40');
+    expect(r.draft.schedule).toBeUndefined();
+    expect(r.effects).toEqual([{ kind: 'save', patch: { age: '25-40' } }]);
+  });
+
+  test('если настройка не передана, вопросы включены', () => {
+    expect(run('await_age', { ...joiner, age: undefined }, tap('age:2')).state).toBe('await_schedule');
+    expect(run('await_age', { ...joiner, age: undefined }, tap('age:2'), { extraQuestions: true }).state)
+      .toBe('await_schedule');
+  });
+
   test('«готов дать дом» проходит те же вопросы', () => {
     const r = run('await_age', { ...opener, mdgStatus: 'home', age: undefined }, tap('age:2'));
     expect(r.state).toBe('await_schedule');

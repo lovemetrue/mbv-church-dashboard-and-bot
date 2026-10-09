@@ -141,6 +141,11 @@ export interface FsmInput {
   openQuestions?: number;
   /** Что нашла сверка телефона: у номера уже есть действующая группа в реестре. */
   leadPhoneTaken?: 'group';
+  /**
+   * Спрашивать ли удобное время и адрес. Роутер вычисляет по настройке EXTRA_QUESTIONS
+   * (см. rollout.ts); не передано — спрашиваем.
+   */
+  extraQuestions?: boolean;
 }
 
 export interface FsmResult {
@@ -281,6 +286,7 @@ export function handleUpdate({
   openRequests,
   openQuestions,
   leadPhoneTaken,
+  extraQuestions,
 }: FsmInput): FsmResult {
   const draft: Draft = { ...incoming };
   const alreadyOpen = (type: RequestType): boolean => (openRequests ?? []).includes(type);
@@ -347,7 +353,7 @@ export function handleUpdate({
       return awaitLocation(update.text, draft);
 
     case 'await_age':
-      return awaitAge(update, draft);
+      return awaitAge(update, draft, extraQuestions !== false);
 
     case 'await_schedule':
       return awaitFreeText(update, draft, 'schedule');
@@ -513,7 +519,7 @@ function awaitLocation(raw: string, draft: Draft): FsmResult {
   return askAge({ ...draft, location }, [{ kind: 'save', patch: { location } }]);
 }
 
-function awaitAge(update: IncomingUpdate, draft: Draft): FsmResult {
+function awaitAge(update: IncomingUpdate, draft: Draft, extraQuestions: boolean): FsmResult {
   if (update.kind !== 'callback' || !update.data.startsWith(CB.agePrefix)) {
     return stay('await_age', draft, [msg(T.askAge, ageKeyboard())]);
   }
@@ -523,7 +529,9 @@ function awaitAge(update: IncomingUpdate, draft: Draft): FsmResult {
 
   // Время и адрес нужны только для подбора группы, поэтому спрашиваем их у тех,
   // кому группу подбирают или кто её открывает; возраст сохраняем сразу, не дожидаясь их.
-  return askSchedule({ ...draft, age }, [{ kind: 'save', patch: { age } }]);
+  // Если вопросы для этого человека выключены (см. rollout.ts) — сразу сводка, как раньше.
+  const saveAge: Effect[] = [{ kind: 'save', patch: { age } }];
+  return extraQuestions ? askSchedule({ ...draft, age }, saveAge) : showSummary({ ...draft, age }, saveAge);
 }
 
 /** Лимит длины необязательного текста: он уходит в разбор целиком, мусор там не нужен. */

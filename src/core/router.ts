@@ -3,6 +3,7 @@ import { AdminNotifier } from '../admin/notify.js';
 import type { Deps } from '../deps.js';
 import { campaignIsActive } from '../broadcast/schedule.js';
 import { AdminFlow } from './flows/admin.flow.js';
+import { extraQuestionsEnabled } from './rollout.js';
 import { handleUpdate, profileRows, type Draft, type OutAction, type Participant } from './fsm.js';
 import { kitPayload, parseKitPayload, qrPng } from './qr.js';
 import { SendError, type IncomingUpdate, type Platform, type UpdateCtx } from './platform.js';
@@ -177,6 +178,11 @@ export class Router {
       openRequests,
       openQuestions,
       leadPhoneTaken,
+      extraQuestions: extraQuestionsEnabled(
+        this.deps.extraQuestions,
+        update.ctx.platform,
+        update.ctx.platformUserId,
+      ),
     });
 
     const created: RequestWithUser[] = [];

@@ -26,6 +26,8 @@ export interface DepsInput {
   requestsRetentionDays?: number;
   /** Адрес дашборда: бот отправляет туда служителя за статистикой и заявками. */
   dashboardUrl?: string;
+  /** Кому показывать вопросы про время и адрес (all, off или список id). По умолчанию всем. */
+  extraQuestions?: string;
   logger?: Logger;
 }
 
@@ -46,6 +48,7 @@ export interface Deps {
   allowDbReset: boolean;
   requestsRetentionDays: number;
   dashboardUrl: string;
+  extraQuestions: string;
   logger: Logger;
   /** Исходные параметры: нужны, чтобы пересобрать зависимости (например, в тестах). */
   raw: DepsInput;
@@ -84,6 +87,7 @@ export function createDeps(input: DepsInput): Deps {
     requestsRetentionDays: input.requestsRetentionDays ?? 90,
     // Домена пока нет — сайт открывают по IP и порту напрямую.
     dashboardUrl: input.dashboardUrl ?? 'http://5.23.48.25:8090/groups',
+    extraQuestions: input.extraQuestions ?? 'all',
     logger,
     raw: input,
   };

@@ -20,6 +20,7 @@ const withNumber = (n: number, one: string, few: string, many: string): string =
 export const years = (n: number): string => withNumber(n, 'год', 'года', 'лет');
 export const participants = (n: number): string => withNumber(n, 'участник', 'участника', 'участников');
 export const requests = (n: number): string => withNumber(n, 'заявка', 'заявки', 'заявок');
+export const people = (n: number): string => withNumber(n, 'человек', 'человека', 'человек');
 export const days = (n: number): string => withNumber(n, 'день', 'дня', 'дней');
 /** Дательный падеж: «отправить 5 участникам». */
 export const toParticipants = (n: number): string => withNumber(n, 'участнику', 'участникам', 'участникам');

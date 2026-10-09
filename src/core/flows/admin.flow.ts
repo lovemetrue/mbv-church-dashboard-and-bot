@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { isAdmin } from '../../admin/access.js';
-import { MDG_SHORT } from '../texts.js';
+import { MDG_SHORT, T, followUpKeyboard } from '../texts.js';
 import { ADMIN_CB, CANCEL_MENU, adminMenu, isCancel } from '../../admin/menu.js';
 import { localDate } from '../../broadcast/schedule.js';
 import { formatDayRanges } from '../dayRanges.js';
 import { b, code, esc, i } from '../html.js';
 import { formatPhone } from '../phone.js';
-import { participants, toParticipants } from '../plural.js';
+import { people, participants, toParticipants } from '../plural.js';
+import { extraQuestionsEnabled } from '../rollout.js';
 import type { AdminDialog } from '../../db/repos/adminSessions.repo.js';
 import type { UserRow } from '../../db/repos/users.repo.js';
 import type { Deps } from '../../deps.js';
@@ -26,6 +27,7 @@ const HELP = [
   '📦 Выдать набор — по номеру регистрации или ФИО; по QR быстрее',
   '📣 Объявление — разослать текст всем участникам',
   '✏️ Загрузить день — материал дня кампании',
+  '📝 Дослать вопросы — зарегистрированным: когда удобно и где живут',
   '',
   b('Команды'),
   '',
@@ -35,6 +37,7 @@ const HELP = [
   `${code('/sendday <день>')} — отправить материал дня прямо сейчас`,
   `${code('/days')} — какие дни уже загружены`,
   `${code('/kit <номер или ФИО>')} — выдать набор участнику`,
+  `${code('/extra')} — дослать зарегистрированным два вопроса (время и адрес)`,
   `${code('/export')} — выгрузка участников в CSV`,
   `${code('/admins')} — кто видит клавиатуру служителя`,
   `${code('/whoami')} — свой числовой id для ADMIN_IDS`,
@@ -176,6 +179,10 @@ export class AdminFlow {
         await this.listAdmins(ctx);
         return true;
 
+      case '/extra':
+        await this.prepareExtra(ctx, userId);
+        return true;
+
       case '/reset':
         await this.askDbReset(ctx, userId);
         return true;
@@ -252,7 +259,8 @@ export class AdminFlow {
 
       // Шаги, где ждём нажатие кнопки: текст просто просим заменить кнопкой.
       case 'sendday:confirm':
-      case 'broadcast:confirm': {
+      case 'broadcast:confirm':
+      case 'extra:confirm': {
         if (YES.includes(text.trim().toLowerCase())) {
           await this.runConfirmed(ctx, userId, dialog);
           return true;
@@ -282,7 +290,7 @@ export class AdminFlow {
 
     if (action === 'confirm') {
       const dialog = await this.deps.adminSessions.get(userId);
-      if (dialog.state !== 'broadcast:confirm' && dialog.state !== 'sendday:confirm') {
+      if (dialog.state !== 'broadcast:confirm' && dialog.state !== 'sendday:confirm' && dialog.state !== 'extra:confirm') {
         await this.reply(ctx, 'Подтверждать нечего: рассылка уже отправлена или отменена.');
         return true;
       }
@@ -549,6 +557,11 @@ export class AdminFlow {
   private async runConfirmed(ctx: UpdateCtx, userId: number, dialog: AdminDialog): Promise<void> {
     await this.resetDialog(userId);
 
+    if (dialog.state === 'extra:confirm') {
+      await this.runExtra(ctx);
+      return;
+    }
+
     if (dialog.state === 'broadcast:confirm') {
       await this.runBroadcast(ctx, `adhoc:${randomUUID()}`, dialog.data.body ?? '', 'Объявление', userId);
       return;
@@ -561,6 +574,97 @@ export class AdminFlow {
       return;
     }
     await this.runBroadcast(ctx, `day:${day}`, content.content, `Материал дня ${day}`, userId);
+  }
+
+  /**
+   * Кому сейчас можно дослать вопросы: зарегистрированным с заявкой на посещение или открытие
+   * группы, кто ещё не отвечал и не получал приглашение, — и только тем, кому вопросы включены
+   * настройкой EXTRA_QUESTIONS. Так сначала приглашение уходит одному-двум людям на проверку.
+   */
+  private async extraRecipients(): Promise<{ join: number[]; lead: number[] }> {
+    const found = await this.deps.users.followUpCandidates([...this.deps.platforms.keys()]);
+    const allowed = found.filter((c) =>
+      extraQuestionsEnabled(this.deps.extraQuestions, c.platform, c.platform_user_id));
+    return {
+      join: allowed.filter((c) => c.mdg_status === 'join').map((c) => c.id),
+      lead: allowed.filter((c) => c.mdg_status !== 'join').map((c) => c.id),
+    };
+  }
+
+  private async prepareExtra(ctx: UpdateCtx, userId: number): Promise<void> {
+    const { join, lead } = await this.extraRecipients();
+    const total = join.length + lead.length;
+
+    if (total === 0) {
+      const off = ['', 'off'].includes(this.deps.extraQuestions.trim().toLowerCase());
+      await this.reply(
+        ctx,
+        off
+          ? `Некому отправлять: новые вопросы выключены настройкой ${code('EXTRA_QUESTIONS')} в .env.`
+          : 'Некому отправлять: все, кому можно написать, уже получили приглашение или ответили ' +
+              `(учитывается настройка ${code('EXTRA_QUESTIONS')}).`,
+      );
+      return;
+    }
+
+    await this.deps.adminSessions.set(userId, 'extra:confirm', {});
+    await this.reply(
+      ctx,
+      [
+        `📝 Дослать два вопроса (время и адрес) — получат ${b(people(total))}?`,
+        '',
+        `Хотят в группу: ${join.length}`,
+        `Готовы открыть: ${lead.length}`,
+        '',
+        b('Приглашение хотящим в группу'),
+        esc(T.followUpInviteJoin),
+        '',
+        b('Приглашение готовым открыть'),
+        esc(T.followUpInviteLead),
+        '',
+        `Кому писать, задаёт ${code('EXTRA_QUESTIONS')}: сейчас ${code(this.deps.extraQuestions)}.`,
+        'Каждый получит приглашение один раз.',
+      ].join('\n'),
+      CONFIRM_BUTTONS,
+    );
+  }
+
+  /** Рассылает приглашения по подтверждению: ищущим и открывающим — каждым своим текстом. */
+  private async runExtra(ctx: UpdateCtx): Promise<void> {
+    // Список считаем заново: между вопросом и подтверждением кто-то мог ответить сам.
+    const { join, lead } = await this.extraRecipients();
+    if (join.length + lead.length === 0) {
+      await this.reply(ctx, 'Некому отправлять: приглашения уже разосланы или все ответили.');
+      return;
+    }
+
+    const base = `extra:${randomUUID()}`;
+    const totals = { sent: 0, failed: 0, blocked: 0 };
+    for (const [suffix, text, ids] of [
+      ['join', T.followUpInviteJoin, join],
+      ['lead', T.followUpInviteLead, lead],
+    ] as const) {
+      if (ids.length === 0) continue;
+      const key = `${base}:${suffix}`;
+      await this.deps.deliveries.openFor(key, text, followUpKeyboard(), ids);
+      const result = await this.deps.sender.run(key);
+      totals.sent += result.sent;
+      totals.failed += result.failed;
+      totals.blocked += result.blocked;
+    }
+
+    await this.reply(
+      ctx,
+      [
+        `✅ ${b('Приглашения отправлены')}`,
+        '',
+        `Доставлено: ${b(totals.sent)}`,
+        `Ошибок: ${b(totals.failed)}`,
+        `Заблокировали бота: ${b(totals.blocked)}`,
+        '',
+        'Ответы появятся в заявках в дашборде.',
+      ].join('\n'),
+    );
   }
 
   private async recipientCount(): Promise<number> {

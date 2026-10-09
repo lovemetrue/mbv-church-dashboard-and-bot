@@ -13,7 +13,7 @@ import {
  * не обращаясь к настоящим Telegram и MAX.
  */
 export class FakePlatform implements Platform {
-  readonly sent: { chatId: string; text: string }[] = [];
+  readonly sent: { chatId: string; text: string; buttons?: OutMessage['buttons'] }[] = [];
   readonly files: { chatId: string; name: string; size: number }[] = [];
   readonly photos: { chatId: string; name: string; size: number; caption?: string }[] = [];
   readonly acked: string[] = [];
@@ -53,7 +53,7 @@ export class FakePlatform implements Platform {
   async sendMessage(chatId: string, msg: OutMessage): Promise<void> {
     const planned = this.script.get(chatId)?.shift() ?? null;
     if (planned) throw planned;
-    this.sent.push({ chatId, text: msg.text });
+    this.sent.push({ chatId, text: msg.text, buttons: msg.buttons });
     if (msg.actionMenu && !msg.buttons) {
       this.actionMenus.push({ chatId, commands: msg.actionMenu.flat().map((b) => b.command) });
     }

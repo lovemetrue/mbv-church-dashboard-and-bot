@@ -1,4 +1,4 @@
-import { SendError, type Platform, type PlatformName } from '../core/platform.js';
+import { SendError, type Button, type Platform, type PlatformName } from '../core/platform.js';
 import type { DeliveriesRepo, PendingDelivery } from '../db/repos/deliveries.repo.js';
 import type { UsersRepo } from '../db/repos/users.repo.js';
 import { logger as defaultLogger, type Logger } from '../logger.js';
@@ -53,8 +53,8 @@ export class BroadcastSender {
   }
 
   async run(key: string): Promise<BroadcastResult> {
-    const body = await this.deps.deliveries.body(key);
-    if (body === null) throw new Error(`рассылка ${key} не найдена`);
+    const message = await this.deps.deliveries.message(key);
+    if (message === null) throw new Error(`рассылка ${key} не найдена`);
 
     const result: BroadcastResult = { key, sent: 0, failed: 0, blocked: 0, pending: 0 };
     /** Чаты, к которым в этом прогоне возвращаться бесполезно: платформа отключена. */
@@ -73,7 +73,7 @@ export class BroadcastSender {
           skipped.add(delivery.id);
           continue;
         }
-        await this.deliverOne(delivery, platform, body, result);
+        await this.deliverOne(delivery, platform, message, result);
       }
     }
 
@@ -89,7 +89,7 @@ export class BroadcastSender {
   private async deliverOne(
     delivery: PendingDelivery,
     platform: Platform,
-    body: string,
+    message: { body: string; buttons: Button[][] | null },
     result: BroadcastResult,
   ): Promise<void> {
     const { deliveries, users } = this.deps;
@@ -97,7 +97,10 @@ export class BroadcastSender {
     await limiter?.take();
 
     try {
-      await platform.sendMessage(delivery.chat_id, { text: body });
+      await platform.sendMessage(
+        delivery.chat_id,
+        message.buttons ? { text: message.body, buttons: message.buttons } : { text: message.body },
+      );
       await deliveries.markSent(delivery.id);
       result.sent += 1;
       return;

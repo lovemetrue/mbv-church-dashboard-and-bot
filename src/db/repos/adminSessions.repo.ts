@@ -13,7 +13,9 @@ export type AdminState =
   // Выдача набора: служитель вводит номер регистрации или ФИО.
   | 'kit:query'
   // Очистка базы на время тестов: подтверждается отдельной кнопкой.
-  | 'reset:confirm';
+  | 'reset:confirm'
+  // Досылка двух вопросов (время, адрес) уже зарегистрированным: ждём подтверждения.
+  | 'extra:confirm';
 
 export interface AdminDialog {
   state: AdminState;

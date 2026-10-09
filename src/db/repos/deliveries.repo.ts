@@ -1,5 +1,5 @@
 import type { Pool } from 'pg';
-import type { PlatformName } from '../../core/platform.js';
+import type { Button, PlatformName } from '../../core/platform.js';
 
 export interface PendingDelivery {
   id: number;
@@ -51,6 +51,50 @@ export class DeliveriesRepo {
     } finally {
       client.release();
     }
+  }
+
+  /**
+   * Рассылка для названных людей, а не для всех: нужна приглашению с двумя вопросами.
+   * Тем же действием людям ставится отметка «приглашён» — иначе при повторном нажатии
+   * служителя они получили бы приглашение второй раз.
+   */
+  async openFor(
+    key: string,
+    body: string,
+    buttons: Button[][],
+    userIds: number[],
+  ): Promise<{ created: boolean; queued: number }> {
+    const client = await this.db.connect();
+    try {
+      await client.query('BEGIN');
+      const inserted = await client.query(
+        'INSERT INTO broadcasts (key, body, buttons) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+        [key, body, JSON.stringify(buttons)],
+      );
+      const queued = await client.query(
+        `INSERT INTO deliveries (broadcast_key, user_id)
+         SELECT $1, id FROM users WHERE id = ANY($2)
+         ON CONFLICT (broadcast_key, user_id) DO NOTHING`,
+        [key, userIds],
+      );
+      await client.query('UPDATE users SET extra_invited_at = now() WHERE id = ANY($1)', [userIds]);
+      await client.query('COMMIT');
+      return { created: inserted.rowCount === 1, queued: queued.rowCount ?? 0 };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /** Текст рассылки и её кнопки; null, если такой рассылки нет. */
+  async message(key: string): Promise<{ body: string; buttons: Button[][] | null } | null> {
+    const { rows } = await this.db.query<{ body: string; buttons: Button[][] | null }>(
+      'SELECT body, buttons FROM broadcasts WHERE key = $1',
+      [key],
+    );
+    return rows[0] ?? null;
   }
 
   async body(key: string): Promise<string | null> {

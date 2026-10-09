@@ -32,6 +32,14 @@ export interface UserRow {
   created_at: Date;
 }
 
+/** Кому можно дослать вопросы про время и адрес. */
+export interface FollowUpCandidate {
+  id: number;
+  platform: PlatformName;
+  platform_user_id: string;
+  mdg_status: MdgStatus;
+}
+
 export interface Recipient {
   id: number;
   chat_id: string;
@@ -296,6 +304,26 @@ export class UsersRepo {
           AND chat_id <> ''
         ORDER BY id`,
       [platform],
+    );
+    return rows;
+  }
+
+  /**
+   * Кому можно дослать два вопроса (время и адрес): уже зарегистрированным с заявкой «хочу в
+   * группу», «готов открыть» или «дам дом», которые ещё не отвечали и не получали приглашение.
+   * Кому из них показывать вопросы по настройке EXTRA_QUESTIONS, решает вызывающий код.
+   */
+  async followUpCandidates(platforms: PlatformName[]): Promise<FollowUpCandidate[]> {
+    const { rows } = await this.db.query<FollowUpCandidate>(
+      `SELECT id, platform, platform_user_id, mdg_status
+         FROM users
+        WHERE platform = ANY($1) AND registration_no IS NOT NULL AND blocked_at IS NULL
+          AND mdg_status IN ('join', 'open', 'home')
+          AND schedule_raw IS NULL AND address_raw IS NULL AND extra_invited_at IS NULL
+          -- Участник, которого заводил служитель, чата с ботом не имеет: писать некуда.
+          AND chat_id <> ''
+        ORDER BY id`,
+      [platforms],
     );
     return rows;
   }

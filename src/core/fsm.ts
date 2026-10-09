@@ -16,6 +16,7 @@ import {
   mdgKeyboard,
   menuKeyboard,
   otherChurchKeyboard,
+  skipKeyboard,
   summaryKeyboard,
 } from './texts.js';
 
@@ -38,6 +39,10 @@ export type FsmState =
   | 'await_mdg'
   | 'await_location'
   | 'await_age'
+  /** Необязательно: когда человеку удобно ходить в группу (или вести её). */
+  | 'await_schedule'
+  /** Необязательно: улица и дом. */
+  | 'await_address'
   | 'await_leader_name'
   | 'summary'
   | 'menu'
@@ -64,6 +69,10 @@ export interface Draft {
   location?: string;
   /** Возрастная категория, а не число: спрашиваем кнопкой (см. AGE_GROUPS). */
   age?: string;
+  /** Удобные дни и время, как написал человек: разбирает служитель, а позже — нейросеть. */
+  schedule?: string;
+  /** Улица и дом, как написал человек. */
+  address?: string;
   leaderName?: string;
 }
 
@@ -204,6 +213,22 @@ const askLocation = (draft: Draft, effects: Effect[] = []): FsmResult =>
 const askAge = (draft: Draft, effects: Effect[] = []): FsmResult =>
   stay('await_age', draft, [msg(T.askAge, ageKeyboard())], effects);
 
+const askSchedule = (draft: Draft, effects: Effect[] = []): FsmResult =>
+  stay(
+    'await_schedule',
+    draft,
+    [msg(draft.mdgStatus === 'join' ? T.askScheduleJoin : T.askScheduleOpen, skipKeyboard())],
+    effects,
+  );
+
+const askAddress = (draft: Draft, effects: Effect[] = []): FsmResult =>
+  stay(
+    'await_address',
+    draft,
+    [msg(draft.mdgStatus === 'join' ? T.askAddressJoin : T.askAddressOpen, skipKeyboard())],
+    effects,
+  );
+
 const askLeaderName = (draft: Draft, effects: Effect[] = []): FsmResult =>
   stay('await_leader_name', draft, [msg(T.askLeaderName, backKeyboard())], effects);
 
@@ -223,6 +248,8 @@ export function profileRows(draft: Draft): string[] {
   if (draft.leaderName) rows.push(`Ведущий группы: ${draft.leaderName}`);
   if (draft.location) rows.push(`Район: ${draft.location}`);
   if (draft.age) rows.push(`Возраст: ${draft.age}`);
+  if (draft.schedule) rows.push(`Удобное время: ${draft.schedule}`);
+  if (draft.address) rows.push(`Адрес: ${draft.address}`);
   return rows;
 }
 
@@ -279,7 +306,9 @@ export function handleUpdate({
    * сводка покажет ответы от отменённой ветки.
    */
   if (update.kind === 'callback' && update.data === CB.back && draft.church) {
-    const { mdgStatus: _s, location: _l, age: _a, leaderName: _n, ...kept } = draft;
+    const {
+      mdgStatus: _s, location: _l, age: _a, schedule: _t, address: _d, leaderName: _n, ...kept
+    } = draft;
     return askMdg(kept);
   }
 
@@ -319,6 +348,12 @@ export function handleUpdate({
 
     case 'await_age':
       return awaitAge(update, draft);
+
+    case 'await_schedule':
+      return awaitFreeText(update, draft, 'schedule');
+
+    case 'await_address':
+      return awaitFreeText(update, draft, 'address');
 
     case 'await_leader_name':
       if (update.kind !== 'text') return ignore('await_leader_name', draft);
@@ -486,8 +521,43 @@ function awaitAge(update: IncomingUpdate, draft: Draft): FsmResult {
   const age = AGE_GROUPS[Number.parseInt(update.data.slice(CB.agePrefix.length), 10)];
   if (!age) return stay('await_age', draft, [msg(T.askAge, ageKeyboard())]);
 
-  return showSummary({ ...draft, age }, [{ kind: 'save', patch: { age } }]);
+  // Время и адрес нужны только для подбора группы, поэтому спрашиваем их у тех,
+  // кому группу подбирают или кто её открывает; возраст сохраняем сразу, не дожидаясь их.
+  return askSchedule({ ...draft, age }, [{ kind: 'save', patch: { age } }]);
 }
+
+/** Лимит длины необязательного текста: он уходит в разбор целиком, мусор там не нужен. */
+const FREE_TEXT_MAX = 300;
+
+/** Такие ответы значат «не хочу отвечать», а не данные: «нет» в базе как адрес только мешает. */
+const SKIP_WORDS = new Set(['нет', '-', '—', '–', 'пропустить']);
+
+/**
+ * Необязательный вопрос свободным текстом (время, адрес). Ответ не разбираем и не проверяем
+ * по смыслу — сохраняем как написан, чтобы не отпугнуть человека придирками. Пропустить можно
+ * кнопкой или словом «нет»: с телефона проще написать, чем искать кнопку.
+ */
+function awaitFreeText(update: IncomingUpdate, draft: Draft, field: 'schedule' | 'address'): FsmResult {
+  const ask = field === 'schedule' ? askSchedule : askAddress;
+  const next = field === 'schedule' ? askAddress : showSummary;
+
+  if (update.kind === 'callback') {
+    return update.data === CB.skip ? next(draft) : ignore(stateOf(field), draft);
+  }
+  if (update.kind !== 'text') return ignore(stateOf(field), draft);
+
+  const value = update.text.trim().replace(/\s+/g, ' ');
+  if (SKIP_WORDS.has(value.toLowerCase())) return next(draft);
+  if (value.length > FREE_TEXT_MAX) {
+    return stay(stateOf(field), draft, [msg(T.freeTextTooLong), ...ask(draft).actions]);
+  }
+  if (value.length < 2) return ask(draft);
+
+  return next({ ...draft, [field]: value }, [{ kind: 'save', patch: { [field]: value } }]);
+}
+
+const stateOf = (field: 'schedule' | 'address'): FsmState =>
+  field === 'schedule' ? 'await_schedule' : 'await_address';
 
 function awaitLeaderName(raw: string, draft: Draft): FsmResult {
   const leaderName = raw.trim();

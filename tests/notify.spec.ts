@@ -22,6 +22,8 @@ const request = (patch: Partial<RequestWithUser> = {}): RequestWithUser => ({
   leader_name: null,
   registration_no: 12,
   preferred_contact: null,
+  schedule: null,
+  address: null,
   ...patch,
 });
 
@@ -111,5 +113,22 @@ describe('сообщение служителю о заявке', () => {
     const text = formatRequest(request(), DASHBOARD_URL);
     expect(text).toContain(`href="${DASHBOARD_URL}?request=7"`);
     expect(text).toContain('Открыть заявку в дашборде');
+  });
+
+  test('удобное время и адрес показаны, если человек их указал', () => {
+    const text = formatRequest(request({ schedule: 'пн, ср - с 17 до 22', address: 'ул Рылеева 32' }), DASHBOARD_URL);
+    expect(text).toContain('Удобное время: <b>пн, ср - с 17 до 22</b>');
+    expect(text).toContain('Адрес: <b>ул Рылеева 32</b>');
+  });
+
+  test('если время и адрес пропущены, лишних строк «не указан» нет: вопросы необязательные', () => {
+    const text = formatRequest(request(), DASHBOARD_URL);
+    expect(text).not.toContain('Удобное время');
+    expect(text).not.toContain('Адрес');
+  });
+
+  test('время и адрес экранированы: это текст человека', () => {
+    const text = formatRequest(request({ address: '<script>x</script>' }), DASHBOARD_URL);
+    expect(text).not.toContain('<script>');
   });
 });

@@ -100,6 +100,8 @@ const COLUMNS: Record<keyof ProfilePatch, string> = {
   mdgStatus: 'mdg_status',
   location: 'location',
   age: 'age',
+  schedule: 'schedule_raw',
+  address: 'address_raw',
   leaderName: 'leader_name',
 };
 

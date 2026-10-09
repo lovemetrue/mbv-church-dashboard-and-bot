@@ -225,6 +225,18 @@ describe('мягкие условия: очки', () => {
   });
 });
 
+describe('совпадение по месту отдельным признаком', () => {
+  test('видно, совпали ли район и метро, независимо от очков', () => {
+    const g = group({ district: 'Приморский', metro: 'Пионерская' });
+    const both = suggestGroups(person({ place: 'Приморский, м. Пионерская' }), [g], IDLE)[0]!;
+    expect([both.sameDistrict, both.sameMetro]).toEqual([true, true]);
+    const onlyMetro = suggestGroups(person({ place: 'Пионерская' }), [g], IDLE)[0]!;
+    expect([onlyMetro.sameDistrict, onlyMetro.sameMetro]).toEqual([false, true]);
+    const none = suggestGroups(person({ place: 'Купчино' }), [g], IDLE)[0]!;
+    expect([none.sameDistrict, none.sameMetro]).toEqual([false, false]);
+  });
+});
+
 describe('причины: почему группа предложена', () => {
   test('каждое начисленное очко объяснено', () => {
     const small = group({ status: 'Кампания', district: 'Приморский', metro: 'Пионерская', people: 6 });

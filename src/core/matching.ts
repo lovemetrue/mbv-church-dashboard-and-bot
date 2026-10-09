@@ -54,6 +54,9 @@ export interface Suggestion {
   fresh: boolean;
   /** Коротко, почему предложена: показываются рядом с группой. */
   reasons: string[];
+  /** Совпали ли район и метро: без них группа предложена только по возрасту и остальному. */
+  sameDistrict: boolean;
+  sameMetro: boolean;
 }
 
 export interface MatchOptions {
@@ -139,13 +142,20 @@ export function matchesMetro(place: string | null | undefined, metro: string | n
 
 const isOpenToNew = (g: MatchGroup): boolean => (g.open_to_new ?? '').trim().toLowerCase() !== 'нет';
 
-/** Подходит ли группа по жёстким условиям. Возраст, которого не знаем, группу не отсекает. */
-function passesHard(person: MatchPerson, g: MatchGroup): boolean {
-  if (!PASSING_STATUSES.has(g.status) || !isOpenToNew(g) || g.do_not_refer) return false;
+/** Какое жёсткое условие не выполнено у группы (null — все выполнены). Порядок проверок значения не имеет. */
+export type HardFailure = 'status' | 'closed' | 'hidden' | 'age';
+
+export function hardFailure(person: MatchPerson, g: MatchGroup): HardFailure | null {
+  if (!PASSING_STATUSES.has(g.status)) return 'status';
+  if (!isOpenToNew(g)) return 'closed';
+  if (g.do_not_refer) return 'hidden';
+  // Возраст, которого не знаем, группу не отсекает.
   const mine = ageRange(person.age);
   const theirs = ageRange(g.age);
-  return !(mine && theirs && !overlap(mine, theirs));
+  return mine && theirs && !overlap(mine, theirs) ? 'age' : null;
 }
+
+const passesHard = (person: MatchPerson, g: MatchGroup): boolean => hardFailure(person, g) === null;
 
 /**
  * Соседи — действующие группы того же района с известным числом участников. Скрытые из
@@ -162,12 +172,14 @@ function neighbourAverage(g: MatchGroup, all: readonly MatchGroup[]): number | n
 function score(person: MatchPerson, g: MatchGroup, all: readonly MatchGroup[], opts: MatchOptions): Suggestion {
   let points = 0;
   const reasons: string[] = [];
+  const sameDistrict = matchesDistrict(person.place, g.district);
+  const sameMetro = matchesMetro(person.place, g.metro);
 
-  if (matchesDistrict(person.place, g.district)) {
+  if (sameDistrict) {
     points += 3;
     reasons.push(`тот же район (${g.district})`);
   }
-  if (matchesMetro(person.place, g.metro)) {
+  if (sameMetro) {
     points += 2;
     reasons.push(`рядом: ${g.metro}`);
   }
@@ -182,7 +194,7 @@ function score(person: MatchPerson, g: MatchGroup, all: readonly MatchGroup[], o
   }
   if (ageRange(person.age) && ageRange(g.age)) reasons.push(`возраст подходит (${g.age})`);
 
-  return { groupId: g.id, score: points, fresh: g.status === FRESH_STATUS, reasons };
+  return { groupId: g.id, score: points, fresh: g.status === FRESH_STATUS, reasons, sameDistrict, sameMetro };
 }
 
 /** Выше — больше очков; при ничьей — группа поменьше (людей расселяем равномерно); неизвестное — в конец. */

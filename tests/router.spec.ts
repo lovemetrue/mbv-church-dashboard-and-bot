@@ -156,6 +156,8 @@ describe('регистрация через роутер', () => {
     await router.handle(tap(CB.mdgOpen));
     await router.handle(text('Приморский, м. Пионерская'));
     await router.handle(tap('age:2'));
+    await router.handle(tap(CB.skip)); // удобное время — необязательный вопрос
+    await router.handle(tap(CB.skip)); // адрес — тоже
     tg.photos.length = 0;
     await router.handle(tap(CB.confirm));
 
@@ -178,6 +180,8 @@ describe('регистрация через роутер', () => {
     await router.handle(tap(CB.mdgJoin));
     await router.handle(text('улица Ленина, 5'));
     await router.handle(tap('age:2'));
+    await router.handle(tap(CB.skip)); // удобное время — необязательный вопрос
+    await router.handle(tap(CB.skip)); // адрес — тоже
     await router.handle(tap(CB.confirm));
 
     expect(await dbUser()).toMatchObject({
@@ -187,11 +191,40 @@ describe('регистрация через роутер', () => {
     });
   });
 
+  test('удобное время и адрес сохраняются в анкете как написаны', async () => {
+    await answerRequired();
+    await router.handle(tap(CB.mdgJoin));
+    await router.handle(text('Приморский'));
+    await router.handle(tap('age:2'));
+    await router.handle(text('пн, ср - с 17 до 22 часов'));
+    await router.handle(text('ул Рылеева 32'));
+    await router.handle(tap(CB.confirm));
+
+    expect(await dbUser()).toMatchObject({
+      schedule_raw: 'пн, ср - с 17 до 22 часов',
+      address_raw: 'ул Рылеева 32',
+    });
+  });
+
+  test('если время и адрес пропущены, в базе остаётся пусто', async () => {
+    await answerRequired();
+    await router.handle(tap(CB.mdgJoin));
+    await router.handle(text('Приморский'));
+    await router.handle(tap('age:2'));
+    await router.handle(tap(CB.skip));
+    await router.handle(tap(CB.skip));
+    await router.handle(tap(CB.confirm));
+
+    expect(await dbUser()).toMatchObject({ schedule_raw: null, address_raw: null });
+  });
+
   test('«готов предоставить дом» пишется отдельным статусом', async () => {
     await answerRequired();
     await router.handle(tap(CB.mdgHome));
     await router.handle(text('Приморский, м. Пионерская'));
     await router.handle(tap('age:3'));
+    await router.handle(tap(CB.skip)); // удобное время — необязательный вопрос
+    await router.handle(tap(CB.skip)); // адрес — тоже
     await router.handle(tap(CB.confirm));
 
     expect(await dbUser()).toMatchObject({ mdg_status: 'home', age: '40-55' });
@@ -202,6 +235,8 @@ describe('регистрация через роутер', () => {
     await router.handle(tap(CB.mdgJoin));
     await router.handle(text('улица Ленина, 5'));
     await router.handle(tap('age:2'));
+    await router.handle(tap(CB.skip)); // удобное время — необязательный вопрос
+    await router.handle(tap(CB.skip)); // адрес — тоже
     await router.handle(tap(CB.confirm));
 
     const { rows } = await db.query('SELECT type, status FROM requests');
@@ -314,6 +349,8 @@ describe('заявка не теряется из-за сбоя соседнег
     await router2.handle(tap(CB.mdgOpen));
     await router2.handle(text('Приморский, м. Пионерская'));
     await router2.handle(tap('age:2'));
+    await router2.handle(tap(CB.skip)); // удобное время — необязательный вопрос
+    await router2.handle(tap(CB.skip)); // адрес — тоже
 
     const boom = new Error('база недоступна');
     deps.users.finishRegistration = async () => { throw boom; };
@@ -336,6 +373,8 @@ describe('заявка не теряется из-за сбоя соседнег
     await router2.handle(tap(CB.mdgOpen));
     await router2.handle(text('Приморский, м. Пионерская'));
     await router2.handle(tap('age:2'));
+    await router2.handle(tap(CB.skip)); // удобное время — необязательный вопрос
+    await router2.handle(tap(CB.skip)); // адрес — тоже
 
     const boom = new Error('нет соединения с базой');
     deps.requests.create = async () => { throw boom; };
@@ -360,6 +399,8 @@ describe('заявка не теряется из-за сбоя соседнег
     await router2.handle(tap(CB.mdgOpen));
     await router2.handle(text('Приморский, м. Пионерская'));
     await router2.handle(tap('age:2'));
+    await router2.handle(tap(CB.skip)); // удобное время — необязательный вопрос
+    await router2.handle(tap(CB.skip)); // адрес — тоже
     await router2.handle(tap(CB.confirm));
 
     const created = entries.find((e) => e.level === 'info' && e.obj.effectKind === 'create_request');

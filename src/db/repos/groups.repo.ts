@@ -38,6 +38,8 @@ export interface GroupInput extends HomeGroupInput {
   /** «40 дней»: редактируемое свойство, автоматически включается по совпадению
    *  телефона с завершённой регистрацией участника кампании (см. GroupsRepo). */
   campaignRegistered?: boolean | null;
+  /** «Не направлять»: группа скрыта из подбора. undefined при правке — не менять. */
+  doNotRefer?: boolean | null;
 }
 
 export interface GroupRow {
@@ -65,6 +67,7 @@ export interface GroupRow {
   status: string;
   checked: boolean | null;
   campaign_registered: boolean;
+  do_not_refer: boolean;
   source: GroupSource;
   added_by: string | null;
   added_platform: string | null;
@@ -102,12 +105,14 @@ export interface DashboardGroup {
   /** «40 дней»: редактируемое свойство, автоматически включается по совпадению
    *  телефона ведущего с завершённой регистрацией участника кампании. */
   campaign_registered: boolean;
+  /** «Не направлять»: из подбора такая группа скрыта. */
+  do_not_refer: boolean;
 }
 
 const COLUMNS = `no, leader, open_to_new, phone, phones, age, district, metro, address,
                  composition, day, "time", people, coordinator, feedback_at, comment,
                  training, format, status, checked, campaign_registered, source, added_by,
-                 added_platform, co_leader, co_leader_phone`;
+                 added_platform, co_leader, co_leader_phone, do_not_refer`;
 
 // Колонки типа date приходят строкой «2026-08-20» — так настроен пул (src/db/pool.ts).
 
@@ -128,7 +133,7 @@ export class GroupsRepo {
   ): Promise<GroupRow> {
     const { rows } = await this.db.query<GroupRow>(
       `INSERT INTO groups (${COLUMNS})
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
        RETURNING *`,
       [
         input.no ?? null,
@@ -157,6 +162,7 @@ export class GroupsRepo {
         platform,
         input.coLeader ?? null,
         input.coLeaderPhone ?? null,
+        input.doNotRefer ?? false,
       ],
     );
     const row = rows[0]!;
@@ -180,6 +186,7 @@ export class GroupsRepo {
          "time" = $13, people = $14, coordinator = $15, feedback_at = $16, comment = $17,
          training = $18, format = $19, status = $20, checked = $21, campaign_registered = $22,
          co_leader = $23, co_leader_phone = $24,
+         do_not_refer = COALESCE($25, do_not_refer),
          source = CASE WHEN source = 'таблица' THEN 'ui' ELSE source END
        WHERE id = $1 AND archived_at IS NULL
        RETURNING *`,
@@ -208,6 +215,7 @@ export class GroupsRepo {
         input.campaignRegistered ?? false,
         input.coLeader ?? null,
         input.coLeaderPhone ?? null,
+        input.doNotRefer ?? null,
       ],
     );
     const row = rows[0];
@@ -331,6 +339,7 @@ export class GroupsRepo {
       checked: r.checked,
       source: r.source,
       campaign_registered: r.campaign_registered,
+      do_not_refer: r.do_not_refer,
     }));
   }
 }

@@ -169,6 +169,34 @@ describe('данные для дашборда', () => {
   });
 });
 
+describe('«Не направлять»', () => {
+  test('по умолчанию группа открыта для направления', async () => {
+    const row = await repo.create(MIN, 'ui');
+    expect(row.do_not_refer).toBe(false);
+  });
+
+  test('отметку можно поставить при заведении и снять правкой', async () => {
+    const row = await repo.create({ ...MIN, doNotRefer: true }, 'ui');
+    expect(row.do_not_refer).toBe(true);
+
+    const updated = await repo.update(row.id, { ...MIN, doNotRefer: false });
+    expect(updated!.do_not_refer).toBe(false);
+  });
+
+  test('правка без этого поля отметку не сбрасывает', async () => {
+    // Иначе любая правка, не знающая про отметку, молча возвращала бы группу в подбор.
+    const row = await repo.create({ ...MIN, doNotRefer: true }, 'ui');
+    const updated = await repo.update(row.id, { ...MIN, comment: 'уточнили день' });
+    expect(updated!.do_not_refer).toBe(true);
+  });
+
+  test('дашборд получает отметку вместе с группой', async () => {
+    await repo.create({ ...MIN, doNotRefer: true }, 'ui');
+    const [g] = await repo.forDashboard();
+    expect(g!.do_not_refer).toBe(true);
+  });
+});
+
 describe('«40 дней»: включение по завершению анкеты в боте', () => {
   test('markCampaignRegisteredByPhone включает бейдж у действующих групп с этим номером', async () => {
     const row = await repo.add({ ...MIN, phone: '+79001112233' }, '999', 'telegram');

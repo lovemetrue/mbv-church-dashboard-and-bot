@@ -9,3 +9,26 @@ describe('карточка заявки в дашборде', () => {
     expect(html).toContain("['Адрес', r.address]");
   });
 });
+
+describe('подбор группы в карточке заявки', () => {
+  test('у каждой предложенной группы показаны причины и есть кнопка «Выбрать»', () => {
+    expect(html).toContain('function suggestionsBlock');
+    expect(html).toContain("s.reasons.join(' \\u00b7 ')");
+    expect(html).toContain('suggest-pick');
+  });
+
+  test('блок показан только у открытых заявок «хочу в группу»', () => {
+    expect(html).toContain("r.type !== 'join_group' || r.status === 'Исполнена' || r.status === 'Аннулирована'");
+  });
+
+  test('звезда в списке выбора ставится по подбору сервера, а не по возрасту в браузере', () => {
+    expect(html).toContain('r.suggestions');
+    expect(html).not.toContain('function groupAgeRange');
+  });
+
+  test('в форме группы есть «Не направлять», и в таблице такая группа помечена', () => {
+    expect(html).toContain("name: 'doNotRefer'");
+    expect(html).toContain("from: 'do_not_refer'");
+    expect(html).toContain('g.do_not_refer');
+  });
+});

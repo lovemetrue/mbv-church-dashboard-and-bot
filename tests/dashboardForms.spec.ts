@@ -68,6 +68,13 @@ describe('форма группы', () => {
     expect(r.value.phones).toEqual(['+79001112233']);
   });
 
+  test('отметка «Не направлять» приходит чекбоксом: нет в форме — значит нет', () => {
+    const on = parseGroupForm(form({ ...GROUP_MIN, doNotRefer: 'on' }));
+    const off = parseGroupForm(form(GROUP_MIN));
+    expect(on.ok && on.value.doNotRefer).toBe(true);
+    expect(off.ok && off.value.doNotRefer).toBe(false);
+  });
+
   test('без ведущего не принимается', () => {
     const r = parseGroupForm(form({ ...GROUP_MIN, leader: '  ' }));
     expect(r.ok).toBe(false);

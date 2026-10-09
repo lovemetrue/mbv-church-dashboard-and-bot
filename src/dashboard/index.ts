@@ -10,7 +10,9 @@ import { AdminNotifier } from '../admin/notify.js';
 import { TelegramAdapter } from '../adapters/telegram.adapter.js';
 import { MaxAdapter } from '../adapters/max.adapter.js';
 import type { Platform, PlatformName } from '../core/platform.js';
+import { campaignIsActive } from '../broadcast/schedule.js';
 import { campaignStats } from './campaignStats.js';
+import { withSuggestions } from './suggestions.js';
 import { CampaignRepo } from '../db/repos/campaign.repo.js';
 import { DeliveriesRepo } from '../db/repos/deliveries.repo.js';
 import { createPool } from '../db/pool.js';
@@ -118,15 +120,21 @@ async function main(): Promise<void> {
     secureCookie: env('DASHBOARD_COOKIE_SECURE', 'true') !== 'false',
     // Три набора одним запросом к странице: иначе она делала бы три обращения
     // и часть блоков рисовалась бы раньше остальных.
-    data: async () => ({
-      groups: await groups.forDashboard(),
-      requests: await requests.forDashboard(),
-      coordinators: await coordinators.listActive(),
-      leaderCandidates: await users.leaderCandidates(),
-      users: await users.listRegistered(),
-      campaign: await campaignStats({ users, requests, campaign, deliveries }, schedule),
-      churchOptions: allChurchOptions(),
-    }),
+    data: async () => {
+      const allGroups = await groups.forDashboard();
+      return {
+        groups: allGroups,
+        // Подобранные группы считаем здесь же: так они совпадают с тем, что видно в таблице групп.
+        requests: withSuggestions(await requests.forDashboard(), allGroups, {
+          campaignActive: campaignIsActive(new Date(), schedule),
+        }),
+        coordinators: await coordinators.listActive(),
+        leaderCandidates: await users.leaderCandidates(),
+        users: await users.listRegistered(),
+        campaign: await campaignStats({ users, requests, campaign, deliveries }, schedule),
+        churchOptions: allChurchOptions(),
+      };
+    },
     deleteGroup: async (id) => (await groups.archive(id)) !== null,
     // Что заведено в дашборде, помечается source='ui': видно, откуда взялась запись,
     // и импорт выгрузки такие строки не затирает.

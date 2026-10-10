@@ -4,7 +4,7 @@ import { extname, resolve, sep } from 'node:path';
 import { SessionService } from '../dashboard/sessions.js';
 import { logger } from '../logger.js';
 import { ACTION_STATUS, type RequestActions } from './actions.js';
-import type { ActionError, ActionOk, Me, Role } from './contracts.js';
+import type { ActionError, ActionOk, MatchingRunOk, Me, Role } from './contracts.js';
 import type { Views } from './api/views.js';
 import { homeGroupsLoginPage } from './loginPage.js';
 
@@ -40,6 +40,11 @@ export interface HomeGroupsDeps {
   views: () => Promise<Views>;
   /** Действия координатора (утвердить, отклонить, «нужен звонок»). */
   actions: RequestActions;
+  /** Подбор для новых заявок: запуск и переключатель автоматического режима. */
+  matching: {
+    run(actor: string): Promise<MatchingRunOk>;
+    setAuto(enabled: boolean, actor: string): Promise<void>;
+  };
   /** Сбросить общий снимок после действия, чтобы список сразу показал результат. */
   invalidateViews: () => void;
   /** Кто записан автором в журнале: пока нет личных входов, это логин общего входа. */
@@ -69,6 +74,8 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 class BodyTooLarge extends Error {}
+
+const MATCHING_PATH = /^\/api\/v1\/matching\/(run|auto)$/;
 
 /** `POST /api/v1/requests/12/approve`: номер заявки — цифры, длиннее пятнадцати не бывает (Number безопасен). */
 const ACTION_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/(approve|reject|need-call)$/;
@@ -231,16 +238,19 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
    * на межсайтовый POST не уходит, а тело обязано быть JSON — форма с чужого сайта так отправить
    * не может (для этого нужен предварительный запрос, который наш сервис не разрешает).
    */
-  async function handleAction(
-    req: IncomingMessage, res: ServerResponse, requestId: number, action: string, sid: string | undefined,
-  ): Promise<void> {
-    if (!(await deps.auth.verify(sid))) { sendJson(res, 401, { error: 'unauthorized' }); return; }
+  /**
+   * Общая часть изменяющих запросов: вход, JSON-тело нужного размера, автор для журнала. Отвечает
+   * сам и возвращает null, если дальше идти нельзя.
+   */
+  async function readAuthedJson(
+    req: IncomingMessage, res: ServerResponse, sid: string | undefined,
+  ): Promise<{ role: Role; actor: string; body: unknown } | null> {
     const role = await deps.auth.roleOf(sid);
-    if (!role) { sendJson(res, 401, { error: 'unauthorized' }); return; }
+    if (!role || !(await deps.auth.verify(sid))) { sendJson(res, 401, { error: 'unauthorized' }); return null; }
 
     if (!(req.headers['content-type'] ?? '').toLowerCase().startsWith('application/json')) {
       sendJson(res, 415, { error: 'bad_request', message: 'Ожидается JSON.' } satisfies ActionError);
-      return;
+      return null;
     }
     let raw: string;
     try {
@@ -249,17 +259,27 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       if (!(err instanceof BodyTooLarge)) throw err;
       res.setHeader('connection', 'close');
       sendJson(res, 413, { error: 'bad_request', message: 'Слишком большой запрос.' } satisfies ActionError);
-      return;
+      return null;
     }
-    let body: unknown;
     try {
-      body = JSON.parse(raw);
+      return { role, actor: deps.actorName(role), body: JSON.parse(raw) as unknown };
     } catch {
       sendJson(res, 400, { error: 'bad_request', message: 'Не удалось прочитать запрос.' } satisfies ActionError);
-      return;
+      return null;
     }
+  }
 
-    const actor = deps.actorName(role);
+  /**
+   * Действия над заявкой. Защита от чужих страниц та же, что у старого дашборда: кука `SameSite=Lax`
+   * на межсайтовый POST не уходит, а тело обязано быть JSON — форма с чужого сайта так отправить
+   * не может (для этого нужен предварительный запрос, который наш сервис не разрешает).
+   */
+  async function handleAction(
+    req: IncomingMessage, res: ServerResponse, requestId: number, action: string, sid: string | undefined,
+  ): Promise<void> {
+    const call = await readAuthedJson(req, res, sid);
+    if (!call) return;
+    const { actor, body } = call;
     const outcome = action === 'approve' ? await deps.actions.approve(requestId, body, actor)
       : action === 'reject' ? await deps.actions.reject(requestId, body, actor)
       : await deps.actions.setNeedCall(requestId, body, actor);
@@ -274,9 +294,39 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     sendJson(res, 200, { ok: true } satisfies ActionOk);
   }
 
+  /** Подбор для новых заявок: запуск может любой вход, автоматический режим переключает только полный. */
+  async function handleMatching(
+    req: IncomingMessage, res: ServerResponse, action: string, sid: string | undefined,
+  ): Promise<void> {
+    const call = await readAuthedJson(req, res, sid);
+    if (!call) return;
+    const { role, actor, body } = call;
+
+    if (action === 'run') {
+      const result = await deps.matching.run(actor);
+      logger.info({ actor, ...result }, 'домашние группы: подбор по кнопке');
+      sendJson(res, 200, result);
+      return;
+    }
+    if (role !== 'super') {
+      sendJson(res, 403, { error: 'forbidden', message: 'Автоматический подбор включает только полный вход.' } satisfies ActionError);
+      return;
+    }
+    const enabled = typeof body === 'object' && body !== null ? (body as Record<string, unknown>)['enabled'] : undefined;
+    if (typeof enabled !== 'boolean') {
+      sendJson(res, 400, { error: 'bad_request', message: 'Нужно указать enabled: true или false.' } satisfies ActionError);
+      return;
+    }
+    await deps.matching.setAuto(enabled, actor);
+    logger.info({ actor, enabled }, 'домашние группы: автоматический подбор переключён');
+    sendJson(res, 200, { ok: true } satisfies ActionOk);
+  }
+
   async function handleApi(req: IncomingMessage, res: ServerResponse, path: string, sid: string | undefined): Promise<void> {
     const act = req.method === 'POST' ? ACTION_PATH.exec(path) : null;
     if (act) { await handleAction(req, res, Number(act[1]), act[2]!, sid); return; }
+    const match = req.method === 'POST' ? MATCHING_PATH.exec(path) : null;
+    if (match) { await handleMatching(req, res, match[1]!, sid); return; }
     // Всё остальное — только чтение. Любой другой не-GET отвечает 404, как изменяющие маршруты
     // старого дашборда: так ничего не меняется «случайно» и нечем воспользоваться с чужой страницы.
     if (req.method !== 'GET') { sendJson(res, 404, { error: 'not_found' }); return; }

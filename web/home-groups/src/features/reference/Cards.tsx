@@ -27,7 +27,20 @@ export function GroupCard({ g, onClose }: { g: GroupItem; onClose: () => void })
   const rows: KvRow[] = [
     { label: 'Возраст', value: orNone(g.ageText) },
     { label: 'Когда', value: g.whenText ?? <Pill tone="human">{ru.reference.notSpecified}</Pill> },
-    { label: 'Места', value: ru.reference.seats(g.people, g.capacity, g.free) },
+    {
+      label: 'Места',
+      value: (
+        <>
+          {ru.reference.seats(g.people, g.capacity, g.free)}
+          {g.placedNew > 0 && (
+            <span className={styles.placedNote}>
+              <b className={styles.placedMark}>{ru.reference.placedNew(g.placedNew)}</b>
+              {ru.reference.placedNewHint}
+            </span>
+          )}
+        </>
+      ),
+    },
     { label: 'Подтверждена', value: verifiedText(g.verifiedDaysAgo) },
     { label: 'Координатор', value: orNone(g.coordinator) },
     { label: 'Формат', value: orNone(g.format) },

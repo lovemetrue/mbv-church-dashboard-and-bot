@@ -20,6 +20,9 @@
  *   POST /api/v1/requests/:id/approve   ApproveBody   → ActionOk | ActionError
  *   POST /api/v1/requests/:id/reject    RejectBody    → ActionOk | ActionError
  *   POST /api/v1/requests/:id/need-call NeedCallBody  → ActionOk | ActionError
+ *
+ *   POST /api/v1/matching/run           (тело {})     → MatchingRunOk | ActionError
+ *   POST /api/v1/matching/auto          MatchingAutoBody → ActionOk | ActionError (только super, иначе 403 forbidden)
  */
 
 export type Role = 'admin' | 'super';
@@ -203,8 +206,37 @@ export interface RequestItem {
   log: LogEntry[];
 }
 
+/**
+ * Подбор для новых заявок. Сервис хранит предложения («накопленные сопоставления»): раз
+ * предложенная группа не меняется, пока остаётся доступной, а новые заявки подбираются вокруг
+ * уже предложенных. Первый раз подбор запускает кнопка, потом его можно включить автоматически.
+ */
+export interface MatchingStatus {
+  /** Включён ли автоматический подбор новых заявок (каждые пару минут). */
+  auto: boolean;
+  /** Последний запуск (по кнопке или автоматически); null — ещё не запускали. */
+  lastRun: { at: string; created: number; replaced: number; actor: string } | null;
+  /** Сколько открытых заявок сейчас без сохранённого предложения, хотя группа для них находится. */
+  waiting: number;
+}
+
+export interface MatchingRunOk {
+  ok: true;
+  /** Новых предложений. */
+  created: number;
+  /** Предложений, которые пришлось заменить (группа стала недоступна). */
+  replaced: number;
+  /** Заявок, у которых предложение уже есть и не изменилось. */
+  unchanged: number;
+}
+
+export interface MatchingAutoBody {
+  enabled: boolean;
+}
+
 export interface RequestsView {
   generatedAt: string;
+  matching: MatchingStatus;
   /** Без отказов; порядок — как показывать: перезвонить, готово, нужна помощь, утверждено. */
   items: RequestItem[];
   counters: Counters;
@@ -240,11 +272,11 @@ export interface ActionOk {
 
 /**
  * Ошибка действия. Коды: 400 `bad_request`; 404 `not_found`;
- * 409 `already_closed` (заявку уже закрыли), `group_unavailable` (группа в архиве, закрыта или
+ * 403 `forbidden` (нужен вход super_mbv_admin); 409 `already_closed` (заявку уже закрыли), `group_unavailable` (группа в архиве, закрыта или
  * «Не направлять»), `group_full` (мест нет; повторить с `force: true`).
  */
 export interface ActionError {
-  error: 'bad_request' | 'not_found' | 'already_closed' | 'group_unavailable' | 'group_full';
+  error: 'bad_request' | 'not_found' | 'already_closed' | 'group_unavailable' | 'group_full' | 'forbidden';
   message: string;
 }
 
@@ -273,6 +305,11 @@ export interface GroupItem extends GroupBrief {
   verifiedDaysAgo: number | null;
   comment: string | null;
   health: { score: number; items: HealthItem[] };
+  /**
+   * Сколько человек утвердил сервис после последней обратной связи ведущего. Они уже добавлены к
+   * `people`: ведущий обновит число сам, и счётчик обнулится (считаем только утверждённых позже).
+   */
+  placedNew: number;
   /** Кого план направляет в эту группу сейчас. */
   plannedRequests: { id: number; fio: string; ageLabel: string | null; place: string | null; confidence: number }[];
 }

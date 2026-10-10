@@ -29,6 +29,21 @@ interface RequestState {
   callback: boolean;
 }
 
+export interface DesiredProposal {
+  requestId: number;
+  groupId: number;
+  confidence: number;
+  /** Причины подбора как показываются человеку: [{tone, text}]. */
+  rationale: unknown;
+}
+
+export interface SyncResult {
+  created: number;
+  /** Заменённые и снятые предложения. */
+  replaced: number;
+  unchanged: number;
+}
+
 export class PlacementRepo {
   constructor(private readonly db: Pool) {}
 
@@ -208,4 +223,85 @@ export class PlacementRepo {
     for (const r of rows) byRequest.set(Number(r.request_id), [...(byRequest.get(Number(r.request_id)) ?? []), Number(r.group_id)]);
     return byRequest;
   }
+
+  /** Действующие предложения: заявка → группа и кто предложил. Закрепляют выбор при следующем расчёте. */
+  async activeProposals(): Promise<Map<number, { groupId: number | null; source: 'script' | 'agent' | 'manual' }>> {
+    const { rows } = await this.db.query<{ request_id: number; group_id: number | null; source: 'script' | 'agent' | 'manual' }>(
+      `SELECT request_id, group_id, source FROM placement_proposals WHERE status = 'proposed'`,
+    );
+    return new Map(rows.map((r) => [Number(r.request_id), { groupId: r.group_id === null ? null : Number(r.group_id), source: r.source }]));
+  }
+
+  /**
+   * Сохраняет в базе то, что предлагает расчёт: новым заявкам — предложение, изменившимся —
+   * замену, пропавшим (группа заполнилась, закрылась) — снятие. Остальное не трогает: накопленное
+   * не меняется само, пока остаётся доступным. Один запуск за раз (блокировка), иначе кнопка и
+   * автоматический запуск, нажатые вместе, переписывали бы друг друга.
+   */
+  async syncProposals(desired: readonly DesiredProposal[], actor: string): Promise<SyncResult> {
+    return this.tx(async (c) => {
+      await c.query(`SELECT pg_advisory_xact_lock(hashtext('hg_matching'))`);
+      const { rows } = await c.query<{ id: number; request_id: number; group_id: number }>(
+        `SELECT id, request_id, group_id FROM placement_proposals WHERE status = 'proposed' AND group_id IS NOT NULL`,
+      );
+      const current = new Map(rows.map((r) => [Number(r.request_id), r]));
+      const wanted = new Set(desired.map((d) => d.requestId));
+      const result: SyncResult = { created: 0, replaced: 0, unchanged: 0 };
+
+      const insert = (d: DesiredProposal) =>
+        c.query(
+          `INSERT INTO placement_proposals (request_id, group_id, source, confidence, rationale)
+           VALUES ($1, $2, 'script', $3, $4::jsonb)`,
+          [d.requestId, d.groupId, d.confidence, JSON.stringify(d.rationale)],
+        );
+      const supersede = (id: number) =>
+        c.query(
+          `UPDATE placement_proposals SET status = 'superseded', decided_by = $2, decided_at = now() WHERE id = $1`,
+          [id, actor],
+        );
+
+      for (const d of desired) {
+        const had = current.get(d.requestId);
+        if (!had) { await insert(d); result.created += 1; continue; }
+        if (Number(had.group_id) === d.groupId) { result.unchanged += 1; continue; }
+        await supersede(Number(had.id));
+        await insert(d);
+        result.replaced += 1;
+      }
+      for (const [requestId, had] of current) {
+        if (wanted.has(requestId)) continue;
+        await supersede(Number(had.id));
+        result.replaced += 1;
+      }
+
+      await c.query(
+        `INSERT INTO audit_log (actor, service, action, entity_type, after) VALUES ($1, 'home-groups', 'matching.run', 'matching', $2::jsonb)`,
+        [actor, JSON.stringify(result)],
+      );
+      return result;
+    });
+  }
+
+  /**
+   * Сколько человек сервис утвердил в группу после последней обратной связи ведущего. Ведущий
+   * сообщает число участников — оно уже включает тех, кого утвердили до этой даты, — а позже
+   * утверждённых в нём ещё нет. Считаем только утверждения сервиса (по журналу) и только те,
+   * что остались в силе: заявку вернули в работу или перенесли в другую группу — не считаем.
+   */
+  async placedSinceFeedback(timeZone = 'Europe/Moscow'): Promise<Map<number, number>> {
+    const { rows } = await this.db.query<{ group_id: number; n: number }>(
+      `SELECT g.id AS group_id, count(DISTINCT r.id)::int AS n
+         FROM audit_log a
+         JOIN requests r ON r.id = a.entity_id
+         JOIN groups g ON g.id = (a.after->>'group_id')::bigint
+        WHERE a.action = 'request.approve' AND a.entity_type = 'request'
+          AND r.status = 'Исполнена' AND r.group_id = g.id AND r.archived_at IS NULL
+          AND g.archived_at IS NULL
+          AND (g.feedback_at IS NULL OR (a.at AT TIME ZONE $1)::date > g.feedback_at)
+        GROUP BY g.id`,
+      [timeZone],
+    );
+    return new Map(rows.map((r) => [Number(r.group_id), r.n]));
+  }
 }
+

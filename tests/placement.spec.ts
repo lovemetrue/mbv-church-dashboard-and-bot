@@ -210,3 +210,134 @@ describe('нужен звонок', () => {
     expect(await repo.setNeedCall(r, true, 'a')).toMatchObject({ ok: false, error: 'already_closed' });
   });
 });
+
+describe('накопленные предложения', () => {
+  const desired = (requestId: number, groupId: number) => ({
+    requestId, groupId, confidence: 80, rationale: [{ tone: 'good', text: 'тот же район' }],
+  });
+  const active = async () =>
+    (await db.query(`SELECT request_id, group_id, source, status, confidence, rationale FROM placement_proposals WHERE status = 'proposed' ORDER BY request_id`)).rows;
+
+  test('новая заявка получает сохранённое предложение расчёта с уверенностью и причинами', async () => {
+    const g = await group();
+    const r = await request();
+    expect(await repo.syncProposals([desired(r, g)], 'mbv_admin')).toEqual({ created: 1, replaced: 0, unchanged: 0 });
+    expect(await active()).toMatchObject([{ request_id: r, group_id: g, source: 'script', confidence: 80, rationale: [{ text: 'тот же район' }] }]);
+  });
+
+  test('повторный запуск ничего не меняет: накопленное остаётся прежним', async () => {
+    const g = await group();
+    const r = await request();
+    await repo.syncProposals([desired(r, g)], 'a');
+    expect(await repo.syncProposals([desired(r, g)], 'a')).toEqual({ created: 0, replaced: 0, unchanged: 1 });
+    expect((await proposals())).toHaveLength(1);
+  });
+
+  test('если расчёт теперь предлагает другую группу, прежнее предложение заменяется, а не копится рядом', async () => {
+    const g1 = await group();
+    const g2 = await group({ leader: 'Пётр' });
+    const r = await request();
+    await repo.syncProposals([desired(r, g1)], 'a');
+    expect(await repo.syncProposals([desired(r, g2)], 'a')).toEqual({ created: 0, replaced: 1, unchanged: 0 });
+    expect((await proposals()).map((p) => p.status).sort()).toEqual(['proposed', 'superseded']);
+    expect((await active())[0].group_id).toBe(g2);
+  });
+
+  test('предложение, которого расчёт больше не даёт (группа заполнилась), снимается', async () => {
+    const g = await group();
+    const r = await request();
+    await repo.syncProposals([desired(r, g)], 'a');
+    expect(await repo.syncProposals([], 'a')).toEqual({ created: 0, replaced: 1, unchanged: 0 });
+    expect(await active()).toHaveLength(0);
+  });
+
+  test('утверждённые и отклонённые предложения запуск не трогает', async () => {
+    const g = await group();
+    const r = await request();
+    await repo.reject(r, g, 'far', null, 'a');
+    await repo.syncProposals([], 'a');
+    expect((await proposals())[0].status).toBe('rejected');
+  });
+
+  test('предложение модели без группы (только район) запуск не снимает', async () => {
+    const r = await request();
+    await db.query(`INSERT INTO placement_proposals (request_id, group_id, source) VALUES ($1, NULL, 'agent')`, [r]);
+    await repo.syncProposals([], 'a');
+    expect(await active()).toHaveLength(1);
+  });
+
+  test('запуск записывает сводку в журнал', async () => {
+    const g = await group();
+    const r = await request();
+    await repo.syncProposals([desired(r, g)], 'auto');
+    const entry = (await audits()).find((a) => a.action === 'matching.run')!;
+    expect(entry).toMatchObject({ actor: 'auto', entity_type: 'matching', after: { created: 1, replaced: 0, unchanged: 0 } });
+  });
+
+  test('одновременные запуски не создают двух действующих предложений на заявку', async () => {
+    const g = await group();
+    const r = await request();
+    await Promise.all([repo.syncProposals([desired(r, g)], 'a'), repo.syncProposals([desired(r, g)], 'b')]);
+    expect(await active()).toHaveLength(1);
+  });
+
+  test('действующие предложения читаются как «заявка → группа и источник»', async () => {
+    const g = await group();
+    const r = await request();
+    await repo.syncProposals([desired(r, g)], 'a');
+    expect((await repo.activeProposals()).get(r)).toEqual({ groupId: g, source: 'script' });
+  });
+
+  test('утверждение без сохранённого предложения по-прежнему работает рядом с накопленными', async () => {
+    const g = await group();
+    const r = await request();
+    await repo.syncProposals([desired(r, g)], 'a');
+    expect(await repo.approve(r, g, 'a', OPTS)).toEqual({ ok: true });
+    expect((await proposals())[0].status).toBe('approved');
+  });
+});
+
+describe('счётчик участников: утверждённые после обратной связи', () => {
+  async function approvedAt(groupId: number, at: string): Promise<number> {
+    const r = await request();
+    await repo.approve(r, groupId, 'a', { force: true, defaultCapacity: 10 });
+    await db.query(`UPDATE audit_log SET at = $2 WHERE entity_id = $1 AND action = 'request.approve'`, [r, at]);
+    return r;
+  }
+
+  test('считаются утверждения позже даты обратной связи; раньше или в тот же день — нет', async () => {
+    const g = await group();
+    await db.query(`UPDATE groups SET feedback_at = '2026-10-05' WHERE id = $1`, [g]);
+    await approvedAt(g, '2026-10-04T10:00:00Z');
+    await approvedAt(g, '2026-10-05T10:00:00Z');
+    await approvedAt(g, '2026-10-06T10:00:00Z');
+    await approvedAt(g, '2026-10-08T10:00:00Z');
+    expect((await repo.placedSinceFeedback()).get(g)).toBe(2);
+  });
+
+  test('без даты обратной связи считаются все утверждения сервиса', async () => {
+    const g = await group();
+    await approvedAt(g, '2026-10-04T10:00:00Z');
+    await approvedAt(g, '2026-10-08T10:00:00Z');
+    expect((await repo.placedSinceFeedback()).get(g)).toBe(2);
+  });
+
+  test('заявка, которую потом вернули в работу или перенесли в другую группу, не считается', async () => {
+    const g1 = await group();
+    const g2 = await group({ leader: 'Пётр' });
+    const r = await approvedAt(g1, '2026-10-08T10:00:00Z');
+    await db.query(`UPDATE requests SET group_id = $2 WHERE id = $1`, [r, g2]);
+    expect((await repo.placedSinceFeedback()).get(g1)).toBeUndefined();
+    expect((await repo.placedSinceFeedback()).get(g2)).toBeUndefined();
+
+    const r2 = await approvedAt(g1, '2026-10-08T11:00:00Z');
+    await db.query(`UPDATE requests SET status = 'В работе' WHERE id = $1`, [r2]);
+    expect((await repo.placedSinceFeedback()).get(g1)).toBeUndefined();
+  });
+
+  test('утверждения, сделанные не сервисом (заявки из таблицы), в счётчик не попадают', async () => {
+    const g = await group();
+    await db.query(`INSERT INTO requests (type, status, fio, group_id, origin) VALUES ('join_group', 'Исполнена', 'Из таблицы', $1, 'таблица')`, [g]);
+    expect((await repo.placedSinceFeedback()).size).toBe(0);
+  });
+});

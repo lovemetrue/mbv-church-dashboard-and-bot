@@ -17,6 +17,7 @@ import type {
   GroupItem,
   GroupsView,
   HealthItem,
+  MatchingStatus,
   MatrixRow,
   NoPlan,
   PeopleView,
@@ -310,7 +311,13 @@ export function buildRequests(): RequestsView {
   const items = all
     .filter((x) => x.bucket !== 'cancelled')
     .sort((a, b) => BUCKET_ORDER[a.bucket] - BUCKET_ORDER[b.bucket]);
-  return { generatedAt: GENERATED_AT, items, counters };
+  // В фикстурах подбор не запускали: ждёт каждая открытая заявка, для которой нашлась группа.
+  const matching: MatchingStatus = {
+    auto: false,
+    lastRun: null,
+    waiting: items.filter((x) => x.bucket !== 'done' && x.proposal).length,
+  };
+  return { generatedAt: GENERATED_AT, matching, items, counters };
 }
 
 export function buildToday(): TodayView {
@@ -414,6 +421,7 @@ export function buildGroups(): GroupsView {
     verifiedDaysAgo: g.verifiedDaysAgo,
     comment: g.comment,
     health: healthOf(g),
+    placedNew: 0,
     plannedRequests: (plan.takenBy.get(g.id) ?? []).map((id) => {
       const req = requests.find((x) => x.id === id)!;
       return {

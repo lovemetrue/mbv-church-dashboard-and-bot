@@ -349,3 +349,23 @@
   color: var(--muted);
   font-size: 13px;
 }
+
+/* Пометка «+N утверждено после обратной связи» рядом с числом мест */
+.placedMark {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ok);
+  white-space: nowrap;
+}
+.placedNote {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.placedNote .placedMark {
+  display: block;
+  margin-left: 0;
+  white-space: normal;
+}

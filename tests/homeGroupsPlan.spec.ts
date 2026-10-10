@@ -371,6 +371,19 @@ describe('план: выбор группы', () => {
     expect(proposal(planFor([r], [best, full]).entries.get(r.id)).main.groupId).toBe(56);
   });
 
+  test('закреплённая заявка занимает своё место раньше «трудных»: накопленное предложение не отнимают новые заявки', () => {
+    // Единственное свободное место в g. Заявка «трудная» (подходит только g) без закрепления забрала бы его первой.
+    const g = group({ id: 70, people: 9, ageRange: [25, 35] });
+    const other = group({ id: 71, people: 2, ageRange: [25, 35], district: 'Приморский' });
+    const hard = request({ id: 9001, ageRange: [25, 35] });
+    const keeper = request({ id: 9002, pinnedGroupId: 70 });
+    // «Трудная» заявка не может в other: он отказан ей раньше, значит g — её единственный вариант.
+    const hardOnlyG = { ...hard, rejectedGroupIds: [71] };
+    const plan = planFor([hardOnlyG, keeper], [g, other]);
+    expect(proposal(plan.entries.get(keeper.id)).main.groupId).toBe(70);
+    expect(plan.entries.get(hard.id)).toMatchObject({ kind: 'none', code: 'taken' });
+  });
+
   test('запасных вариантов не больше двух, главный среди них не повторяется', () => {
     const groups = [1, 2, 3, 4].map((n) => group({ id: 60 + n, people: n }));
     const r = request();

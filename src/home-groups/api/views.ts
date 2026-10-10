@@ -7,7 +7,7 @@ import { groupCode } from '../../core/groups.js';
 import { formatPhone } from '../../core/phone.js';
 import type {
   Bucket, Candidate, Counters, CoordinatorItem, CoordinatorsView, GroupBrief, GroupItem, GroupsView,
-  HealthItem, LogEntry, NoPlan, PeopleView, PersonItem, Proposal, RequestItem, RequestsView, TodayView,
+  HealthItem, LogEntry, MatchingStatus, NoPlan, PeopleView, PersonItem, Proposal, RequestItem, RequestsView, TodayView,
 } from '../contracts.js';
 import type {
   PlanEngineApi, PlanEntry, PlanEntryProposal, PlanGroup, PlanOutput, PlanRequest, ScoredGroup,
@@ -24,6 +24,15 @@ export interface ViewsInput {
   rejectedGroups?: ReadonlyMap<number, readonly number[]>;
   /** Действия над заявками из журнала: показываются в ленте карточки. */
   audit?: readonly AuditRow[];
+  /**
+   * Накопленные предложения (заявка → группа и кто предложил). Они закрепляют выбор: движок
+   * сохраняет группу, пока она остаётся доступной, и подбирает новые заявки вокруг неё.
+   */
+  activeProposals?: ReadonlyMap<number, { groupId: number | null; source: 'script' | 'agent' | 'manual' }>;
+  /** Сколько человек утвердил сервис в группу после последней обратной связи ведущего. */
+  placedNew?: ReadonlyMap<number, number>;
+  /** Настройки подбора: автоматический ли он и когда запускали в последний раз. */
+  matching?: { auto: boolean; lastRun: MatchingStatus['lastRun'] };
 }
 
 export interface ViewsOptions {
@@ -104,6 +113,17 @@ function auditText(a: AuditRow): string | null {
   }
 }
 
+/** Число участников с учётом утверждённых после обратной связи; неизвестное остаётся неизвестным, пока никого не утвердили. */
+const effectivePeople = (people: number | null, placed: number): number | null =>
+  placed > 0 ? (people ?? 0) + placed : people;
+
+function sourceOfProposal(
+  stored: { groupId: number | null; source: 'script' | 'agent' | 'manual' } | undefined, shownGroupId: number,
+): 'script' | 'agent' {
+  // «manual» — выбор координатора; в интерфейсе он такой же «не расчёт»: показываем как расчёт, а не как модель.
+  return stored && stored.groupId === shownGroupId && stored.source === 'agent' ? 'agent' : 'script';
+}
+
 const nonBlank = (s: string | null | undefined): string | null => {
   const t = s?.trim();
   return t ? t : null;
@@ -136,6 +156,13 @@ function joinParts(parts: (string | null | undefined)[], sep: string): string | 
  * показывает всё, а отсеивать неподходящее для подбора — забота самого движка, а не этого слоя.
  */
 export function buildViews(input: ViewsInput, engine: PlanEngineApi, now: Date, options: ViewsOptions = {}): Views {
+  return buildViewsWithPlan(input, engine, now, options).views;
+}
+
+/** Представления и сам план: автоматический подбор берёт из плана то, что нужно сохранить. */
+export function buildViewsWithPlan(
+  input: ViewsInput, engine: PlanEngineApi, now: Date, options: ViewsOptions = {},
+): { views: Views; plan: PlanOutput; openRequestIds: number[] } {
   const defaultCapacity = options.defaultCapacity ?? DEFAULT_CAPACITY;
   const timeZone = options.timeZone ?? DEFAULT_TIME_ZONE;
   const today = localIsoDate(now, timeZone);
@@ -156,7 +183,8 @@ export function buildViews(input: ViewsInput, engine: PlanEngineApi, now: Date, 
       slot: when.slot,
       // Улицу для подбора отдельной колонкой ещё не завели, а закрытый `address` сюда нельзя ни при каких условиях.
       street: null,
-      people: g.people,
+      // Утверждённых сервисом после обратной связи ведущий в число ещё не внёс — добавляем сами.
+      people: effectivePeople(g.people, input.placedNew?.get(g.id) ?? 0),
       capacity: defaultCapacity,
       status: g.status,
       // Пусто = принимает: «НЕТ» ставят явно, когда группа полна или не хочет новых.
@@ -205,7 +233,7 @@ export function buildViews(input: ViewsInput, engine: PlanEngineApi, now: Date, 
     rejectedGroupIds: [...(input.rejectedGroups?.get(r.id) ?? [])],
     avoidDays: [],
     avoidSlots: [],
-    pinnedGroupId: null,
+    pinnedGroupId: input.activeProposals?.get(r.id)?.groupId ?? null,
     waitingDays: daysSince(validIsoDate(r.date), today),
   });
 
@@ -235,13 +263,13 @@ export function buildViews(input: ViewsInput, engine: PlanEngineApi, now: Date, 
     return group ? { group, score: s.score, confidence, reasons: s.reasons } : null;
   };
 
-  const proposalOf = (e: PlanEntryProposal): Proposal | null => {
+  const proposalOf = (e: PlanEntryProposal, requestId: number): Proposal | null => {
     const main = candidate(e.main, e.confidence);
     if (!main) return null;
     const displacedGroup = e.displaced ? brief(e.displaced.groupId) : null;
     return {
-      // Расчёт сервиса: предложения языковой модели придут отдельно, из таблицы предложений.
-      source: 'script',
+      // Источник — тот, кто предложил эту группу и сохранил предложение; иначе это свежий расчёт.
+      source: sourceOfProposal(input.activeProposals?.get(requestId), main.group.id),
       main,
       knownParams: e.knownParams,
       alternatives: e.alternatives.map((a) => candidate(a, null)).filter((c): c is Candidate => c !== null),
@@ -249,10 +277,10 @@ export function buildViews(input: ViewsInput, engine: PlanEngineApi, now: Date, 
     };
   };
 
-  const splitEntry = (entry: PlanEntry | undefined): { proposal: Proposal | null; noPlan: NoPlan | null } => {
+  const splitEntry = (entry: PlanEntry | undefined, requestId: number): { proposal: Proposal | null; noPlan: NoPlan | null } => {
     if (!entry) return { proposal: null, noPlan: null };
     if (entry.kind === 'none') return { proposal: null, noPlan: { code: entry.code, reason: entry.reason } };
-    const proposal = proposalOf(entry);
+    const proposal = proposalOf(entry, requestId);
     // Движок назвал группу, которой нет в справочнике, — не показываем полуплан.
     return proposal
       ? { proposal, noPlan: null }
@@ -287,7 +315,7 @@ export function buildViews(input: ViewsInput, engine: PlanEngineApi, now: Date, 
     const bucket = bucketById.get(r.id)!;
     if (bucket === 'cancelled') continue;
     const pr = planRequests.get(r.id)!;
-    const { proposal, noPlan } = splitEntry(plan.entries.get(r.id));
+    const { proposal, noPlan } = splitEntry(plan.entries.get(r.id), r.id);
     const finalBrief = bucket === 'done' && r.group_id !== null ? brief(r.group_id) : null;
     requestItems.push({
       id: r.id,
@@ -351,6 +379,7 @@ export function buildViews(input: ViewsInput, engine: PlanEngineApi, now: Date, 
       verifiedDaysAgo: p.verifiedDaysAgo,
       comment: nonBlank(g.comment),
       health: groupHealth(g, p),
+      placedNew: input.placedNew?.get(g.id) ?? 0,
       plannedRequests: plannedByGroup.get(g.id) ?? [],
     };
   });
@@ -408,7 +437,15 @@ export function buildViews(input: ViewsInput, engine: PlanEngineApi, now: Date, 
     };
   });
 
-  return {
+  // Ждут подбора: у открытой заявки есть что предложить, но предложение ещё не сохранено
+  // (новая заявка или прежнее стало недоступно). Их и подбирает кнопка или автоматический запуск.
+  let waiting = 0;
+  for (const r of openRequests) {
+    const entry = plan.entries.get(r.id);
+    if (entry?.kind === 'proposal' && input.activeProposals?.get(r.id)?.groupId !== entry.main.groupId) waiting += 1;
+  }
+
+  const views: Views = {
     today: {
       generatedAt,
       counters,
@@ -420,11 +457,17 @@ export function buildViews(input: ViewsInput, engine: PlanEngineApi, now: Date, 
       clusters: summary.clusters,
       singles: summary.singles,
     },
-    requests: { generatedAt, items: requestItems, counters },
+    requests: {
+      generatedAt,
+      matching: { auto: input.matching?.auto ?? false, lastRun: input.matching?.lastRun ?? null, waiting },
+      items: requestItems,
+      counters,
+    },
     groups: { generatedAt, items: groupItems },
     people: { generatedAt, items: people },
     coordinators: { generatedAt, items: coordinatorItems },
   };
+  return { views, plan, openRequestIds: openRequests.map((r) => r.id) };
 }
 
 /**

@@ -69,3 +69,16 @@ export function healthTone(score: number): HealthTone {
   if (score >= 60) return 'warn';
   return 'crit';
 }
+
+/**
+ * «9 октября, 12:30» — дата и время по-русски, в часовом поясе браузера. Для «последнего запуска»:
+ * год не нужен, а время нужно, потому что автоматический подбор идёт несколько раз в день.
+ */
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const date = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  return `${date}, ${time}`;
+}

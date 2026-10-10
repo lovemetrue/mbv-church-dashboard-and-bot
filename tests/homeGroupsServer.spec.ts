@@ -43,6 +43,7 @@ interface ActionCall { name: string; id: number; body: unknown; actor: string }
 interface Started {
   base: string; viewsCalls: () => number; close: () => void; setViews: (f: () => Promise<ReturnType<typeof sampleViews>>) => void;
   actionCalls: ActionCall[]; invalidations: () => number; setOutcome: (o: ActionOutcome) => void;
+  matchingCalls: { name: string; actor: string; enabled?: boolean }[];
 }
 
 async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempts?: number } = {}): Promise<Started> {
@@ -50,6 +51,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
   let invalidations = 0;
   let outcome: ActionOutcome = { ok: true };
   const actionCalls: ActionCall[] = [];
+  const matchingCalls: { name: string; actor: string; enabled?: boolean }[] = [];
   const record = (name: string) => async (id: number, body: unknown, actor: string): Promise<ActionOutcome> => {
     actionCalls.push({ name, id, body, actor });
     return outcome;
@@ -57,6 +59,10 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
   let views: () => Promise<ReturnType<typeof sampleViews>> = async () => sampleViews();
   const server = createHomeGroupsServer({
     actions: { approve: record('approve'), reject: record('reject'), setNeedCall: record('need-call') },
+    matching: {
+      run: async (actor) => { matchingCalls.push({ name: 'run', actor }); return { ok: true, created: 2, replaced: 1, unchanged: 3 }; },
+      setAuto: async (enabled, actor) => { matchingCalls.push({ name: 'auto', actor, enabled }); },
+    },
     invalidateViews: () => { invalidations += 1; },
     actorName: (role) => (role === 'super' ? SUPER.login : REGULAR.login),
     auth: new SessionService(memoryStore(), {
@@ -74,7 +80,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
     viewsCalls: () => calls,
     close: () => { server.close(); },
     setViews: (f) => { views = f; },
-    actionCalls, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
+    actionCalls, matchingCalls, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
   };
 }
 
@@ -616,5 +622,69 @@ describe('действия координатора над заявкой', () =
     const g = await fetch(`${app.base}/api/v1/requests/1/approve`, { headers: { cookie } });
     expect(g.status).toBe(404);
     expect(app.actionCalls.length).toBe(before);
+  });
+});
+
+
+describe('подбор для новых заявок', () => {
+  const call = (cookie: string | null, name: string, body: unknown, headers: Record<string, string> = {}) =>
+    fetch(`${app.base}/api/v1/matching/${name}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}), ...headers },
+      body: typeof body === 'string' ? body : JSON.stringify(body),
+    });
+
+  test('без сессии подбор не запускается', async () => {
+    const before = app.matchingCalls.length;
+    expect((await call(null, 'run', {})).status).toBe(401);
+    expect((await call(null, 'auto', { enabled: true })).status).toBe(401);
+    expect(app.matchingCalls.length).toBe(before);
+  });
+
+  test('запуск доступен обычному входу и отвечает итогом; автор — логин входа', async () => {
+    const cookie = await signIn(REGULAR);
+    const r = await call(cookie, 'run', {});
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, created: 2, replaced: 1, unchanged: 3 });
+    expect(app.matchingCalls.at(-1)).toEqual({ name: 'run', actor: REGULAR.login });
+  });
+
+  test('автоматический режим обычному входу недоступен: 403 и ничего не вызвано', async () => {
+    const cookie = await signIn(REGULAR);
+    const before = app.matchingCalls.length;
+    const r = await call(cookie, 'auto', { enabled: true });
+    expect(r.status).toBe(403);
+    expect(await r.json()).toMatchObject({ error: 'forbidden' });
+    expect(app.matchingCalls.length).toBe(before);
+  });
+
+  test.each([true, false])('полный вход переключает автоматический режим (%s)', async (enabled) => {
+    const cookie = await signIn(SUPER);
+    const r = await call(cookie, 'auto', { enabled });
+    expect(r.status).toBe(200);
+    expect(app.matchingCalls.at(-1)).toEqual({ name: 'auto', actor: SUPER.login, enabled });
+  });
+
+  test.each([{}, { enabled: 'да' }, { enabled: 1 }, null, []])('переключатель с телом %j — 400', async (body) => {
+    const cookie = await signIn(SUPER);
+    const before = app.matchingCalls.length;
+    expect((await call(cookie, 'auto', body)).status).toBe(400);
+    expect(app.matchingCalls.length).toBe(before);
+  });
+
+  test('форма с другого сайта (не JSON) отклоняется: 415', async () => {
+    const cookie = await signIn(SUPER);
+    const before = app.matchingCalls.length;
+    const r = await call(cookie, 'run', 'x=1', { 'content-type': 'application/x-www-form-urlencoded' });
+    expect(r.status).toBe(415);
+    expect(app.matchingCalls.length).toBe(before);
+  });
+
+  test('чужие адреса — 404, GET по адресу подбора его не запускает', async () => {
+    const cookie = await signIn(SUPER);
+    const before = app.matchingCalls.length;
+    expect((await call(cookie, 'other', {})).status).toBe(404);
+    expect((await fetch(`${app.base}/api/v1/matching/run`, { headers: { cookie } })).status).toBe(404);
+    expect(app.matchingCalls.length).toBe(before);
   });
 });

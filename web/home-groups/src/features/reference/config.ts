@@ -88,6 +88,8 @@ export const groupsConfig: EntityConfig<GroupItem> = {
     День: g.day,
     Время: g.slot,
     Места: `${g.people ?? '?'}/${g.capacity}`,
+    // Служебное, как `_key`: в столбцы и фильтры не попадает, нужно только таблице для пометки.
+    _placedNew: g.placedNew,
     'Мест свободно': g.free,
     Вместимость: g.capacity,
     Статус: g.status,

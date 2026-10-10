@@ -2,9 +2,9 @@ import { createPool } from '../db/pool.js';
 import { RedisSessionStore } from '../dashboard/redisStore.js';
 import { SessionService } from '../dashboard/sessions.js';
 import { logger } from '../logger.js';
-import { PlacementRepo } from '../db/repos/placement.repo.js';
 import { createActions } from './actions.js';
-import { composeViews, engine } from './composition.js';
+import { composeService, engine } from './composition.js';
+import { startAutoMatching } from './matching/scheduler.js';
 import { createHomeGroupsServer } from './server.js';
 
 const env = (name: string, fallback?: string): string => {
@@ -50,12 +50,15 @@ async function main(): Promise<void> {
   });
 
   // План считается не чаще раза в десять секунд на всех посетителей разом.
-  const views = composeViews(db, engine, { defaultCapacity, ttlMs: 10_000, timeZone: env('TIMEZONE', 'Europe/Moscow') });
+  const { views, matching, placement } = composeService(db, engine, {
+    defaultCapacity, ttlMs: 10_000, timeZone: env('TIMEZONE', 'Europe/Moscow'),
+  });
 
   const server = createHomeGroupsServer({
     auth,
     views,
-    actions: createActions(new PlacementRepo(db), { defaultCapacity }),
+    actions: createActions(placement, { defaultCapacity }),
+    matching,
     invalidateViews: () => views.invalidate(),
     actorName: (role) => (role === 'super' ? superLogin : login),
     sessionTtlSeconds: ttlSeconds,
@@ -63,10 +66,16 @@ async function main(): Promise<void> {
     webDir: env('HG_WEB_DIR', '/app/web-dist'),
   });
 
+  // Автоматический подбор: переключатель в базе читается на каждом проходе, поэтому включается без перезапуска.
+  const autoSeconds = Number(env('HG_AUTOMATCH_SECONDS', '120'));
+  if (!Number.isInteger(autoSeconds) || autoSeconds < 30) throw new Error('HG_AUTOMATCH_SECONDS должна быть целым числом не меньше 30');
+  const auto = startAutoMatching({ intervalMs: autoSeconds * 1000, isEnabled: () => matching.isAuto(), run: (actor) => matching.run(actor) });
+
   server.listen(port, () => logger.info({ port, sessionDays: ttlDays, defaultCapacity }, 'домашние группы запущены'));
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, 'домашние группы останавливаются');
+    auto.stop();
     server.close();
     await store.close().catch(() => undefined);
     await db.end().catch(() => undefined);

@@ -14,7 +14,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "import:spreadsheet": "node --env-file-if-exists=.env scripts/import-spreadsheet.mjs"
+    "import:spreadsheet": "node --env-file-if-exists=.env scripts/import-spreadsheet.mjs",
+    "dev:hg": "tsx watch --env-file-if-exists=.env src/home-groups/index.ts",
+    "web:install": "npm --prefix web/home-groups ci",
+    "web:build": "npm --prefix web/home-groups run build",
+    "web:test": "npm --prefix web/home-groups test",
+    "web:typecheck": "npm --prefix web/home-groups run typecheck"
   },
   "dependencies": {
     "@maxhub/max-bot-api": "^0.2.5",

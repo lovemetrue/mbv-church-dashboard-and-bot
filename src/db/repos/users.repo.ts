@@ -83,6 +83,8 @@ export interface RegisteredParticipant {
   kit_issued_at: Date | null;
   age: string | null;
   location: string | null;
+  /** С какой платформы пришёл. У заведённого вручную (has_chat = false) это условное значение. */
+  platform: PlatformName;
 }
 
 /**
@@ -391,7 +393,7 @@ export class UsersRepo {
   async listRegistered(): Promise<RegisteredParticipant[]> {
     const { rows } = await this.db.query<RegisteredParticipant>(
       `SELECT id, registration_no, full_name, phone, church, mdg_status, registered_at,
-              chat_id <> '' AS has_chat, kit_issued_at, age, location
+              chat_id <> '' AS has_chat, kit_issued_at, age, location, platform
          FROM users
         WHERE registration_no IS NOT NULL
         ORDER BY registration_no DESC`,

@@ -1,0 +1,962 @@
+<title>Рабочий стол подбора</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Раскладка: четыре вкладки — «Сегодня» (звонки и спрос), «Заявки» (очередь), «Справочник» (группы, люди, координаторы с общими отборами), «Контроль» (метрики). Обзвон — полноэкранный режим. */
+:root{
+  --bg:#f2f4f8; --surface:#ffffff; --surface-2:#f7f8fb; --ink:#1a2133; --muted:#5f687c; --line:#dfe3ec; --line-soft:#eceff5;
+  --accent:#2a4fb8; --accent-ink:#ffffff; --accent-soft:#e6ecfb;
+  --ok:#237a45; --ok-soft:#e1f2e8; --warn:#a96a00; --warn-soft:#fbefd5; --crit:#c0322a; --crit-soft:#fbe4e1;
+  --font:'Onest',system-ui,-apple-system,'Segoe UI',sans-serif; --mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+  --shadow:0 1px 2px rgba(20,28,50,.06),0 8px 24px rgba(20,28,50,.07);
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e121b; --surface:#161b27; --surface-2:#1b2130; --ink:#e6e9f2; --muted:#98a1b6; --line:#283043; --line-soft:#212839;
+  --accent:#8aa4ff; --accent-ink:#0e121b; --accent-soft:#222c4d;
+  --ok:#5cc383; --ok-soft:#173424; --warn:#e0a640; --warn-soft:#3a2d12; --crit:#f0786f; --crit-soft:#3d1c1a;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e121b; --surface:#161b27; --surface-2:#1b2130; --ink:#e6e9f2; --muted:#98a1b6; --line:#283043; --line-soft:#212839;
+  --accent:#8aa4ff; --accent-ink:#0e121b; --accent-soft:#222c4d;
+  --ok:#5cc383; --ok-soft:#173424; --warn:#e0a640; --warn-soft:#3a2d12; --crit:#f0786f; --crit-soft:#3d1c1a;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35); color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.45;padding-inline:16px}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+button:disabled{opacity:.5;cursor:default}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wrap{max-width:1280px;margin-inline:auto;padding-block:16px 48px}
+.num{font-variant-numeric:tabular-nums}
+
+header.top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 14px;padding-block:4px 14px;position:relative}
+.brand{font-weight:700;font-size:17px;letter-spacing:-.01em;margin-right:auto}
+.brand small{display:block;font-weight:400;font-size:12px;color:var(--muted);letter-spacing:0}
+.search{flex:1 1 200px;max-width:300px;min-width:0}
+.search input{width:100%;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.planpill{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border-radius:999px;background:var(--ok-soft);color:var(--ok);font-weight:600}
+.planpill b{font-family:var(--mono)}
+.iconbtn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:7px 10px;color:var(--muted)}
+.menu{position:absolute;right:0;top:100%;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:6px;z-index:15;display:flex;flex-direction:column;min-width:200px}
+.menu button{background:none;border:0;text-align:left;padding:8px 10px;border-radius:6px}
+.menu button:hover{background:var(--accent-soft);color:var(--accent)}
+nav.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:18px;overflow-x:auto}
+nav.tabs button{background:none;border:0;padding:10px 14px;color:var(--muted);font-weight:500;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+nav.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+nav.tabs .cnt{font-family:var(--mono);font-size:11px;background:var(--line-soft);padding:1px 6px;border-radius:999px;margin-left:6px}
+
+h2{font-size:18px;margin:0 0 4px;letter-spacing:-.01em}
+h3{font-size:12px;margin:0 0 10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600}
+.sub{color:var(--muted);margin:0 0 16px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0}
+.grid2{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+@media (max-width:900px){.grid2{grid-template-columns:minmax(0,1fr)}}
+.btn{border:1px solid var(--line);background:var(--surface);padding:7px 12px;border-radius:7px;font-weight:500;white-space:nowrap}
+.btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.primary:hover:not(:disabled){filter:brightness(1.08);color:var(--accent-ink)}
+.btn.ghost{border-color:transparent;color:var(--muted)}
+.btn.sm{padding:3px 8px;font-size:12px}
+.btn.big{padding:12px 20px;font-size:16px;font-weight:600;border-radius:10px}
+.btn.okb{background:var(--ok);border-color:var(--ok);color:var(--surface)}
+.btn.okb:hover{color:var(--surface);filter:brightness(1.1)}
+
+/* Сегодня */
+.hero{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:20px;align-items:center}
+@media (max-width:760px){.hero{grid-template-columns:minmax(0,1fr)}}
+.counters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}
+@media (max-width:560px){.counters{grid-template-columns:minmax(0,1fr)}}
+.counter{text-align:left;border:1px solid var(--line);background:var(--surface-2);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:2px}
+.counter .n{font-family:var(--mono);font-size:34px;font-weight:600;line-height:1.1}
+.counter .l{font-weight:600}
+.counter .d{font-size:12px;color:var(--muted)}
+.counter.ready{border-color:color-mix(in srgb,var(--ok) 45%,var(--line))}.counter.ready .n{color:var(--ok)}
+.counter.cb .n{color:var(--accent)}
+.counter:hover{border-color:var(--accent)}
+.mx{display:grid;grid-template-columns:120px repeat(4,minmax(70px,1fr));gap:5px;min-width:480px;align-items:stretch}
+.mx .h{font-size:12px;color:var(--muted);font-weight:600;align-self:end;padding:0 2px}
+.mx .rl{font-weight:500;align-self:center;font-size:13px}
+.cell{border-radius:8px;padding:5px 8px;border:1px solid var(--line);background:var(--surface-2);text-align:left}
+.cell b{display:block;font-family:var(--mono);font-size:15px}
+.cell span{font-size:11px;color:var(--muted);font-family:var(--mono)}
+.cell.crit{background:var(--crit-soft);border-color:color-mix(in srgb,var(--crit) 40%,var(--line))}.cell.crit b{color:var(--crit)}
+.cell.warn{background:var(--warn-soft)}.cell.warn b{color:var(--warn)}
+.cell.ok{background:var(--ok-soft)}.cell.ok b{color:var(--ok)}
+.cell.zero{opacity:.55}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:10px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.tbl{overflow-x:auto}
+.help-head{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+.help-head .n{font-family:var(--mono);font-size:34px;font-weight:600;color:var(--warn);line-height:1}
+.help-head b{font-weight:600}
+.sit{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px;background:var(--surface-2)}
+.sit:last-child{margin-bottom:0}
+.sit b{display:block;font-weight:600;margin-bottom:2px}
+.sit p{margin:0 0 8px;color:var(--muted);font-size:13px}
+.sit.cluster{border-color:color-mix(in srgb,var(--accent) 45%,var(--line));background:var(--accent-soft)}
+.sit .act{display:flex;gap:6px;flex-wrap:wrap}
+
+/* Список + карточка */
+.work{display:grid;grid-template-columns:minmax(0,1fr) 440px;gap:16px;align-items:start}
+@media (max-width:1000px){.work{grid-template-columns:minmax(0,1fr)}}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:4px 11px;font-size:13px;color:var(--muted);text-align:left}
+.chip[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+.chip .c{font-family:var(--mono);font-size:11px;margin-left:5px}
+select.sel{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:5px 8px;max-width:100%}
+.row{display:grid;grid-template-columns:minmax(140px,1.1fr) minmax(170px,1.3fr) 70px 70px;gap:12px;align-items:center;padding:10px 12px;border-top:1px solid var(--line-soft);min-width:560px;cursor:pointer;background:var(--surface)}
+.row.head{cursor:default;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;border-top:0;background:transparent}
+.row:not(.head):hover{background:var(--surface-2)}
+.row.sel{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
+.row .who b{display:block;font-weight:600}
+.row .who span{color:var(--muted);font-size:12px}
+.listbox{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface)}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;background:var(--line-soft);color:var(--muted)}
+.pill.ready{background:var(--ok-soft);color:var(--ok)}
+.pill.callback{background:var(--accent-soft);color:var(--accent)}
+.pill.human{background:var(--warn-soft);color:var(--warn)}
+.age{font-family:var(--mono);font-size:12px;background:var(--line-soft);padding:1px 6px;border-radius:5px;margin-left:4px}
+.pdots{display:inline-flex;gap:3px;vertical-align:middle}
+.pdots i{width:9px;height:9px;border-radius:3px;border:1.5px solid var(--muted);opacity:.55}
+.pdots i.on{background:var(--ok);border-color:var(--ok);opacity:1}
+.confn{font-family:var(--mono);font-weight:600}
+
+aside.pane{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);position:sticky;top:12px;max-height:calc(100vh - 24px);overflow-y:auto;min-width:0}
+aside.pane .empty{padding:36px 22px;text-align:center;color:var(--muted)}
+@media (max-width:1000px){
+  aside.pane{position:fixed;inset:0;z-index:20;max-height:none;border-radius:0;display:none}
+  aside.pane.open{display:block}
+}
+.ph{display:flex;gap:10px;align-items:flex-start;padding:16px 18px 10px;position:sticky;top:0;background:var(--surface);z-index:2;border-bottom:1px solid var(--line-soft)}
+.ph h2{margin:0}
+.ph .x{margin-left:auto}
+.ps{padding:14px 18px;border-top:1px solid var(--line-soft)}
+.ps:first-of-type{border-top:0}
+.kv{display:grid;grid-template-columns:110px 1fr;gap:4px 10px;font-size:13px}
+.kv dt{color:var(--muted)}.kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.param{display:grid;grid-template-columns:22px 1fr;gap:2px 8px;padding:7px 0;border-top:1px dashed var(--line-soft)}
+.param:first-of-type{border-top:0}
+.param .mk{width:16px;height:16px;border-radius:5px;border:1.5px solid var(--muted);margin-top:2px;opacity:.6}
+.param.on .mk{background:var(--ok);border-color:var(--ok);opacity:1}
+.param .t{font-weight:600}
+.param .t small{font-weight:400;color:var(--muted);margin-left:6px}
+.param .ctl{grid-column:2;display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:4px}
+.dchip{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:2px 8px;font-size:12px;color:var(--muted)}
+.dchip[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);border-color:var(--accent);font-weight:600}
+.ctl input[type=text]{border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:4px 8px;min-width:0;flex:1 1 150px}
+.hint{font-size:12px;color:var(--muted);grid-column:2}
+details.fold>summary{cursor:pointer;font-weight:600;font-size:13px}
+details.fold[open]>summary{margin-bottom:8px}
+.cand{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:8px;background:var(--surface)}
+.cand.top{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.cand .ch{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.cand .ch b{font-weight:600;font-size:15px}
+.cand .sc{margin-left:auto;font-family:var(--mono);font-weight:600;font-size:20px}
+.cand .sc small{font-size:11px;color:var(--muted);font-weight:400;display:block;text-align:right}
+.meter{height:5px;background:var(--line-soft);border-radius:3px;overflow:hidden;margin:7px 0}
+.meter i{display:block;height:100%;background:var(--accent);border-radius:3px}
+.reasons{display:flex;flex-wrap:wrap;gap:5px;margin:6px 0 8px}
+.r{font-size:12px;padding:2px 8px;border-radius:6px;background:var(--line-soft);color:var(--muted)}
+.r.m{background:var(--ok-soft);color:var(--ok)}
+.r.n{background:var(--warn-soft);color:var(--warn)}
+.r.x{background:var(--crit-soft);color:var(--crit)}
+.cand .act{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.cand .free{font-size:12px;color:var(--muted);margin-right:auto}
+.consent{display:flex;gap:8px;align-items:center;font-size:13px;padding:8px 10px;border-radius:8px;background:var(--surface-2);margin-bottom:10px}
+.note{font-size:12px;color:var(--muted)}
+.callout{background:var(--warn-soft);color:var(--warn);border-radius:8px;padding:9px 11px;font-size:13px;margin-bottom:10px}
+.nogroup{background:var(--crit-soft);color:var(--crit);border-radius:8px;padding:10px 12px;font-size:13px}
+.log{font-size:12px;color:var(--muted);margin:0;padding:0;list-style:none}
+.log li{padding:2px 0}
+.health{display:flex;align-items:center;gap:8px}
+.health .hb{width:70px;height:7px;background:var(--line-soft);border-radius:4px;overflow:hidden}
+.health .hb i{display:block;height:100%}
+.check{display:flex;gap:8px;padding:3px 0;font-size:13px}
+.check .ic{width:16px;text-align:center;font-weight:700}
+.check.ok .ic{color:var(--ok)}.check.bad .ic{color:var(--crit)}
+.check em{margin-left:auto;font-style:normal;font-family:var(--mono);color:var(--muted);font-size:12px}
+.att-row{display:flex;gap:12px;align-items:center;padding:8px 0;border-top:1px solid var(--line-soft)}
+.att-main{flex:1;min-width:0}.att-main span{display:block;color:var(--muted);font-size:13px}
+
+/* Справочник */
+.ents{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.ent{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:7px 14px;font-weight:500;color:var(--muted)}
+.ent[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.ent .c{font-family:var(--mono);font-size:11px;margin-left:6px;opacity:.8}
+.smart{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.smart input{flex:1 1 300px;min-width:0;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.views{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+.views .lbl{font-size:12px;color:var(--muted);margin-right:2px}
+.fchips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center}
+.fchip{display:inline-flex;gap:6px;align-items:center;background:var(--accent-soft);color:var(--accent);border-radius:999px;padding:3px 4px 3px 11px;font-size:13px}
+.fchip button{border:0;background:none;color:inherit;padding:0 6px;font-size:14px;line-height:1}
+.fbuilder{display:flex;gap:6px;flex-wrap:wrap;align-items:center;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px}
+.fbuilder input{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:5px 8px;width:110px}
+.colmenu{display:flex;flex-wrap:wrap;gap:4px 14px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px;font-size:13px}
+.colmenu label{display:flex;gap:6px;align-items:center}
+.rt{width:100%;border-collapse:collapse;font-size:13px;min-width:600px}
+.rt th{position:sticky;top:0;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:8px 10px;background:var(--surface-2);border-bottom:1px solid var(--line);white-space:nowrap;cursor:pointer;user-select:none}
+.rt td{padding:8px 10px;border-top:1px solid var(--line-soft);white-space:nowrap}
+.rt tr.r-row{cursor:pointer}
+.rt tr.r-row:hover td{background:var(--surface-2)}
+.rt tr.r-row.sel td{background:var(--accent-soft)}
+.rt tr.gh td{background:var(--surface-2);font-weight:600;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+.rt .empty{color:var(--muted);opacity:.6}
+.tb{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+.tb .sp{margin-left:auto}
+
+.popw{position:relative}
+.pop{position:absolute;top:calc(100% + 6px);left:0;z-index:12;width:min(440px,92vw);background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:14px}
+.pop .fchips{margin:0}
+.pop .vn{border:1px solid var(--line);border-radius:8px;padding:5px 8px;background:var(--surface);width:160px}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(440px,100%);z-index:25;background:var(--surface);border-left:1px solid var(--line);box-shadow:var(--shadow);overflow-y:auto;padding-bottom:90px}
+.rt{font-size:13px}
+.rt td,.rt th{padding:8px 9px}
+.aifab{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:40;border:0;border-radius:999px;padding:12px 18px;background:var(--accent);color:var(--accent-ink);font-weight:600;box-shadow:var(--shadow)}
+.aip{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:40;width:min(400px,calc(100vw - 32px));height:min(580px,calc(100% - 32px));background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden}
+.aih{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--line-soft)}
+.aim{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;min-height:0}
+.msg{max-width:90%;padding:9px 12px;border-radius:12px;font-size:14px;overflow-wrap:anywhere}
+.msg.bot{background:var(--surface-2);align-self:flex-start;border-bottom-left-radius:4px}
+.msg.me{background:var(--accent);color:var(--accent-ink);align-self:flex-end;border-bottom-right-radius:4px}
+.aic{display:flex;flex-direction:column;gap:6px;margin-top:10px;align-items:flex-start}
+.aif{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line-soft)}
+.aif input{flex:1;min-width:0;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--surface)}
+.aino{font-size:11px;color:var(--muted);padding:0 14px 10px}
+
+/* Обзвон */
+.call{position:fixed;inset:0;z-index:30;background:var(--bg);overflow-y:auto;padding:16px;padding-top:calc(16px + env(safe-area-inset-top,0px));padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
+.call .in{max-width:680px;margin-inline:auto}
+.ctop{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.ctop .prog{flex:1}
+.ctop .prog .meter{height:8px;margin:4px 0 0}
+.ccard{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+.cwho{padding:20px 22px 14px}
+.cwho h2{font-size:24px;margin:0}
+.phone{font-family:var(--mono);font-size:22px;font-weight:600;margin:6px 0 2px;user-select:all}
+.cprop{padding:16px 22px;border-top:1px solid var(--line-soft);background:var(--surface-2)}
+.cprop .gt{font-size:20px;font-weight:700;margin:2px 0}
+.script{padding:16px 22px;border-top:1px solid var(--line-soft);font-size:15px}
+.script q{display:block;quotes:none;border-left:3px solid var(--accent);padding-left:12px}
+.cact{padding:16px 22px;border-top:1px solid var(--line-soft);display:flex;gap:8px;flex-wrap:wrap}
+.cact .btn.big{flex:1 1 150px}
+.reasonrow{display:flex;gap:6px;flex-wrap:wrap;padding:12px 22px 16px;border-top:1px solid var(--line-soft)}
+.alts{padding:0 22px 14px;font-size:13px;color:var(--muted)}
+.leaderopt{padding:0 22px 14px;font-size:13px;display:flex;gap:8px;align-items:center}
+.learned{font-size:12px;color:var(--muted);padding:12px 22px 0}
+
+/* Контроль */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.kpi .n{font-family:var(--mono);font-size:26px;font-weight:600;line-height:1.1}
+.kpi .l{font-size:12px;color:var(--muted)}
+.hbar{display:grid;grid-template-columns:minmax(90px,150px) 1fr 40px;gap:8px;align-items:center;margin:6px 0;font-size:13px}
+.hbar .meter{margin:0;height:8px}
+.hbar b{font-family:var(--mono);text-align:right;font-weight:600}
+.mcols{display:flex;align-items:flex-end;gap:8px;height:110px;margin-top:6px}
+.mcols div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;height:100%;font-size:11px;color:var(--muted)}
+.mcols i{display:block;width:100%;max-width:38px;background:var(--accent);border-radius:4px 4px 0 0;min-height:2px}
+.mcols b{font-family:var(--mono);color:var(--ink);font-size:11px;font-weight:600}
+.fill{display:grid;grid-template-columns:130px 1fr 44px;gap:8px;align-items:center;margin:7px 0;font-size:13px}
+.fill .meter{margin:0}
+.fill.low .meter i{background:var(--warn)}
+.w{width:100%;border-collapse:collapse;font-size:13px}
+.w td,.w th{padding:6px 8px;border-top:1px solid var(--line-soft);text-align:left;vertical-align:top}
+.w th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border-top:0}
+.w td:nth-child(2){font-family:var(--mono)}
+.bignum{font-family:var(--mono);font-size:34px;font-weight:600}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:9px;z-index:50;max-width:calc(100% - 32px);box-shadow:var(--shadow)}
+@media (prefers-reduced-motion:no-preference){.meter i{transition:width .3s}}
+</style>
+
+<div class="wrap" id="app">
+  <header class="top">
+    <div class="brand">Рабочий стол подбора<small>Прототип · данные примерные · 9 октября</small></div>
+    <div class="search"><input id="q" type="search" placeholder="Поиск по заявкам: ФИО, телефон" aria-label="Поиск"></div>
+    <span class="planpill" id="planPill"></span>
+    <button class="btn primary" data-a="menu" id="createBtn">+ Создать</button>
+    <button class="iconbtn" data-a="theme" id="themeBtn" title="Тема">Тема: авто</button>
+    <div class="menu" id="createMenu" hidden>
+      <button data-a="create" data-v="заявку">Заявку</button>
+      <button data-a="create" data-v="группу">Группу</button>
+      <button data-a="create" data-v="участника">Участника</button>
+    </div>
+  </header>
+  <nav class="tabs" id="tabs" role="tablist"></nav>
+  <main id="main"></main>
+</div>
+<div id="call" class="call" hidden></div>
+<div id="toast" class="toast" hidden></div>
+<div id="ai"></div>
+
+<script>
+/* ---------- Справочники ---------- */
+const DAYS=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+const DAY_ON={Пн:'в понедельник',Вт:'во вторник',Ср:'в среду',Чт:'в четверг',Пт:'в пятницу',Сб:'в субботу',Вс:'в воскресенье'};
+const DAY_ALIAS={понедельник:'Пн',вторник:'Вт',среда:'Ср',среду:'Ср',четверг:'Чт',пятница:'Пт',пятницу:'Пт',суббота:'Сб',субботу:'Сб',воскресенье:'Вс'};
+const SLOT_ON={утро:'утром',день:'днём',вечер:'вечером'};
+const SLOT_ALIAS={утром:'утро',днём:'день',днем:'день',вечером:'вечер'};
+const SLOTS=['утро','день','вечер'];
+const AGES=['18–25','26–35','36–45','46+'];
+const DISTRICTS=['Приморский','Выборгский','Центральный','Калининский','Невский','Красногвардейский','Фрунзенский'];
+const NEIGHBORS={'Приморский':['Выборгский'],'Выборгский':['Приморский','Калининский'],'Калининский':['Выборгский','Красногвардейский','Центральный'],'Красногвардейский':['Калининский','Невский','Центральный'],'Невский':['Красногвардейский','Центральный'],'Центральный':['Калининский','Красногвардейский','Невский'],'Фрунзенский':[]};
+const WEIGHTS={district:40,age:25,time:20,street:15};
+const ME='Анна';
+const SERVANTS=['Анна Л.','Пётр Г.'];
+const PN=['Район','Возраст','День и время','Улица'];
+
+/* ---------- Данные (примерные) ---------- */
+const groups=[
+ {id:1,no:12,leader:'Ольга К.',district:'Приморский',metro:'Комендантский пр.',street:'Комендантский пр.',age:['18–25','26–35'],day:'Вт',slot:'вечер',status:'Функционирует',open:true,people:8,cap:12,verified:6,phone:true,fmt:'Смешанная',coord:'Трофимова С.'},
+ {id:2,no:27,leader:'Андрей М.',district:'Приморский',metro:'Беговая',street:'ул. Шаврова',age:['26–35','36–45'],day:'Чт',slot:'вечер',status:'Функционирует',open:true,people:11,cap:12,verified:14,phone:true,fmt:'Семейная',coord:'Петров Г.'},
+ {id:3,no:31,leader:'Марина Л.',district:'Выборгский',metro:'Озерки',street:'пр. Просвещения',age:['36–45','46+'],day:'Пн',slot:'день',status:'Функционирует',open:true,people:6,cap:14,verified:41,phone:true,fmt:'Женская',coord:'Трофимова С.'},
+ {id:4,no:8,leader:'Игорь Т.',district:'Центральный',metro:'Лиговский пр.',street:'Лиговский пр.',age:['18–25'],day:'Ср',slot:'вечер',status:'Функционирует',open:true,people:9,cap:10,verified:3,phone:true,fmt:'Молодёжная',coord:'Лебедева А.'},
+ {id:5,no:15,leader:'Светлана Р.',district:'Калининский',metro:'Академическая',street:'Гражданский пр.',age:['26–35','36–45'],day:'Сб',slot:'утро',status:'Функционирует',open:true,people:5,cap:12,verified:9,phone:true,fmt:'Смешанная',coord:'Петров Г.'},
+ {id:6,no:40,leader:'Павел Д.',district:'Невский',metro:'Ломоносовская',street:'пр. Большевиков',age:['26–35'],day:'Пт',slot:'вечер',status:'Функционирует',open:true,people:12,cap:12,verified:5,phone:true,fmt:'Мужская',coord:'Лебедева А.'},
+ {id:7,no:22,leader:'Елена и Сергей Н.',district:'Красногвардейский',metro:'Ладожская',street:'Индустриальный пр.',age:['36–45','46+'],day:null,slot:null,status:'Функционирует',open:true,people:7,cap:12,verified:63,phone:true,fmt:'Семейная',coord:'Трофимова С.'},
+ {id:8,no:19,leader:'Дмитрий В.',district:'Приморский',metro:'Старая Деревня',street:null,age:['18–25','26–35'],day:null,slot:null,status:'Функционирует',open:true,people:4,cap:12,verified:28,phone:false,fmt:'Смешанная',coord:'Петров Г.'},
+ {id:9,no:35,leader:'Анна С.',district:'Калининский',metro:'Политехническая',street:null,age:['46+'],day:'Вт',slot:'день',status:'Функционирует',open:true,people:10,cap:14,verified:11,phone:true,fmt:'Женская',coord:'Лебедева А.'},
+ {id:10,no:3,leader:'Виктор П.',district:'Выборгский',metro:'Лесная',street:'ул. Харченко',age:['26–35','36–45'],day:'Ср',slot:'вечер',status:'На паузе',open:false,people:5,cap:12,verified:22,phone:true,fmt:'Смешанная',coord:'Трофимова С.'},
+ {id:11,no:44,leader:'Ксения Б.',district:'Центральный',metro:'Владимирская',street:'ул. Марата',age:['26–35'],day:'Чт',slot:'вечер',status:'Функционирует',open:true,people:6,cap:12,verified:7,phone:true,fmt:'Смешанная',coord:'Лебедева А.'},
+ {id:12,no:29,leader:'Татьяна Ф.',district:'Невский',metro:'Новочеркасская',street:'ул. Седова',age:['36–45','46+'],day:'Пн',slot:'вечер',status:'Функционирует',open:true,people:5,cap:12,verified:18,phone:true,fmt:'Женская',coord:'Петров Г.'}
+];
+const R=(id,fio,age,district,place,days,slot,street,d,phone,src,cb,extra)=>Object.assign({id,fio,age,district,place,days,slot,street,d,phone,src,callback:!!cb,approved:false,cancelled:false,final:null,pin:null,rejected:[],avoidDays:[],avoidSlots:[],learned:[],log:['Заявка создана ботом'].concat(cb?['Не дозвонились, перезвонить']:[])},extra||{});
+const reqs=[
+ R(1,'Мария Соколова','18–25','Приморский','м. Комендантский пр.',['Вт','Чт'],'вечер','Комендантский пр.',0,'+7 911 ··· 24 18','Бот · Telegram'),
+ R(2,'Алексей Орлов','26–35','Приморский','Беговая',[],null,null,2,'+7 921 ··· 70 05','Бот · MAX'),
+ R(3,'Ирина Жукова','36–45','Выборгский','Озерки',['Пн'],'день',null,3,'+7 905 ··· 11 42','Бот · Telegram'),
+ R(4,'Денис Громов','26–35','Невский','Ломоносовская',['Чт','Пт'],'вечер',null,1,'+7 931 ··· 08 63','Бот · Telegram',true),
+ R(5,'Наталья Белова','46+','Красногвардейский','Ладожская',[],null,null,9,'+7 911 ··· 55 20','Таблица'),
+ R(6,'Кирилл Фомин','18–25','Центральный','Лиговский пр.',['Ср','Пт'],'вечер','Лиговский пр.',0,'+7 999 ··· 31 77','Бот · Telegram'),
+ R(7,'Ольга Рябова','36–45','Калининский','Академическая',['Сб'],'утро',null,6,'+7 950 ··· 90 14','Бот · MAX',true),
+ R(8,'Станислав Ким','26–35',null,'«где-то у Пионерской»',[],null,null,1,'+7 904 ··· 62 38','Бот · Telegram'),
+ R(9,'Галина Мартынова','46+','Выборгский','Проспект Просвещения',['Пн','Ср'],'день','пр. Просвещения',2,'+7 911 ··· 47 29','Бот · Telegram',true),
+ R(10,'Артём Лебедев','26–35','Приморский','Старая Деревня',[],null,null,12,'+7 981 ··· 03 56','Бот · Telegram',false,{approved:true,final:1,log:['Заявка создана ботом','Утверждена: группа №12']}),
+ R(11,'Вера Назарова','36–45','Фрунзенский','Купчино',[],null,null,3,'+7 921 ··· 88 91','Бот · MAX'),
+ R(12,'Георгий Шмелёв','26–35','Центральный','Маяковская',['Чт'],'вечер',null,4,'+7 916 ··· 27 40','Таблица'),
+ R(13,'Руслан Агеев','36–45','Приморский','Беговая',['Чт'],'вечер','ул. Шаврова',0,'+7 952 ··· 14 90','Бот · Telegram'),
+ R(14,'Лариса Кулик','36–45','Фрунзенский','Купчино',['Пт'],null,null,2,'+7 909 ··· 55 31','Бот · Telegram'),
+ R(15,'Игорь Пестов','26–35','Фрунзенский','Бухарестская',['Пт','Сб'],'вечер',null,1,'+7 965 ··· 08 12','Бот · MAX')
+];
+const EXTRA_PEOPLE=[
+ {fio:'Дарья Ефимова',phone:'+7 911 ··· 40 02',age:'26–35',district:'Приморский',from:'Бот · Telegram',mdg:'Уже в группе',date:'12.09'},
+ {fio:'Михаил Громов',phone:'+7 921 ··· 17 55',age:'36–45',district:'Калининский',from:'Бот · MAX',mdg:'Ведёт группу',date:'03.09'},
+ {fio:'Софья Титова',phone:'+7 931 ··· 22 80',age:'18–25',district:'Центральный',from:'Бот · Telegram',mdg:'Не интересно',date:'28.09'},
+ {fio:'Борис Калинин',phone:'+7 905 ··· 61 09',age:'46+',district:'Невский',from:'Форма регистрации',mdg:'Уже в группе',date:'01.10'},
+ {fio:'Юлия Орлова',phone:'+7 999 ··· 03 47',age:'26–35',district:'Выборгский',from:'Бот · Telegram',mdg:'Откроет свою группу',date:'05.10'},
+ {fio:'Антон Шилов',phone:'+7 911 ··· 98 31',age:'36–45',district:'Красногвардейский',from:'Бот · MAX',mdg:'Не интересно',date:'07.10'}
+];
+
+/* ---------- Состояние ---------- */
+const S={tab:'today',sel:null,bucket:'all',q:'',theme:'auto',call:null,menu:false,
+  ent:'groups',rsel:null,pop:null,aiOpen:false,chat:[],acts:[],fdraft:{k:'',op:'=',v:''},ctrl:'net',rf:{},views:{}};
+const $=s=>document.querySelector(s);
+const esc=t=>String(t==null?'':t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const gById=id=>groups.find(g=>g.id===id);
+const rById=id=>reqs.find(r=>r.id===id);
+const free=g=>Math.max(0,g.cap-g.people);
+const open=()=>reqs.filter(r=>!r.approved&&!r.cancelled);
+
+/* ---------- Подбор одной заявки: параметры могут отсутствовать ---------- */
+function match(r){
+  const ranked=[],excluded=[];
+  const known={district:!!r.district,age:true,time:!!(r.days.length||r.slot),street:!!r.street};
+  for(const g of groups){
+    if(g.status!=='Функционирует'||!g.open){excluded.push({g,why:'не принимает новых ('+g.status.toLowerCase()+')'});continue}
+    if(g.people>=g.cap){excluded.push({g,why:'группа заполнена'});continue}
+    if(!g.age.includes(r.age)){excluded.push({g,why:'возраст группы '+g.age.join(', ')});continue}
+    let dist=null;
+    if(known.district){
+      if(g.district===r.district)dist=1;else if((NEIGHBORS[r.district]||[]).includes(g.district))dist=.5;
+      else{excluded.push({g,why:'другой район ('+g.district+')'});continue}
+    }
+    const reasons=[];let sum=0,wsum=0;
+    if(known.district){sum+=WEIGHTS.district*dist;wsum+=WEIGHTS.district;reasons.push(dist===1?{c:'m',t:'тот же район'}:{c:'n',t:'соседний район'})}
+    sum+=WEIGHTS.age;wsum+=WEIGHTS.age;reasons.push({c:'m',t:'возраст подходит'});
+    if(known.time){
+      let s,t,c;
+      if(!g.day){s=.5;t='у группы не указано время';c='n'}
+      else{
+        const p=[];
+        if(r.days.length)p.push(r.days.includes(g.day)?1:0);
+        if(r.slot)p.push(r.slot===g.slot?1:0);
+        s=p.reduce((a,b)=>a+b,0)/p.length;
+        const w=g.day+', '+g.slot;
+        c=s===1?'m':(s>0?'n':'x');
+        t=s===1?'время совпало: '+w:(s>0?'время частично: '+w:'время не совпало: '+w);
+      }
+      sum+=WEIGHTS.time*s;wsum+=WEIGHTS.time;reasons.push({c,t});
+    }
+    if(known.street){
+      let s,t,c;
+      if(!g.street){s=.5;t='у группы нет улицы';c='n'}
+      else if(g.street===r.street){s=1;t='та же улица';c='m'}
+      else{s=0;t='другая улица';c=''}
+      sum+=WEIGHTS.street*s;wsum+=WEIGHTS.street;reasons.push({c,t});
+    }
+    let score=sum/wsum*100;
+    if(g.verified>30){score-=5;reasons.push({c:'n',t:'не проверялась '+g.verified+' дн.'})}
+    if(free(g)<=1){score-=3;reasons.push({c:'n',t:'почти заполнена'})}
+    ranked.push({g,score:Math.max(0,Math.round(score)),reasons});
+  }
+  ranked.sort((a,b)=>b.score-a.score);
+  const kn=Object.values(known).filter(Boolean).length;
+  return{ranked,excluded,known,kn};
+}
+
+/* ---------- План: вся очередь сразу, с учётом мест и нагрузки служителей ---------- */
+function plan(){
+  const rem={};groups.forEach(g=>rem[g.id]=g.cap-g.people);
+  const info=open().map(r=>{
+    const m=match(r);
+    const cands=m.ranked.filter(c=>!r.rejected.includes(c.g.id)&&!r.avoidDays.includes(c.g.day)&&!r.avoidSlots.includes(c.g.slot));
+    return{r,m,cands};
+  });
+  /* Сначала те, у кого вариантов меньше всего: иначе «лёгкая» заявка заберёт место, которое единственное у «трудной». */
+  info.sort((a,b)=>(a.cands.length-b.cands.length)||((b.cands[0]?b.cands[0].score:0)-(a.cands[0]?a.cands[0].score:0)));
+  const P={},takenBy={};
+  for(const x of info){
+    const r=x.r;
+    if(!r.district){P[r.id]={none:true,reason:'Место не распознано',code:'place'};continue}
+    const avail=x.cands.filter(c=>rem[c.g.id]>0);
+    if(!avail.length){P[r.id]={none:true,reason:x.cands.length?'Свободные места разобраны другими заявками':'В районе нет групп, подходящих по возрасту',code:x.cands.length?'taken':'nogroup'};continue}
+    avail.forEach(c=>{c.adj=c.score+(1-c.g.people/c.g.cap)*6});
+    avail.sort((a,b)=>b.adj-a.adj);
+    let pick=avail[0];
+    if(r.pin){const p=avail.find(c=>c.g.id===r.pin);if(p)pick=p}
+    rem[pick.g.id]--;(takenBy[pick.g.id]=takenBy[pick.g.id]||[]).push(r.id);
+    const best=x.cands[0];
+    let displaced=null;
+    if(best&&best.g.id!==pick.g.id&&rem[best.g.id]<=0)displaced={g:best.g,by:(takenBy[best.g.id]||[]).map(id=>rById(id).fio)};
+    const conf=Math.round(pick.score*(0.55+0.45*x.m.kn/4));
+    P[r.id]={g:pick.g,score:pick.score,conf,kn:x.m.kn,reasons:pick.reasons,alts:avail.filter(c=>c!==pick).slice(0,2),displaced,m:x.m};
+  }
+  /* Ответственного назначает сервис: тому, у кого меньше заявок в работе. */
+  const load={};SERVANTS.forEach(s=>load[s]=0);
+  open().slice().sort((a,b)=>a.id-b.id).forEach(r=>{
+    const s=SERVANTS.slice().sort((a,b)=>load[a]-load[b])[0];load[s]++;
+    if(P[r.id])P[r.id].resp=s;
+  });
+  return{P,takenBy,load};
+}
+let PLAN=plan();
+function bucket(r){
+  if(r.approved)return'done';
+  if(r.cancelled)return'cancelled';
+  const p=PLAN.P[r.id];
+  if(!p||p.none||p.conf<60)return'human';
+  return r.callback?'callback':'ready';
+}
+const BNAME={ready:'Готово к утверждению',callback:'Перезвонить',human:'Нужна помощь в сопоставлении',done:'Утверждено',cancelled:'Отказ'};
+const bpill=b=>'<span class="pill '+(b==='cancelled'?'':b)+'">'+BNAME[b]+'</span>';
+const reqFill=r=>[!!r.district,!!r.age,!!(r.days.length||r.slot),!!r.street];
+const grpFill=g=>[!!g.district,g.age.length>0,!!(g.day&&g.slot),!!g.street];
+const pdots=arr=>'<span class="pdots" title="'+PN.map((n,i)=>n+': '+(arr[i]?'есть':'нет')).join(' · ')+'">'+arr.map(v=>'<i class="'+(v?'on':'')+'"></i>').join('')+'</span>';
+function health(g){
+  const items=[
+    {ok:!!g.leader,l:'Ведущий указан',p:10},{ok:g.phone,l:'Телефон ведущего',p:15},
+    {ok:!!(g.day&&g.slot),l:'День и время',p:20},{ok:!!g.street,l:'Улица для подбора рядом',p:15},
+    {ok:g.verified<=30,l:'Подтверждена ведущим за 30 дней'+(g.verified>30?' (было '+g.verified+' дн. назад)':''),p:30},
+    {ok:g.cap>0,l:'Вместимость указана',p:10}];
+  return{items,score:items.reduce((a,i)=>a+(i.ok?i.p:0),0)};
+}
+const hcolor=s=>s>=80?'var(--ok)':(s>=60?'var(--warn)':'var(--crit)');
+function approve(r,g){
+  r.approved=true;r.callback=false;r.final=g.id;g.people=Math.min(g.cap,g.people+1);r.d=0;
+  r.log.push('Утверждена: группа №'+g.no);
+}
+
+/* ---------- Справочник: общий движок отборов для групп, людей и координаторов ---------- */
+const NUMERIC=new Set(['№','Мест свободно','Проверена, дн.','Здоровье','Групп','Участников','Подтверждено за 30 дн.']);
+const ENT={
+  groups:{label:'Группы',
+    rows:()=>groups.map(g=>({_id:g.id,'№':g.no,'Ведущий':g.leader,'Район':g.district,'Метро':g.metro,'Возраст':g.age.join(', '),'Когда':g.day?g.day+', '+g.slot:'','Места':g.people+'/'+g.cap,'День':g.day||'','Время':g.slot||'','Формат':g.fmt,'Статус':g.status,'Координатор':g.coord,'Улица':g.street||'','Мест свободно':free(g),'Проверена, дн.':g.verified,'Здоровье':health(g).score})),
+    cols:['№','Ведущий','Район','Возраст','Когда','Места','Статус','Здоровье','День','Время','Мест свободно','Координатор','Метро','Формат','Улица','Проверена, дн.'],
+    def:['№','Ведущий','Район','Возраст','Когда','Места','Статус','Здоровье'],
+    gb:['Район','Статус','Координатор','Формат','День','Время'],
+    presets:[
+      {n:'Принимают новых',f:[{k:'Статус',op:'=',v:'Функционирует'},{k:'Мест свободно',op:'≥',v:'1'}]},
+      {n:'Нет дня и времени',f:[{k:'День',op:'пусто',v:''}]},
+      {n:'Не подтверждались > 30 дн.',f:[{k:'Проверена, дн.',op:'≥',v:'31'}]},
+      {n:'Приморский, вечером',f:[{k:'Район',op:'=',v:'Приморский'},{k:'Время',op:'=',v:'вечер'}]},
+      {n:'На паузе',f:[{k:'Статус',op:'=',v:'На паузе'}]}]},
+  people:{label:'Люди',
+    rows:()=>reqs.map(r=>({_id:'r'+r.id,_req:r.id,'ФИО':r.fio,'Телефон':r.phone,'Возраст':r.age,'Район':r.district||'','Откуда':r.src,'Малая группа':'Заявка: '+BNAME[bucket(r)].toLowerCase(),'Дата':'—'})).concat(EXTRA_PEOPLE.map((p,i)=>({_id:'p'+i,'ФИО':p.fio,'Телефон':p.phone,'Возраст':p.age,'Район':p.district,'Откуда':p.from,'Малая группа':p.mdg,'Дата':p.date}))),
+    cols:['ФИО','Телефон','Возраст','Район','Откуда','Малая группа','Дата'],
+    def:['ФИО','Телефон','Возраст','Район','Откуда','Малая группа'],
+    gb:['Район','Откуда','Малая группа','Возраст'],
+    presets:[{n:'Ждут группу',f:[{k:'Малая группа',op:'=',v:'Заявка: нужна помощь в сопоставлении'}]},{n:'Хотят вести группу',f:[{k:'Малая группа',op:'=',v:'Откроет свою группу'}]},{n:'Район не указан',f:[{k:'Район',op:'пусто',v:''}]}]},
+  coords:{label:'Координаторы',
+    rows:()=>[...new Set(groups.map(g=>g.coord))].map((n,i)=>{const gs=groups.filter(g=>g.coord===n);return{_id:'c'+i,'Имя':n,'Роль':'Координатор','Групп':gs.length,'Участников':gs.reduce((a,g)=>a+g.people,0),'Подтверждено за 30 дн.':gs.filter(g=>g.verified<=30).length}}),
+    cols:['Имя','Роль','Групп','Участников','Подтверждено за 30 дн.'],def:['Имя','Роль','Групп','Участников','Подтверждено за 30 дн.'],gb:[],
+    presets:[{n:'Больше 3 групп',f:[{k:'Групп',op:'≥',v:'4'}]}]}
+};
+function rf(){
+  const e=S.ent;
+  if(!S.rf[e])S.rf[e]={filters:[],text:'',cols:ENT[e].def.slice(),sort:null,gb:''};
+  if(!S.views[e])S.views[e]=[];
+  return S.rf[e];
+}
+const distinct=(rows,k)=>[...new Set(rows.map(r=>r[k]).filter(v=>v!==''&&v!=null))].sort((a,b)=>String(a).localeCompare(String(b),'ru',{numeric:true}));
+function passes(row,f,ent){
+  ent=ent||S.ent;
+  const v=row[f.k];
+  if(f.op==='пусто')return v===''||v==null;
+  if(f.op==='заполнено')return!(v===''||v==null);
+  if(f.op==='≥')return Number(v)>=Number(f.v);
+  if(f.op==='≤')return Number(v)<=Number(f.v);
+  const eq=f.k==='Возраст'&&ENT[ent].cols.includes('Возраст')?String(v).split(', ').includes(f.v):String(v)===String(f.v);
+  return f.op==='≠'?!eq:eq;
+}
+function applyRf(){
+  const s=rf(),rows=ENT[S.ent].rows();
+  let out=rows.filter(r=>s.filters.every(f=>passes(r,f)));
+  const t=s.text.trim().toLowerCase();
+  if(t)out=out.filter(r=>Object.keys(r).some(k=>k[0]!=='_'&&String(r[k]).toLowerCase().includes(t)));
+  if(s.sort){const{k,dir}=s.sort;out=out.slice().sort((a,b)=>{const x=a[k],y=b[k];const c=NUMERIC.has(k)?Number(x)-Number(y):String(x).localeCompare(String(y),'ru');return c*dir})}
+  if(s.gb)out=out.slice().sort((a,b)=>String(a[s.gb]).localeCompare(String(b[s.gb]),'ru'));
+  return{rows,out};
+}
+/* Слова вроде «в приморском 26-35 вечером» превращаются в отборы; пользуется помощник. */
+function smartFilters(text,ent){
+  const cols=ENT[ent].cols,rows=ENT[ent].rows(),filters=[],left=[];
+  const add=h=>{if(!filters.some(f=>f.k===h.k&&f.v===h.v))filters.push(h)};
+  for(let tok of text.toLowerCase().replace(/[?!.,;:«»"]/g,' ').split(/\s+/).filter(Boolean)){
+    let hit=null;
+    if(/^\d\d[-–]\d\d$/.test(tok))tok=tok.replace('-','–');
+    if((tok==='46+'||/^\d\d–\d\d$/.test(tok))&&cols.includes('Возраст'))hit={k:'Возраст',op:'=',v:tok};
+    const alias=DAY_ALIAS[tok]||SLOT_ALIAS[tok];
+    if(!hit&&alias){const k=SLOTS.includes(alias)?'Время':'День';if(cols.includes(k))hit={k,op:'=',v:alias}}
+    if(!hit&&tok.length>=4){
+      for(const k of cols){if(NUMERIC.has(k)||['ФИО','Телефон','Ведущий','Имя','Метро','Улица','Роль'].includes(k))continue;
+        const v=distinct(rows,k).find(x=>{const lv=String(x).toLowerCase(),stem=lv.slice(0,-2);return lv.startsWith(tok)||(stem.length>=4&&tok.startsWith(stem))});
+        if(v){hit={k,op:'=',v:String(v)};break}}
+    }
+    if(hit)add(hit);else left.push(tok);
+  }
+  return{filters,rest:left};
+}
+const fLabel=f=>f.k+' '+f.op+(f.op==='пусто'||f.op==='заполнено'?'':' '+f.v);
+
+function rRef(){
+  const s=rf(),E=ENT[S.ent],{rows,out}=applyRf();
+  const ents=Object.keys(ENT).map(k=>'<button class="ent" aria-pressed="'+(S.ent===k)+'" data-a="ent" data-v="'+k+'">'+ENT[k].label+'<span class="c">'+ENT[k].rows().length+'</span></button>').join('');
+  const d=S.fdraft,num=NUMERIC.has(d.k);
+  const fieldOpts='<option value="">поле…</option>'+E.cols.map(k=>'<option '+(d.k===k?'selected':'')+'>'+k+'</option>').join('');
+  const ops=num?['≥','≤','=']:['=','≠','пусто','заполнено'];
+  const valCtl=(d.op==='пусто'||d.op==='заполнено')?'':(num?'<input id="fVal" type="text" inputmode="numeric" placeholder="число" value="'+esc(d.v)+'">':'<select class="sel" id="fVal"><option value="">значение…</option>'+(d.k?distinct(d.k==='Возраст'?rows.flatMap(r=>String(r[d.k]).split(', ')).map(v=>({[d.k]:v})):rows,d.k).map(v=>'<option '+(d.v===String(v)?'selected':'')+'>'+esc(v)+'</option>').join(''):'')+'</select>');
+  const presets=E.presets.concat(S.views[S.ent]);
+  const fpop=S.pop==='f'?'<div class="pop"><h3>Быстрые отборы</h3><div class="fchips">'+presets.map((v,i)=>'<button class="chip" data-a="view" data-v="'+i+'">'+esc(v.n)+'</button>').join('')+'</div>'+
+    '<h3 style="margin-top:14px">Свой отбор</h3><div class="fbuilder" style="margin:0"><select class="sel" id="fField" aria-label="Поле">'+fieldOpts+'</select><select class="sel" id="fOp" aria-label="Условие">'+ops.map(o=>'<option '+(d.op===o?'selected':'')+'>'+o+'</option>').join('')+'</select>'+valCtl+'<button class="btn primary sm" data-a="addFilter">Добавить</button></div>'+
+    (s.filters.length?'<h3 style="margin-top:14px">Текущий отбор</h3><div class="tb" style="margin:0"><input id="viewName" type="text" placeholder="Название вида" class="vn"><button class="btn sm" data-a="saveView">Сохранить как вид</button><button class="btn ghost sm" data-a="clearF">Сбросить всё</button></div>':'')+'</div>':'';
+  const vpop=S.pop==='v'?'<div class="pop">'+(E.gb.length?'<h3>Группировать</h3><select class="sel" id="gbSel" aria-label="Группировать"><option value="">Без группировки</option>'+E.gb.map(k=>'<option '+(s.gb===k?'selected':'')+'>'+k+'</option>').join('')+'</select>':'')+'<h3 style="margin-top:14px">Столбцы</h3><div class="colmenu" style="border:0;padding:0;margin:0;background:none">'+E.cols.map(k=>'<label><input type="checkbox" data-col="'+esc(k)+'" '+(s.cols.includes(k)?'checked':'')+'>'+esc(k)+'</label>').join('')+'</div></div>':'';
+  const chips=s.filters.map((f,i)=>'<span class="fchip">'+esc(fLabel(f))+'<button data-a="rmFilter" data-v="'+i+'" aria-label="Убрать">×</button></span>').join('');
+  const vcols=E.cols.filter(k=>s.cols.includes(k));
+  const head='<tr>'+vcols.map(k=>'<th data-a="sort" data-v="'+esc(k)+'">'+esc(k)+(s.sort&&s.sort.k===k?(s.sort.dir>0?' ▲':' ▼'):'')+'</th>').join('')+'</tr>';
+  let body='',last=null;
+  out.forEach(r=>{
+    if(s.gb&&r[s.gb]!==last){last=r[s.gb];const n=out.filter(x=>x[s.gb]===last).length;body+='<tr class="gh"><td colspan="'+vcols.length+'">'+esc(last===''?'не указано':last)+' · '+n+'</td></tr>'}
+    body+='<tr class="r-row '+(S.rsel===r._id?'sel':'')+'" data-a="refSel" data-v="'+r._id+'" tabindex="0">'+vcols.map(k=>{
+      const v=r[k];
+      if(k==='Здоровье')return'<td style="color:'+hcolor(v)+';font-weight:600" class="num">'+v+'</td>';
+      if(k==='Статус')return'<td><span style="color:'+(v==='Функционирует'?'var(--ok)':'var(--warn)')+'">●</span> '+esc(v)+'</td>';
+      if(v===''||v==null)return'<td class="empty">—</td>';
+      return'<td'+(NUMERIC.has(k)?' class="num"':'')+'>'+esc(v)+'</td>'}).join('')+'</tr>';
+  });
+  return'<div class="ents">'+ents+'</div>'+
+  '<div class="tb"><div class="popw"><button class="btn sm" data-a="pop" data-v="f">Фильтры'+(s.filters.length?' · '+s.filters.length:'')+' ▾</button>'+fpop+'</div><div class="popw"><button class="btn sm" data-a="pop" data-v="v">Вид таблицы ▾</button>'+vpop+'</div>'+chips+
+  '<span class="sp note">Показано '+out.length+' из '+rows.length+'</span><button class="btn sm" data-a="exportCsv">Выгрузить CSV</button></div>'+
+  '<div class="listbox tbl"><table class="rt"><thead>'+head+'</thead><tbody>'+(body||'<tr><td colspan="'+vcols.length+'" class="empty" style="padding:20px">Ничего не найдено. Уберите часть условий.</td></tr>')+'</tbody></table></div>'+
+  '<p class="note" style="margin-top:8px">Искать словами можно у помощника в правом нижнем углу.</p>'+
+  (S.rsel!=null?'<aside class="drawer">'+refCard()+'</aside>':'');
+}
+function refCard(){
+  const row=ENT[S.ent].rows().find(r=>r._id===S.rsel);
+  if(!row)return'<div class="empty">Запись не найдена.</div>';
+  if(S.ent==='groups')return cardGroup(gById(row._id));
+  const kv=Object.keys(row).filter(k=>k[0]!=='_').map(k=>'<dt>'+esc(k)+'</dt><dd>'+(row[k]===''?'<span class="note">не указано</span>':esc(row[k]))+'</dd>').join('');
+  let extra='';
+  if(S.ent==='people'&&row._req)extra='<div class="ps"><button class="btn primary" data-a="openReq" data-v="'+row._req+'">Открыть заявку</button></div>';
+  if(S.ent==='coords')extra='<div class="ps"><h3>Группы</h3>'+groups.filter(g=>g.coord===row['Имя']).map(g=>'<div class="att-row"><div class="att-main"><b>№'+g.no+' · '+esc(g.leader)+'</b><span>'+esc(g.district)+' · подтверждена '+g.verified+' дн. назад</span></div></div>').join('')+'</div>';
+  return'<div class="ph"><div><h2>'+esc(row['ФИО']||row['Имя'])+'</h2></div><button class="btn ghost x" data-a="closeRef">✕</button></div><div class="ps"><dl class="kv">'+kv+'</dl></div>'+extra;
+}
+function cardGroup(g){
+  const h=health(g),ids=PLAN.takenBy[g.id]||[];
+  return'<div class="ph"><div><h2>Группа №'+g.no+'</h2><div class="note">'+esc(g.leader)+' · '+esc(g.district)+', '+esc(g.metro)+'</div></div><button class="btn ghost x" data-a="closeRef">✕</button></div>'+
+  '<div class="ps"><div class="health" style="margin-bottom:8px"><div class="hb" style="width:120px"><i style="width:'+h.score+'%;background:'+hcolor(h.score)+'"></i></div><b class="num">'+h.score+' из 100</b></div>'+
+  h.items.map(i=>'<div class="check '+(i.ok?'ok':'bad')+'"><span class="ic">'+(i.ok?'✓':'✕')+'</span>'+i.l+'<em>'+(i.ok?'+':'')+i.p+'</em></div>').join('')+
+  '<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn primary" data-a="askLeader" data-v="'+g.id+'">Спросить ведущего в боте</button><button class="btn" data-a="verify" data-v="'+g.id+'">Подтвердить вручную</button></div>'+
+  '<p class="note" style="margin-top:8px">Раз в месяц бот сам просит ведущего подтвердить день, время и места.</p></div>'+
+  '<div class="ps"><h3>Данные группы</h3><dl class="kv"><dt>Возраст</dt><dd>'+g.age.join(', ')+'</dd><dt>Когда</dt><dd>'+(g.day?g.day+', '+g.slot:'<span class="pill human">не указано</span>')+'</dd><dt>Улица</dt><dd>'+(g.street?esc(g.street):'<span class="pill human">не указано</span>')+'</dd><dt>Места</dt><dd>'+g.people+' из '+g.cap+' (свободно '+free(g)+')</dd><dt>Подтверждена</dt><dd>'+(g.verified===0?'сегодня':g.verified+' дн. назад')+'</dd><dt>Координатор</dt><dd>'+esc(g.coord)+'</dd></dl><p class="note">Адрес группы виден только служителям и человеку не передаётся.</p></div>'+
+  '<div class="ps"><h3>Направлено планом</h3>'+(ids.length?ids.map(id=>{const r=rById(id);return'<div class="att-row"><div class="att-main"><b>'+esc(r.fio)+'</b><span>'+r.age+' · '+esc(r.place)+' · уверенность '+PLAN.P[id].conf+'</span></div><button class="btn sm" data-a="openReq" data-v="'+id+'">Открыть</button></div>'}).join(''):'<p class="note">Сейчас план никого сюда не направляет.</p>')+'</div>';
+}
+
+/* ---------- Экраны ---------- */
+function counts(){const c={ready:0,callback:0,human:0,done:0,cancelled:0};reqs.forEach(r=>c[bucket(r)]++);return c}
+function clusters(){
+  const byD={};
+  open().forEach(r=>{const p=PLAN.P[r.id];if(p&&p.none&&p.code==='nogroup'&&r.district)(byD[r.district]=byD[r.district]||[]).push(r)});
+  return Object.entries(byD).filter(([d,l])=>l.length>=2).map(([d,l])=>{
+    const cnt={};l.forEach(r=>r.days.forEach(x=>cnt[x]=(cnt[x]||0)+1));
+    const days=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).map(e=>e[0]).slice(0,2);
+    return{district:d,list:l,ages:[...new Set(l.map(r=>r.age))].sort(),days};
+  });
+}
+function render(){
+  replan();
+  const c=counts();
+  $('#planPill').innerHTML='Распределено <b>'+(c.ready+c.callback+c.done)+' из '+(reqs.length-c.cancelled)+'</b>';
+  $('#createMenu').hidden=!S.menu;
+  const tabs=[['today','Сегодня',''],['requests','Заявки',open().length],['ref','Справочник',''],['control','Контроль','']];
+  $('#tabs').innerHTML=tabs.map(t=>'<button role="tab" aria-selected="'+(S.tab===t[0])+'" data-a="tab" data-v="'+t[0]+'">'+t[1]+(t[2]!==''?'<span class="cnt">'+t[2]+'</span>':'')+'</button>').join('');
+  $('#main').innerHTML=({today:rToday,requests:rRequests,ref:rRef,control:rControl})[S.tab](c);
+  const cl=$('#call');
+  if(S.call){cl.hidden=false;cl.innerHTML=rCall();document.body.style.overflow='hidden'}else{cl.hidden=true;document.body.style.overflow=''}
+}
+function replan(){PLAN=plan()}
+
+function matrix(){
+  const o=open();
+  return'<div class="tbl"><div class="mx"><span></span>'+AGES.map(a=>'<span class="h">'+a+'</span>').join('')+DISTRICTS.map(d=>'<div class="rl">'+d+'</div>'+AGES.map(a=>{
+    const dem=o.filter(r=>r.district===d&&r.age===a).length;
+    const sup=groups.filter(g=>g.district===d&&g.status==='Функционирует'&&g.open&&g.age.includes(a)).reduce((s,g)=>s+free(g),0);
+    const net=sup-dem;const cls=dem>0&&sup===0?'crit':(net<0?'warn':(sup===0&&dem===0?'zero':'ok'));
+    return'<div class="cell '+cls+'" title="'+d+', '+a+': спрос '+dem+', мест '+sup+'"><b>'+(net>0?'+':'')+net+'</b><span>спрос '+dem+' · мест '+sup+'</span></div>'}).join('')).join('')+'</div></div>'+
+  '<div class="legend"><span><i style="background:var(--crit)"></i>спрос есть, мест нет</span><span><i style="background:var(--warn)"></i>мест меньше спроса</span><span><i style="background:var(--ok)"></i>мест хватает</span><span>Число в клетке: места минус спрос. Группа с двумя возрастами считается в обоих столбцах.</span></div>';
+}
+function rToday(c){
+  const cl=clusters();
+  const humanReqs=reqs.filter(r=>bucket(r)==='human');
+  const inCluster=new Set(cl.flatMap(x=>x.list.map(r=>r.id)));
+  const singles=humanReqs.filter(r=>!inCluster.has(r.id));
+  const sit=cl.map(x=>'<div class="sit cluster"><b>Не хватает группы: '+x.district+'</b><p>'+x.list.length+' человека ('+x.list.map(r=>esc(r.fio.split(' ')[0])).join(', ')+'), возраст '+x.ages.join(' и ')+(x.days.length?', удобно '+x.days.join(' / '):'')+'. В районе нет групп для них.</p><div class="act"><button class="btn primary sm" data-a="toastMsg" data-v="Ведущим соседних групп ушло предложение вырастить новую группу (в прототипе ничего не отправляется)">Предложить открыть группу</button><button class="btn sm" data-a="bucketGo" data-v="human">Показать заявки</button></div></div>').join('')+
+    singles.map(r=>'<div class="sit"><b>'+esc(r.fio)+'</b><p>'+esc((PLAN.P[r.id]||{}).reason||'')+' · «'+esc(r.place)+'»</p><div class="act"><button class="btn sm" data-a="openReq" data-v="'+r.id+'">Уточнить</button></div></div>').join('');
+  const q=c.ready+c.callback;
+  return'<div class="panel"><div class="hero"><div><h2>Доброе утро, '+ME+'.</h2><p class="sub" style="margin:0">'+(q?'Система распределила <b>'+q+'</b> заявок. От вас — звонки и подтверждение.':'Звонить сегодня некому.')+'</p></div>'+
+    '<button class="btn primary big" data-a="startCall"'+(q?'':' disabled')+'>▶ Начать обзвон ('+q+')</button></div>'+
+    '<div class="counters"><button class="counter ready" data-a="bucketGo" data-v="ready"><span class="n">'+c.ready+'</span><span class="l">Готово к утверждению</span><span class="d">группа подобрана, остался звонок</span></button>'+
+    '<button class="counter cb" data-a="bucketGo" data-v="callback"><span class="n">'+c.callback+'</span><span class="l">Перезвонить</span><span class="d">вчера не дозвонились</span></button></div></div>'+
+  '<div class="grid2" style="margin-top:16px"><div class="panel"><h3>Спрос и предложение по районам</h3>'+matrix()+'</div>'+
+  '<div class="panel"><div class="help-head"><span class="n">'+c.human+'</span><b>Нужна помощь в сопоставлении</b></div>'+(sit||'<p class="sub">Таких заявок нет: система справилась со всеми.</p>')+'</div></div>';
+}
+
+function qmatch(r){const q=S.q.trim().toLowerCase();return!q||(r.fio+' '+r.phone+' '+r.place).toLowerCase().includes(q)}
+function rRequests(c){
+  const list=reqs.filter(qmatch);
+  const cnt=b=>list.filter(r=>bucket(r)===b).length;
+  const chips='<button class="chip" aria-pressed="'+(S.bucket==='all')+'" data-a="bucket" data-v="all">Все<span class="c">'+list.filter(r=>bucket(r)!=='cancelled').length+'</span></button>'+['ready','callback','human','done'].map(b=>'<button class="chip" aria-pressed="'+(S.bucket===b)+'" data-a="bucket" data-v="'+b+'">'+BNAME[b]+'<span class="c">'+cnt(b)+'</span></button>').join('');
+  const vis=list.filter(r=>bucket(r)!=='cancelled'&&(S.bucket==='all'||bucket(r)===S.bucket));
+  const order={callback:0,ready:1,human:2,done:3};
+  vis.sort((a,b)=>order[bucket(a)]-order[bucket(b)]);
+  const rows=vis.map(r=>{
+    const b=bucket(r),p=PLAN.P[r.id];
+    const prop=r.approved?'→ №'+gById(r.final).no+' ('+esc(gById(r.final).leader)+')':(p&&!p.none?'№'+p.g.no+' · '+esc(p.g.leader)+(p.g.day?' · '+p.g.day+' '+p.g.slot:''):'<span class="note">'+esc(p?p.reason:'')+'</span>');
+    return'<div class="row '+(S.sel===r.id?'sel':'')+'" data-a="selReq" data-v="'+r.id+'" tabindex="0"><div class="who"><b>'+esc(r.fio)+'<span class="age">'+r.age+'</span></b><span>'+esc(r.place)+'</span></div><div>'+bpill(b)+'<div style="margin-top:3px;font-size:13px">'+prop+'</div></div><div class="confn">'+(p&&!p.none&&!r.approved?p.conf:'')+'</div><div>'+pdots(reqFill(r))+'</div></div>'}).join('');
+  return'<div class="work"><div><div class="bar">'+chips+'</div><div class="listbox tbl"><div class="row head"><span>Человек</span><span>Предложение системы</span><span>Увер.</span><span>Данные</span></div>'+(rows||'<p class="sub" style="padding:16px">Ничего не найдено.</p>')+'</div><p class="note" style="margin-top:8px">«Увер.» — уверенность плана, 0–100. Квадратики данных: район · возраст · день и время · улица.</p></div>'+
+  '<aside class="pane '+(S.sel?'open':'')+'">'+(S.sel?cardReq(rById(S.sel)):'<div class="empty">Выберите заявку слева.<br>Там будет предложение системы и кнопка «Утвердить».</div>')+'</aside></div>';
+}
+function candHtml(c,main){
+  return'<div class="cand '+(main?'top':'')+'"><div class="ch"><b>Группа №'+c.g.no+'</b><span class="note">'+esc(c.g.leader)+' · '+esc(c.g.fmt)+'</span>'+(c.conf!=null?'<span class="sc">'+c.conf+'<small>уверенность</small></span>':'<span class="sc">'+c.score+'<small>совпадение</small></span>')+'</div>'+
+  '<div class="meter"><i style="width:'+(c.conf!=null?c.conf:c.score)+'%"></i></div><div class="reasons">'+c.reasons.map(x=>'<span class="r '+x.c+'">'+esc(x.t)+'</span>').join('')+'</div>'+
+  '<div class="act"><span class="free">'+esc(c.g.district)+' · '+esc(c.g.metro)+(c.g.day?' · '+c.g.day+' '+c.g.slot:'')+' · мест: '+free(c.g)+' из '+c.g.cap+'</span>'+
+  (main?'':'<button class="btn sm" data-a="pin" data-v="'+c.g.id+'">Выбрать вместо</button>')+'</div></div>';
+}
+function cardReq(r){
+  const b=bucket(r),p=PLAN.P[r.id],m=match(r),known=m.known;
+  const dayCtl=DAYS.map(d=>'<button class="dchip" aria-pressed="'+r.days.includes(d)+'" data-a="toggleDay" data-v="'+d+'">'+d+'</button>').join('')+'<select class="sel" id="slotSel" aria-label="Время суток"><option value="">время суток?</option>'+SLOTS.map(s=>'<option '+(r.slot===s?'selected':'')+'>'+s+'</option>').join('')+'</select>';
+  const P=(on,t,sm,ctl,hint)=>'<div class="param '+(on?'on':'')+'"><span class="mk"></span><div class="t">'+t+'<small>'+sm+'</small></div>'+(ctl?'<div class="ctl">'+ctl+'</div>':'')+(hint?'<div class="hint">'+hint+'</div>':'')+'</div>';
+  let proposal;
+  if(r.approved){
+    const g=gById(r.final);
+    proposal='<div class="consent" style="background:var(--ok-soft);color:var(--ok)">✓ Утверждено: группа №'+g.no+', '+esc(g.leader)+'</div>';
+  } else if(p&&!p.none&&b!=='human'){
+    proposal=(p.displaced?'<div class="callout">Лучший вариант — №'+p.displaced.g.no+' ('+p.displaced.g.day+' '+p.displaced.g.slot+'), но последнее место отдано заявке: '+esc(p.displaced.by.join(', '))+'. У неё совпадение выше, а других групп почти нет.</div>':'')+
+    candHtml({g:p.g,conf:p.conf,reasons:p.reasons,score:p.score},true)+
+    '<div class="note" style="margin-bottom:8px">План опирается на '+p.kn+' из 4 параметров. Ответственный: '+p.resp+' (назначен по нагрузке).</div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px"><button class="btn primary" data-a="approveSel">Утвердить</button><button class="btn" data-a="callThis">Позвонить в режиме обзвона</button><button class="btn ghost" data-a="cancelReq">Отказ от групп</button></div>'+
+    (p.alts.length?'<h3 style="margin-top:14px">Другие варианты</h3>'+p.alts.map(a=>candHtml(a,false)).join(''):'');
+  } else {
+    proposal='<div class="nogroup"><b>План не составлен.</b> '+esc(p?p.reason:'')+'. '+(p&&p.code==='nogroup'?'Заявка учтена в спросе по району, см. «Сегодня».':(p&&p.code==='place'?'Укажите район ниже, и система пересоберёт план.':(p&&p.code==='taken'?'Появится вариант, когда освободится место.':'Уверенных вариантов нет, выберите группу вручную в «Справочнике».')))+'</div>';
+    if(p&&!p.none&&b==='human')proposal+='<div class="callout" style="margin-top:10px">Лучший найденный вариант слабый (уверенность '+p.conf+'): №'+p.g.no+'. Лучше уточнить параметры ниже.</div>'+candHtml({g:p.g,conf:p.conf,reasons:p.reasons,score:p.score},true)+'<button class="btn" data-a="approveSel">Всё равно утвердить</button>';
+  }
+  const learned=r.learned.length?'<div class="ps"><h3>Из разговора</h3><ul class="log">'+r.learned.map(l=>'<li>'+esc(l)+'</li>').join('')+'</ul></div>':'';
+  const missing=!known.time||!known.street||!known.district;
+  return'<div class="ph"><div><h2>'+esc(r.fio)+'</h2><div class="note">'+bpill(b)+' <span class="age">'+r.age+'</span></div></div><button class="btn ghost x" data-a="closePane">✕</button></div>'+
+  '<div class="ps"><h3>Предложение системы</h3>'+proposal+'</div>'+
+  '<div class="ps"><dl class="kv"><dt>Телефон</dt><dd class="num">'+esc(r.phone)+'</dd><dt>Место</dt><dd>'+esc(r.place)+'</dd><dt>Источник</dt><dd>'+esc(r.src)+'</dd></dl></div>'+
+  learned+
+  '<div class="ps"><details class="fold" '+(b==='human'||missing?'open':'')+'><summary>Параметры подбора ('+m.kn+' из 4)</summary>'+
+    P(known.district,'Район',known.district?esc(r.district):'не определён',known.district?'':'<select class="sel" id="distSel" aria-label="Район"><option value="">выбрать…</option>'+DISTRICTS.map(d=>'<option>'+d+'</option>').join('')+'</select>',known.district?'':'Место «'+esc(r.place)+'» не разобралось в район')+
+    P(true,'Возраст',r.age,'','Обязательный: группа с другим возрастом не предлагается')+
+    P(known.time,'Удобные день и время',known.time?(r.days.join(', ')||'любой день')+(r.slot?' · '+r.slot:''):'не указано',dayCtl,'Необязательно. Узнаётся при звонке')+
+    P(known.street,'Улица, дом',known.street?esc(r.street):'не указано','<input type="text" id="streetIn" placeholder="например, Комендантский пр." value="'+esc(r.street||'')+'" aria-label="Улица">','Необязательно. Нужна, чтобы выбрать группу в пешей доступности')+
+  '</details></div>'+
+  '<div class="ps"><h3>Журнал</h3><ul class="log">'+r.log.slice().reverse().map(l=>'<li>'+esc(l)+'</li>').join('')+'</ul></div>';
+}
+
+/* ---------- Контроль ---------- */
+const hbars=(items,max)=>{const m=max||Math.max(...items.map(i=>i[1]),1);return items.map(i=>'<div class="hbar"><span>'+esc(i[0])+'</span><div class="meter"><i style="width:'+Math.round(i[1]/m*100)+'%"></i></div><b>'+i[1]+'</b></div>').join('')};
+const mcols=items=>{const m=Math.max(...items.map(i=>i[1]),1);return'<div class="mcols">'+items.map(i=>'<div><b>'+i[1]+'</b><i style="height:'+Math.round(i[1]/m*80)+'%"></i><span>'+i[0]+'</span></div>').join('')+'</div>'};
+const kpi=(n,l)=>'<div class="kpi"><div class="n">'+n+'</div><div class="l">'+l+'</div></div>';
+function rControl(c){
+  const subs=[['net','Сеть'],['req','Заявки'],['svc','Сервис подбора'],['camp','Кампания «40 дней»']];
+  const nav='<div class="bar">'+subs.map(s=>'<button class="chip" aria-pressed="'+(S.ctrl===s[0])+'" data-a="ctrl" data-v="'+s[0]+'">'+s[1]+'</button>').join('')+'<span class="note">Цифры на этой вкладке примерные</span></div>';
+  const pct=(arr,fn)=>arr.length?Math.round(arr.filter(fn).length/arr.length*100):0;
+  const fillRows=(items,fills)=>PN.map((n,i)=>{const p=pct(items,x=>fills(x)[i]);return'<div class="fill '+(p<60?'low':'')+'"><span>'+n+'</span><div class="meter"><i style="width:'+p+'%"></i></div><b class="num">'+p+'%</b></div>'}).join('');
+  let body='';
+  if(S.ctrl==='net'){
+    const coordLoad=[...new Set(groups.map(g=>g.coord))].map(n=>[n,groups.filter(g=>g.coord===n).length]);
+    body='<div class="kpis">'+kpi('116','групп всего (цель 150)')+kpi('98','ведущих')+kpi('84','действующих')+kpi('22','закрытых')+kpi('1 140','участников')+'</div>'+
+    '<div class="panel" style="margin-bottom:16px"><h3>Цель: 150 групп</h3><div class="meter" style="height:10px"><i style="width:77%"></i></div><p class="note" style="margin:0">116 из 150, осталось 34. Цель меняется в настройках.</p></div>'+
+    '<div class="grid3"><div class="panel"><h3>Группы по районам</h3>'+hbars([['Приморский',19],['Выборгский',16],['Центральный',12],['Калининский',11],['Невский',9],['Красногвардейский',8],['Остальные',41]])+'</div>'+
+    '<div class="panel"><h3>Форматы групп</h3>'+hbars([['Основная церковь',58],['Молодёжная',21],['Приватная',9],['Служение',6],['Не указан',22]])+'</div>'+
+    '<div class="panel"><h3>Нагрузка координаторов (в прототипе)</h3>'+hbars(coordLoad)+'</div>'+
+    '<div class="panel"><h3>Обратная связь координаторов</h3><p class="note" style="margin:0">Сколько групп получили контакт, по месяцам</p>'+mcols([['май',18],['июн',24],['июл',21],['авг',30],['сен',34],['окт',12]])+'</div>'+
+    '<div class="panel"><h3>Закрытые группы по районам</h3>'+hbars([['Приморский',5],['Выборгский',4],['Невский',4],['Центральный',3],['Остальные',6]])+'</div></div>';
+  } else if(S.ctrl==='req'){
+    const ages=AGES.map(a=>[a,reqs.filter(r=>r.age===a).length]);
+    const resp=SERVANTS.map(s=>[s,PLAN.load[s]]);
+    body='<div class="kpis">'+kpi('233','заявок всего')+kpi(c.done,'утверждено (прототип)')+kpi(c.ready+c.callback,'в работе')+kpi(c.human,'нужна помощь')+kpi('41','аннулировано')+'</div>'+
+    '<div class="grid3"><div class="panel"><h3>Заявки по месяцам</h3>'+mcols([['май',26],['июн',31],['июл',29],['авг',44],['сен',52],['окт',18]])+'</div>'+
+    '<div class="panel"><h3>Откуда приходят</h3>'+hbars([['Бот · Telegram',112],['Бот · MAX',38],['Таблица',64],['Форма регистрации',19]])+'</div>'+
+    '<div class="panel"><h3>Причины аннулирования</h3>'+hbars([['Не дозвонились',14],['Передумал',9],['Уже в группе',8],['Переехал',6],['Другое',4]])+'</div>'+
+    '<div class="panel"><h3>Возраст обратившихся (в прототипе)</h3>'+hbars(ages)+'</div>'+
+    '<div class="panel"><h3>Ответственные (авто, по нагрузке)</h3>'+hbars(resp)+'</div>'+
+    '<div class="panel"><h3>Служение</h3>'+hbars([['Не указано',171],['Музыкальное',22],['Детское',17],['Техническое',14],['Другое',9]])+'</div></div>';
+  } else if(S.ctrl==='svc'){
+    body='<div class="grid2"><div class="panel"><h3>Качество плана (пример)</h3><div class="bignum">78%</div><p class="note" style="margin:0 0 6px">служитель утвердил первое предложение без изменений. Цифра демонстрационная.</p>'+
+    '<div class="fill"><span>Согласились по звонку</span><div class="meter"><i style="width:71%"></i></div><b class="num">71%</b></div><div class="fill"><span>Пришли на встречу</span><div class="meter"><i style="width:52%"></i></div><b class="num">52%</b></div><div class="fill"><span>Среднее до звонка</span><div class="meter"><i style="width:20%"></i></div><b class="num">1,2 дн.</b></div></div>'+
+    '<div class="panel"><h3>Полнота данных: заявки</h3>'+fillRows(reqs,reqFill)+'<h3 style="margin-top:14px">Полнота данных: группы</h3>'+fillRows(groups,grpFill)+'</div></div>'+
+    '<div class="panel" style="margin-top:16px"><h3>Как составляется план</h3><div class="tbl"><table class="w"><tr><th>Параметр</th><th>Вес</th><th>Если у человека пусто</th><th>Если пусто у группы</th></tr>'+
+    '<tr><td>Район</td><td>40</td><td>Заявка уходит служителю на уточнение</td><td>—</td></tr>'+
+    '<tr><td>Возраст</td><td>25</td><td>—</td><td>Группа не предлагается при несовпадении</td></tr>'+
+    '<tr><td>День и время</td><td>20</td><td>Не учитывается, уверенность ниже</td><td>Нейтрально, вопрос ведущему</td></tr>'+
+    '<tr><td>Улица, дом</td><td>15</td><td>Не учитывается, уверенность ниже</td><td>Нейтрально, вопрос ведущему</td></tr></table></div>'+
+    '<p class="note" style="margin-top:8px">Итог считается только по известным параметрам. Заявки обрабатываются вместе: сначала те, у кого меньше вариантов; из двух близких групп выбирается менее заполненная. Уверенность умножается на долю известных параметров. Ответственный назначается по нагрузке.</p></div>';
+  } else {
+    body='<div class="kpis">'+kpi('1 140','зарегистрировались')+kpi('864','наборов выдано')+kpi('День 0 из 40','старт 1 ноября')+kpi('97%','доставка рассылок')+'</div>'+
+    '<div class="grid3"><div class="panel"><h3>По платформам</h3>'+hbars([['Telegram',812],['MAX',328]])+'</div>'+
+    '<div class="panel"><h3>Домашние группы участников</h3>'+hbars([['Уже в группе',402],['Хотят в группу',211],['Откроют свою',64],['Не интересно',463]])+'</div>'+
+    '<div class="panel"><h3>Доставка рассылок</h3>'+hbars([['Доставлено',4380],['Ошибка платформы',92],['Заблокировали бота',51]])+'<p class="note" style="margin:8px 0 0">Материалы дней редактируются в настройках.</p></div></div>';
+  }
+  return'<h2>Контроль</h2><p class="sub">Все показатели сети, заявок, сервиса и кампании.</p>'+nav+body;
+}
+
+/* ---------- Обзвон ---------- */
+function callQueue(first){
+  const ids=reqs.filter(r=>{const b=bucket(r);return b==='ready'||b==='callback'}).sort((a,b)=>((bucket(b)==='callback')-(bucket(a)==='callback'))||(PLAN.P[b.id].conf-PLAN.P[a.id].conf)).map(r=>r.id);
+  if(first&&ids.includes(first))return[first].concat(ids.filter(i=>i!==first));
+  return ids;
+}
+function rCall(){
+  const C=S.call,total=C.queue.length;
+  const top='<div class="ctop"><div class="prog"><b>Обзвон</b> · <span class="num">'+Math.min(C.i+1,total)+' из '+total+'</span><div class="meter"><i style="width:'+Math.round(C.i/Math.max(total,1)*100)+'%"></i></div></div><button class="btn" data-a="endCall">Закрыть</button></div>';
+  if(C.i>=total){
+    return'<div class="in">'+top+'<div class="ccard"><div class="cwho"><h2>Обзвон завершён</h2><p class="sub">Утверждено: <b>'+C.ok+'</b> · не дозвонились: <b>'+C.skip+'</b> · отказов: <b>'+C.no+'</b>.</p><p class="sub" style="margin-bottom:0">Не дозвонившиеся вернутся в «Перезвонить» завтра.</p></div><div class="cact"><button class="btn primary big" data-a="endCall">Вернуться на «Сегодня»</button></div></div></div>';
+  }
+  const r=rById(C.queue[C.i]),p=PLAN.P[r.id];
+  if(!p||p.none||r.approved||r.cancelled){
+    return'<div class="in">'+top+'<div class="ccard"><div class="cwho"><h2>'+esc(r.fio)+'</h2><div class="nogroup" style="margin-top:8px"><b>Подходящих групп больше нет.</b> '+esc(p?p.reason:'')+'. Заявка перенесена в «Нужна помощь в сопоставлении».</div></div><div class="cact"><button class="btn primary big" data-a="callNext">Дальше</button></div></div></div>';
+  }
+  const g=p.g,first=r.fio.split(' ')[0];
+  const when=g.day?SLOT_ON[g.slot]+' '+DAY_ON[g.day]:'время уточнит ведущий';
+  const whenFixed=g.day?DAY_ON[g.day]+' '+SLOT_ON[g.slot]:'в удобное время (ведущий уточнит)';
+  const script='Здравствуйте, '+first+'! Это '+ME+' из церкви. Вы оставляли заявку на домашнюю группу. Мы нашли группу рядом с вами: встречаются '+whenFixed+', около станции «'+g.metro+'», сейчас в ней '+g.people+' человек. Вам это подходит?';
+  const reasonRow=C.rej?'<div class="reasonrow"><span class="note" style="width:100%">Почему не подходит?</span>'+[['day','Другой день'],['slot','Другое время суток'],['far','Далеко'],['mix','Не тот состав'],['other','Другое']].map(x=>'<button class="btn" data-a="reject" data-v="'+x[0]+'">'+x[1]+'</button>').join('')+'<button class="btn ghost" data-a="rejectCancel">Назад</button></div>':'';
+  return'<div class="in">'+top+'<div class="ccard"><div class="cwho"><div class="note">'+esc(r.src)+' · ждёт '+r.d+' дн.'+(r.callback?' · не дозвонились вчера':'')+'</div><h2>'+esc(r.fio)+' <span class="age">'+r.age+'</span></h2><div class="phone">'+esc(r.phone)+'</div><div class="note">'+esc(r.place)+'</div></div>'+
+  '<div class="cprop"><div class="note">Предлагаем</div><div class="gt">Группа №'+g.no+' · '+esc(g.leader)+'</div><div>'+esc(g.district)+', м. '+esc(g.metro)+' · '+when+' · мест '+free(g)+'</div><div class="reasons" style="margin-bottom:0">'+p.reasons.map(x=>'<span class="r '+x.c+'">'+esc(x.t)+'</span>').join('')+'</div></div>'+
+  '<div class="script"><div class="note" style="margin-bottom:4px">Что сказать</div><q>'+esc(script)+'</q></div>'+
+  (r.learned.length?'<div class="learned">Уже известно: '+esc(r.learned.join('; '))+'</div>':'')+
+  '<div class="leaderopt" style="padding-top:12px"><input type="checkbox" id="shareLeader" '+(C.share?'checked':'')+'><label for="shareLeader">После согласия передать ведущему контакт и имя</label></div>'+
+  (C.rej?reasonRow:'<div class="cact"><button class="btn okb big" data-a="callYes">Согласился ✓</button><button class="btn big" data-a="rejectOpen">Не подходит</button></div><div class="cact" style="border-top:0;padding-top:0"><button class="btn" data-a="callSkip">Не дозвонился</button><button class="btn ghost" data-a="callCancel">Отказ от групп</button></div>')+
+  (p.alts.length&&!C.rej?'<div class="alts">Если не подойдёт, следующий вариант: №'+p.alts[0].g.no+(p.alts[0].g.day?' ('+p.alts[0].g.day+' '+p.alts[0].g.slot+')':'')+'</div>':'')+
+  '</div></div>';
+}
+
+/* ---------- События ---------- */
+function toast(t){const e=$('#toast');e.textContent=t;e.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>e.hidden=true,2800)}
+const cur=()=>rById(S.sel);
+const A={
+  tab(v){S.tab=v;S.menu=false},
+  menu(){S.menu=!S.menu},
+  create(v){S.menu=false;toast('Откроется форма «Новая '+(v==='участника'?'регистрация':v==='группу'?'домашняя группа':'заявка')+'», как в текущем дашборде')},
+  theme(){const o=['auto','light','dark'];S.theme=o[(o.indexOf(S.theme)+1)%3];const el=document.documentElement;if(S.theme==='auto')el.removeAttribute('data-theme');else el.setAttribute('data-theme',S.theme);$('#themeBtn').textContent='Тема: '+({auto:'авто',light:'светлая',dark:'тёмная'}[S.theme])},
+  bucket(v){S.bucket=v},
+  bucketGo(v){S.tab='requests';S.bucket=v;S.sel=null},
+  selReq(v){S.sel=+v},
+  openReq(v){S.tab='requests';S.sel=+v;S.bucket='all'},
+  closePane(){S.sel=null},
+  ctrl(v){S.ctrl=v},
+  toastMsg(v){toast(v)},
+  verify(v){const g=gById(+v);g.verified=0;toast('Группа №'+g.no+' отмечена подтверждённой')},
+  askLeader(v){toast('Ведущему группы №'+gById(+v).no+' уйдёт вопрос в боте (в прототипе ничего не отправляется)')},
+  toggleDay(v){const r=cur();r.days=r.days.includes(v)?r.days.filter(d=>d!==v):r.days.concat(v)},
+  pin(v){const r=cur();r.pin=+v;r.log.push('Выбрана другая группа: №'+gById(+v).no)},
+  approveSel(){const r=cur(),p=PLAN.P[r.id];if(!p||p.none)return;approve(r,p.g);toast('Утверждено: группа №'+p.g.no)},
+  cancelReq(){const r=cur();r.cancelled=true;r.log.push('Отказ от групп');S.sel=null;toast('Заявка закрыта: отказ')},
+  callThis(){S.call={queue:callQueue(S.sel),i:0,ok:0,skip:0,no:0,rej:false,share:true}},
+  startCall(){const q=callQueue();if(!q.length)return;S.call={queue:q,i:0,ok:0,skip:0,no:0,rej:false,share:true}},
+  endCall(){S.call=null},
+  callNext(){S.call.i++;S.call.rej=false},
+  callYes(){const r=rById(S.call.queue[S.call.i]),p=PLAN.P[r.id];approve(r,p.g);r.log.push(S.call.share?'Контакт передан ведущему':'Контакт не передавался');S.call.ok++;S.call.i++;S.call.rej=false;toast('Утверждено: '+r.fio+' → №'+p.g.no)},
+  callSkip(){const r=rById(S.call.queue[S.call.i]);r.callback=true;r.log.push('Не дозвонились, перезвонить завтра');S.call.skip++;S.call.i++},
+  callCancel(){const r=rById(S.call.queue[S.call.i]);r.cancelled=true;r.log.push('Отказ от групп');S.call.no++;S.call.i++},
+  rejectOpen(){S.call.rej=true},rejectCancel(){S.call.rej=false},
+  reject(v){
+    const r=rById(S.call.queue[S.call.i]),g=PLAN.P[r.id].g;
+    r.rejected.push(g.id);
+    if(v==='day'){r.avoidDays.push(g.day);r.learned.push('не '+g.day)}
+    else if(v==='slot'){r.avoidSlots.push(g.slot);r.learned.push('не '+SLOT_ON[g.slot])}
+    else if(v==='far'){r.learned.push('группа №'+g.no+' далеко — уточнить улицу')}
+    else if(v==='mix'){r.learned.push('группа №'+g.no+': не тот состав')}
+    else{r.learned.push('группа №'+g.no+': другая причина')}
+    r.log.push('Не подошла группа №'+g.no+' ('+v+')');
+    S.call.rej=false;toast('Запомнили. План пересобран');
+  },
+  /* справочник */
+  ent(v){S.ent=v;S.rsel=null;S.pop=null;S.fdraft={k:'',op:'=',v:''}},
+  refSel(v){S.rsel=isNaN(+v)?v:+v},
+  closeRef(){S.rsel=null},
+  pop(v){S.pop=S.pop===v?null:v},
+  addFilter(){const d=S.fdraft;if(!d.k)return;const needs=!(d.op==='пусто'||d.op==='заполнено');if(needs&&d.v==='')return;rf().filters.push({k:d.k,op:d.op,v:d.v});S.fdraft={k:'',op:'=',v:''}},
+  rmFilter(v){rf().filters.splice(+v,1)},
+  rmText(){rf().text=''},
+  clearF(){const s=rf();s.filters=[];s.text=''},
+  view(v){const s=rf(),all=ENT[S.ent].presets.concat(S.views[S.ent]),p=all[+v];s.filters=p.f.map(f=>Object.assign({},f));s.text='';S.pop=null},
+  saveView(){const n=($('#viewName').value||'').trim();if(!n){toast('Введите название вида');return}S.views[S.ent].push({n,f:rf().filters.map(f=>Object.assign({},f))});toast('Вид «'+n+'» сохранён')},
+  sort(v){const s=rf();s.sort=(s.sort&&s.sort.k===v)?{k:v,dir:-s.sort.dir}:{k:v,dir:1}},
+  aiToggle(){S.aiOpen=!S.aiOpen;aiRender();if(S.aiOpen){const i=$('#aiIn');if(i)i.focus()}},
+  aiSend(){const i=$('#aiIn');if(i){const v=i.value;i.value='';aiAsk(v)}},
+  aiChip(v){aiAsk(AI_CHIPS[+v])},
+  aiAct(v){S.acts[+v].fn();if(window.innerWidth<700){S.aiOpen=false;aiRender()}},
+  exportCsv(){toast('Скачается CSV с текущим отбором и выбранными столбцами (в прототипе файл не создаётся)')}
+};
+document.addEventListener('click',e=>{
+  if(S.menu&&!e.target.closest('#createMenu')&&!e.target.closest('#createBtn')){S.menu=false;render()}
+  if(S.pop&&!e.target.closest('.popw')){S.pop=null;render()}
+  const el=e.target.closest('[data-a]');if(!el||el.tagName==='INPUT')return;
+  const f=A[el.dataset.a];if(!f)return;f(el.dataset.v);render();
+});
+document.addEventListener('change',e=>{
+  const t=e.target;
+  if(t.id==='shareLeader'){S.call.share=t.checked;return}
+  if(t.dataset&&t.dataset.col){const s=rf();s.cols=t.checked?ENT[S.ent].cols.filter(k=>s.cols.includes(k)||k===t.dataset.col):s.cols.filter(k=>k!==t.dataset.col);render();return}
+  if(t.id==='slotSel'){cur().slot=t.value||null;render()}
+  else if(t.id==='streetIn'){cur().street=t.value.trim()||null;render()}
+  else if(t.id==='distSel'){cur().district=t.value||null;if(t.value)cur().log.push('Район уточнён: '+t.value);render()}
+  else if(t.id==='gbSel'){rf().gb=t.value;render()}
+  else if(t.id==='fField'){S.fdraft={k:t.value,op:NUMERIC.has(t.value)?'≥':'=',v:''};render()}
+  else if(t.id==='fOp'){S.fdraft.op=t.value;render()}
+  else if(t.id==='fVal'){S.fdraft.v=t.value}
+});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&e.target.matches('.row[data-a],.r-row[data-a]'))e.target.click();
+  if(e.key==='Enter'&&e.target.id==='aiIn'){e.preventDefault();A.aiSend()}
+  if(e.key==='Escape'&&S.tab==='ref'&&S.rsel!=null){S.rsel=null;render()}
+  if(e.key==='Escape'&&S.call){S.call=null;render()}
+});
+/* ---------- Помощник: ищет в базе и отвечает свободным текстом (в прототипе — по правилам) ---------- */
+const AI_CHIPS=['Где не хватает групп?','Что горит сегодня?','Группы без дня и времени','Сколько свободных мест в Приморском?','Почему Мария Соколова — в группу №12?'];
+function aiPatterns(t,ent){
+  const f=[];
+  if(ent==='groups'){
+    if(/без дня|нет дня|без времени|нет времени|день и время|дня и времени/.test(t))f.push({k:'День',op:'пусто',v:''});
+    if(/без улицы|нет улицы|улиц\S* не указан/.test(t))f.push({k:'Улица',op:'пусто',v:''});
+    if(/не подтвержд|не проверя|давно не|не проверен/.test(t))f.push({k:'Проверена, дн.',op:'≥',v:'31'});
+    if(/на паузе|пауз/.test(t))f.push({k:'Статус',op:'=',v:'На паузе'});
+    if(/принима\S* нов/.test(t)){f.push({k:'Статус',op:'=',v:'Функционирует'});f.push({k:'Мест свободно',op:'≥',v:'1'})}
+  }
+  if(ent==='people'){
+    if(/хотят вести|откро\S* свою/.test(t))f.push({k:'Малая группа',op:'=',v:'Откроет свою группу'});
+    if(/уже в группе/.test(t))f.push({k:'Малая группа',op:'=',v:'Уже в группе'});
+    if(/район\S* не указан|без района/.test(t))f.push({k:'Район',op:'пусто',v:''});
+  }
+  return f;
+}
+const aiLine=(g)=>'№'+g.no+' · '+g.leader+' · '+g.district+(g.day?' · '+g.day+' '+g.slot:'')+' · мест '+free(g);
+function findReq(t){return reqs.find(r=>r.fio.toLowerCase().split(' ').some(w=>w.length>=4&&t.includes(w.slice(0,Math.max(4,w.length-2)))))}
+function aiAnswer(text){
+  const t=text.toLowerCase();
+  const out={lines:[],act:null};
+  const L=x=>out.lines.push(x);
+  const c=counts();
+  if(/не хватает|нехватк|дефицит|где нужн/.test(t)){
+    const cl=clusters();
+    const gaps=DISTRICTS.map(d=>{const dem=open().filter(r=>r.district===d).length;const sup=groups.filter(g=>g.district===d&&g.status==='Функционирует'&&g.open).reduce((a,g)=>a+free(g),0);return{d,dem,sup}}).filter(x=>x.dem>x.sup);
+    if(!gaps.length){L('Сейчас мест хватает везде.');return out}
+    L('Заявок больше, чем свободных мест, в районах:');
+    gaps.forEach(x=>L('• '+x.d+': заявок '+x.dem+', мест '+x.sup));
+    cl.forEach(x=>L('В районе «'+x.district+'» групп для возраста '+x.ages.join(' и ')+' нет совсем: ждут '+x.list.length+' чел. Можно предложить ведущим соседних групп открыть новую.'));
+    out.act={label:'Открыть «Сегодня»',fn:()=>{S.tab='today'}};
+    return out;
+  }
+  if(/что горит|с чего начать|кому звонить|что делать|что сегодня/.test(t)){
+    L('Готово к утверждению: '+c.ready+'. Перезвонить: '+c.callback+'. Нужна помощь в сопоставлении: '+c.human+'.');
+    L('Начните с обзвона: сначала те, до кого вчера не дозвонились, потом заявки с самой высокой уверенностью.');
+    out.act={label:'Начать обзвон',fn:()=>{A.startCall()}};
+    return out;
+  }
+  const who=findReq(t);
+  if(who){
+    const p=PLAN.P[who.id],b=bucket(who);
+    L(who.fio+' ('+who.age+', '+who.place+').');
+    if(who.approved){L('Заявка утверждена: группа №'+gById(who.final).no+'.')}
+    else if(!p||p.none){L('Группа не подобрана: '+(p?p.reason:'нет данных')+'.')}
+    else{
+      L('Предлагаю группу №'+p.g.no+' ('+p.g.leader+'), уверенность '+p.conf+'. Причины: '+p.reasons.map(x=>x.t).join('; ')+'.');
+      if(p.displaced)L('Лучшее место — №'+p.displaced.g.no+' — отдано заявке '+p.displaced.by.join(', ')+'.');
+      L('Статус: '+BNAME[b].toLowerCase()+'. Ответственный: '+p.resp+'');
+    }
+    out.act={label:'Открыть заявку',fn:()=>{A.openReq(who.id)}};
+    return out;
+  }
+  const ent=/координатор/.test(t)?'coords':(/люд|заявк|человек|участник|ждут|ждёт|ждет|регистр|хотят/.test(t)?'people':'groups');
+  const sf=smartFilters(text,ent);
+  const filters=aiPatterns(t,ent).concat(sf.filters.filter(h=>!aiPatterns(t,ent).some(x=>x.k===h.k)));
+  const rows=ENT[ent].rows().filter(r=>filters.every(f=>passes(r,f,ent)));
+  if(!filters.length&&!/групп|люд|заявк|координатор|мест/.test(t)){
+    L('Я ищу в базе и отвечаю на вопросы: по группам, людям, заявкам и координаторам. Например: «группы без улицы в Невском», «кто ждёт группу в Приморском», «почему Игорь Пестов без группы».');
+    L('Сам я ничего не меняю: кнопки действий вы нажимаете сами.');
+    return out;
+  }
+  const fl=filters.map(fLabel).join(', ');
+  if(ent==='groups'&&/мест/.test(t)){
+    const sum=rows.reduce((a,r)=>a+r['Мест свободно'],0);
+    L('Свободно '+sum+' '+(sum===1?'место':'мест')+' в '+rows.length+' группах'+(fl?' ('+fl+')':'')+'.');
+    rows.filter(r=>r['Мест свободно']>0).sort((a,b)=>b['Мест свободно']-a['Мест свободно']).slice(0,5).forEach(r=>L('• '+aiLine(gById(r._id))));
+  } else {
+    const name={groups:['группа','группы','групп'],people:['человек','человека','человек'],coords:['координатор','координатора','координаторов']}[ent];
+    const n=rows.length,w=n%10===1&&n%100!==11?name[0]:(n%10>=2&&n%10<=4&&(n%100<10||n%100>=20)?name[1]:name[2]);
+    L(n?'Найдено: '+n+' '+w+(fl?' ('+fl+')':'')+':':'Ничего не найдено'+(fl?' по условиям: '+fl:'')+'.');
+    rows.slice(0,5).forEach(r=>L('• '+(ent==='groups'?aiLine(gById(r._id)):(ent==='people'?r['ФИО']+' · '+(r['Район']||'район не указан')+' · '+r['Малая группа']:r['Имя']+' · групп '+r['Групп']))));
+    if(n>5)L('…и ещё '+(n-5)+'.');
+  }
+  if(rows.length)out.act={label:'Показать в справочнике',fn:()=>{S.tab='ref';S.ent=ent;S.rsel=null;S.pop=null;const s=rf();s.filters=filters.map(f=>Object.assign({},f));s.text=''}};
+  return out;
+}
+function aiRender(){
+  const el=$('#ai');
+  if(!S.aiOpen){el.innerHTML='<button class="aifab" data-a="aiToggle">✦ Помощник</button>';return}
+  if(!S.chat.length)S.chat.push({me:false,lines:['Здравствуйте! Я ищу по базе и отвечаю на вопросы. Сама ничего не меняю: действия подтверждаете вы.'],chips:true});
+  const msgs=S.chat.map(m=>'<div class="msg '+(m.me?'me':'bot')+'">'+m.lines.map(l=>'<div>'+esc(l)+'</div>').join('')+(m.act!=null?'<div style="margin-top:8px"><button class="btn sm primary" data-a="aiAct" data-v="'+m.act+'">'+esc(S.acts[m.act].label)+'</button></div>':'')+(m.chips?'<div class="aic">'+AI_CHIPS.map((c,i)=>'<button class="chip" data-a="aiChip" data-v="'+i+'">'+esc(c)+'</button>').join('')+'</div>':'')+'</div>').join('')+(S.thinking?'<div class="msg bot note">Ищу в базе…</div>':'');
+  el.innerHTML='<div class="aip" role="dialog" aria-label="Помощник"><div class="aih"><div><b>Помощник</b><div class="note">Ищет в базе · только читает</div></div><button class="btn ghost" data-a="aiToggle" aria-label="Свернуть">✕</button></div><div class="aim" id="aiMsgs">'+msgs+'</div><div class="aif"><input id="aiIn" type="text" placeholder="Спросите о группах, людях, заявках" aria-label="Вопрос помощнику"><button class="btn primary" data-a="aiSend">→</button></div><div class="aino">Прототип: ответы собраны по заготовленным правилам. В рабочей версии отвечает языковая модель, а доступ к базе только на чтение.</div></div>';
+  const m=$('#aiMsgs');if(m&&m.scrollTo)m.scrollTo(0,m.scrollHeight);
+}
+function aiAsk(text){
+  text=text.trim();if(!text)return;
+  S.chat.forEach(m=>{m.chips=false});
+  S.chat.push({me:true,lines:[text]});S.thinking=true;aiRender();
+  const i=$('#aiIn');if(i)i.focus();
+  setTimeout(()=>{
+    const a=aiAnswer(text);S.thinking=false;
+    const msg={me:false,lines:a.lines};
+    if(a.act){S.acts.push(a.act);msg.act=S.acts.length-1}
+    S.chat.push(msg);aiRender();const i2=$('#aiIn');if(i2)i2.focus();
+  },350);
+}
+
+$('#q').addEventListener('input',e=>{S.q=e.target.value;if(S.tab!=='requests')S.tab='requests';render();e.target.focus()});
+render();aiRender();
+</script>

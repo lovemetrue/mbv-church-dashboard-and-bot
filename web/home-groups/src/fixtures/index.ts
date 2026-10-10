@@ -1,10 +1,12 @@
+import { buildSettingsAudit, buildSettingsErrors, buildSettingsHealth, buildSettingsPrompts } from './settings';
 import { buildCoordinators, buildGroups, buildPeople, buildRequests, buildToday } from './build';
 
 /** Ответ «сервера» в режиме фикстур. Путь — как в apiGet: «today», «requests»… */
 export function fixtureResponse(path: string): unknown {
   switch (path.replace(/^\/+/, '').replace(/\/+$/, '')) {
     case 'me':
-      return { role: 'admin' };
+      // В демо вход полный, иначе вкладки «Настройки» не видно.
+      return { role: 'super' };
     case 'today':
       return buildToday();
     case 'requests':
@@ -15,6 +17,14 @@ export function fixtureResponse(path: string): unknown {
       return buildPeople();
     case 'coordinators':
       return buildCoordinators();
+    case 'settings/health':
+      return buildSettingsHealth();
+    case 'settings/errors':
+      return buildSettingsErrors();
+    case 'settings/audit':
+      return buildSettingsAudit();
+    case 'settings/prompts':
+      return buildSettingsPrompts();
     default:
       throw new Error(`В фикстурах нет маршрута: ${path}`);
   }

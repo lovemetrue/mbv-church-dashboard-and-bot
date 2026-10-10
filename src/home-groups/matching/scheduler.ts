@@ -5,6 +5,8 @@ export interface AutoMatchingOptions {
   /** Включён ли автоматический подбор: читается на каждом проходе, поэтому переключатель действует без перезапуска. */
   isEnabled: () => Promise<boolean>;
   run: (actor: string) => Promise<unknown>;
+  /** Куда сообщить об ошибке (журнал раздела «Настройки»). */
+  onError?: (err: unknown) => void;
 }
 
 /** Кем записан автоматический запуск в журнале. */
@@ -25,6 +27,7 @@ export function startAutoMatching(opts: AutoMatchingOptions): { stop: () => void
         if (await opts.isEnabled()) await opts.run(AUTO_ACTOR);
       } catch (err) {
         logger.error({ err: err instanceof Error ? err.message : err }, 'домашние группы: автоматический подбор не удался');
+        opts.onError?.(err);
       } finally {
         running = false;
       }

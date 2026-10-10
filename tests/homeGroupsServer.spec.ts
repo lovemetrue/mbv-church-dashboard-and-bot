@@ -44,14 +44,19 @@ interface Started {
   base: string; viewsCalls: () => number; close: () => void; setViews: (f: () => Promise<ReturnType<typeof sampleViews>>) => void;
   actionCalls: ActionCall[]; invalidations: () => number; setOutcome: (o: ActionOutcome) => void;
   matchingCalls: { name: string; actor: string; enabled?: boolean }[];
+  setSettingsOutcome: (o: ActionOutcome) => void;
+  settingsCalls: { name: string; actor?: string; body?: unknown }[]; reported: { source: string; message: string; context: string }[];
 }
 
 async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempts?: number } = {}): Promise<Started> {
   let calls = 0;
   let invalidations = 0;
   let outcome: ActionOutcome = { ok: true };
+  let settingsOutcome: ActionOutcome = { ok: true };
   const actionCalls: ActionCall[] = [];
   const matchingCalls: { name: string; actor: string; enabled?: boolean }[] = [];
+  const settingsCalls: { name: string; actor?: string; body?: unknown }[] = [];
+  const reported: { source: string; message: string; context: string }[] = [];
   const record = (name: string) => async (id: number, body: unknown, actor: string): Promise<ActionOutcome> => {
     actionCalls.push({ name, id, body, actor });
     return outcome;
@@ -63,6 +68,15 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
       run: async (actor) => { matchingCalls.push({ name: 'run', actor }); return { ok: true, created: 2, replaced: 1, unchanged: 3 }; },
       setAuto: async (enabled, actor) => { matchingCalls.push({ name: 'auto', actor, enabled }); },
     },
+    settings: {
+      health: async () => { settingsCalls.push({ name: 'health' }); return { generatedAt: 'g', overall: 'ok', metrics: [] }; },
+      errors: async () => { settingsCalls.push({ name: 'errors' }); return { generatedAt: 'g', items: [] }; },
+      audit: async () => { settingsCalls.push({ name: 'audit' }); return { generatedAt: 'g', items: [] }; },
+      prompts: async () => { settingsCalls.push({ name: 'prompts' }); return { generatedAt: 'g', agents: [] }; },
+      savePrompt: async (body: unknown, actor: string) => { settingsCalls.push({ name: 'save', actor, body }); return settingsOutcome; },
+      activatePrompt: async (body: unknown, actor: string) => { settingsCalls.push({ name: 'activate', actor, body }); return settingsOutcome; },
+    },
+    reportError: (source, err, context) => { reported.push({ source, message: err instanceof Error ? err.message : String(err), context }); },
     invalidateViews: () => { invalidations += 1; },
     actorName: (role) => (role === 'super' ? SUPER.login : REGULAR.login),
     auth: new SessionService(memoryStore(), {
@@ -80,7 +94,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
     viewsCalls: () => calls,
     close: () => { server.close(); },
     setViews: (f) => { views = f; },
-    actionCalls, matchingCalls, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
+    actionCalls, matchingCalls, settingsCalls, reported, setSettingsOutcome: (o: ActionOutcome) => { settingsOutcome = o; }, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
   };
 }
 
@@ -686,5 +700,87 @@ describe('подбор для новых заявок', () => {
     expect((await call(cookie, 'other', {})).status).toBe(404);
     expect((await fetch(`${app.base}/api/v1/matching/run`, { headers: { cookie } })).status).toBe(404);
     expect(app.matchingCalls.length).toBe(before);
+  });
+});
+
+
+describe('раздел «Настройки»', () => {
+  const get = (cookie: string | null, name: string) =>
+    fetch(`${app.base}/api/v1/settings/${name}`, { headers: cookie ? { cookie } : {} });
+  const post = (cookie: string | null, name: string, body: unknown, headers: Record<string, string> = {}) =>
+    fetch(`${app.base}/api/v1/settings/${name}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}), ...headers },
+      body: typeof body === 'string' ? body : JSON.stringify(body),
+    });
+
+  test.each(['health', 'errors', 'audit', 'prompts'])('%s: без сессии 401, обычный вход 403, полный — 200; данные не читаются без прав', async (name) => {
+    const before = app.settingsCalls.length;
+    expect((await get(null, name)).status).toBe(401);
+    expect((await get(await signIn(REGULAR), name)).status).toBe(403);
+    expect(app.settingsCalls.length).toBe(before);
+    const r = await get(await signIn(SUPER), name);
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ generatedAt: 'g' });
+    expect(app.settingsCalls.at(-1)!.name).toBe(name);
+  });
+
+  test('ответы 403 и 200 не кэшируются', async () => {
+    const r = await get(await signIn(SUPER), 'health');
+    expect(r.headers.get('cache-control')).toBe('no-store');
+  });
+
+  test.each(['save', 'activate'])('%s: обычному входу 403 и ничего не вызвано', async (name) => {
+    const before = app.settingsCalls.length;
+    const r = await post(await signIn(REGULAR), `prompts/${name}`, { agent: 'coordinator', block: 'role', text: 'x', version: 1 });
+    expect(r.status).toBe(403);
+    expect(await r.json()).toMatchObject({ error: 'forbidden' });
+    expect(app.settingsCalls.length).toBe(before);
+  });
+
+  test('сохранение передаёт тело и логин автора, при успехе 200', async () => {
+    const body = { agent: 'coordinator', block: 'role', text: 'Новый текст', note: 'п' };
+    const r = await post(await signIn(SUPER), 'prompts/save', body);
+    expect(r.status).toBe(200);
+    expect(app.settingsCalls.at(-1)).toEqual({ name: 'save', actor: SUPER.login, body });
+  });
+
+  test('откат передаёт тело и автора', async () => {
+    const body = { agent: 'coordinator', block: 'role', version: 2 };
+    await post(await signIn(SUPER), 'prompts/activate', body);
+    expect(app.settingsCalls.at(-1)).toEqual({ name: 'activate', actor: SUPER.login, body });
+  });
+
+  test.each([['bad_request', 400], ['not_found', 404]] as const)('ошибка %s отвечает %i с текстом', async (error, status) => {
+    app.setSettingsOutcome({ ok: false, error, message: 'Пояснение.' });
+    try {
+      const r = await post(await signIn(SUPER), 'prompts/save', { agent: 'coordinator', block: 'role', text: '' });
+      expect(r.status).toBe(status);
+      expect(await r.json()).toEqual({ error, message: 'Пояснение.' });
+    } finally { app.setSettingsOutcome({ ok: true }); }
+  });
+
+  test('форма с другого сайта (не JSON) отклоняется: 415', async () => {
+    const r = await post(await signIn(SUPER), 'prompts/save', 'text=x', { 'content-type': 'application/x-www-form-urlencoded' });
+    expect(r.status).toBe(415);
+  });
+
+  test('чужие адреса — 404, GET по адресу правки её не выполняет', async () => {
+    const cookie = await signIn(SUPER);
+    const before = app.settingsCalls.length;
+    expect((await post(cookie, 'prompts/delete', {})).status).toBe(404);
+    expect((await get(cookie, 'prompts/save')).status).toBe(404);
+    expect((await get(cookie, 'secrets')).status).toBe(404);
+    expect(app.settingsCalls.length).toBe(before);
+  });
+
+  test('ошибка обработки запроса записывается в журнал: источник, текст и «метод путь» без строки запроса', async () => {
+    const cookie = await signIn();
+    app.setViews(async () => { throw new Error('расчёт сломался'); });
+    try {
+      const r = await fetch(`${app.base}/api/v1/today?x=1`, { headers: { cookie } });
+      expect(r.status).toBe(500);
+      expect(app.reported.at(-1)).toEqual({ source: 'домашние группы', message: 'расчёт сломался', context: 'GET /api/v1/today' });
+    } finally { app.setViews(async () => sampleViews()); }
   });
 });

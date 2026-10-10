@@ -4,6 +4,7 @@ import { extname, resolve, sep } from 'node:path';
 import { SessionService } from '../dashboard/sessions.js';
 import { logger } from '../logger.js';
 import { ACTION_STATUS, type RequestActions } from './actions.js';
+import type { Settings } from '../platform/settings/service.js';
 import type { ActionError, ActionOk, MatchingRunOk, Me, Role } from './contracts.js';
 import type { Views } from './api/views.js';
 import { homeGroupsLoginPage } from './loginPage.js';
@@ -45,6 +46,10 @@ export interface HomeGroupsDeps {
     run(actor: string): Promise<MatchingRunOk>;
     setAuto(enabled: boolean, actor: string): Promise<void>;
   };
+  /** Раздел «Настройки»: только для полного входа. */
+  settings: Settings;
+  /** Записать ошибку в журнал раздела «Настройки». Не должен бросать. */
+  reportError: (source: string, err: unknown, context: string) => void;
   /** Сбросить общий снимок после действия, чтобы список сразу показал результат. */
   invalidateViews: () => void;
   /** Кто записан автором в журнале: пока нет личных входов, это логин общего входа. */
@@ -75,6 +80,7 @@ const CONTENT_TYPES: Record<string, string> = {
 
 class BodyTooLarge extends Error {}
 
+const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/prompts\/(save|activate)$/;
 const MATCHING_PATH = /^\/api\/v1\/matching\/(run|auto)$/;
 
 /** `POST /api/v1/requests/12/approve`: номер заявки — цифры, длиннее пятнадцати не бывает (Number безопасен). */
@@ -322,9 +328,32 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     sendJson(res, 200, { ok: true } satisfies ActionOk);
   }
 
+  /** Правка инструкций агентов: только полный вход, как и весь раздел «Настройки». */
+  async function handleSettingsPost(
+    req: IncomingMessage, res: ServerResponse, action: string, sid: string | undefined,
+  ): Promise<void> {
+    const call = await readAuthedJson(req, res, sid);
+    if (!call) return;
+    if (call.role !== 'super') {
+      sendJson(res, 403, { error: 'forbidden', message: 'Раздел «Настройки» доступен только полному входу.' } satisfies ActionError);
+      return;
+    }
+    const outcome = action === 'save'
+      ? await deps.settings.savePrompt(call.body, call.actor)
+      : await deps.settings.activatePrompt(call.body, call.actor);
+    if (!outcome.ok) {
+      sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
+      return;
+    }
+    logger.info({ actor: call.actor, action }, 'домашние группы: инструкция агента изменена');
+    sendJson(res, 200, { ok: true } satisfies ActionOk);
+  }
+
   async function handleApi(req: IncomingMessage, res: ServerResponse, path: string, sid: string | undefined): Promise<void> {
     const act = req.method === 'POST' ? ACTION_PATH.exec(path) : null;
     if (act) { await handleAction(req, res, Number(act[1]), act[2]!, sid); return; }
+    const settingsPost = req.method === 'POST' ? SETTINGS_POST_PATH.exec(path) : null;
+    if (settingsPost) { await handleSettingsPost(req, res, settingsPost[1]!, sid); return; }
     const match = req.method === 'POST' ? MATCHING_PATH.exec(path) : null;
     if (match) { await handleMatching(req, res, match[1]!, sid); return; }
     // Всё остальное — только чтение. Любой другой не-GET отвечает 404, как изменяющие маршруты
@@ -337,6 +366,24 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       if (!role) { sendJson(res, 401, { error: 'unauthorized' }); return; }
       const me: Me = { role };
       sendJson(res, 200, me);
+      return;
+    }
+
+    // «Настройки»: чтение только для полного входа. Считается на каждый запрос, без общего снимка:
+    // состояние сервера должно быть свежим, а журналы читают редко.
+    const settingsRead: Record<string, () => Promise<unknown>> = {
+      '/api/v1/settings/health': () => deps.settings.health(),
+      '/api/v1/settings/errors': () => deps.settings.errors(),
+      '/api/v1/settings/audit': () => deps.settings.audit(),
+      '/api/v1/settings/prompts': () => deps.settings.prompts(),
+    };
+    const settingsRoute = Object.hasOwn(settingsRead, path) ? settingsRead[path] : undefined;
+    if (settingsRoute) {
+      if ((await deps.auth.roleOf(sid)) !== 'super') {
+        sendJson(res, 403, { error: 'forbidden', message: 'Раздел «Настройки» доступен только полному входу.' } satisfies ActionError);
+        return;
+      }
+      sendJson(res, 200, await settingsRoute());
       return;
     }
 
@@ -427,6 +474,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     } catch (err) {
       // Внутренности клиенту не показываем, в журнале они нужны.
       logger.error({ err: (err as Error).message }, 'домашние группы: ошибка обработки запроса');
+      deps.reportError('домашние группы', err, `${req.method ?? 'GET'} ${(req.url ?? '').split('?')[0]}`);
       if (res.headersSent) return;
       if (isApi) sendJson(res, 500, { error: 'internal' });
       else sendText(res, 500, 'Что-то пошло не так. Попробуйте ещё раз.');

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { parseBucket, parseEntity, parseId, parseTab, patchParams, tabParams } from './params';
+import { parseBucket, parseEntity, parseId, parseTab, patchParams, tabParams, visibleTabs } from './params';
 
 const p = (s: string) => new URLSearchParams(s);
 
@@ -33,5 +33,21 @@ describe('состояние экрана в адресе', () => {
 
   test('«Сегодня» — вкладка по умолчанию и в адрес не пишется', () => {
     expect(tabParams(p('tab=requests&req=1'), 'today').toString()).toBe('');
+  });
+});
+
+describe('вкладки по ролям', () => {
+  test('«Настройки» видит только полный вход, а пока роль неизвестна вкладки нет', () => {
+    expect(visibleTabs('super')).toEqual(['today', 'requests', 'reference', 'settings']);
+    expect(visibleTabs('admin')).toEqual(['today', 'requests', 'reference']);
+    expect(visibleTabs(undefined)).toEqual(['today', 'requests', 'reference']);
+  });
+
+  test('адрес вкладки «Настройки» разбирается как есть: решение о доступе принимает оболочка', () => {
+    expect(parseTab('settings')).toBe('settings');
+  });
+
+  test('при смене вкладки на «Настройки» внутренний раздел сбрасывается', () => {
+    expect(tabParams(p('tab=settings&sec=audit'), 'reference').toString()).toBe('tab=reference');
   });
 });

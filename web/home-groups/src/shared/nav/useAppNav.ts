@@ -29,7 +29,10 @@ export function useAppNav() {
   );
 
   const goTab = useCallback(
-    (tab: TabId) => setParams((prev) => tabParams(prev, tab)),
+    // replace — когда вкладку выбрали не руками, а оболочка (уход с закрытой вкладки): запись
+    // с запретным адресом в истории вернула бы человека обратно на неё по кнопке «назад».
+    (tab: TabId, opts?: { replace?: boolean }) =>
+      setParams((prev) => tabParams(prev, tab), { replace: opts?.replace ?? false }),
     [setParams],
   );
 
@@ -42,6 +45,8 @@ export function useAppNav() {
       requestId: parseId(params.get('req')),
       entity: parseEntity(params.get('ent')),
       recordKey: params.get('rec'),
+      /** Раздел «Настроек» как в адресе; разбирает его сам раздел. */
+      section: params.get('sec'),
     }),
     [params],
   );

@@ -1,0 +1,512 @@
+/*
+ * Раздел «Настройки». Цвета только из токенов (var(--…)): темы переопределяют именно их.
+ * Статусы ok/warn/crit передаются переменной --tone, а смысл всегда продублирован текстом.
+ */
+
+.layout {
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.content {
+  min-width: 0;
+}
+
+/* Список разделов: вертикальный, на телефоне — в два столбца, чтобы не съедать экран. */
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: sticky;
+  top: 12px;
+}
+.navBtn {
+  display: block;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 8px 14px;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font-weight: 500;
+}
+.navBtn:hover {
+  border-color: var(--accent);
+}
+.navBtn[aria-current='page'] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+  .nav {
+    position: static;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ── общие части ─────────────────────────────────────────────────────────── */
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+.title {
+  font-size: 18px;
+  letter-spacing: -0.01em;
+}
+.headActions {
+  display: flex;
+  gap: 8px;
+}
+.muted {
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+}
+.card > p,
+.card > ul {
+  margin-bottom: 10px;
+}
+.plainList {
+  padding-left: 20px;
+}
+.plainList li {
+  margin-bottom: 4px;
+}
+
+.noticeOk,
+.noticeError,
+.noticeWarn {
+  border-radius: var(--radius);
+  padding: 9px 11px;
+  font-size: 13px;
+  font-weight: 500;
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+}
+.noticeOk {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.noticeError {
+  background: var(--crit-soft);
+  color: var(--crit);
+}
+.noticeWarn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.tone_ok {
+  --tone: var(--ok);
+  --tone-soft: var(--ok-soft);
+}
+.tone_warn {
+  --tone: var(--warn);
+  --tone-soft: var(--warn-soft);
+}
+.tone_crit {
+  --tone: var(--crit);
+  --tone-soft: var(--crit-soft);
+}
+
+.when {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* ── фильтры журналов ────────────────────────────────────────────────────── */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  align-items: flex-end;
+  margin-bottom: 8px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.field label,
+.fieldLabel {
+  font-size: 13px;
+  font-weight: 600;
+}
+.fieldGrow {
+  flex: 1 1 220px;
+}
+.control {
+  display: block;
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+}
+.fieldLabel {
+  display: block;
+  margin: 12px 0 6px;
+}
+@media (max-width: 700px), (pointer: coarse) {
+  .control {
+    min-height: var(--tap);
+    font-size: 16px; /* меньше 16 px iOS приближает страницу при фокусе */
+  }
+  .field {
+    flex: 1 1 100%;
+  }
+}
+
+/* ── состояние сервера ───────────────────────────────────────────────────── */
+
+.overall {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+  border-radius: var(--radius-lg);
+  background: var(--tone-soft);
+  color: var(--tone);
+}
+.overallLabel {
+  font-weight: 500;
+}
+.overallWord {
+  font-size: 22px;
+  font-weight: 700;
+}
+.metrics {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.metric {
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--tone);
+  border-radius: var(--radius-lg);
+  padding: 12px 14px;
+}
+.metricTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.metricLabel {
+  font-weight: 600;
+}
+.metricValue {
+  margin-top: 6px;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.metricHint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* ── журнал ошибок ───────────────────────────────────────────────────────── */
+
+.errorList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow: hidden;
+}
+.errorItem {
+  padding: 10px 14px;
+  border-top: 1px solid var(--line-soft);
+  min-width: 0;
+}
+.errorItem:first-child {
+  border-top: 0;
+}
+.errorTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.errorMessage {
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+.context {
+  margin-top: 2px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* ── журнал регистрации: таблица, на телефоне карточки ───────────────────── */
+
+.tableWrap {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow: hidden;
+}
+.audit {
+  width: 100%;
+  border-collapse: collapse;
+}
+.audit th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-weight: 600;
+  background: var(--surface-2);
+  padding: 8px 12px;
+}
+.audit td {
+  padding: 10px 12px;
+  vertical-align: top;
+  border-top: 1px solid var(--line-soft);
+  overflow-wrap: anywhere;
+}
+.auditRow td:first-child {
+  white-space: nowrap;
+}
+.detailRow td {
+  background: var(--surface-2);
+}
+.sides {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.side {
+  min-width: 0;
+}
+.sideTitle {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.sideText {
+  overflow-wrap: anywhere;
+}
+.pairs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.pairs li {
+  overflow-wrap: anywhere;
+  margin-bottom: 2px;
+}
+.pairKey {
+  color: var(--muted);
+}
+
+@media (max-width: 700px) {
+  .tableWrap {
+    border: 0;
+    background: transparent;
+    overflow: visible;
+  }
+  .audit,
+  .audit tbody,
+  .audit tr,
+  .audit td {
+    display: block;
+  }
+  /* Заголовки таблицы на карточках заменяют подписи у значений; скринридер их по-прежнему читает. */
+  .audit thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .auditRow {
+    margin-top: 10px;
+    padding: 6px 12px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+  .auditRow td {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 8px;
+    border-top: 0;
+    padding: 5px 0;
+  }
+  .auditRow td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .detailRow {
+    border: 1px solid var(--line);
+    border-top: 0;
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    background: var(--surface-2);
+  }
+  .sides {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── инструкции агентов ──────────────────────────────────────────────────── */
+
+.agent {
+  margin-bottom: 20px;
+}
+.agentTitle {
+  font-size: 16px;
+}
+.block {
+  margin-top: 12px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  min-width: 0;
+}
+.blockHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.blockTitle {
+  font-size: 15px;
+}
+.readOnlyNote {
+  margin-top: 8px;
+  font-weight: 600;
+}
+.readOnlyText {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.textarea {
+  display: block;
+  width: 100%;
+  min-height: 160px;
+  resize: vertical;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  line-height: 1.5;
+}
+.count {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: right;
+}
+.actionsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.actionsRow button {
+  min-height: var(--tap);
+}
+.h5 {
+  margin: 16px 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  font-weight: 600;
+}
+.versions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+}
+.version {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--line-soft);
+}
+.version:first-child {
+  border-top: 0;
+}
+.versionInfo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  min-width: 0;
+}
+.dialogFoot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+.dialogFoot button {
+  min-height: var(--tap);
+}

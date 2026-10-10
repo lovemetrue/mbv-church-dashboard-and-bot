@@ -57,6 +57,8 @@ const SCREENS = [
   { name: 'reference-groups-table', url: '/?tab=reference', ready: 'table' },
   { name: 'reference-people', url: '/?tab=reference&ent=people', ready: 'table' },
   { name: 'reference-coordinators', url: '/?tab=reference&ent=coordinators&rec=1', ready: '[role=dialog][aria-label^="Карточка координатора"]' },
+  { name: 'reference-filters-open', url: '/?tab=reference', ready: 'table', click: 'button:has-text("Фильтры")' },
+  { name: 'reference-view-open', url: '/?tab=reference', ready: 'table', click: 'button:has-text("Вид таблицы")' },
   { name: 'reference-filtered', url: '/?tab=reference&f=Район:eq:Приморский&gb=Статус&col=№&col=Ведущий&col=Район&col=Статус&col=Здоровье', ready: 'table' },
 ];
 
@@ -74,6 +76,9 @@ const SHOTS = [
   ['reference-groups-table', 1280, 'light'],
   ['reference-coordinators', 1280, 'light'],
   ['reference-filtered', 1280, 'light'],
+  ['reference-filters-open', 1280, 'light'],
+  ['reference-view-open', 1280, 'light'],
+  ['reference-filters-open', 400, 'light'],
   ...['today', 'requests', 'requests-list', 'reference-groups', 'reference-groups-table', 'reference-people', 'reference-coordinators', 'reference-filtered', 'requests-noplan'].map((s) => [s, 400, 'light']),
   ['today', 400, 'dark'],
   ['today', 400, 'gray'],
@@ -130,6 +135,7 @@ for (const [screenName, width, theme] of SHOTS) {
   await page.goto(origin + screen.url);
   await page.waitForSelector(screen.ready, { timeout: 15000 });
   await page.evaluate(() => document.fonts.ready);
+  if (screen.click) await page.click(screen.click);
   await page.waitForTimeout(150);
 
   if (mobile) {

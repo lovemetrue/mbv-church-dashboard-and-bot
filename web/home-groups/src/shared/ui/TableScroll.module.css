@@ -6,3 +6,10 @@
   border-radius: 10px;
   background: var(--surface);
 }
+
+/* Без рамки: матрица на «Сегодня» лежит внутри своей панели и в рамке не нуждается. */
+.bare {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  max-width: 100%;
+}

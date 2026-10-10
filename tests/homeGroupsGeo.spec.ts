@@ -191,6 +191,22 @@ describe('resolveDistrict: станция из текста', () => {
     expect(resolveDistrict('Метро Лесная')).toBe('Выборгский');
   });
 
+  test('«Невский проспект» и «Площадь Александра Невского» — Центральный, а «Невский район» — Невский', () => {
+    // matchesDistrict принимает «Невского» и «Невский проспект» за Невский район; без поправки
+    // эти заявки уехали бы за Неву.
+    expect(resolveDistrict('Невский проспект')).toBe('Центральный');
+    expect(resolveDistrict('Невский пр.')).toBe('Центральный');
+    expect(resolveDistrict('Площадь Александра Невского')).toBe('Центральный');
+    expect(resolveDistrict('Невский р')).toBe('Невский');
+    expect(resolveDistrict('Невский район')).toBe('Невский');
+    expect(resolveDistrict('Невский, Дыбенко')).toBe('Невский');
+  });
+
+  test('станция, названная в тексте целиком, важнее похожей по основе: «Славянка» — не «Проспект Славы»', () => {
+    expect(resolveDistrict('Славянка')).toBe('Пушкинский');
+    expect(resolveDistrict('Проспект Славы')).toBe('Фрунзенский');
+  });
+
   test('городские разговорные названия: «Петроградка», «Центр»', () => {
     expect(resolveDistrict('Петроградка')).toBe('Петроградский');
     expect(resolveDistrict('Центр, ближе к колизею')).toBe('Центральный');
@@ -273,6 +289,14 @@ describe('resolveDistrict на реальных заявках из таблиц
       ['Любой', null],
     ];
     for (const [place, expected] of expectations) expect(resolveDistrict(place, index), place).toBe(expected);
+  });
+
+  test('колонка «метро» групп в большинстве случаев даёт тот же район, что записала церковь', () => {
+    const withMetro = table.groups.filter((g) => g.metro && g.district !== 'Онлайн' && g.district !== 'Не указан');
+    const same = withMetro.filter((g) => resolveDistrict(g.metro) === g.district).length;
+    expect(withMetro.length).toBeGreaterThan(80);
+    // Расхождения — станции на границе районов, где церковь относит группу к району ведущего.
+    expect(same / withMetro.length).toBeGreaterThan(0.85);
   });
 
   test('подавляющее большинство непустых мест распознаётся', () => {

@@ -53,6 +53,9 @@
   background: var(--surface);
   min-height: 36px;
 }
+.actions {
+  display: contents;
+}
 .planpill {
   display: inline-flex;
   align-items: center;
@@ -129,7 +132,7 @@
   outline: none;
 }
 
-/* Телефон: название и «Выйти» в первой строке, поиск на всю ширину, остальное ниже. */
+/* Телефон: название и «Выйти» в первой строке, поиск на всю ширину, ниже одна строка действий. */
 @media (max-width: 700px) {
   .top {
     display: grid;
@@ -137,14 +140,14 @@
     grid-template-areas:
       'brand logout'
       'search search'
-      'pill pill'
-      'create create'
-      'theme theme';
+      'actions actions';
     gap: 8px 10px;
+    padding-bottom: 10px;
   }
   .brand {
     grid-area: brand;
     margin: 0;
+    font-size: 16px;
   }
   .search {
     grid-area: search;
@@ -154,21 +157,35 @@
     min-height: var(--tap);
     font-size: 16px; /* меньше 16 px iOS приближает страницу при фокусе */
   }
+  .actions {
+    grid-area: actions;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
   .planpill {
-    grid-area: pill;
-    justify-self: start;
-  }
-  .create {
-    grid-area: create;
-  }
-  .themeBox {
-    grid-area: theme;
+    padding: 6px 8px;
+    font-size: 12px;
   }
   .logout {
     grid-area: logout;
   }
+  /* Подпись «Тема» на телефоне не нужна: её читает скринридер, а видящему хватает самого списка. */
+  .themeLabel {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
   .themeSelect {
     min-height: var(--tap);
-    flex: 1;
+    font-size: 14px;
+    padding-inline: 6px;
+  }
+  .tabs {
+    margin-bottom: 14px;
   }
 }

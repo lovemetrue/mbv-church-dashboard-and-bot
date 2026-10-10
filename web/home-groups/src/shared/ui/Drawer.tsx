@@ -30,7 +30,9 @@ export function Drawer({ label, title, subtitle, onClose, docked = false, childr
 
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    ref.current?.focus({ preventScroll: true });
+    // Фокус уходит в карточку, только если человек уже что-то фокусировал (строку, кнопку).
+    // При загрузке страницы по ссылке фокус в body: красть его у скринридера не нужно.
+    if (previous && previous !== document.body) ref.current?.focus({ preventScroll: true });
     return () => {
       // Если строка, из которой открыли карточку, уже убрана из дерева, фокус просто теряется.
       if (previous && document.contains(previous)) previous.focus({ preventScroll: true });

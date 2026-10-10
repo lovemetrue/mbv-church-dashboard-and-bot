@@ -81,7 +81,7 @@ function Proposal({ r }: { r: RequestItem }) {
       <CandidateCard candidate={p.main} main />
       <p className={styles.note}>
         {ru.requests.basedOn(p.knownParams)}
-        {r.responsible ? ` ${ru.requests.responsible}: ${r.responsible}.` : ''}
+        {r.responsible ? ` ${ru.requests.responsible}: ${r.responsible}${r.responsible.endsWith('.') ? '' : '.'}` : ''}
       </p>
       <div className={styles.actions}>
         <Button variant="primary" soon>

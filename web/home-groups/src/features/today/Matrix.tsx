@@ -21,7 +21,7 @@ function netText(net: number): string {
 export function Matrix({ data }: { data: TodayView }) {
   return (
     <>
-      <TableScroll label={ru.today.matrixLabel}>
+      <TableScroll bare label={ru.today.matrixLabel}>
         <table className={styles.matrix}>
           <thead>
             <tr>

@@ -41,6 +41,7 @@ export function Header() {
         />
       </div>
 
+      <div className={styles.actions}>
       {today.data && (
         <span className={styles.planpill} role="status">
           {ru.header.assignedPrefix}{' '}
@@ -74,6 +75,7 @@ export function Header() {
             </option>
           ))}
         </select>
+      </div>
       </div>
 
       {/* Выход — обычная форма POST: сервер сбросит куку и вернёт на вход. */}

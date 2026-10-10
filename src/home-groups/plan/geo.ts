@@ -254,19 +254,39 @@ export function buildMetroIndex(groups: readonly { metro: string | null; distric
 const PLACE_SEPARATOR = /[,;/()]|\s(?:или|либо)\s/;
 
 /**
- * Станция из списка, названная в куске текста. Если подходит несколько, берём с самым длинным
- * названием: «Пушкинская» подходит и под «Пушкин», но она точнее. При равной длине — по алфавиту,
- * чтобы результат не зависел от порядка добавления в карту.
+ * Станция из списка, названная в куске текста. Сначала те, чьё название стоит в тексте целиком
+ * («Славянка» в «Славянка, Колпино»), и только потом найденные по основам слов: `matchesMetro`
+ * терпим к окончаниям («у Пионерской»), но у коротких основ ловит лишнее — «Проспект Славы» цепляется
+ * за любое «слав…». Внутри группы берём самое длинное название: «Пушкинская» подходит и под «Пушкин»,
+ * но она точнее. При равенстве — по алфавиту, чтобы результат не зависел от порядка записей в карте.
  */
 function stationDistrict(segment: string, stations: ReadonlyMap<string, string>): string | null {
-  let best: string | null = null;
+  const text = normalizeStation(segment);
+  let best: { station: string; exact: boolean } | null = null;
   for (const station of stations.keys()) {
-    if (!matchesMetro(segment, station)) continue;
-    if (best === null || station.length > best.length || (station.length === best.length && station < best)) {
-      best = station;
-    }
+    const exact = text.includes(station);
+    if (!exact && !matchesMetro(segment, station)) continue;
+    const better =
+      best === null ||
+      (exact && !best.exact) ||
+      (exact === best.exact &&
+        (station.length > best.station.length || (station.length === best.station.length && station < best.station)));
+    if (better) best = { station, exact };
   }
-  return best === null ? null : (stations.get(best) ?? null);
+  return best === null ? null : (stations.get(best.station) ?? null);
+}
+
+/**
+ * Названия станций и улиц, в которых есть слово-район: «Невский проспект», «Площадь Александра
+ * Невского». `matchesDistrict` принял бы их за Невский район, а это Центральный. Убираем такие
+ * места из текста до поиска района; на станцию это не влияет — она ищется по исходному тексту.
+ */
+function withoutDistrictLookalikes(segment: string): string {
+  return segment
+    .toLowerCase()
+    .replaceAll('ё', 'е')
+    .replace(/александр\p{L}*\s+невск\p{L}*/gu, ' ')
+    .replace(/невск\p{L}*\s+(?:проспект\p{L}*|просп|пр)(?![\p{L}])/gu, ' ');
 }
 
 /**
@@ -279,7 +299,8 @@ export function resolveDistrict(place: string | null, metroIndex?: ReadonlyMap<s
   if (!place) return null;
   for (const segment of place.split(PLACE_SEPARATOR)) {
     if (!segment.trim()) continue;
-    const named = DISTRICTS.find((district) => matchesDistrict(segment, district));
+    const cleaned = withoutDistrictLookalikes(segment);
+    const named = DISTRICTS.find((district) => matchesDistrict(cleaned, district));
     if (named) return named;
     const fromGroups = metroIndex ? stationDistrict(segment, metroIndex) : null;
     if (fromGroups) return fromGroups;

@@ -244,6 +244,8 @@ export function buildPlan(input: PlanInput): PlanOutput {
       const g = groupById.get(c.groupId)!;
       return c.score + (1 - (g.people ?? 0) / g.capacity) * FILL_BONUS;
     };
+    // Хвост по id избыточен (кандидаты уже отсортированы по id, а sort стабилен), но порядок не должен
+    // зависеть от того, что кто-то изменит сортировку в `match`.
     const ordered = [...available].sort(
       (a, b) => adjusted(b) - adjusted(a) || b.score - a.score || a.groupId - b.groupId,
     );

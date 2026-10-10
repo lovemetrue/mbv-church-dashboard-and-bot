@@ -46,7 +46,7 @@ export function ReferenceScreen() {
     <div>
       <div className={styles.ents} role="group" aria-label={ru.reference.entitiesLabel}>
         {ENTITY_IDS.map((id) => (
-          <Chip key={id} pressed={nav.entity === id} count={counts[id]} onClick={() => nav.setEntity(id)}>
+          <Chip key={id} shape="block" pressed={nav.entity === id} count={counts[id]} onClick={() => nav.setEntity(id)}>
             {LABELS[id]}
           </Chip>
         ))}

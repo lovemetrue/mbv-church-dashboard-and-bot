@@ -186,7 +186,11 @@
   text-transform: inherit;
   color: inherit;
   padding: 8px 9px;
-  min-height: 34px;
+}
+@media (max-width: 700px), (pointer: coarse) {
+  .sortBtn {
+    min-height: var(--tap);
+  }
 }
 .sortBtn:hover {
   color: var(--accent);
@@ -232,7 +236,12 @@
   text-align: inherit;
   color: inherit;
   font: inherit;
-  min-height: 24px;
+}
+@media (max-width: 700px), (pointer: coarse) {
+  .openBtn {
+    min-height: var(--tap);
+    min-width: 36px;
+  }
 }
 .openBtn:hover {
   color: var(--accent);

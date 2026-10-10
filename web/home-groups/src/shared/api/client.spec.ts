@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { API_BASE, LOGIN_URL } from './base';
-import { ApiError, apiGet, setLoginRedirect } from './client';
+import { ApiError, apiGet, apiPost, setLoginRedirect } from './client';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -50,5 +50,44 @@ describe('клиент API', () => {
   test('ответ, не являющийся JSON, не роняет страницу необработанной ошибкой', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>', { status: 200 })));
     await expect(apiGet('people')).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe('клиент API: действия (POST)', () => {
+  test('POST шлёт JSON с Content-Type и телом, адрес строится от базы', async () => {
+    const fetchMock = vi.fn(async () => json({ ok: true }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(apiPost('requests/5/approve', { groupId: 3 })).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/requests/5/approve',
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'same-origin',
+        body: '{"groupId":3}',
+        headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
+      }),
+    );
+  });
+
+  test('код ошибки действия из тела ответа попадает в ApiError', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ error: 'group_full', message: 'мест нет' }, 409)));
+    await expect(apiPost('requests/5/approve', {})).rejects.toMatchObject({ status: 409, code: 'group_full' });
+  });
+
+  test('неизвестный код и тело не в JSON не ломают разбор: остаётся статус', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ error: 'что-то_новое', message: '' }, 409)));
+    await expect(apiPost('x', {})).rejects.toMatchObject({ status: 409, code: null });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>', { status: 502 })));
+    await expect(apiPost('x', {})).rejects.toMatchObject({ status: 502, code: null });
+  });
+
+  test('обрыв сети — ApiError с кодом 0, а 401 уводит на вход', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('Failed to fetch'))));
+    await expect(apiPost('x', {})).rejects.toMatchObject({ status: 0 });
+    const redirect = vi.fn();
+    setLoginRedirect(redirect);
+    vi.stubGlobal('fetch', vi.fn(async () => json({}, 401)));
+    await expect(apiPost('x', {})).rejects.toMatchObject({ status: 401 });
+    expect(redirect).toHaveBeenCalledWith(LOGIN_URL);
   });
 });

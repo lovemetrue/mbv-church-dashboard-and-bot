@@ -97,15 +97,14 @@ describe('«Заявки»: экран', () => {
     expect(within(card).getByText('Другие варианты')).toBeInTheDocument();
   });
 
-  test('действия карточки показаны, но отключены с подсказкой про следующий этап', async () => {
+  test('у заявки с планом показаны действия решения, и они доступны (не заглушки)', async () => {
     stubFetchWithFixtures();
     renderAt(<App />, '/?tab=requests&req=1');
     const card = await screen.findByRole('dialog', { name: /Карточка заявки/ });
-    for (const name of ['Утвердить', 'Позвонить в режиме обзвона', 'Отказ от групп', 'Выбрать вместо']) {
+    for (const name of ['Утвердить в группу ДГ-0012', 'Выбрать другую группу из списка', 'Отклонить группу ДГ-0012', 'Нужен звонок: отметить заявку']) {
       const btn = within(card).getByRole('button', { name });
-      expect(btn).toBeDisabled();
-      expect(btn).toHaveAttribute('title', SOON);
-      expect(btn).toHaveAttribute('aria-description', SOON);
+      expect(btn).toBeEnabled();
+      expect(btn).not.toHaveAttribute('title', SOON);
     }
   });
 
@@ -133,7 +132,8 @@ describe('«Заявки»: экран', () => {
     renderAt(<App />, '/?tab=requests&req=19');
     const card = await screen.findByRole('dialog', { name: /Виталий Егоров/ });
     expect(within(card).getByText(/Лучший найденный вариант слабый \(уверенность 47\)/)).toBeInTheDocument();
-    expect(within(card).getByRole('button', { name: 'Всё равно утвердить' })).toBeDisabled();
+    expect(within(card).getByRole('button', { name: /^Всё равно утвердить/ })).toBeEnabled();
+    expect(within(card).getByText('Пока вы не утвердили, человек не считается распределённым.')).toBeInTheDocument();
   });
 
   test('утверждённая заявка показывает, куда определён человек', async () => {

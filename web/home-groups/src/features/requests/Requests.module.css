@@ -197,6 +197,116 @@
   flex-wrap: wrap;
   margin: 8px 0 6px;
 }
+/* Кнопки решения нажимаются пальцем: зона не меньше 44 px и на широком экране тоже. */
+.actions button {
+  min-height: var(--tap);
+}
+.source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  align-items: baseline;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.noticeOk,
+.noticeError {
+  border-radius: var(--radius);
+  padding: 9px 11px;
+  font-size: 13px;
+  font-weight: 500;
+  margin: 0 0 10px;
+  overflow-wrap: anywhere;
+}
+.noticeOk {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.noticeError {
+  background: var(--crit-soft);
+  color: var(--crit);
+}
+
+/* Окна выбора группы и причины отказа */
+.fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0 0 12px;
+  min-width: 0;
+}
+.legend {
+  padding: 0;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.choices {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.choice {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: var(--tap);
+  padding: 6px 4px;
+  border-top: 1px solid var(--line-soft);
+  cursor: pointer;
+}
+.choice input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+}
+.choiceBody {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.choiceOff {
+  opacity: 0.6;
+  cursor: default;
+}
+.noSeats {
+  font-size: 12px;
+  color: var(--warn);
+  font-weight: 500;
+}
+.fieldLabel {
+  display: block;
+  margin: 4px 0 6px;
+  font-weight: 600;
+}
+.textarea,
+.search {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 9px 11px;
+  margin-bottom: 10px;
+}
+.search {
+  min-height: var(--tap);
+  margin-top: 8px;
+}
+.textarea {
+  resize: vertical;
+  min-height: 88px;
+}
+.dialogFoot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+.dialogFoot button {
+  min-height: var(--tap);
+}
+
 .h4 {
   margin: 16px 0 8px;
   font-size: 12px;

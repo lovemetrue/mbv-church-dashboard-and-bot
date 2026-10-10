@@ -1,0 +1,59 @@
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: var(--scrim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--gutter);
+}
+.panel {
+  width: min(520px, 100%);
+  max-height: min(86vh, 720px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  min-width: 0;
+}
+.panel:focus {
+  /* Панель — контейнер: фокус на ней служит только точкой отсчёта для Tab, кольцо не нужно. */
+  outline: none;
+}
+.head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 8px 10px 18px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.title {
+  font-size: 17px;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.body {
+  padding: 14px 18px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-width: 0;
+}
+
+/* На телефоне окно — шторка снизу: до кнопок достаёт большой палец. */
+@media (max-width: 700px) {
+  .scrim {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .panel {
+    width: 100%;
+    max-height: 90vh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}

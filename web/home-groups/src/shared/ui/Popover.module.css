@@ -1,0 +1,44 @@
+.root {
+  position: relative;
+}
+.panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 12;
+  width: min(460px, calc(100vw - 32px));
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 14px;
+}
+.panel:focus {
+  outline: none;
+}
+.scrim {
+  display: none;
+}
+@media (max-width: 700px) {
+  .scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 11;
+    background: var(--scrim);
+  }
+  .panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    width: auto;
+    max-height: 82vh;
+    z-index: 12;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  }
+}

@@ -1,0 +1,11 @@
+.age {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 400;
+  background: var(--line-soft);
+  color: var(--ink);
+  padding: 1px 6px;
+  border-radius: 5px;
+  margin-left: 6px;
+  white-space: nowrap;
+}

@@ -1,0 +1,107 @@
+/*
+ * Дизайн-токены. Цвета в компонентах не пишутся: только var(--…).
+ * Темы: светлая (по умолчанию), тёмная, серая. «Авто» не имеет своего блока: без атрибута
+ * data-theme работает системная тема (prefers-color-scheme), поэтому тёмные значения ниже
+ * записаны дважды — для системной тёмной и для явного выбора. Менять их надо одновременно
+ * (тест tokens.spec.ts сверяет блоки и считает контраст).
+ */
+:root {
+  color-scheme: light;
+  --bg: #f2f4f8;
+  --surface: #ffffff;
+  --surface-2: #f7f8fb;
+  --ink: #1a2133;
+  --muted: #5a6376;
+  --line: #d3d8e3;
+  --line-soft: #e6e9f1;
+  --accent: #2a4fb8;
+  --accent-ink: #ffffff;
+  --accent-soft: #e6ecfb;
+  --ok: #1f7040;
+  --ok-soft: #e1f2e8;
+  --warn: #8c5700;
+  --warn-soft: #fbefd5;
+  --crit: #b82d25;
+  --crit-soft: #fbe4e1;
+  --shadow: 0 1px 2px rgba(20, 28, 50, 0.06), 0 8px 24px rgba(20, 28, 50, 0.1);
+  --scrim: rgba(20, 28, 50, 0.35);
+
+  --font: 'Onest', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+  --gutter: 16px;
+  --tap: 44px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='gray']) {
+    color-scheme: dark;
+    --bg: #0e121b;
+    --surface: #161b27;
+    --surface-2: #1b2130;
+    --ink: #e6e9f2;
+    --muted: #9aa3b8;
+    --line: #2d3549;
+    --line-soft: #212839;
+    --accent: #8aa4ff;
+    --accent-ink: #0e121b;
+    --accent-soft: #222c4d;
+    --ok: #5cc383;
+    --ok-soft: #173424;
+    --warn: #e0a640;
+    --warn-soft: #3a2d12;
+    --crit: #f0786f;
+    --crit-soft: #3d1c1a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35);
+    --scrim: rgba(0, 0, 0, 0.55);
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0e121b;
+  --surface: #161b27;
+  --surface-2: #1b2130;
+  --ink: #e6e9f2;
+  --muted: #9aa3b8;
+  --line: #2d3549;
+  --line-soft: #212839;
+  --accent: #8aa4ff;
+  --accent-ink: #0e121b;
+  --accent-soft: #222c4d;
+  --ok: #5cc383;
+  --ok-soft: #173424;
+  --warn: #e0a640;
+  --warn-soft: #3a2d12;
+  --crit: #f0786f;
+  --crit-soft: #3d1c1a;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35);
+  --scrim: rgba(0, 0, 0, 0.55);
+}
+
+/* Серая: середина между светлой и тёмной. Текст тёмный, фоны приглушённые. */
+:root[data-theme='gray'] {
+  color-scheme: light;
+  --bg: #cfd4dd;
+  --surface: #e4e7ed;
+  --surface-2: #d9dde5;
+  --ink: #161c2b;
+  --muted: #444d60;
+  --line: #a9b0bf;
+  --line-soft: #bcc2cf;
+  --accent: #213c8c;
+  --accent-ink: #ffffff;
+  --accent-soft: #c4cfec;
+  --ok: #17603a;
+  --ok-soft: #bfdcca;
+  --warn: #6f4400;
+  --warn-soft: #e8d6a8;
+  --crit: #9c1f18;
+  --crit-soft: #eec6c1;
+  --shadow: 0 1px 2px rgba(20, 28, 50, 0.12), 0 8px 24px rgba(20, 28, 50, 0.16);
+  --scrim: rgba(20, 28, 50, 0.4);
+}

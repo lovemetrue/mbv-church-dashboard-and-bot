@@ -39,6 +39,11 @@ jobs:
         with:
           node-version: 24
           cache: npm
+          # Два пакета — два lock-файла; без второго кэш не обновлялся бы
+          # при смене зависимостей интерфейса.
+          cache-dependency-path: |
+            package-lock.json
+            web/home-groups/package-lock.json
 
       - run: npm ci
 
@@ -50,6 +55,25 @@ jobs:
 
       - name: Тесты (vitest, живой Postgres)
         run: npm test
+
+      # Интерфейс «Домашние группы» — отдельный пакет со своими зависимостями.
+      # Его типы читают src/home-groups/contracts.ts, так что typecheck ловит
+      # расхождение контракта между сервером и интерфейсом.
+      - name: Интерфейс «Домашние группы» — зависимости
+        working-directory: web/home-groups
+        run: npm ci
+
+      - name: Интерфейс «Домашние группы» — типы
+        working-directory: web/home-groups
+        run: npm run typecheck
+
+      - name: Интерфейс «Домашние группы» — тесты
+        working-directory: web/home-groups
+        run: npm test
+
+      - name: Интерфейс «Домашние группы» — сборка
+        working-directory: web/home-groups
+        run: npm run build
 
       # Прод-деплой (scripts/deploy.sh) собирает этот же Dockerfile прямо на
       # сервере — если он не соберётся, деплой упадёт уже после git pull.
@@ -85,7 +109,7 @@ jobs:
       # deploy.sh ещё не лежит на сервере, git pull должен успеть его принести
       # до попытки запуска. Бэкап при деплое больше не делаем — теперь это
       # отдельный systemd-таймер на сервере (см. deploy/systemd/), а не шаг CI.
-      - name: git pull, выкладка bot → dashboard
+      - name: git pull, выкладка bot → dashboard → home-groups
         run: |
           ssh -p "${{ secrets.SSH_HOST_PORT }}" "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST_IP }}" '
             set -eu

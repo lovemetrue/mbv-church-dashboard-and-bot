@@ -90,6 +90,50 @@ services:
         max-size: 10m
         max-file: '3'
 
+  # Новый интерфейс «Домашние группы» (этап A): React-страница и JSON API в одном процессе.
+  # Тот же образ, что и бот, просто другая команда. Живёт параллельно со старым
+  # дашбордом, его не заменяет: своя кука (mbv_sid), свой порт, а база, Valkey и
+  # пароли общие — вход прежний. Новых обязательных переменных нет.
+  # Выкладывается после dashboard (см. scripts/deploy.sh): схему базы накатывает бот.
+  home-groups:
+    build: .
+    restart: unless-stopped
+    command: node dist/home-groups/index.js
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+      valkey:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-church}:${POSTGRES_PASSWORD:-church}@db:5432/${POSTGRES_DB:-church40}
+      REDIS_URL: redis://valkey:6379/0
+      # Собранный интерфейс, см. стадию web в Dockerfile.
+      HG_WEB_DIR: /app/web-dist
+      # Внутри контейнера порт зафиксирован и не зависит от .env: env_file сюда
+      # тоже попадает, а значение из environment его перекрывает. Так healthcheck
+      # и правая часть публикации порта ниже всегда сходятся.
+      HG_PORT: 8092
+      TZ: ${TIMEZONE:-Europe/Moscow}
+    # Меняется только порт на хосте: HG_PORT в .env задаёт, куда обращаться снаружи
+    # (слева), а внутри контейнера всегда 8092 (справа). Правила про DASHBOARD_BIND
+    # те же, что у dashboard: по умолчанию только localhost, снаружи нужен nginx с
+    # TLS; при DASHBOARD_BIND=0.0.0.0 без домена обязательно DASHBOARD_COOKIE_SECURE=false.
+    ports:
+      - '${DASHBOARD_BIND:-127.0.0.1}:${HG_PORT:-8092}:8092'
+    # busybox wget есть в alpine, ставить curl ради проверки не нужно.
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:8092/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
 volumes:
   pgdata:
   valkeydata:

@@ -62,11 +62,23 @@ const SCREENS = [
   { name: 'reference-coordinators', url: '/?tab=reference&ent=coordinators&rec=1', ready: '[role=dialog][aria-label^="Карточка координатора"]' },
   { name: 'reference-filters-open', url: '/?tab=reference', ready: 'table', click: 'button:has-text("Фильтры")' },
   { name: 'reference-view-open', url: '/?tab=reference', ready: 'table', click: 'button:has-text("Вид таблицы")' },
+  // «Настройки» (в фикстурах вход полный). full — снимок всей страницы: разделы длиннее экрана.
+  { name: 'settings-health', url: '/?tab=settings', ready: 'ul[aria-label="Метрики сервера"]', full: true },
+  { name: 'settings-errors', url: '/?tab=settings&sec=errors', ready: 'ul[aria-label="Записи об ошибках"]', full: true },
+  { name: 'settings-audit', url: '/?tab=settings&sec=audit', ready: 'table[aria-label="Журнал регистрации"]', click: 'button[aria-label^="Что изменилось"]', full: true },
+  { name: 'settings-prompts', url: '/?tab=settings&sec=prompts', ready: 'textarea', full: true },
+  { name: 'settings-prompts-rollback', url: '/?tab=settings&sec=prompts', ready: 'textarea', click: 'button[aria-label="Сделать действующей версию 2"]' },
+  { name: 'settings-users', url: '/?tab=settings&sec=users', ready: 'text=Личные входы', full: true },
   { name: 'reference-filtered', url: '/?tab=reference&f=Район:eq:Приморский&gb=Статус&col=№&col=Ведущий&col=Район&col=Статус&col=Здоровье', ready: 'table' },
 ];
 
 const SHOTS = [
   // [экран, ширина, тема]
+  ...['settings-health', 'settings-errors', 'settings-audit', 'settings-prompts'].flatMap((s) => [[s, 1280, 'light'], [s, 400, 'light']]),
+  ['settings-prompts-rollback', 400, 'light'],
+  ['settings-users', 400, 'light'],
+  ['settings-health', 1280, 'dark'],
+  ['settings-health', 400, 'gray'],
   ...['today', 'requests', 'reference-groups', 'reference-people'].map((s) => [s, 1280, 'light']),
   ['today', 1280, 'dark'],
   ['today', 1280, 'gray'],
@@ -153,7 +165,7 @@ for (const [screenName, width, theme] of SHOTS) {
     else console.log(`ок: ${tag} без горизонтальной прокрутки (scrollWidth=${r.scrollWidth}, окно=${r.vw})`);
   }
   const file = join(outDir, `${screenName}-${width}-${theme}.png`);
-  await page.screenshot({ path: file, fullPage: false });
+  await page.screenshot({ path: file, fullPage: Boolean(screen.full) });
   await ctx.close();
 }
 

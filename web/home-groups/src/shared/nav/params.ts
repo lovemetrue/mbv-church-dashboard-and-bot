@@ -1,19 +1,33 @@
+import type { Role } from '@contracts';
 import { isBucketFilter, type BucketFilter } from '../../entities/buckets';
 
 /**
  * Состояние экрана живёт в адресе (`?tab=requests&bucket=ready&req=12`), а не в памяти:
  * так оно переживает перезагрузку и кнопку «назад», а на запись можно дать ссылку.
  *
- *   tab     today (по умолчанию) | requests | reference
+ *   tab     today (по умолчанию) | requests | reference | settings (только полный вход)
  *   q       поиск по заявкам (общий для шапки)
  *   bucket  all (по умолчанию) | ready | callback | human | done
  *   req     открытая заявка
  *   ent     groups (по умолчанию) | people | coordinators
  *   rec     открытая запись справочника
  *   f, rq, col, sort, gb — таблица справочника, см. shared/filters/serialize.ts
+ *   sec     раздел «Настроек»; значения и значение по умолчанию знает сам раздел (features/settings)
  */
-export type TabId = 'today' | 'requests' | 'reference';
-export const TAB_IDS: readonly TabId[] = ['today', 'requests', 'reference'];
+export type TabId = 'today' | 'requests' | 'reference' | 'settings';
+export const TAB_IDS: readonly TabId[] = ['today', 'requests', 'reference', 'settings'];
+
+/** Вкладки, которые видит только полный вход. */
+const SUPER_ONLY_TABS: readonly TabId[] = ['settings'];
+
+/**
+ * Вкладки, видимые при роли. Пока роль неизвестна (ответ `/me` ещё не пришёл), прячем и
+ * закрытые вкладки: лучше показать её чуть позже, чем показать обычному входу и убрать.
+ * Это только удобство: настоящая защита — 403 от сервера на всех адресах `settings/…`.
+ */
+export function visibleTabs(role: Role | undefined): readonly TabId[] {
+  return role === 'super' ? TAB_IDS : TAB_IDS.filter((t) => !SUPER_ONLY_TABS.includes(t));
+}
 
 export type EntityId = 'groups' | 'people' | 'coordinators';
 export const ENTITY_IDS: readonly EntityId[] = ['groups', 'people', 'coordinators'];

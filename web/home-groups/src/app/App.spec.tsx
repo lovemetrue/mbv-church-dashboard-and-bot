@@ -12,8 +12,9 @@ afterEach(() => {
 const SOON = 'Появится на следующем этапе';
 
 describe('оболочка', () => {
-  test('вкладки — это tablist с выбранной «Сегодня», у «Заявок» стоит счётчик открытых, вкладки «Контроль» нет', async () => {
-    stubFetchWithFixtures();
+  test('вкладки обычного входа — это tablist с выбранной «Сегодня», у «Заявок» стоит счётчик открытых, вкладок «Контроль» и «Настройки» нет', async () => {
+    // Фикстуры отдают полный вход, а здесь проверяется обычный: «Настройки» ему не показываются.
+    stubFetchWithFixtures({ me: () => new Response(JSON.stringify({ role: 'admin' }), { status: 200 }) });
     renderAt(<App />);
     const tabs = screen.getByRole('tablist', { name: 'Разделы' });
     const names = within(tabs).getAllByRole('tab').map((t) => t.textContent);

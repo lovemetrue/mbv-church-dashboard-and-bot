@@ -3,10 +3,12 @@
  * раздел устроен как самостоятельный модуль и переедет вместе со своими данными.
  */
 import type {
+  DeliveryOk,
   SettingsAuditView,
   SettingsErrorsView,
   SettingsHealthView,
   SettingsPromptsView,
+  SettingsStaffView,
 } from '@contracts';
 import { GENERATED_AT } from './raw';
 
@@ -280,4 +282,90 @@ export function buildSettingsPrompts(): SettingsPromptsView {
       },
     ],
   };
+}
+
+/** Пользователи с личными входами: по одному на каждый статус, у «ждущих пароль» — разная судьба ссылки. */
+export function buildSettingsStaff(): SettingsStaffView {
+  return {
+    generatedAt: GENERATED_AT,
+    items: [
+      {
+        id: 1,
+        login: 'e_smirnova',
+        fullName: 'Елена Смирнова',
+        email: 'smirnova@example.org',
+        role: 'super',
+        status: 'active',
+        lastLoginAt: '2026-10-09T08:41:00+03:00',
+        hasPendingLink: false,
+      },
+      {
+        id: 2,
+        login: 'a_kuznetsov',
+        fullName: 'Алексей Кузнецов',
+        email: 'kuznetsov@example.org',
+        role: 'admin',
+        status: 'active',
+        lastLoginAt: '2026-10-07T19:15:00+03:00',
+        hasPendingLink: true,
+      },
+      {
+        id: 3,
+        login: 'm_volkova',
+        fullName: 'Марина Волкова',
+        email: 'volkova@example.org',
+        role: 'admin',
+        status: 'invited',
+        lastLoginAt: null,
+        hasPendingLink: true,
+      },
+      {
+        id: 4,
+        login: 'd_orlov',
+        fullName: 'Дмитрий Орлов',
+        email: 'orlov@example.org',
+        role: 'admin',
+        status: 'invited',
+        lastLoginAt: null,
+        hasPendingLink: false,
+      },
+      {
+        id: 5,
+        login: 'o_pavlova',
+        fullName: 'Ольга Павлова',
+        email: 'pavlova@example.org',
+        role: 'admin',
+        status: 'disabled',
+        lastLoginAt: '2026-08-14T12:05:00+03:00',
+        hasPendingLink: false,
+      },
+    ],
+    personal: { enabled: false, canEnable: true, activeWithPassword: 2, mailConfigured: false },
+  };
+}
+
+const TRANSLIT: Record<string, string> = {
+  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm',
+  н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'c', ч: 'ch', ш: 'sh', щ: 'sch',
+  ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya',
+};
+
+const translit = (s: string): string => [...s.toLowerCase()].map((ch) => TRANSLIT[ch] ?? ch).join('');
+
+/**
+ * Подсказка логина в демо: первая буква имени, `_`, фамилия латиницей. Порядок «Имя Фамилия» —
+ * как в форме; настоящий сервер подбирает свободный логин сам.
+ */
+export function fixtureSuggestLogin(fullName: string): string {
+  const [first = '', last = ''] = fullName.trim().split(/\s+/);
+  const initial = translit(first).slice(0, 1);
+  return [initial, translit(last)].filter(Boolean).join('_') || 'user';
+}
+
+/**
+ * Ответ на отправку ссылки в демо. Почты в демо нет, поэтому всегда `link`: так на снимках
+ * виден самый важный для администратора случай, когда ссылку нужно передать самому.
+ */
+export function fixtureStaffDelivery(email: string, id?: number): DeliveryOk {
+  return { ok: true, delivery: 'link', email, path: '/set-password?token=demo-d41d8cd98f00b204e9800998ecf8427e', ...(id ? { id } : {}) };
 }

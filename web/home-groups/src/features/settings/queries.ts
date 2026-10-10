@@ -1,11 +1,20 @@
 import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type {
   ActivatePromptBody,
+  ActionOk,
+  CreateStaffBody,
+  DeliveryOk,
+  PersonalModeBody,
   SavePromptBody,
   SettingsAuditView,
   SettingsErrorsView,
   SettingsHealthView,
   SettingsPromptsView,
+  SettingsStaffView,
+  StaffIdBody,
+  SuggestLoginBody,
+  SuggestLoginOk,
+  UpdateStaffBody,
 } from '@contracts';
 import { ApiError, apiGet, apiPost } from '../../shared/api/client';
 
@@ -18,12 +27,15 @@ import { ApiError, apiGet, apiPost } from '../../shared/api/client';
 export const HEALTH_REFRESH_MS = 30_000;
 /** Инструкции — раз в минуту, как остальные данные: на случай, если их сохранили с другого устройства. */
 export const PROMPTS_REFRESH_MS = 60_000;
+/** Пользователи — раз в минуту: статус «Ждёт пароль» меняется, когда человек задал пароль сам. */
+export const STAFF_REFRESH_MS = 60_000;
 
 export const settingsKeys = {
   health: ['settings', 'health'],
   errors: ['settings', 'errors'],
   audit: ['settings', 'audit'],
   prompts: ['settings', 'prompts'],
+  staff: ['settings', 'staff'],
 } as const;
 
 const common = {
@@ -88,5 +100,38 @@ export function usePromptActions() {
       await apiPost('settings/prompts/activate', body);
       await reread();
     },
+  };
+}
+
+export function useSettingsStaff(): UseQueryResult<SettingsStaffView> {
+  return useQuery({
+    queryKey: settingsKeys.staff,
+    queryFn: ({ signal }) => apiGet<SettingsStaffView>('settings/staff', signal),
+    ...common,
+    refetchInterval: STAFF_REFRESH_MS,
+    refetchIntervalInBackground: false,
+  });
+}
+
+/**
+ * Действия над пользователями и личными входами. Изменяющие после успеха ждут перечитывания
+ * списка, как и у инструкций: пока экран показывает старый статус, считать действие принятым
+ * рано. Ошибку не глотаем — её показывает тот, кто вызвал. Подсказка логина список не меняет.
+ */
+export function useStaffActions() {
+  const queryClient = useQueryClient();
+  const reread = () => queryClient.invalidateQueries({ queryKey: settingsKeys.staff });
+  async function changing<T>(path: string, body: unknown): Promise<T> {
+    const result = await apiPost<T>(path, body);
+    await reread();
+    return result;
+  }
+  return {
+    suggest: (body: SuggestLoginBody) => apiPost<SuggestLoginOk>('settings/staff/suggest', body),
+    create: (body: CreateStaffBody) => changing<DeliveryOk>('settings/staff/create', body),
+    update: (body: UpdateStaffBody) => changing<ActionOk>('settings/staff/update', body),
+    invite: (body: StaffIdBody) => changing<DeliveryOk>('settings/staff/invite', body),
+    reset: (body: StaffIdBody) => changing<DeliveryOk>('settings/staff/reset', body),
+    setPersonalMode: (body: PersonalModeBody) => changing<ActionOk>('settings/staff/personal-mode', body),
   };
 }

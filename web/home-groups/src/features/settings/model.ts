@@ -136,3 +136,41 @@ export function promptErrorText(error: unknown): string {
       return e.other;
   }
 }
+
+// ── пользователи и личные входы ─────────────────────────────────────────────
+
+/** Простая проверка формы адреса: точнее неё всё равно скажет только письмо. */
+export const isValidEmail = (value: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
+/**
+ * Полная ссылка из пути, который прислал сервер. Адрес берём из того места, где открыт
+ * интерфейс: сервер не знает, под каким именем его видит администратор.
+ */
+export function buildLinkUrl(path: string, origin: string = window.location.origin): string {
+  return `${origin}${path.startsWith('/') ? '' : '/'}${path}`;
+}
+
+/** Сообщение клиента при ответе без тела: «Ошибка 400». Людям его показывать незачем. */
+const GENERIC_MESSAGE = /^Ошибка \d+$/;
+
+/**
+ * Текст ошибки действия над пользователями по коду контракта. Для `bad_request` показываем
+ * сообщение сервера: оно написано для людей и безопасно. Для остальных кодов текст сервера
+ * (например, про дубликат ключа) человеку ничего не скажет, поэтому у нас свои слова.
+ */
+export function staffErrorText(error: unknown): string {
+  const e = t.users.errors;
+  if (!(error instanceof ApiError)) return e.other;
+  if (error.status === 0) return e.network;
+  if (error.status === 403 || error.code === 'forbidden') return e.forbidden;
+  switch (error.code) {
+    case 'conflict':
+      return e.conflict;
+    case 'bad_request':
+      return error.message && !GENERIC_MESSAGE.test(error.message) ? error.message : e.badRequest;
+    case 'not_found':
+      return e.notFound;
+    default:
+      return e.other;
+  }
+}

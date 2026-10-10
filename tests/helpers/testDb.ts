@@ -27,7 +27,7 @@ export async function setupTestDb(): Promise<Pool> {
 export async function truncateAll(db: Pool): Promise<void> {
   await db.query(
     `TRUNCATE users, sessions, admin_sessions, requests, campaign_days, broadcasts, deliveries, groups, coordinators,
-       placement_proposals, audit_log, app_settings, system_errors, agent_prompts
+       placement_proposals, audit_log, app_settings, system_errors, agent_prompts, staff, staff_tokens
      RESTART IDENTITY CASCADE`,
   );
   // Номера регистрации в тестах должны начинаться заново, иначе ожидания «№1» ломаются.

@@ -25,6 +25,13 @@
  *   GET /api/v1/settings/errors   → SettingsErrorsView
  *   GET /api/v1/settings/audit    → SettingsAuditView
  *   GET /api/v1/settings/prompts  → SettingsPromptsView
+ *   GET /api/v1/settings/staff    → SettingsStaffView   (личные входы: только super)
+ *   POST /api/v1/settings/staff/suggest      SuggestLoginBody   → SuggestLoginOk | ActionError
+ *   POST /api/v1/settings/staff/create       CreateStaffBody    → DeliveryOk | ActionError
+ *   POST /api/v1/settings/staff/update       UpdateStaffBody    → ActionOk | ActionError
+ *   POST /api/v1/settings/staff/invite       StaffIdBody        → DeliveryOk | ActionError (повторное приглашение)
+ *   POST /api/v1/settings/staff/reset        StaffIdBody        → DeliveryOk | ActionError (сброс пароля)
+ *   POST /api/v1/settings/staff/personal-mode PersonalModeBody  → ActionOk | ActionError
  *   POST /api/v1/settings/prompts/save      SavePromptBody     → ActionOk | ActionError
  *   POST /api/v1/settings/prompts/activate  ActivatePromptBody → ActionOk | ActionError
  *
@@ -279,11 +286,11 @@ export interface ActionOk {
 
 /**
  * Ошибка действия. Коды: 400 `bad_request`; 404 `not_found`;
- * 403 `forbidden` (нужен вход super_mbv_admin); 409 `already_closed` (заявку уже закрыли), `group_unavailable` (группа в архиве, закрыта или
+ * 403 `forbidden` (нужен вход super_mbv_admin); 409 `conflict` (такой логин или почта уже есть), 409 `already_closed` (заявку уже закрыли), `group_unavailable` (группа в архиве, закрыта или
  * «Не направлять»), `group_full` (мест нет; повторить с `force: true`).
  */
 export interface ActionError {
-  error: 'bad_request' | 'not_found' | 'already_closed' | 'group_unavailable' | 'group_full' | 'forbidden';
+  error: 'bad_request' | 'not_found' | 'already_closed' | 'group_unavailable' | 'group_full' | 'forbidden' | 'conflict';
   message: string;
 }
 
@@ -478,4 +485,91 @@ export interface ActivatePromptBody {
   block: PromptBlock['key'];
   /** Версия, которую сделать действующей (откат). */
   version: number;
+}
+
+// ── Личные входы (только super_mbv_admin) ───────────────────────────────────
+
+/** invited — ждёт, пока человек задаст пароль; active — может входить; disabled — отключён. */
+export type StaffStatus = 'invited' | 'active' | 'disabled';
+
+export interface StaffItem {
+  id: number;
+  /** Логин вида `p_ivanova`. */
+  login: string;
+  fullName: string;
+  email: string;
+  role: Role;
+  status: StaffStatus;
+  /** ISO-время последнего входа; null — не входил. */
+  lastLoginAt: string | null;
+  /** Есть действующая (не использованная и не истёкшая) ссылка на пароль. */
+  hasPendingLink: boolean;
+}
+
+export interface PersonalLoginsState {
+  /** Личные входы включены: общий вход обычного уровня (`mbv_admin`) перестаёт работать. */
+  enabled: boolean;
+  /** Можно включать: есть хотя бы один действующий пользователь с заданным паролем. */
+  canEnable: boolean;
+  /** Сколько действующих пользователей уже задали пароль. */
+  activeWithPassword: number;
+  /** Настроена ли отправка почты на сервере; если нет, ссылки показываются на экране. */
+  mailConfigured: boolean;
+}
+
+export interface SettingsStaffView {
+  generatedAt: string;
+  items: StaffItem[];
+  personal: PersonalLoginsState;
+}
+
+export interface SuggestLoginBody {
+  fullName: string;
+}
+
+export interface SuggestLoginOk {
+  ok: true;
+  /** Свободный логин: первая буква имени, `_`, фамилия латиницей. */
+  login: string;
+}
+
+export interface CreateStaffBody {
+  fullName: string;
+  email: string;
+  role: Role;
+  /** Не указан — сервер подберёт сам (см. SuggestLoginBody). */
+  login?: string;
+}
+
+export interface UpdateStaffBody {
+  id: number;
+  fullName?: string;
+  email?: string;
+  role?: Role;
+  /** false — отключить (входить нельзя, текущие входы закрываются), true — включить обратно. */
+  active?: boolean;
+}
+
+export interface StaffIdBody {
+  id: number;
+}
+
+export interface PersonalModeBody {
+  enabled: boolean;
+}
+
+/**
+ * Итог отправки ссылки на пароль. sent — письмо ушло на `email`; link — почта не настроена или
+ * письмо не ушло, тогда `path` (например, `/set-password?token=…`) показывается администратору,
+ * и он передаёт ссылку сам: интерфейс собирает полный адрес из адреса, где открыт.
+ */
+export interface DeliveryOk {
+  ok: true;
+  delivery: 'sent' | 'link';
+  email: string;
+  /** Есть, когда delivery = 'link'. */
+  path?: string;
+  /** Логин созданного пользователя (при create). */
+  login?: string;
+  id?: number;
 }

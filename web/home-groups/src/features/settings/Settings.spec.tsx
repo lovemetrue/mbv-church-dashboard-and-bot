@@ -522,15 +522,3 @@ describe('«Инструкции агентов»', () => {
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(/Версия не найдена/);
   });
 });
-
-describe('«Пользователи и роли»', () => {
-  test('это информационная карточка: два общих входа и ни одного поля для правки', async () => {
-    openSettings('users');
-    const card = await screen.findByRole('region', { name: 'Пользователи и роли' });
-    expect(within(card).getByText(/^mbv_admin:/)).toBeInTheDocument();
-    expect(within(card).getByText(/^super_mbv_admin:/)).toBeInTheDocument();
-    expect(within(card).queryByRole('textbox')).not.toBeInTheDocument();
-    expect(within(card).queryByRole('checkbox')).not.toBeInTheDocument();
-    expect(within(card).queryByRole('button')).not.toBeInTheDocument();
-  });
-});

@@ -1,0 +1,270 @@
+/*
+ * Раздел «Пользователи и роли». Цвета только из токенов (var(--…)). Список — таблица, а на
+ * узком экране каждая строка превращается в карточку, как в журнале регистрации: прокрутки
+ * вбок нет даже на 400 px.
+ */
+
+.personal {
+  margin-bottom: 20px;
+}
+.personalHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-bottom: 8px;
+}
+.personalTitle {
+  font-size: 16px;
+}
+.personalText {
+  margin-bottom: 10px;
+}
+.personalFoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+.personalFoot button {
+  min-height: var(--tap);
+}
+.mailHint {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border-left: 4px solid var(--warn);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.listHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 8px;
+}
+.listTitle {
+  font-size: 16px;
+}
+.listHead button {
+  min-height: var(--tap);
+}
+
+.wrap {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow: hidden;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.table th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-weight: 600;
+  background: var(--surface-2);
+  padding: 8px 12px;
+}
+.table td {
+  padding: 10px 12px;
+  vertical-align: top;
+  border-top: 1px solid var(--line-soft);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.name {
+  font-weight: 600;
+}
+/* Короткие значения не рвём посреди слова: переносится только почта и подписи. */
+.nowrap {
+  overflow-wrap: normal;
+  white-space: nowrap;
+}
+.login {
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.when {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  font-size: 13px;
+}
+.linkNote {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.actionsCell {
+  min-width: 0;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.actions button {
+  min-height: var(--tap);
+  white-space: normal;
+  text-align: center;
+}
+
+@media (max-width: 700px) {
+  .wrap {
+    border: 0;
+    background: transparent;
+    overflow: visible;
+  }
+  .table,
+  .table tbody,
+  .table tr,
+  .table td {
+    display: block;
+  }
+  /* Заголовки заменены подписями у значений, а скринридер их по-прежнему читает. */
+  .table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .row {
+    margin-top: 10px;
+    padding: 6px 12px 10px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+  }
+  .row td {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: 8px;
+    border-top: 0;
+    padding: 5px 0;
+  }
+  .row td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 12px;
+  }
+  /* У действий подписи нет: кнопки занимают всю ширину карточки. */
+  .nowrap {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .row td.actionsCell {
+    display: block;
+    padding-top: 8px;
+  }
+  .row td.actionsCell::before {
+    content: none;
+  }
+  .actions button {
+    flex: 1 1 100%;
+  }
+}
+
+/* ── формы в окнах ───────────────────────────────────────────────────────── */
+
+.fieldError {
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--crit);
+}
+.invalid {
+  border-color: var(--crit);
+}
+.fieldset {
+  margin: 12px 0 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.legend {
+  padding: 0;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.radio {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: var(--tap);
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+}
+.radio:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.radio input {
+  margin-top: 3px;
+  flex: none;
+}
+.radioText {
+  min-width: 0;
+}
+.radioName {
+  display: block;
+  font-weight: 600;
+}
+.radioHint {
+  display: block;
+}
+.passwordNote {
+  margin-top: 12px;
+}
+
+/* ── окно со ссылкой ─────────────────────────────────────────────────────── */
+
+.linkBox {
+  display: block;
+  width: 100%;
+  min-height: 84px;
+  resize: none;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+.copyRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 8px;
+}
+.copyRow button {
+  min-height: var(--tap);
+}
+.copyOk {
+  color: var(--ok);
+  font-weight: 600;
+}
+.copyFail {
+  color: var(--crit);
+  font-weight: 500;
+}

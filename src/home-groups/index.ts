@@ -50,15 +50,22 @@ async function main(): Promise<void> {
   });
 
   // План считается не чаще раза в десять секунд на всех посетителей разом.
-  const { views, matching, placement } = composeService(db, engine, {
+  const { views, matching, placement, settings, errors } = composeService(db, engine, {
     defaultCapacity, ttlMs: 10_000, timeZone: env('TIMEZONE', 'Europe/Moscow'),
+    // Живое обращение к хранилищу входов: ответ не важен, важно, что оно отвечает.
+    pingSessions: async () => { await store.get('health:ping'); },
   });
+  const reportError = (source: string, err: unknown, context: string): void => {
+    void errors.record(source, err instanceof Error ? err.message : String(err), context);
+  };
 
   const server = createHomeGroupsServer({
     auth,
     views,
     actions: createActions(placement, { defaultCapacity }),
     matching,
+    settings,
+    reportError,
     invalidateViews: () => views.invalidate(),
     actorName: (role) => (role === 'super' ? superLogin : login),
     sessionTtlSeconds: ttlSeconds,
@@ -69,7 +76,8 @@ async function main(): Promise<void> {
   // Автоматический подбор: переключатель в базе читается на каждом проходе, поэтому включается без перезапуска.
   const autoSeconds = Number(env('HG_AUTOMATCH_SECONDS', '120'));
   if (!Number.isInteger(autoSeconds) || autoSeconds < 30) throw new Error('HG_AUTOMATCH_SECONDS должна быть целым числом не меньше 30');
-  const auto = startAutoMatching({ intervalMs: autoSeconds * 1000, isEnabled: () => matching.isAuto(), run: (actor) => matching.run(actor) });
+  const auto = startAutoMatching({ intervalMs: autoSeconds * 1000, isEnabled: () => matching.isAuto(), run: (actor) => matching.run(actor),
+    onError: (err) => reportError('подбор', err, 'автоматический запуск') });
 
   server.listen(port, () => logger.info({ port, sessionDays: ttlDays, defaultCapacity }, 'домашние группы запущены'));
 

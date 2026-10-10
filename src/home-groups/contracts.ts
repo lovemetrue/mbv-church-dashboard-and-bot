@@ -21,6 +21,13 @@
  *   POST /api/v1/requests/:id/reject    RejectBody    → ActionOk | ActionError
  *   POST /api/v1/requests/:id/need-call NeedCallBody  → ActionOk | ActionError
  *
+ *   GET /api/v1/settings/health   → SettingsHealthView   (раздел «Настройки»: только super, иначе 403)
+ *   GET /api/v1/settings/errors   → SettingsErrorsView
+ *   GET /api/v1/settings/audit    → SettingsAuditView
+ *   GET /api/v1/settings/prompts  → SettingsPromptsView
+ *   POST /api/v1/settings/prompts/save      SavePromptBody     → ActionOk | ActionError
+ *   POST /api/v1/settings/prompts/activate  ActivatePromptBody → ActionOk | ActionError
+ *
  *   POST /api/v1/matching/run           (тело {})     → MatchingRunOk | ActionError
  *   POST /api/v1/matching/auto          MatchingAutoBody → ActionOk | ActionError (только super, иначе 403 forbidden)
  */
@@ -353,4 +360,122 @@ export interface CoordinatorItem {
 export interface CoordinatorsView {
   generatedAt: string;
   items: CoordinatorItem[];
+}
+
+// ── Настройки (только super_mbv_admin) ──────────────────────────────────────
+
+export type HealthStatus = 'ok' | 'warn' | 'crit';
+
+export interface HealthMetric {
+  key: 'cpu' | 'memory' | 'disk' | 'database' | 'sessions' | 'service';
+  label: string;
+  status: HealthStatus;
+  /** Главное значение крупно: «2,1 ГБ свободно из 7,8 ГБ». */
+  value: string;
+  /** Пояснение мелко: что считается нормой и что делать. */
+  hint: string;
+  /** Доля занятого 0–100 для полосы; null — полосы нет (например, у базы). */
+  percent: number | null;
+}
+
+/** Состояние сервера: считается при каждом запросе, не кэшируется. */
+export interface SettingsHealthView {
+  generatedAt: string;
+  /** Худшее из состояний метрик: одно слово для шапки раздела. */
+  overall: HealthStatus;
+  metrics: HealthMetric[];
+}
+
+export interface ErrorEntry {
+  id: number;
+  /** ISO-время. */
+  at: string;
+  /** Где случилось: «домашние группы», «подбор», «бот». */
+  service: string;
+  /** Что случилось, без личных данных (телефоны и почты вырезаны). */
+  message: string;
+  /** Короткий контекст: «POST /api/v1/requests/12/approve». */
+  context: string | null;
+}
+
+export interface SettingsErrorsView {
+  generatedAt: string;
+  /** Последние записи, новые сверху; не больше 200. */
+  items: ErrorEntry[];
+}
+
+export interface AuditEntry {
+  id: number;
+  at: string;
+  /** Кто: логин входа или «авто». */
+  actor: string;
+  service: string;
+  /** Машинное имя действия: `request.approve`. */
+  action: string;
+  /** Действие по-русски: «Утвердил заявку». Нет перевода — `action` как есть. */
+  actionLabel: string;
+  entityType: string;
+  entityId: number | null;
+  /** Было → стало, как записано в журнале (без личных данных). */
+  before: unknown;
+  after: unknown;
+  note: string | null;
+}
+
+export interface SettingsAuditView {
+  generatedAt: string;
+  /** Последние записи, новые сверху; не больше 200. */
+  items: AuditEntry[];
+}
+
+export interface PromptVersion {
+  version: number;
+  at: string;
+  by: string;
+  note: string | null;
+  /** Действующая версия блока. */
+  active: boolean;
+}
+
+/** Блок инструкции агента. `editable: false` — служебный, задаётся кодом и в настройках только показывается. */
+export interface PromptBlock {
+  key: 'role' | 'principles' | 'steps' | 'examples' | 'service';
+  title: string;
+  /** Для чего блок, одной фразой. */
+  purpose: string;
+  editable: boolean;
+  /** Действующий текст. */
+  text: string;
+  /** Это текст по умолчанию из кода: в базе версий блока ещё нет. */
+  isDefault: boolean;
+  /** Версии от новой к старой; пусто, пока блок не правили. */
+  versions: PromptVersion[];
+}
+
+export interface PromptAgent {
+  key: 'coordinator';
+  title: string;
+  /** Какая модель выполняет работу (пока справочно). */
+  model: string;
+  blocks: PromptBlock[];
+}
+
+export interface SettingsPromptsView {
+  generatedAt: string;
+  agents: PromptAgent[];
+}
+
+export interface SavePromptBody {
+  agent: PromptAgent['key'];
+  block: PromptBlock['key'];
+  /** Новый текст, 1–20000 знаков. Сохраняется новой версией и сразу становится действующим. */
+  text: string;
+  note?: string;
+}
+
+export interface ActivatePromptBody {
+  agent: PromptAgent['key'];
+  block: PromptBlock['key'];
+  /** Версия, которую сделать действующей (откат). */
+  version: number;
 }

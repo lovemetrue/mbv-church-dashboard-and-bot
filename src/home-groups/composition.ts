@@ -2,11 +2,15 @@ import type { Pool } from 'pg';
 import { AuditRepo } from '../db/repos/audit.repo.js';
 import { CoordinatorsRepo } from '../db/repos/coordinators.repo.js';
 import { GroupsRepo } from '../db/repos/groups.repo.js';
+import { ErrorsRepo } from '../db/repos/errors.repo.js';
+import { PromptsRepo } from '../db/repos/prompts.repo.js';
 import { PlacementRepo } from '../db/repos/placement.repo.js';
 import { SettingsRepo } from '../db/repos/settings.repo.js';
 import { RequestsRepo } from '../db/repos/requests.repo.js';
 import { UsersRepo } from '../db/repos/users.repo.js';
 import { createViewsSource, type ViewsSource } from './api/snapshot.js';
+import { createSettings } from '../platform/settings/service.js';
+import { realHealthSources, collectHealth } from '../platform/settings/health.js';
 import { createLoader } from './loader.js';
 import { createMatching } from './matching/run.js';
 import type { PlanEngineApi } from './plan/types.js';
@@ -19,9 +23,9 @@ export interface ComposeOptions { defaultCapacity: number; ttlMs: number; timeZo
  *
  * Движок приходит параметром, а не импортируется внутри: тесты подставляют поддельный.
  */
-export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOptions) {
+export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOptions & { pingSessions?: () => Promise<void> }) {
   const placement = new PlacementRepo(db);
-  const settings = new SettingsRepo(db);
+  const appSettings = new SettingsRepo(db);
   const load = createLoader({
     groups: new GroupsRepo(db),
     requests: new RequestsRepo(db),
@@ -29,15 +33,22 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     coordinators: new CoordinatorsRepo(db),
     placement,
     audit: new AuditRepo(db),
-    settings,
+    settings: appSettings,
   }, opts.timeZone ? { timeZone: opts.timeZone } : {});
   const viewOptions = { defaultCapacity: opts.defaultCapacity, ...(opts.timeZone ? { timeZone: opts.timeZone } : {}) };
 
   const views = createViewsSource({ load, engine, ttlMs: opts.ttlMs, views: viewOptions });
   const matching = createMatching({
-    load, engine, placement, settings, options: viewOptions, invalidate: () => views.invalidate(),
+    load, engine, placement, settings: appSettings, options: viewOptions, invalidate: () => views.invalidate(),
   });
-  return { views, matching, placement };
+  const errors = new ErrorsRepo(db);
+  const settings = createSettings({
+    audit: new AuditRepo(db),
+    errors,
+    prompts: new PromptsRepo(db),
+    health: () => collectHealth(realHealthSources(db, opts.pingSessions ?? (async () => undefined))),
+  });
+  return { views, matching, placement, settings, errors };
 }
 
 export function composeViews(db: Pool, engine: PlanEngineApi, opts: ComposeOptions): ViewsSource {

@@ -7,7 +7,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { SessionService, type SessionStore } from '../src/dashboard/sessions.js';
 import { PlacementRepo, type ActionOutcome } from '../src/db/repos/placement.repo.js';
 import { createActions } from '../src/home-groups/actions.js';
-import { composeViews, engine as realEngine } from '../src/home-groups/composition.js';
+import { composeService, engine as realEngine } from '../src/home-groups/composition.js';
 import { createHomeGroupsServer } from '../src/home-groups/server.js';
 import type { RequestsView } from '../src/home-groups/contracts.js';
 import { createFakeEngine } from './helpers/fakePlanEngine.js';
@@ -75,11 +75,15 @@ describe('утверждение через HTTP на живой базе', () =
     const web = mkdtempSync(join(tmpdir(), 'hg-act-'));
     writeFileSync(join(web, 'index.html'), '<div id="root"></div>');
     // Долгий срок жизни снимка: список обновится только потому, что действие его сбросило.
-    const views = composeViews(db, engine, { defaultCapacity: 10, ttlMs: 60_000 });
+    const composed = composeService(db, engine, { defaultCapacity: 10, ttlMs: 60_000 });
+    const views = composed.views;
     const server = createHomeGroupsServer({
       auth: new SessionService(memory, { password: 'пароль-для-теста', login: 'mbv_admin', superPassword: 'другой-пароль-1', superLogin: 'super_mbv_admin', ttlSeconds: 60, maxAttempts: 5 }),
       views,
       actions: createActions(new PlacementRepo(db), { defaultCapacity: 10 }),
+      matching: composed.matching,
+      settings: composed.settings,
+      reportError: (source, err, context) => { void composed.errors.record(source, err instanceof Error ? err.message : String(err), context); },
       invalidateViews: () => views.invalidate(),
       actorName: (role) => (role === 'super' ? 'super_mbv_admin' : 'mbv_admin'),
       sessionTtlSeconds: 60, secureCookie: false, webDir: web,
@@ -96,7 +100,8 @@ describe('утверждение через HTTP на живой базе', () =
       method: 'POST', headers: { cookie, 'content-type': 'application/json' }, body: JSON.stringify(body),
     });
     const list = async () => (await (await fetch(`${base}/api/v1/requests`, { headers: { cookie } })).json()) as RequestsView;
-    return { server, post, list };
+    const settingsGet = (name: string) => fetch(`${base}/api/v1/settings/${name}`, { headers: { cookie } });
+    return { server, post, list, settingsGet, base, cookie };
   }
 
   async function seed() {
@@ -163,6 +168,84 @@ describe('утверждение через HTTP на живой базе', () =
       const after = (await app.list()).items.find((i) => i.id === r)!;
       expect(after.proposal).toBeNull();
       expect(after.bucket).toBe('human');
+    } finally { app.server.close(); }
+  });
+});
+
+
+describe('раздел «Настройки» через HTTP на живой базе', () => {
+  async function startSuper() {
+    const store = new Map<string, string>();
+    const memory: SessionStore = {
+      async set(k, v) { store.set(k, v); }, async get(k) { return store.get(k) ?? null; },
+      async del(k) { store.delete(k); }, async incr(k) { const n = Number(store.get(k) ?? 0) + 1; store.set(k, String(n)); return n; },
+    };
+    const web = mkdtempSync(join(tmpdir(), 'hg-set-'));
+    writeFileSync(join(web, 'index.html'), '<div id="root"></div>');
+    const composed = composeService(db, createFakeEngine().engine, { defaultCapacity: 10, ttlMs: 0 });
+    const server = createHomeGroupsServer({
+      auth: new SessionService(memory, { password: 'пароль-для-теста', login: 'mbv_admin', superPassword: 'другой-пароль-1', superLogin: 'super_mbv_admin', ttlSeconds: 60, maxAttempts: 5 }),
+      views: composed.views, actions: createActions(composed.placement, { defaultCapacity: 10 }), matching: composed.matching,
+      settings: composed.settings,
+      reportError: (source, err, context) => { void composed.errors.record(source, err instanceof Error ? err.message : String(err), context); },
+      invalidateViews: () => composed.views.invalidate(), actorName: (role) => (role === 'super' ? 'super_mbv_admin' : 'mbv_admin'),
+      sessionTtlSeconds: 60, secureCookie: false, webDir: web,
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const login = await fetch(`${base}/login`, {
+      method: 'POST', redirect: 'manual',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-real-ip': '10.5.0.1' },
+      body: new URLSearchParams({ login: 'super_mbv_admin', password: 'другой-пароль-1' }),
+    });
+    const cookie = login.headers.get('set-cookie')!.split(';')[0]!;
+    const json = (path: string, body: unknown) => fetch(`${base}/api/v1/settings/${path}`, {
+      method: 'POST', headers: { cookie, 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const get = async (name: string) => (await (await fetch(`${base}/api/v1/settings/${name}`, { headers: { cookie } })).json()) as any;
+    return { server, json, get, base, cookie };
+  }
+
+  test('инструкция: сохранить, увидеть новой версией, откатить; журнал регистрации показывает оба действия', async () => {
+    const app = await startSuper();
+    try {
+      expect((await app.get('prompts')).agents[0].blocks[0].isDefault).toBe(true);
+      expect((await app.json('prompts/save', { agent: 'coordinator', block: 'role', text: 'Первая' })).status).toBe(200);
+      expect((await app.json('prompts/save', { agent: 'coordinator', block: 'role', text: 'Вторая' })).status).toBe(200);
+      expect((await app.get('prompts')).agents[0].blocks[0]).toMatchObject({ text: 'Вторая', isDefault: false });
+      expect((await app.json('prompts/activate', { agent: 'coordinator', block: 'role', version: 1 })).status).toBe(200);
+      expect((await app.get('prompts')).agents[0].blocks[0].text).toBe('Первая');
+
+      const audit = await app.get('audit');
+      expect(audit.items.map((i: { action: string }) => i.action)).toEqual(['prompt.activate', 'prompt.save', 'prompt.save']);
+      expect(audit.items[0]).toMatchObject({ actor: 'super_mbv_admin', actionLabel: 'Откат версии инструкции агента' });
+    } finally { app.server.close(); }
+  });
+
+  test('ошибка в запросе попадает в журнал ошибок: источник и «метод путь» без строки запроса', async () => {
+    const app = await startSuper();
+    try {
+      // Ломаем чтение групп: сервис отвечает 500 и записывает ошибку в журнал.
+      await db.query('ALTER TABLE groups RENAME TO groups_tmp');
+      try {
+        expect((await fetch(`${app.base}/api/v1/today?x=1`, { headers: { cookie: app.cookie } })).status).toBe(500);
+      } finally { await db.query('ALTER TABLE groups_tmp RENAME TO groups'); }
+      // Запись идёт в фоне: ждём её появления.
+      let items: { service: string; context: string | null }[] = [];
+      for (let i = 0; i < 20 && items.length === 0; i += 1) {
+        items = (await app.get('errors')).items;
+        if (items.length === 0) await new Promise((r) => setTimeout(r, 50));
+      }
+      expect(items[0]).toMatchObject({ service: 'домашние группы', context: 'GET /api/v1/today' });
+    } finally { app.server.close(); }
+  });
+
+  test('состояние сервера отдаётся с шестью метриками', async () => {
+    const app = await startSuper();
+    try {
+      const h = await app.get('health');
+      expect(h.metrics.map((m: { key: string }) => m.key)).toEqual(['cpu', 'memory', 'disk', 'database', 'sessions', 'service']);
+      expect(h.metrics.find((m: { key: string }) => m.key === 'database').status).not.toBe('crit');
     } finally { app.server.close(); }
   });
 });

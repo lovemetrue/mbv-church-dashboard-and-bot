@@ -74,6 +74,15 @@ describe('клиент API: действия (POST)', () => {
     await expect(apiPost('requests/5/approve', {})).rejects.toMatchObject({ status: 409, code: 'group_full' });
   });
 
+  test('код conflict (логин или почта заняты) попадает в ApiError вместе с текстом сервера', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ error: 'conflict', message: 'логин занят' }, 409)));
+    await expect(apiPost('settings/staff/create', {})).rejects.toMatchObject({
+      status: 409,
+      code: 'conflict',
+      message: 'логин занят',
+    });
+  });
+
   test('неизвестный код и тело не в JSON не ломают разбор: остаётся статус', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ error: 'что-то_новое', message: '' }, 409)));
     await expect(apiPost('x', {})).rejects.toMatchObject({ status: 409, code: null });

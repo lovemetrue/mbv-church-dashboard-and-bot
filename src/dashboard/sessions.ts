@@ -95,6 +95,29 @@ export class SessionService {
     return { ok: true, sid, role };
   }
 
+  /**
+   * Открыть сессию без проверки пароля: проверку уже сделал вызывающий (личный вход). `extra`
+   * хранится вместе с сессией — например, кто именно вошёл. Общие входы этим методом не пользуются.
+   */
+  async startSession(role: Role, extra: Record<string, unknown> = {}): Promise<string> {
+    const sid = randomBytes(32).toString('base64url');
+    await this.store.set(SESSION_PREFIX + sid, JSON.stringify({ ...extra, role, at: Date.now() }), this.opts.ttlSeconds);
+    return sid;
+  }
+
+  /** Запись сессии как есть (без продления); null — сессии нет или она испорчена. */
+  async read(sid: string | undefined): Promise<Record<string, unknown> | null> {
+    if (!sid) return null;
+    const found = await this.store.get(SESSION_PREFIX + sid);
+    if (found === null) return null;
+    try {
+      const parsed: unknown = JSON.parse(found);
+      return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : null;
+    } catch {
+      return null;
+    }
+  }
+
   /** Роль сессии. Сессии, выданные до появления ролей, — обычные: удалять с них нельзя. */
   async roleOf(sid: string | undefined): Promise<Role | null> {
     if (!sid) return null;

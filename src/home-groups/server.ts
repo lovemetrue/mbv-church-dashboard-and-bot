@@ -2,12 +2,14 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { readFile, stat } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { SessionService } from '../dashboard/sessions.js';
+import type { AuthPort } from '../platform/auth/personalAuth.js';
+import type { StaffService } from '../platform/auth/staffService.js';
 import { logger } from '../logger.js';
 import { ACTION_STATUS, type RequestActions } from './actions.js';
 import type { Settings } from '../platform/settings/service.js';
 import type { ActionError, ActionOk, MatchingRunOk, Me, Role } from './contracts.js';
 import type { Views } from './api/views.js';
-import { homeGroupsLoginPage } from './loginPage.js';
+import { forgotPage, homeGroupsLoginPage, setPasswordPage } from './loginPage.js';
 
 /**
  * Имя куки отличается от `hg_sid` старого дашборда нарочно: у того кука с Path=/groups, у этого
@@ -36,7 +38,10 @@ const CSP = [
 ].join('; ');
 
 export interface HomeGroupsDeps {
-  auth: SessionService;
+  /** Вход: общие логины или личные поверх них (`PersonalAuth`); сервер не знает, какой режим включён. */
+  auth: AuthPort;
+  /** Личные входы: пользователи, ссылки на пароль, сброс. */
+  staff: StaffService;
   /** Готовые представления (снимок с общим кэшем, см. `api/snapshot.ts`). */
   views: () => Promise<Views>;
   /** Действия координатора (утвердить, отклонить, «нужен звонок»). */
@@ -80,7 +85,7 @@ const CONTENT_TYPES: Record<string, string> = {
 
 class BodyTooLarge extends Error {}
 
-const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/prompts\/(save|activate)$/;
+const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode)$/;
 const MATCHING_PATH = /^\/api\/v1\/matching\/(run|auto)$/;
 
 /** `POST /api/v1/requests/12/approve`: номер заявки — цифры, длиннее пятнадцати не бывает (Number безопасен). */
@@ -212,6 +217,51 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     res.end(req.method === 'HEAD' ? undefined : body);
   }
 
+  /** Тело формы (application/x-www-form-urlencoded) или null, если уже ответили ошибкой. */
+  async function readForm(req: IncomingMessage, res: ServerResponse, onError: (message: string) => string): Promise<URLSearchParams | null> {
+    if (!(req.headers['content-type'] ?? '').toLowerCase().startsWith('application/x-www-form-urlencoded')) {
+      sendHtml(res, 415, onError('Не удалось прочитать форму.'));
+      return null;
+    }
+    try {
+      return new URLSearchParams(await readBody(req, BODY_LIMIT));
+    } catch (err) {
+      if (!(err instanceof BodyTooLarge)) throw err;
+      sendHtml(res, 413, onError('Слишком большой запрос.'), { connection: 'close' });
+      return null;
+    }
+  }
+
+  /** «Забыли пароль»: ответ всегда один и тот же, существует ли такой пользователь, не раскрывается. */
+  async function handleForgot(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const form = await readForm(req, res, () => forgotPage());
+    if (!form) return;
+    const ip = clientIp(req);
+    // Не ждём отправки письма: время ответа не должно выдавать, нашёлся ли пользователь.
+    void deps.staff.requestReset(form.get('identifier') ?? '', ip).catch((err: unknown) => {
+      logger.error({ err: err instanceof Error ? err.message : String(err) }, 'домашние группы: сброс пароля не удался');
+      deps.reportError('сброс пароля', err, 'POST /forgot');
+    });
+    sendHtml(res, 200, forgotPage(true));
+  }
+
+  /** Страница по ссылке из письма: задать пароль. Сессия не нужна, право даёт сама ссылка. */
+  async function handleSetPassword(req: IncomingMessage, res: ServerResponse, method: string, query: URLSearchParams): Promise<void> {
+    if (method === 'GET') {
+      const token = query.get('token') ?? '';
+      sendHtml(res, 200, setPasswordPage(token, await deps.staff.tokenInfo(token)));
+      return;
+    }
+    const form = await readForm(req, res, (m) => setPasswordPage('', null, m));
+    if (!form) return;
+    const token = form.get('token') ?? '';
+    const result = await deps.staff.completePassword(token, form.get('password') ?? '', form.get('password2') ?? '', clientIp(req));
+    if (result.ok) { redirect(res, '/login?notice=password_set'); return; }
+    // Ссылка ещё годна — показываем форму с ошибкой, иначе общую страницу «ссылка не работает».
+    const info = await deps.staff.tokenInfo(token);
+    sendHtml(res, result.error === 'bad_request' && info ? 400 : 410, setPasswordPage(token, info, info ? result.message : undefined));
+  }
+
   async function handleLogin(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (!(req.headers['content-type'] ?? '').toLowerCase().startsWith('application/x-www-form-urlencoded')) {
       sendHtml(res, 415, homeGroupsLoginPage('Не удалось прочитать форму входа.'));
@@ -268,7 +318,8 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       return null;
     }
     try {
-      return { role, actor: deps.actorName(role), body: JSON.parse(raw) as unknown };
+      const identity = await deps.auth.identityOf?.(sid);
+      return { role, actor: identity?.login ?? deps.actorName(role), body: JSON.parse(raw) as unknown };
     } catch {
       sendJson(res, 400, { error: 'bad_request', message: 'Не удалось прочитать запрос.' } satisfies ActionError);
       return null;
@@ -338,15 +389,24 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       sendJson(res, 403, { error: 'forbidden', message: 'Раздел «Настройки» доступен только полному входу.' } satisfies ActionError);
       return;
     }
-    const outcome = action === 'save'
-      ? await deps.settings.savePrompt(call.body, call.actor)
-      : await deps.settings.activatePrompt(call.body, call.actor);
+    const handlers: Record<string, () => Promise<{ ok: true } | { ok: false; error: ActionError['error']; message: string }>> = {
+      'prompts/save': () => deps.settings.savePrompt(call.body, call.actor),
+      'prompts/activate': () => deps.settings.activatePrompt(call.body, call.actor),
+      'staff/suggest': () => deps.staff.suggestLogin(call.body),
+      'staff/create': () => deps.staff.create(call.body, call.actor),
+      'staff/update': () => deps.staff.update(call.body, call.actor),
+      'staff/invite': () => deps.staff.invite(call.body, call.actor),
+      'staff/reset': () => deps.staff.reset(call.body, call.actor),
+      'staff/personal-mode': () => deps.staff.setPersonalMode(call.body, call.actor),
+    };
+    const outcome = await handlers[action]!();
     if (!outcome.ok) {
       sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
       return;
     }
-    logger.info({ actor: call.actor, action }, 'домашние группы: инструкция агента изменена');
-    sendJson(res, 200, { ok: true } satisfies ActionOk);
+    logger.info({ actor: call.actor, action }, 'домашние группы: изменение в настройках');
+    // Ответ как есть: у создания и сброса там способ доставки ссылки, у подсказки логина — сам логин.
+    sendJson(res, 200, outcome);
   }
 
   async function handleApi(req: IncomingMessage, res: ServerResponse, path: string, sid: string | undefined): Promise<void> {
@@ -376,6 +436,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       '/api/v1/settings/errors': () => deps.settings.errors(),
       '/api/v1/settings/audit': () => deps.settings.audit(),
       '/api/v1/settings/prompts': () => deps.settings.prompts(),
+      '/api/v1/settings/staff': () => deps.staff.view(),
     };
     const settingsRoute = Object.hasOwn(settingsRead, path) ? settingsRead[path] : undefined;
     if (settingsRoute) {
@@ -426,8 +487,23 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
         return;
       }
 
+      const query = new URLSearchParams(q === -1 ? '' : raw.slice(q + 1));
+
+      if (path === '/forgot') {
+        if (method === 'GET') { sendHtml(res, 200, forgotPage()); return; }
+        if (method === 'POST') { await handleForgot(req, res); return; }
+        sendText(res, 404, 'Не найдено.');
+        return;
+      }
+
+      if (path === '/set-password') {
+        if (method === 'GET' || method === 'POST') { await handleSetPassword(req, res, method, query); return; }
+        sendText(res, 404, 'Не найдено.');
+        return;
+      }
+
       if (path === '/login') {
-        if (method === 'GET') { sendHtml(res, 200, homeGroupsLoginPage()); return; }
+        if (method === 'GET') { sendHtml(res, 200, homeGroupsLoginPage(undefined, query.get('notice') ?? undefined)); return; }
         if (method === 'POST') { await handleLogin(req, res); return; }
         sendText(res, 404, 'Не найдено.');
         return;

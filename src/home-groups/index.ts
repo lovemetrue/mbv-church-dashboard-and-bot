@@ -3,6 +3,10 @@ import { RedisSessionStore } from '../dashboard/redisStore.js';
 import { SessionService } from '../dashboard/sessions.js';
 import { logger } from '../logger.js';
 import { createActions } from './actions.js';
+import { SettingsRepo } from '../db/repos/settings.repo.js';
+import { StaffRepo } from '../db/repos/staff.repo.js';
+import { PersonalAuth } from '../platform/auth/personalAuth.js';
+import { mailerFromEnv } from '../platform/mail/mailer.js';
 import { composeService, engine } from './composition.js';
 import { startAutoMatching } from './matching/scheduler.js';
 import { createHomeGroupsServer } from './server.js';
@@ -43,15 +47,24 @@ async function main(): Promise<void> {
 
   const login = env('DASHBOARD_LOGIN', 'mbv_admin');
   const superLogin = env('DASHBOARD_SUPER_LOGIN', 'super_mbv_admin');
-  const auth = new SessionService(store, {
+  const sessions = new SessionService(store, {
     password, login,
     superPassword, superLogin,
     ttlSeconds, maxAttempts: 5,
   });
+  // Общие входы плюс личные: пока режим личных входов выключен, работает ровно то же, что и раньше.
+  const auth = new PersonalAuth(sessions, store, new StaffRepo(db), new SettingsRepo(db), {
+    sharedLogin: login, sharedSuperLogin: superLogin,
+  });
 
   // План считается не чаще раза в десять секунд на всех посетителей разом.
-  const { views, matching, placement, settings, errors } = composeService(db, engine, {
+  const { views, matching, placement, settings, errors, staff } = composeService(db, engine, {
     defaultCapacity, ttlMs: 10_000, timeZone: env('TIMEZONE', 'Europe/Moscow'),
+    store,
+    // Почта и публичный адрес необязательны: без них ссылки на пароль показываются администратору на экране.
+    mailer: mailerFromEnv(process.env),
+    publicUrl: process.env['HG_PUBLIC_URL']?.trim() || null,
+    onStaffChange: () => auth.invalidate(),
     // Живое обращение к хранилищу входов: ответ не важен, важно, что оно отвечает.
     pingSessions: async () => { await store.get('health:ping'); },
   });
@@ -61,6 +74,7 @@ async function main(): Promise<void> {
 
   const server = createHomeGroupsServer({
     auth,
+    staff,
     views,
     actions: createActions(placement, { defaultCapacity }),
     matching,

@@ -1,4 +1,12 @@
-import { buildSettingsAudit, buildSettingsErrors, buildSettingsHealth, buildSettingsPrompts } from './settings';
+import {
+  buildSettingsAudit,
+  buildSettingsErrors,
+  buildSettingsHealth,
+  buildSettingsPrompts,
+  buildSettingsStaff,
+  fixtureStaffDelivery,
+  fixtureSuggestLogin,
+} from './settings';
 import { buildCoordinators, buildGroups, buildPeople, buildRequests, buildToday } from './build';
 
 /** Ответ «сервера» в режиме фикстур. Путь — как в apiGet: «today», «requests»… */
@@ -25,6 +33,8 @@ export function fixtureResponse(path: string): unknown {
       return buildSettingsAudit();
     case 'settings/prompts':
       return buildSettingsPrompts();
+    case 'settings/staff':
+      return buildSettingsStaff();
     default:
       throw new Error(`В фикстурах нет маршрута: ${path}`);
   }
@@ -34,9 +44,23 @@ export function fixtureResponse(path: string): unknown {
  * Ответ на POST в режиме фикстур. Сервера нет, данные не меняются, поэтому действие «получается»
  * и ничего не меняет; подбор отвечает тремя числами, чтобы итог «Готово: …» было что показать.
  */
-export function fixtureActionResponse(path: string): unknown {
-  if (path.replace(/^\/+/, '').replace(/\/+$/, '') === 'matching/run') {
+export function fixtureActionResponse(path: string, body?: unknown): unknown {
+  const clean = path.replace(/^\/+/, '').replace(/\/+$/, '');
+  if (clean === 'matching/run') {
     return { ok: true, created: 0, replaced: 0, unchanged: buildRequests().matching.waiting };
   }
-  return { ok: true };
+  const input = (body ?? {}) as { fullName?: string; email?: string; id?: number };
+  switch (clean) {
+    case 'settings/staff/suggest':
+      return { ok: true, login: fixtureSuggestLogin(input.fullName ?? '') };
+    case 'settings/staff/create':
+      return { ...fixtureStaffDelivery(input.email ?? ''), login: fixtureSuggestLogin(input.fullName ?? '') };
+    case 'settings/staff/invite':
+    case 'settings/staff/reset': {
+      const person = buildSettingsStaff().items.find((i) => i.id === input.id);
+      return fixtureStaffDelivery(person?.email ?? '', input.id);
+    }
+    default:
+      return { ok: true };
+  }
 }

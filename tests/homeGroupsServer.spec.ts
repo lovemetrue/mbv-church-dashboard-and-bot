@@ -45,6 +45,7 @@ interface Started {
   actionCalls: ActionCall[]; invalidations: () => number; setOutcome: (o: ActionOutcome) => void;
   matchingCalls: { name: string; actor: string; enabled?: boolean }[];
   setSettingsOutcome: (o: ActionOutcome) => void;
+  staffCalls: { name: string; args: unknown[] }[]; setTokenInfo: (v: { fullName: string; login: string } | null) => void; setComplete: (v: { ok: true } | { ok: false; error: string; message: string }) => void;
   settingsCalls: { name: string; actor?: string; body?: unknown }[]; reported: { source: string; message: string; context: string }[];
 }
 
@@ -56,6 +57,9 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
   const actionCalls: ActionCall[] = [];
   const matchingCalls: { name: string; actor: string; enabled?: boolean }[] = [];
   const settingsCalls: { name: string; actor?: string; body?: unknown }[] = [];
+  const staffCalls: { name: string; args: unknown[] }[] = [];
+  let tokenInfo: { fullName: string; login: string } | null = { fullName: 'Полина Иванова', login: 'p_ivanova' };
+  let complete: { ok: true } | { ok: false; error: string; message: string } = { ok: true };
   const reported: { source: string; message: string; context: string }[] = [];
   const record = (name: string) => async (id: number, body: unknown, actor: string): Promise<ActionOutcome> => {
     actionCalls.push({ name, id, body, actor });
@@ -68,6 +72,18 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
       run: async (actor) => { matchingCalls.push({ name: 'run', actor }); return { ok: true, created: 2, replaced: 1, unchanged: 3 }; },
       setAuto: async (enabled, actor) => { matchingCalls.push({ name: 'auto', actor, enabled }); },
     },
+    staff: {
+      view: async () => { staffCalls.push({ name: 'view', args: [] }); return { generatedAt: 'g', items: [], personal: { enabled: false, canEnable: false, activeWithPassword: 0, mailConfigured: false } }; },
+      suggestLogin: async (...a: unknown[]) => { staffCalls.push({ name: 'suggest', args: a }); return { ok: true, login: 'p_ivanova' }; },
+      create: async (...a: unknown[]) => { staffCalls.push({ name: 'create', args: a }); return { ok: true, delivery: 'link', email: 'e@e.ee', path: '/set-password?token=T', login: 'p_ivanova', id: 1 }; },
+      update: async (...a: unknown[]) => { staffCalls.push({ name: 'update', args: a }); return { ok: true }; },
+      invite: async (...a: unknown[]) => { staffCalls.push({ name: 'invite', args: a }); return { ok: true, delivery: 'sent', email: 'e@e.ee' }; },
+      reset: async (...a: unknown[]) => { staffCalls.push({ name: 'reset', args: a }); return { ok: true, delivery: 'sent', email: 'e@e.ee' }; },
+      setPersonalMode: async (...a: unknown[]) => { staffCalls.push({ name: 'mode', args: a }); return { ok: true }; },
+      requestReset: async (...a: unknown[]) => { staffCalls.push({ name: 'requestReset', args: a }); },
+      tokenInfo: async (t: string) => { staffCalls.push({ name: 'tokenInfo', args: [t] }); return tokenInfo; },
+      completePassword: async (...a: unknown[]) => { staffCalls.push({ name: 'complete', args: a }); return complete; },
+    } as never,
     settings: {
       health: async () => { settingsCalls.push({ name: 'health' }); return { generatedAt: 'g', overall: 'ok', metrics: [] }; },
       errors: async () => { settingsCalls.push({ name: 'errors' }); return { generatedAt: 'g', items: [] }; },
@@ -94,7 +110,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
     viewsCalls: () => calls,
     close: () => { server.close(); },
     setViews: (f) => { views = f; },
-    actionCalls, matchingCalls, settingsCalls, reported, setSettingsOutcome: (o: ActionOutcome) => { settingsOutcome = o; }, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
+    actionCalls, matchingCalls, settingsCalls, reported, staffCalls, setTokenInfo: (v) => { tokenInfo = v; }, setComplete: (v) => { complete = v; }, setSettingsOutcome: (o: ActionOutcome) => { settingsOutcome = o; }, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
   };
 }
 
@@ -782,5 +798,143 @@ describe('раздел «Настройки»', () => {
       expect(r.status).toBe(500);
       expect(app.reported.at(-1)).toEqual({ source: 'домашние группы', message: 'расчёт сломался', context: 'GET /api/v1/today' });
     } finally { app.setViews(async () => sampleViews()); }
+  });
+});
+
+
+describe('личные входы: страницы по ссылке', () => {
+  const form = (path: string, fields: Record<string, string>, headers: Record<string, string> = {}) =>
+    fetch(`${app.base}${path}`, {
+      method: 'POST', redirect: 'manual',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-real-ip': nextIp(), ...headers },
+      body: new URLSearchParams(fields),
+    });
+
+  test('страница входа ведёт на «Забыли пароль»', async () => {
+    const html = await (await fetch(`${app.base}/login`)).text();
+    expect(html).toContain('href="/forgot"');
+  });
+
+  test('после смены пароля вход показывает сообщение; неизвестный код сообщения игнорируется', async () => {
+    expect(await (await fetch(`${app.base}/login?notice=password_set`)).text()).toContain('Пароль задан');
+    expect(await (await fetch(`${app.base}/login?notice=<script>`)).text()).not.toContain('<script>');
+  });
+
+  test('«забыли пароль» отвечает одинаково и без сессии, письмо не ждёт', async () => {
+    const before = app.staffCalls.length;
+    const known = await form('/forgot', { identifier: 'p_ivanova' });
+    const unknown = await form('/forgot', { identifier: 'nobody' });
+    expect(known.status).toBe(200);
+    expect(unknown.status).toBe(200);
+    expect(await known.text()).toBe(await unknown.text());
+    expect(app.staffCalls.slice(before).map((c) => c.name)).toEqual(['requestReset', 'requestReset']);
+    expect(app.staffCalls.at(-1)!.args[0]).toBe('nobody');
+  });
+
+  test('«забыли пароль»: форма с другого сайта не JSON-типа отклоняется, а JSON не годится вовсе', async () => {
+    const r = await fetch(`${app.base}/forgot`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    expect(r.status).toBe(415);
+  });
+
+  test('страница по ссылке показывает имя и логин; негодная ссылка — «не работает» без подробностей', async () => {
+    const ok = await (await fetch(`${app.base}/set-password?token=T1`)).text();
+    expect(ok).toContain('Полина Иванова');
+    expect(ok).toContain('p_ivanova');
+    expect(ok).toContain('name="token" value="T1"');
+    app.setTokenInfo(null);
+    try {
+      const bad = await fetch(`${app.base}/set-password?token=T1`);
+      expect(await bad.text()).toContain('Ссылка не работает');
+    } finally { app.setTokenInfo({ fullName: 'Полина Иванова', login: 'p_ivanova' }); }
+  });
+
+  test('токен в странице экранируется: подмена атрибута не проходит', async () => {
+    const html = await (await fetch(`${app.base}/set-password?token=${encodeURIComponent('"><script>alert(1)</script>')}`)).text();
+    expect(html).not.toContain('<script>alert(1)');
+  });
+
+  test('страница с токеном не кэшируется и не отдаёт адрес сайтам по ссылке', async () => {
+    const r = await fetch(`${app.base}/set-password?token=T1`);
+    expect(r.headers.get('cache-control')).toBe('no-store');
+    expect(r.headers.get('referrer-policy')).toBe('no-referrer');
+  });
+
+  test('успешная смена пароля перенаправляет ко входу с сообщением', async () => {
+    const r = await form('/set-password', { token: 'T1', password: 'сиреневый-туман-42', password2: 'сиреневый-туман-42' });
+    expect(r.status).toBe(302);
+    expect(r.headers.get('location')).toBe('/login?notice=password_set');
+    expect(app.staffCalls.at(-1)).toMatchObject({ name: 'complete' });
+    expect(app.staffCalls.at(-1)!.args.slice(0, 3)).toEqual(['T1', 'сиреневый-туман-42', 'сиреневый-туман-42']);
+  });
+
+  test('слабый пароль: форма показывается снова с причиной, а пароль не повторяется в странице', async () => {
+    app.setComplete({ ok: false, error: 'bad_request', message: 'Пароль слишком короткий.' });
+    try {
+      const r = await form('/set-password', { token: 'T1', password: 'секрет-коротко', password2: 'секрет-коротко' });
+      const html = await r.text();
+      expect(r.status).toBe(400);
+      expect(html).toContain('Пароль слишком короткий.');
+      expect(html).not.toContain('секрет-коротко');
+    } finally { app.setComplete({ ok: true }); }
+  });
+
+  test('ссылка стала негодной между открытием и отправкой: общая страница «не работает»', async () => {
+    app.setComplete({ ok: false, error: 'bad_request', message: 'Ссылка недействительна.' });
+    app.setTokenInfo(null);
+    try {
+      const r = await form('/set-password', { token: 'T1', password: 'x'.repeat(12), password2: 'x'.repeat(12) });
+      expect(r.status).toBe(410);
+      expect(await r.text()).toContain('Ссылка не работает');
+    } finally { app.setComplete({ ok: true }); app.setTokenInfo({ fullName: 'Полина Иванова', login: 'p_ivanova' }); }
+  });
+
+  test('другие методы на страницах пароля — 404', async () => {
+    for (const path of ['/forgot', '/set-password']) {
+      expect((await fetch(`${app.base}${path}`, { method: 'PUT' })).status, path).toBe(404);
+      expect((await fetch(`${app.base}${path}`, { method: 'DELETE' })).status, path).toBe(404);
+    }
+  });
+});
+
+describe('личные входы: API пользователей', () => {
+  const call = (cookie: string | null, name: string, body: unknown) =>
+    fetch(`${app.base}/api/v1/settings/staff${name ? `/${name}` : ''}`, {
+      method: name ? 'POST' : 'GET',
+      headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) },
+      ...(name ? { body: JSON.stringify(body) } : {}),
+    });
+
+  test('список: без сессии 401, обычному входу 403, полному 200', async () => {
+    expect((await call(null, '', null)).status).toBe(401);
+    expect((await call(await signIn(REGULAR), '', null)).status).toBe(403);
+    const r = await call(await signIn(SUPER), '', null);
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ personal: { enabled: false } });
+  });
+
+  test.each(['suggest', 'create', 'update', 'invite', 'reset', 'personal-mode'])('%s: обычному входу 403 и ничего не вызвано', async (name) => {
+    const before = app.staffCalls.length;
+    const r = await call(await signIn(REGULAR), name, { id: 1 });
+    expect(r.status).toBe(403);
+    expect(app.staffCalls.length).toBe(before);
+  });
+
+  test.each([
+    ['suggest', 'suggest'], ['create', 'create'], ['update', 'update'], ['invite', 'invite'], ['reset', 'reset'], ['personal-mode', 'mode'],
+  ])('%s передаёт тело и логин автора и отвечает 200', async (name, recorded) => {
+    const body = { id: 7, enabled: true };
+    const r = await call(await signIn(SUPER), name, body);
+    expect(r.status).toBe(200);
+    expect(app.staffCalls.at(-1)!.name).toBe(recorded);
+    if (name !== 'suggest') expect(app.staffCalls.at(-1)!.args).toEqual([body, SUPER.login]);
+  });
+
+  test('ответ создания несёт способ доставки и путь для передачи ссылки', async () => {
+    const r = await call(await signIn(SUPER), 'create', { fullName: 'Полина Иванова', email: 'e@e.ee', role: 'admin' });
+    expect(await r.json()).toMatchObject({ ok: true, delivery: 'link', path: '/set-password?token=T', login: 'p_ivanova', id: 1 });
+  });
+
+  test('чужие адреса — 404', async () => {
+    expect((await call(await signIn(SUPER), 'delete', { id: 1 })).status).toBe(404);
   });
 });

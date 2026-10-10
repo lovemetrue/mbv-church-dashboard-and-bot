@@ -56,4 +56,5 @@ export const ACTION_STATUS: Record<ActionError['error'], number> = {
   group_unavailable: 409,
   group_full: 409,
   forbidden: 403,
+  conflict: 409,
 };

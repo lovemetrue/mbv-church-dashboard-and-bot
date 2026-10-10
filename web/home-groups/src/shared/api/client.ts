@@ -16,7 +16,7 @@ export class ApiError extends Error {
   }
 }
 
-const ACTION_CODES: readonly string[] = ['bad_request', 'not_found', 'already_closed', 'group_unavailable', 'group_full', 'forbidden'];
+const ACTION_CODES: readonly string[] = ['bad_request', 'not_found', 'already_closed', 'group_unavailable', 'group_full', 'forbidden', 'conflict'];
 
 type RedirectFn = (url: string) => void;
 
@@ -78,7 +78,7 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   if (FIXTURES_MODE) {
     // В режиме фикстур сервера нет: действие «получается», но данные не меняются.
     const { fixtureActionResponse } = await import('../../fixtures');
-    return fixtureActionResponse(path) as T;
+    return fixtureActionResponse(path, body) as T;
   }
 
   let response: Response;

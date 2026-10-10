@@ -68,7 +68,10 @@ const SCREENS = [
   { name: 'settings-audit', url: '/?tab=settings&sec=audit', ready: 'table[aria-label="Журнал регистрации"]', click: 'button[aria-label^="Что изменилось"]', full: true },
   { name: 'settings-prompts', url: '/?tab=settings&sec=prompts', ready: 'textarea', full: true },
   { name: 'settings-prompts-rollback', url: '/?tab=settings&sec=prompts', ready: 'textarea', click: 'button[aria-label="Сделать действующей версию 2"]' },
-  { name: 'settings-users', url: '/?tab=settings&sec=users', ready: 'text=Личные входы', full: true },
+  { name: 'settings-users', url: '/?tab=settings&sec=users', ready: 'text=Елена Смирнова', full: true },
+  // Окно «Добавить пользователя» и окно со ссылкой (в фикстурах почты нет, поэтому приглашение даёт ссылку).
+  { name: 'settings-users-add', url: '/?tab=settings&sec=users', ready: 'text=Елена Смирнова', click: 'button:has-text("Добавить пользователя")', then: '[role=dialog]' },
+  { name: 'settings-users-link', url: '/?tab=settings&sec=users', ready: 'text=Елена Смирнова', click: 'button:has-text("Прислать приглашение снова")', then: 'textarea[readonly]' },
   { name: 'reference-filtered', url: '/?tab=reference&f=Район:eq:Приморский&gb=Статус&col=№&col=Ведущий&col=Район&col=Статус&col=Здоровье', ready: 'table' },
 ];
 
@@ -76,7 +79,7 @@ const SHOTS = [
   // [экран, ширина, тема]
   ...['settings-health', 'settings-errors', 'settings-audit', 'settings-prompts'].flatMap((s) => [[s, 1280, 'light'], [s, 400, 'light']]),
   ['settings-prompts-rollback', 400, 'light'],
-  ['settings-users', 400, 'light'],
+  ...['settings-users', 'settings-users-add', 'settings-users-link'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
   ['settings-health', 1280, 'dark'],
   ['settings-health', 400, 'gray'],
   ...['today', 'requests', 'reference-groups', 'reference-people'].map((s) => [s, 1280, 'light']),
@@ -154,6 +157,8 @@ for (const [screenName, width, theme] of SHOTS) {
   await page.waitForSelector(screen.ready, { timeout: 15000 });
   await page.evaluate(() => document.fonts.ready);
   if (screen.click) await page.click(screen.click);
+  // Результат клика приходит не сразу (ответ «сервера» фикстур): ждём появления нужного элемента.
+  if (screen.then) await page.waitForSelector(screen.then, { timeout: 5000 });
   await page.waitForTimeout(150);
 
   if (mobile) {

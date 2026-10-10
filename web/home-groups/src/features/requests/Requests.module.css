@@ -424,3 +424,107 @@
 .log li {
   padding: 2px 0;
 }
+
+/* Блок «Подбор для новых заявок» над списком */
+.matching {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 12px;
+  margin-bottom: 12px;
+  display: grid;
+  gap: 10px;
+}
+.matchingTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.matchingStats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.matchingStats p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.matchingStats p:first-child {
+  color: var(--ink);
+  font-weight: 500;
+}
+.matchingControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+}
+.matchingHint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.matching .noticeOk,
+.matching .noticeError {
+  margin: 0;
+}
+
+/* Переключатель: кнопка с role="switch", вся строка нажимается (≥44 px). */
+.switchBox {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--tap);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+}
+.switch:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.switchTrack {
+  flex: none;
+  width: 40px;
+  height: 22px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  transition: background 0.15s;
+}
+.switchThumb {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-pill);
+  background: var(--muted);
+  transition: transform 0.15s;
+}
+.switch[aria-checked='true'] .switchTrack {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.switch[aria-checked='true'] .switchThumb {
+  background: var(--accent-ink);
+  transform: translateX(18px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .switchTrack,
+  .switchThumb {
+    transition: none;
+  }
+}

@@ -798,3 +798,83 @@ describe('решения координатора', () => {
     expect(views.requests.items[0]!.log.map((l) => l.text)).toContain('Отклонена группа ДГ-0001: другое («просит группу без детей») · mbv_admin');
   });
 });
+
+
+describe('накопленные предложения и счётчик участников', () => {
+  test('сохранённое предложение закрепляется за заявкой: движок получает его группу как выбор', () => {
+    const { calls } = build({
+      groups: [group({ id: 1 }), group({ id: 2 })],
+      requests: [request({ id: 7, place: 'Приморский' })],
+      activeProposals: new Map([[7, { groupId: 2, source: 'script' }]]),
+    });
+    expect(calls.plan[0]!.requests.find((r) => r.id === 7)!.pinnedGroupId).toBe(2);
+  });
+
+  test('источник предложения берётся из сохранённого, если показана та же группа', () => {
+    const { views } = build({
+      groups: [group({ id: 1 })],
+      requests: [request({ id: 7, place: 'Приморский' })],
+      activeProposals: new Map([[7, { groupId: 1, source: 'agent' }]]),
+    });
+    expect(views.requests.items[0]!.proposal?.source).toBe('agent');
+  });
+
+  test('если показана другая группа, чем сохранённая, источник — расчёт', () => {
+    const { views } = build({
+      groups: [group({ id: 1 })],
+      requests: [request({ id: 7, place: 'Приморский' })],
+      activeProposals: new Map([[7, { groupId: 99, source: 'agent' }]]),
+    });
+    expect(views.requests.items[0]!.proposal?.source).toBe('script');
+  });
+
+  test('утверждённые сервисом после обратной связи добавляются к числу участников группы', () => {
+    const { views, calls } = build({
+      groups: [group({ id: 1, people: 5 }), group({ id: 2, people: 3 }), group({ id: 3, people: null })],
+      requests: [],
+      placedNew: new Map([[1, 2], [3, 1]]),
+    });
+    const items = new Map(views.groups.items.map((g) => [g.id, g]));
+    expect(items.get(1)).toMatchObject({ people: 7, placedNew: 2, free: 3 });
+    expect(items.get(2)).toMatchObject({ people: 3, placedNew: 0 });
+    // Число неизвестно, но один человек сервисом точно утверждён: известно «не меньше одного».
+    expect(items.get(3)).toMatchObject({ people: 1, placedNew: 1 });
+    expect(calls.plan[0]!.groups.find((g) => g.id === 1)!.people).toBe(7);
+  });
+
+  test('здоровье группы по-прежнему считает число участников указанным только если его указал ведущий', () => {
+    const { views } = build({
+      groups: [group({ id: 3, people: null })],
+      placedNew: new Map([[3, 1]]),
+    });
+    const health = views.groups.items[0]!.health.items.find((i) => i.label === 'Число участников указано')!;
+    expect(health.ok).toBe(false);
+  });
+
+  test('«ждут подбора» — открытые заявки с предложением, которого ещё нет в сохранённых', () => {
+    const { views } = build({
+      groups: [group({ id: 1 })],
+      requests: [
+        request({ id: 1, place: 'Приморский' }),
+        request({ id: 2, place: 'Приморский' }),
+        request({ id: 3, place: 'Приморский' }),
+        request({ id: 4, place: 'Приморский', status: 'Исполнена', group_id: 1 }),
+      ],
+      activeProposals: new Map([[1, { groupId: 1, source: 'script' }]]),
+    });
+    // Заявка 1 уже сохранена; 2 и 3 — нет; закрытая 4 не считается.
+    expect(views.requests.matching.waiting).toBeLessThanOrEqual(2);
+    expect(views.requests.matching.waiting).toBeGreaterThanOrEqual(1);
+  });
+
+  test('сведения о подборе (автоматический ли, последний запуск) приходят из настроек', () => {
+    const lastRun = { at: '2026-10-10T08:00:00.000Z', created: 3, replaced: 1, actor: 'mbv_admin' };
+    const { views } = build({ matching: { auto: true, lastRun } });
+    expect(views.requests.matching).toMatchObject({ auto: true, lastRun });
+  });
+
+  test('без настроек подбор выключен и запусков не было', () => {
+    const { views } = build({});
+    expect(views.requests.matching).toEqual({ auto: false, lastRun: null, waiting: 0 });
+  });
+});

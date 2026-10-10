@@ -221,8 +221,13 @@ export function buildPlan(input: PlanInput): PlanOutput {
     work.push({ request, candidates, known });
   }
 
+  // Закреплённые (накопленные) предложения идут первыми: их место уже обещано, и новая «трудная»
+  // заявка не должна его отнимать. Остальные — от трудных к лёгким, как раньше.
+  const isPinned = (w: Work): boolean =>
+    w.request.pinnedGroupId !== null && w.candidates.some((c) => c.groupId === w.request.pinnedGroupId);
   work.sort(
     (a, b) =>
+      Number(isPinned(b)) - Number(isPinned(a)) ||
       a.candidates.length - b.candidates.length ||
       (b.candidates[0]?.score ?? 0) - (a.candidates[0]?.score ?? 0) ||
       a.request.id - b.request.id,

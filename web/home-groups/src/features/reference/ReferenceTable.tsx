@@ -18,9 +18,23 @@ interface ReferenceTableProps {
   onSelect: (key: string) => void;
 }
 
-function Cell({ column, value }: { column: string; value: Row[string] }) {
+function Cell({ column, value, row }: { column: string; value: Row[string]; row: Row }) {
   const text = displayCell(column, value ?? null);
   if (text === '') return <span className={styles.empty}>{ru.reference.emptyDash}</span>;
+  const placedNew = column === 'Места' ? Number(row['_placedNew'] ?? 0) : 0;
+  if (placedNew > 0) {
+    // Число мест не трогаем: пометка рядом, а полный текст — для скринридера и подсказки.
+    const label = ru.reference.placedNew(placedNew);
+    return (
+      <>
+        <span className={styles.cellText}>{text}</span>
+        <span className={styles.placedMark} title={`${label}. ${ru.reference.placedNewHint}`}>
+          +{placedNew}
+          <span className="visually-hidden"> {label.replace(/^\+\d+ /, '')}</span>
+        </span>
+      </>
+    );
+  }
   if (column === 'Здоровье') {
     return <b className={`${styles.health} ${styles[`health_${healthTone(Number(value))}`]} num`}>{text}</b>;
   }
@@ -127,10 +141,10 @@ function GroupRows({
                       onSelect(key);
                     }}
                   >
-                    <Cell column={c} value={row[c] ?? null} />
+                    <Cell column={c} value={row[c] ?? null} row={row} />
                   </button>
                 ) : (
-                  <Cell column={c} value={row[c] ?? null} />
+                  <Cell column={c} value={row[c] ?? null} row={row} />
                 )}
               </td>
             ))}

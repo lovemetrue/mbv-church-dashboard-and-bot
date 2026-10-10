@@ -6,6 +6,7 @@ import { ru } from '../../shared/i18n/ru';
 import { useAppNav } from '../../shared/nav';
 import { Chip, EmptyState, ErrorState, LoadingState } from '../../shared/ui';
 import { countBuckets, filterByBucket, searchRequests } from './model';
+import { MatchingPanel } from './MatchingPanel';
 import { RequestCard } from './RequestCard';
 import { RequestList } from './RequestList';
 import styles from './Requests.module.css';
@@ -27,6 +28,7 @@ export function RequestsContent({ data }: { data: RequestsView }) {
   return (
     <div className={styles.work}>
       <div className={styles.main}>
+        <MatchingPanel matching={data.matching} />
         <div className={styles.bar} role="group" aria-label={ru.requests.chipsLabel}>
           <Chip pressed={nav.bucket === 'all'} count={counts.all} onClick={() => nav.setBucket('all')}>
             Все

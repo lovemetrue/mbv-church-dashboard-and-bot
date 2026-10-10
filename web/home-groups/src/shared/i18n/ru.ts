@@ -70,6 +70,7 @@ export const ru = {
     proposeOpen: 'Предложить открыть группу',
     showRequests: 'Показать заявки',
     clarify: 'Уточнить',
+    moreSingles: (n: number) => `Ещё ${n} — показать все в «Заявках»`,
     help: 'Помощь',
   },
 
@@ -124,7 +125,7 @@ export const ru = {
     weakPlan: (confidence: number, group: string) =>
       `Лучший найденный вариант слабый (уверенность ${confidence}): ${group}. Лучше уточнить параметры ниже.`,
     displaced: (group: string, when: string, by: string) =>
-      `Лучший вариант — ${group}${when ? ` (${when})` : ''}, но последнее место отдано заявке: ${by}. У неё совпадение выше, а других групп почти нет.`,
+      `Лучший вариант — ${group}${when ? ` (${when})` : ''}, но место в ней отдано другой заявке: ${by}.`,
     basedOn: (known: number) => `План опирается на ${known} из 4 параметров.`,
     confidence: 'уверенность',
     match: 'совпадение',

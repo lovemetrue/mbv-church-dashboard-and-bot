@@ -5,6 +5,12 @@ import { useAppNav } from '../../shared/nav';
 import { Button } from '../../shared/ui';
 import styles from './Today.module.css';
 
+/**
+ * Сколько одиночных ситуаций показываем на «Сегодня». На живых данных их бывает под сотню, и страница
+ * превращалась в бесконечный список; остальные открываются в «Заявках» (корзина «Нужна помощь»).
+ */
+export const SINGLES_VISIBLE = 5;
+
 function clusterText(c: Cluster): string {
   const who = `${plural(c.requestIds.length, FORMS.person)} (${c.firstNames.join(', ')})`;
   const ages = c.ages.length ? `, ${ru.today.clusterAges} ${c.ages.join(' и ')}` : '';
@@ -16,6 +22,8 @@ function clusterText(c: Cluster): string {
 export function HelpBlock({ data }: { data: TodayView }) {
   const nav = useAppNav();
   const empty = data.clusters.length === 0 && data.singles.length === 0;
+  const shown = data.singles.slice(0, SINGLES_VISIBLE);
+  const hidden = data.singles.length - shown.length;
   return (
     <>
       <div className={styles.helpHead}>
@@ -42,7 +50,7 @@ export function HelpBlock({ data }: { data: TodayView }) {
               </div>
             </li>
           ))}
-          {data.singles.map((s) => (
+          {shown.map((s) => (
             <li key={`s-${s.requestId}`} className={styles.sit}>
               <b>{s.fio}</b>
               <p>
@@ -56,6 +64,13 @@ export function HelpBlock({ data }: { data: TodayView }) {
               </div>
             </li>
           ))}
+          {hidden > 0 && (
+            <li className={styles.more}>
+              <Button size="sm" onClick={() => nav.goBucket('human')}>
+                {ru.today.moreSingles(hidden)}
+              </Button>
+            </li>
+          )}
         </ul>
       )}
     </>

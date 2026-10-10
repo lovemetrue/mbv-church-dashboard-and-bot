@@ -61,6 +61,24 @@ describe('«Сегодня»', () => {
     expect(await screen.findByRole('dialog', { name: 'Карточка заявки: Станислав Ким' })).toBeInTheDocument();
   });
 
+  test('одиночных ситуаций показывается не больше пяти, остальные открываются в «Заявках»', async () => {
+    const user = userEvent.setup();
+    const many = Array.from({ length: 12 }, (_, i) => ({ requestId: 100 + i, fio: `Человек ${i + 1}`, place: null, reason: 'Место не распознано' }));
+    const data = { ...buildToday(), clusters: [], singles: many };
+    renderAt(<TodayContent data={data} now={new Date(2026, 9, 9, 9, 0)} />);
+    expect(screen.getAllByRole('button', { name: 'Уточнить' })).toHaveLength(5);
+    expect(screen.queryByText('Человек 6')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Ещё 7 — показать все в «Заявках»' }));
+    expect(currentSearch().get('tab')).toBe('requests');
+    expect(currentSearch().get('bucket')).toBe('human');
+  });
+
+  test('если одиночных ситуаций не больше пяти, кнопки «Ещё» нет', () => {
+    const few = Array.from({ length: 5 }, (_, i) => ({ requestId: 100 + i, fio: `Человек ${i + 1}`, place: null, reason: 'Место не распознано' }));
+    renderAt(<TodayContent data={{ ...buildToday(), clusters: [], singles: few }} now={new Date(2026, 9, 9, 9, 0)} />);
+    expect(screen.queryByRole('button', { name: /^Ещё/ })).not.toBeInTheDocument();
+  });
+
   test('если помощь не нужна, вместо списка — спокойное сообщение', () => {
     const data = { ...buildToday(), clusters: [], singles: [] };
     renderAt(<TodayContent data={data} now={new Date(2026, 9, 9, 9, 0)} />);

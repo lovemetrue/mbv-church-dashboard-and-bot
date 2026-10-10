@@ -1,0 +1,17 @@
+.dots {
+  display: inline-flex;
+  gap: 3px;
+  vertical-align: middle;
+}
+.dots i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  border: 1.5px solid var(--muted);
+  opacity: 0.7;
+}
+.dots i.on {
+  background: var(--ok);
+  border-color: var(--ok);
+  opacity: 1;
+}

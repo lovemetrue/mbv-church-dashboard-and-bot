@@ -1,0 +1,29 @@
+.list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 6px 0 8px;
+  padding: 0;
+  list-style: none;
+}
+.reason {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--line-soft);
+  color: var(--muted);
+}
+.plain {
+}
+.good {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.neutral {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.bad {
+  background: var(--crit-soft);
+  color: var(--crit);
+}

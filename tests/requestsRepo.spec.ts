@@ -26,6 +26,19 @@ beforeEach(async () => {
   groups = new GroupsRepo(db);
 });
 
+describe('заявка в дашборде знает своего участника', () => {
+  // По user_id новый дашборд отличает «человека из бота» от «строки из таблицы без участника».
+  test('у заявки из бота есть user_id, у заведённой в дашборде его нет', async () => {
+    const userId = await seedUser(db, { id: '1' });
+    await requests.create(userId, 'join_group');
+    await requests.createFromDashboard(REQUEST_MIN);
+
+    const rows = await requests.forDashboard();
+    expect(rows.find((r) => r.origin === 'бот')?.user_id).toBe(userId);
+    expect(rows.find((r) => r.origin === 'ui')?.user_id).toBeNull();
+  });
+});
+
 describe('заявка ссылается на домашнюю группу', () => {
   test('заведение из дашборда сохраняет привязку', async () => {
     const group = await groups.create(GROUP_MIN, 'ui');

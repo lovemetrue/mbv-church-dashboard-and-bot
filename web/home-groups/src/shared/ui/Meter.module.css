@@ -1,0 +1,29 @@
+.meter {
+  height: 6px;
+  background: var(--line-soft);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 7px 0;
+}
+.fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .fill {
+    transition: width 0.3s;
+  }
+}
+.accent {
+  background: var(--accent);
+}
+.ok {
+  background: var(--ok);
+}
+.warn {
+  background: var(--warn);
+}
+.crit {
+  background: var(--crit);
+}

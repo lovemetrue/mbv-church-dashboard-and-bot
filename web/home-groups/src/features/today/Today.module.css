@@ -1,0 +1,263 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  min-width: 0;
+}
+.h3 {
+  font-size: 12px;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  font-weight: 600;
+}
+.sub {
+  color: var(--muted);
+  margin: 0;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 20px;
+  align-items: center;
+}
+.hello {
+  font-size: 20px;
+  letter-spacing: -0.01em;
+  margin-bottom: 4px;
+}
+@media (max-width: 760px) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+}
+
+.counters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+@media (max-width: 560px) {
+  .counters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.counter {
+  text-align: left;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: var(--tap);
+}
+.counter:hover {
+  border-color: var(--accent);
+}
+.counterNum {
+  font-family: var(--mono);
+  font-size: 34px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.counterLabel {
+  font-weight: 600;
+}
+.counterHint {
+  font-size: 12px;
+  color: var(--muted);
+}
+.counterReady {
+  border-color: color-mix(in srgb, var(--ok) 45%, var(--line));
+}
+.counterReady .counterNum {
+  color: var(--ok);
+}
+.counterCb .counterNum {
+  color: var(--accent);
+}
+
+/* Сначала «ожидаемые действия» (помощь), матрица ниже: на телефоне так и читается,
+   на широком экране матрица слева, как в макете. */
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  grid-template-areas: 'matrix help';
+  gap: 16px;
+  align-items: start;
+}
+.areaHelp {
+  grid-area: help;
+}
+.areaMatrix {
+  grid-area: matrix;
+}
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'help' 'matrix';
+  }
+}
+
+.matrix {
+  border-collapse: separate;
+  border-spacing: 5px;
+  min-width: 480px;
+  width: 100%;
+}
+.mxCorner,
+.mxHead {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+  text-align: left;
+  padding: 0 2px;
+  vertical-align: bottom;
+}
+.mxRow {
+  font-weight: 500;
+  font-size: 13px;
+  text-align: left;
+  padding-right: 8px;
+  white-space: nowrap;
+}
+.mxTd {
+  padding: 0;
+  min-width: 78px;
+}
+.cell {
+  border-radius: 8px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.cell b {
+  display: block;
+  font-family: var(--mono);
+  font-size: 15px;
+}
+.cell span {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+.cellCrit {
+  background: var(--crit-soft);
+  border-color: color-mix(in srgb, var(--crit) 40%, var(--line));
+}
+.cellCrit b {
+  color: var(--crit);
+}
+.cellWarn {
+  background: var(--warn-soft);
+}
+.cellWarn b {
+  color: var(--warn);
+}
+.cellOk {
+  background: var(--ok-soft);
+}
+.cellOk b {
+  color: var(--ok);
+}
+.cellZero b {
+  color: var(--muted);
+}
+.cellZero {
+  opacity: 0.8;
+}
+
+.legend {
+  display: flex;
+  gap: 6px 14px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--muted);
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  margin-right: 5px;
+  vertical-align: -1px;
+}
+.dotCrit {
+  background: var(--crit);
+}
+.dotWarn {
+  background: var(--warn);
+}
+.dotOk {
+  background: var(--ok);
+}
+
+.helpHead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.helpNum {
+  font-family: var(--mono);
+  font-size: 34px;
+  font-weight: 600;
+  color: var(--warn);
+  line-height: 1;
+}
+.helpTitle {
+  font-size: 15px;
+  font-weight: 600;
+}
+.sits {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sit {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: var(--surface-2);
+}
+.sit b {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.sit p {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.sitCluster {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: var(--accent-soft);
+}
+.sitCluster p {
+  color: var(--ink);
+}
+.act {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}

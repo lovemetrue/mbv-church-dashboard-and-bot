@@ -1,0 +1,32 @@
+.chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: var(--radius-pill);
+  padding: 4px 12px;
+  font-size: 13px;
+  color: var(--muted);
+  text-align: left;
+  min-height: 30px;
+}
+.chip:hover {
+  border-color: var(--accent);
+}
+.chip[aria-pressed='true'] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.count {
+  font-family: var(--mono);
+  font-size: 11px;
+  margin-left: 6px;
+}
+@media (max-width: 700px), (pointer: coarse) {
+  .chip {
+    min-height: var(--tap);
+    padding-inline: 14px;
+  }
+}

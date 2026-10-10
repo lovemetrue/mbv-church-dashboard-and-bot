@@ -1,0 +1,174 @@
+.wrap {
+  max-width: 1280px;
+  margin-inline: auto;
+  padding-block: 12px 48px;
+  padding-top: max(12px, env(safe-area-inset-top, 0px));
+  padding-bottom: max(48px, env(safe-area-inset-bottom, 0px));
+}
+.skip {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--accent);
+  color: var(--accent-ink);
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  z-index: 100;
+}
+.skip:focus {
+  left: 16px;
+  top: 8px;
+}
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding-block: 4px 14px;
+}
+.brand {
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+  margin-right: auto;
+}
+.brand small {
+  display: block;
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0;
+}
+.search {
+  flex: 1 1 220px;
+  max-width: 320px;
+  min-width: 0;
+}
+.search input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  min-height: 36px;
+}
+.planpill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--ok-soft);
+  color: var(--ok);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.planpill b {
+  font-family: var(--mono);
+}
+.themeBox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.themeLabel {
+  color: var(--muted);
+  font-size: 13px;
+}
+.themeSelect {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  min-height: 34px;
+}
+.logout {
+  margin: 0;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 18px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.tab {
+  background: none;
+  border: 0;
+  padding: 10px 14px;
+  color: var(--muted);
+  font-weight: 500;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  white-space: nowrap;
+  min-height: var(--tap);
+}
+.tab:hover {
+  color: var(--ink);
+}
+.tab[aria-selected='true'] {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+.cnt {
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--line-soft);
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  margin-left: 6px;
+}
+.main {
+  min-width: 0;
+}
+.main:focus {
+  outline: none;
+}
+
+/* Телефон: название и «Выйти» в первой строке, поиск на всю ширину, остальное ниже. */
+@media (max-width: 700px) {
+  .top {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'brand logout'
+      'search search'
+      'pill pill'
+      'create create'
+      'theme theme';
+    gap: 8px 10px;
+  }
+  .brand {
+    grid-area: brand;
+    margin: 0;
+  }
+  .search {
+    grid-area: search;
+    max-width: none;
+  }
+  .search input {
+    min-height: var(--tap);
+    font-size: 16px; /* меньше 16 px iOS приближает страницу при фокусе */
+  }
+  .planpill {
+    grid-area: pill;
+    justify-self: start;
+  }
+  .create {
+    grid-area: create;
+  }
+  .themeBox {
+    grid-area: theme;
+  }
+  .logout {
+    grid-area: logout;
+  }
+  .themeSelect {
+    min-height: var(--tap);
+    flex: 1;
+  }
+}

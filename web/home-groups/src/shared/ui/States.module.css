@@ -1,0 +1,47 @@
+.empty {
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--muted);
+}
+.hint {
+  margin-top: 6px;
+  font-size: 13px;
+}
+.loading {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+.loadingText {
+  color: var(--muted);
+}
+.bar {
+  display: block;
+  height: 14px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--line-soft), var(--surface-2), var(--line-soft));
+  background-size: 200% 100%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .bar {
+    animation: shimmer 1.4s linear infinite;
+  }
+}
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+.error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 16px;
+  margin: 12px 0;
+  border-radius: var(--radius-lg);
+  background: var(--crit-soft);
+  color: var(--crit);
+  font-weight: 500;
+}

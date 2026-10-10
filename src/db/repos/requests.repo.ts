@@ -69,6 +69,8 @@ const WITH_USER = `
 /** Заявка в том виде, в каком её ждёт дашборд: имена полей как в листе ЗАЯВКИ. */
 export interface DashboardRequest {
   id: number;
+  /** Участник в боте; null у заявок из таблицы и заведённых в дашборде вручную. */
+  user_id: number | null;
   group_id: number | null;
   fio: string | null;
   responsible: string | null;
@@ -282,7 +284,7 @@ export class RequestsRepo {
    */
   async forDashboard(): Promise<DashboardRequest[]> {
     const { rows } = await this.db.query<{
-      id: number; group_id: number | null; fio: string | null; responsible: string | null; status: RequestStatus;
+      id: number; user_id: number | null; group_id: number | null; fio: string | null; responsible: string | null; status: RequestStatus;
       date: string | null; phone: string | null; phones: string[]; age: string | null;
       place: string | null; source: string | null; ministry: string | null; note: string | null;
       extra: string | null; recommended: string | null; recommended_at: string | null;
@@ -291,7 +293,7 @@ export class RequestsRepo {
       church: string | null; mdg_status: MdgStatus | null; leader_name: string | null;
       schedule: string | null; address: string | null;
     }>(
-      `SELECT r.id, r.group_id,
+      `SELECT r.id, r.user_id, r.group_id,
               coalesce(r.fio, u.full_name) AS fio,
               r.responsible, r.status,
               coalesce(r.requested_at, r.created_at::date) AS date,

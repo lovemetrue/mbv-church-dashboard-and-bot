@@ -1,0 +1,301 @@
+.work {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 440px;
+  gap: 16px;
+  align-items: start;
+}
+.main {
+  min-width: 0;
+}
+@media (max-width: 1000px) {
+  .work {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.listbox {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.1fr) minmax(170px, 1.3fr) 56px 60px;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line-soft);
+  background: var(--surface);
+}
+.rows .row {
+  cursor: pointer;
+}
+.rows .row:hover {
+  background: var(--surface-2);
+}
+.head {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-weight: 600;
+  border-top: 0;
+  background: var(--surface-2);
+}
+.selected,
+.rows .selected:hover {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.who {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  row-gap: 2px;
+}
+.nameBtn {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-weight: 600;
+  text-align: left;
+  color: var(--ink);
+  min-height: 24px;
+}
+.nameBtn:hover {
+  color: var(--accent);
+}
+.place {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.propText {
+  margin-top: 3px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.conf {
+  font-family: var(--mono);
+  font-weight: 600;
+}
+.dots {
+  display: flex;
+}
+
+/* На телефоне строка складывается в две: имя и данные, затем предложение и уверенность. */
+@media (max-width: 700px) {
+  .head {
+    display: none;
+  }
+  .row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'who dots' 'prop conf';
+    gap: 6px 12px;
+    padding: 12px;
+    min-height: var(--tap);
+  }
+  .who {
+    grid-area: who;
+  }
+  .dots {
+    grid-area: dots;
+    justify-content: flex-end;
+  }
+  .prop {
+    grid-area: prop;
+  }
+  .conf {
+    grid-area: conf;
+    align-self: end;
+    font-size: 16px;
+  }
+}
+
+.legendNote {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.note {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Заглушка справа: на узком экране карточка открывается поверх, поэтому место не резервируем. */
+.placeholder {
+  background: var(--surface);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-lg);
+  position: sticky;
+  top: 12px;
+}
+@media (max-width: 1000px) {
+  .placeholder {
+    display: none;
+  }
+}
+
+/* Карточка заявки */
+.approved {
+  background: var(--ok-soft);
+  color: var(--ok);
+  border-radius: var(--radius);
+  padding: 9px 11px;
+  font-weight: 500;
+}
+.callout {
+  background: var(--warn-soft);
+  color: var(--warn);
+  border-radius: var(--radius);
+  padding: 9px 11px;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+.noPlan {
+  background: var(--crit-soft);
+  color: var(--crit);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 8px 0 6px;
+}
+.h4 {
+  margin: 16px 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  font-weight: 600;
+}
+.cand {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 8px;
+  background: var(--surface);
+}
+.candTop {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+.candHead {
+  display: flex;
+  gap: 4px 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.candHead b {
+  font-weight: 600;
+  font-size: 15px;
+}
+.candScore {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: 20px;
+}
+.candScore small {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 400;
+  text-align: right;
+  font-family: var(--font);
+}
+.candFoot {
+  display: flex;
+  gap: 6px 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.free {
+  font-size: 12px;
+  color: var(--muted);
+  margin-right: auto;
+}
+
+.fold > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+}
+.fold[open] > summary {
+  margin-bottom: 8px;
+}
+.params {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.param {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 2px 8px;
+  padding: 7px 0;
+  border-top: 1px dashed var(--line-soft);
+}
+.param:first-child {
+  border-top: 0;
+}
+.mark {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  border: 1.5px solid var(--muted);
+  margin-top: 2px;
+  opacity: 0.7;
+}
+.paramOn .mark {
+  background: var(--ok);
+  border-color: var(--ok);
+  opacity: 1;
+}
+.paramTitle {
+  font-weight: 600;
+}
+.paramTitle small {
+  font-weight: 400;
+  color: var(--muted);
+  margin-left: 6px;
+  font-size: 13px;
+}
+.hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+.log {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.log li {
+  padding: 2px 0;
+}

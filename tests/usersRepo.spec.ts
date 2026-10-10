@@ -137,6 +137,16 @@ describe('список регистраций для дашборда', () => {
     expect(await repo.listRegistered()).toEqual([]);
   });
 
+  // Новый дашборд («Домашние группы») подписывает человека «Бот · Telegram» / «Бот · MAX».
+  test('несёт платформу, с которой человек пришёл', async () => {
+    await seedUser(db, { id: '1', fio: 'Из телеграма', platform: 'telegram' });
+    await seedUser(db, { id: '2', fio: 'Из макса', platform: 'max' });
+
+    const list = await repo.listRegistered();
+    expect(list.find((r) => r.full_name === 'Из телеграма')?.platform).toBe('telegram');
+    expect(list.find((r) => r.full_name === 'Из макса')?.platform).toBe('max');
+  });
+
   test('несёт возраст и район из анкеты', async () => {
     await repo.createManual({
       platform: 'telegram', byAdminId: 'дашборд', fio: 'С анкетой', phone: '+79001112239',

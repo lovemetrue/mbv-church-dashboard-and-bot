@@ -7,13 +7,20 @@ export function isThemeChoice(v: unknown): v is ThemeChoice {
   return typeof v === 'string' && (THEME_CHOICES as readonly string[]).includes(v);
 }
 
+/**
+ * Пока человек сам не выбрал тему, показываем светлую — и на компьютере, и на телефоне.
+ * «Авто» (следовать за системой) остаётся выбором, но не умолчанием: у многих на телефоне
+ * системная тема тёмная, а церковная команда ждёт светлый интерфейс.
+ */
+export const DEFAULT_THEME: ThemeChoice = 'light';
+
 /** Хранилище может не работать (приватное окно, запрет): тогда живём без запоминания. */
 export function loadTheme(): ThemeChoice {
   try {
     const v = window.localStorage.getItem(THEME_STORAGE_KEY);
-    return isThemeChoice(v) ? v : 'auto';
+    return isThemeChoice(v) ? v : DEFAULT_THEME;
   } catch {
-    return 'auto';
+    return DEFAULT_THEME;
   }
 }
 

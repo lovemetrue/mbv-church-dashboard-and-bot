@@ -297,6 +297,8 @@ export function bucketOf(args: {
 }): 'ready' | 'callback' | 'human' | 'done' | 'cancelled' {
   if (args.status === 'Исполнена') return 'done';
   if (args.status === 'Аннулирована') return 'cancelled';
-  if (needsHuman(args.entry, args.settings)) return 'human';
-  return args.callback ? 'callback' : 'ready';
+  // Отметка «нужен звонок» — решение координатора, и оно сильнее расчёта: человек уже взял заявку
+  // на себя (позвонит и уточнит), поэтому она не висит в «нужна помощь», даже если плана нет.
+  if (args.callback) return 'callback';
+  return needsHuman(args.entry, args.settings) ? 'human' : 'ready';
 }

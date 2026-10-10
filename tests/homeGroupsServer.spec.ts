@@ -8,6 +8,7 @@ import { createHomeGroupsServer } from '../src/home-groups/server.js';
 import { SessionService, type SessionStore } from '../src/dashboard/sessions.js';
 import { buildViews } from '../src/home-groups/api/views.js';
 import { createFakeEngine } from './helpers/fakePlanEngine.js';
+import type { ActionOutcome } from '../src/db/repos/placement.repo.js';
 
 /**
  * HTTP-слой сервиса «Домашние группы» на хранилище сессий в памяти: вход и выход, куки,
@@ -38,12 +39,26 @@ let root: string;
 let ipCounter = 0;
 const nextIp = () => `10.2.0.${++ipCounter}`;
 
-interface Started { base: string; viewsCalls: () => number; close: () => void; setViews: (f: () => Promise<ReturnType<typeof sampleViews>>) => void }
+interface ActionCall { name: string; id: number; body: unknown; actor: string }
+interface Started {
+  base: string; viewsCalls: () => number; close: () => void; setViews: (f: () => Promise<ReturnType<typeof sampleViews>>) => void;
+  actionCalls: ActionCall[]; invalidations: () => number; setOutcome: (o: ActionOutcome) => void;
+}
 
 async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempts?: number } = {}): Promise<Started> {
   let calls = 0;
+  let invalidations = 0;
+  let outcome: ActionOutcome = { ok: true };
+  const actionCalls: ActionCall[] = [];
+  const record = (name: string) => async (id: number, body: unknown, actor: string): Promise<ActionOutcome> => {
+    actionCalls.push({ name, id, body, actor });
+    return outcome;
+  };
   let views: () => Promise<ReturnType<typeof sampleViews>> = async () => sampleViews();
   const server = createHomeGroupsServer({
+    actions: { approve: record('approve'), reject: record('reject'), setNeedCall: record('need-call') },
+    invalidateViews: () => { invalidations += 1; },
+    actorName: (role) => (role === 'super' ? SUPER.login : REGULAR.login),
     auth: new SessionService(memoryStore(), {
       password: REGULAR.password, login: REGULAR.login, superPassword: SUPER.password, superLogin: SUPER.login,
       ttlSeconds: 600, maxAttempts: opts.maxAttempts ?? 50,
@@ -59,6 +74,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
     viewsCalls: () => calls,
     close: () => { server.close(); },
     setViews: (f) => { views = f; },
+    actionCalls, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
   };
 }
 
@@ -522,5 +538,83 @@ describe('никаких изменений через GET и чужие мет�
     await fetch(`${app.base}/`, { headers: { cookie } });
     await fetch(`${app.base}/logout`, { headers: { cookie } });
     expect((await fetch(`${app.base}/api/v1/me`, { headers: { cookie } })).status).toBe(200);
+  });
+});
+
+
+describe('действия координатора над заявкой', () => {
+  const act = (cookie: string | null, path: string, body: unknown, headers: Record<string, string> = {}) =>
+    fetch(`${app.base}/api/v1/requests/${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}), ...headers },
+      body: typeof body === 'string' ? body : JSON.stringify(body),
+    });
+
+  test('без сессии действие не выполняется: 401 и ничего не вызвано', async () => {
+    const before = app.actionCalls.length;
+    const r = await act(null, '5/approve', { groupId: 1 });
+    expect(r.status).toBe(401);
+    expect(app.actionCalls.length).toBe(before);
+  });
+
+  test.each([['approve', { groupId: 3, force: true }], ['reject', { groupId: 3, reason: 'far' }], ['need-call', { value: true }]])(
+    '%s передаёт заявку, тело и автора (логин входа) и сбрасывает снимок',
+    async (name, body) => {
+      const cookie = await signIn(SUPER);
+      const calls = app.actionCalls.length;
+      const inv = app.invalidations();
+      const r = await act(cookie, `42/${name}`, body);
+      expect(r.status).toBe(200);
+      expect(await r.json()).toEqual({ ok: true });
+      expect(app.actionCalls.slice(calls)).toEqual([{ name, id: 42, body, actor: SUPER.login }]);
+      expect(app.invalidations()).toBe(inv + 1);
+    },
+  );
+
+  test('обычный вход пишется в журнал под своим логином', async () => {
+    const cookie = await signIn(REGULAR);
+    await act(cookie, '7/need-call', { value: false });
+    expect(app.actionCalls.at(-1)!.actor).toBe(REGULAR.login);
+  });
+
+  test.each([
+    ['bad_request', 400], ['not_found', 404], ['already_closed', 409], ['group_unavailable', 409], ['group_full', 409],
+  ] as const)('ошибка %s отвечает кодом %i и текстом, снимок не сбрасывается', async (error, status) => {
+    const cookie = await signIn();
+    app.setOutcome({ ok: false, error, message: 'Пояснение.' });
+    const inv = app.invalidations();
+    try {
+      const r = await act(cookie, '1/approve', { groupId: 1 });
+      expect(r.status).toBe(status);
+      expect(await r.json()).toEqual({ error, message: 'Пояснение.' });
+      expect(app.invalidations()).toBe(inv);
+    } finally {
+      app.setOutcome({ ok: true });
+    }
+  });
+
+  test('форма с другого сайта (не JSON) отклоняется: 415 и ничего не вызвано', async () => {
+    const cookie = await signIn();
+    const before = app.actionCalls.length;
+    const r = await act(cookie, '1/approve', 'groupId=1', { 'content-type': 'application/x-www-form-urlencoded' });
+    expect(r.status).toBe(415);
+    expect(app.actionCalls.length).toBe(before);
+  });
+
+  test('сломанный JSON — 400, слишком большое тело — 413', async () => {
+    const cookie = await signIn();
+    expect((await act(cookie, '1/approve', '{не json')).status).toBe(400);
+    expect((await act(cookie, '1/approve', JSON.stringify({ groupId: 1, pad: 'я'.repeat(40_000) }))).status).toBe(413);
+  });
+
+  test('чужие адреса действий — 404, а GET по адресу действия не выполняет его', async () => {
+    const cookie = await signIn();
+    const before = app.actionCalls.length;
+    for (const path of ['abc/approve', '1/delete', '1/approve/extra', '1']) {
+      expect((await act(cookie, path, { groupId: 1 })).status, path).toBe(404);
+    }
+    const g = await fetch(`${app.base}/api/v1/requests/1/approve`, { headers: { cookie } });
+    expect(g.status).toBe(404);
+    expect(app.actionCalls.length).toBe(before);
   });
 });

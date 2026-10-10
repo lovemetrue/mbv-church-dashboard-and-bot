@@ -22,24 +22,44 @@ export interface SnapshotOptions {
  *
  * Неудача расчёта не кэшируется: следующий запрос попробует снова.
  */
-export function createViewsSource(opts: SnapshotOptions): () => Promise<Views> {
+export type ViewsSource = (() => Promise<Views>) & {
+  /**
+   * Сбросить готовый снимок. Нужен после действия координатора: иначе он нажал «Утвердить», а
+   * список ещё десять секунд показывал бы заявку как открытую.
+   */
+  invalidate(): void;
+};
+
+export function createViewsSource(opts: SnapshotOptions): ViewsSource {
   const now = opts.now ?? (() => new Date());
   let cached: { views: Views; startedAt: number } | null = null;
   let inflight: Promise<Views> | null = null;
+  // Номер поколения: расчёт, начатый до сброса, не должен вернуть в кэш устаревший снимок.
+  let generation = 0;
 
   const compute = async (): Promise<Views> => {
     const startedAt = now().getTime();
+    const myGeneration = generation;
     const input = await opts.load();
     // Время в ответе — момент начала чтения: данные не новее него.
     const views = buildViews(input, opts.engine, new Date(startedAt), opts.views);
-    cached = { views, startedAt };
+    if (myGeneration === generation) cached = { views, startedAt };
     return views;
   };
 
-  return async () => {
+  const source = async (): Promise<Views> => {
     if (cached && now().getTime() - cached.startedAt < opts.ttlMs) return cached.views;
     if (inflight) return inflight;
-    inflight = compute().finally(() => { inflight = null; });
-    return inflight;
+    const mine = compute().finally(() => { if (inflight === mine) inflight = null; });
+    inflight = mine;
+    return mine;
   };
+  return Object.assign(source, {
+    invalidate: () => {
+      generation += 1;
+      cached = null;
+      // Расчёт, который уже летит, начался до действия и мог не увидеть его: новый запрос его не ждёт.
+      inflight = null;
+    },
+  });
 }

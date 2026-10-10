@@ -3,7 +3,8 @@ import { readFile, stat } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { SessionService } from '../dashboard/sessions.js';
 import { logger } from '../logger.js';
-import type { Me } from './contracts.js';
+import { ACTION_STATUS, type RequestActions } from './actions.js';
+import type { ActionError, ActionOk, Me, Role } from './contracts.js';
 import type { Views } from './api/views.js';
 import { homeGroupsLoginPage } from './loginPage.js';
 
@@ -37,6 +38,12 @@ export interface HomeGroupsDeps {
   auth: SessionService;
   /** Готовые представления (снимок с общим кэшем, см. `api/snapshot.ts`). */
   views: () => Promise<Views>;
+  /** Действия координатора (утвердить, отклонить, «нужен звонок»). */
+  actions: RequestActions;
+  /** Сбросить общий снимок после действия, чтобы список сразу показал результат. */
+  invalidateViews: () => void;
+  /** Кто записан автором в журнале: пока нет личных входов, это логин общего входа. */
+  actorName: (role: Role) => string;
   sessionTtlSeconds: number;
   secureCookie: boolean;
   /** Каталог собранного интерфейса (`web-dist`). */
@@ -62,6 +69,9 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 class BodyTooLarge extends Error {}
+
+/** `POST /api/v1/requests/12/approve`: номер заявки — цифры, длиннее пятнадцати не бывает (Number безопасен). */
+const ACTION_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/(approve|reject|need-call)$/;
 
 /** Адрес клиента: за nginx настоящий адрес приходит заголовком (как в старом дашборде). */
 function clientIp(req: IncomingMessage): string {
@@ -216,9 +226,59 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     redirect(res, '/', { 'set-cookie': cookie(result.sid!, deps.sessionTtlSeconds) });
   }
 
+  /**
+   * Действия над заявкой. Защита от чужих страниц та же, что у старого дашборда: кука `SameSite=Lax`
+   * на межсайтовый POST не уходит, а тело обязано быть JSON — форма с чужого сайта так отправить
+   * не может (для этого нужен предварительный запрос, который наш сервис не разрешает).
+   */
+  async function handleAction(
+    req: IncomingMessage, res: ServerResponse, requestId: number, action: string, sid: string | undefined,
+  ): Promise<void> {
+    if (!(await deps.auth.verify(sid))) { sendJson(res, 401, { error: 'unauthorized' }); return; }
+    const role = await deps.auth.roleOf(sid);
+    if (!role) { sendJson(res, 401, { error: 'unauthorized' }); return; }
+
+    if (!(req.headers['content-type'] ?? '').toLowerCase().startsWith('application/json')) {
+      sendJson(res, 415, { error: 'bad_request', message: 'Ожидается JSON.' } satisfies ActionError);
+      return;
+    }
+    let raw: string;
+    try {
+      raw = await readBody(req, BODY_LIMIT);
+    } catch (err) {
+      if (!(err instanceof BodyTooLarge)) throw err;
+      res.setHeader('connection', 'close');
+      sendJson(res, 413, { error: 'bad_request', message: 'Слишком большой запрос.' } satisfies ActionError);
+      return;
+    }
+    let body: unknown;
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      sendJson(res, 400, { error: 'bad_request', message: 'Не удалось прочитать запрос.' } satisfies ActionError);
+      return;
+    }
+
+    const actor = deps.actorName(role);
+    const outcome = action === 'approve' ? await deps.actions.approve(requestId, body, actor)
+      : action === 'reject' ? await deps.actions.reject(requestId, body, actor)
+      : await deps.actions.setNeedCall(requestId, body, actor);
+
+    if (!outcome.ok) {
+      sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
+      return;
+    }
+    // Сбрасываем снимок и при успехе: действие уже в базе, а список строится из кэша.
+    deps.invalidateViews();
+    logger.info({ requestId, action, actor }, 'домашние группы: действие над заявкой');
+    sendJson(res, 200, { ok: true } satisfies ActionOk);
+  }
+
   async function handleApi(req: IncomingMessage, res: ServerResponse, path: string, sid: string | undefined): Promise<void> {
-    // Этап A — только чтение. Любой не-GET отвечает 404, как изменяющие маршруты старого дашборда:
-    // так ничего не меняется «случайно» и нечем воспользоваться с чужой страницы.
+    const act = req.method === 'POST' ? ACTION_PATH.exec(path) : null;
+    if (act) { await handleAction(req, res, Number(act[1]), act[2]!, sid); return; }
+    // Всё остальное — только чтение. Любой другой не-GET отвечает 404, как изменяющие маршруты
+    // старого дашборда: так ничего не меняется «случайно» и нечем воспользоваться с чужой страницы.
     if (req.method !== 'GET') { sendJson(res, 404, { error: 'not_found' }); return; }
     if (!(await deps.auth.verify(sid))) { sendJson(res, 401, { error: 'unauthorized' }); return; }
 

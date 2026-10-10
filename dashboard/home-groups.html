@@ -187,8 +187,7 @@ html[data-standalone="registration"] .nav { display: none; }
    HG_LIVE — см. src/dashboard/server.ts, — это скрытие на случай, если
    разметка когда-нибудь всё же получит что показать). */
 html[data-standalone="registration"] #registrationListSection,
-html[data-standalone="registration"] #exportLink,
-html[data-standalone="registration"] #matchingLink { display: none; }
+html[data-standalone="registration"] #exportLink { display: none; }
 .nav button {
   padding: 6px 11px; border-radius: var(--r-sm);
   color: var(--text-2); font-size: 13px; font-weight: 500;
@@ -488,18 +487,6 @@ html[data-no-delete] .row-del { display: none !important; }
 .req-edit input { min-width: 170px; }
 .req-edit .btn-primary { padding: 6px 12px; font-size: 12.5px; }
 
-/* Подобранные группы для заявки «хочу в группу». */
-.suggest-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.suggest-item {
-  display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 4px 12px;
-  padding: 8px 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-sm);
-}
-.suggest-title { font-size: 13px; }
-.suggest-why { grid-column: 1; font-size: 12px; color: var(--text-3); }
-.suggest-score { grid-row: 1; grid-column: 2; font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
-.suggest-item .suggest-pick { grid-row: 1 / span 2; grid-column: 3; padding: 5px 11px; font-size: 12.5px; cursor: pointer; }
-.suggest-empty { color: var(--text-3); font-size: 12.5px; }
-
 /* ── легенда графика ─────────────────────────────────────────────────────
    Раньше эти стили жили вместе с картой города и уехали вместе с ней: кружок
    остался без размера, и от легенды виднелся один текст без цветов.          */
@@ -614,8 +601,8 @@ a.tel:hover { color: var(--accent-hi); border-bottom-color: var(--accent); }
   .topbar .icon-btn, .topbar-right .avatar { display: none; }
   /* Подпись чипа на узком экране рвётся на две строки и раздувает шапку:
      оставляем иконку — рядом только одна кнопка, спутать не с чем. */
-  #exportLink span, #matchingLink span { display: none; }
-  #exportLink, #matchingLink { padding: 0 9px; }
+  #exportLink span { display: none; }
+  #exportLink { padding: 0 9px; }
 
 }
 @media (prefers-reduced-motion: reduce) {
@@ -734,11 +721,6 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
     <a class="chip" id="exportLink" href="export.csv" download>
       <svg viewBox="0 0 24 24"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></svg>
       <span>Участники CSV</span>
-    </a>
-    <!-- Разовое сопоставление желающих и групп: Excel с назначением, принципом и альтернативами. -->
-    <a class="chip" id="matchingLink" href="matching.xlsx" download>
-      <svg viewBox="0 0 24 24"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></svg>
-      <span>Сопоставление Excel</span>
     </a>
     <!-- Тема оформления: тёмная, светлая, серая. Выбор хранится в localStorage этого браузера. -->
     <div class="theme-switch" id="themeSwitch" role="radiogroup" aria-label="Тема оформления">
@@ -1866,7 +1848,7 @@ function renderTable() {
     const [cls, label] = STATUS_PILL[g.status] || ['draft', g.status];
     return `<tr class="row">
       <td class="mono code">${groupCode(g.id)}</td>
-      <td class="strong"><span class="caret">\u203a</span>${esc(g.leader)}${g.source && g.source !== 'таблица' ? ` <span class="src">${esc(g.source)}</span>` : ''}${g.do_not_refer ? ' <span class="src" title="Группа скрыта из подбора">не направлять</span>' : ''}${g.co_leader ? `<div class="co-leader">${esc(g.co_leader)}</div>` : ''}</td>
+      <td class="strong"><span class="caret">\u203a</span>${esc(g.leader)}${g.source && g.source !== 'таблица' ? ` <span class="src">${esc(g.source)}</span>` : ''}${g.co_leader ? `<div class="co-leader">${esc(g.co_leader)}</div>` : ''}</td>
       <td>${g.campaign_registered ? '<span class="pill live"><i></i>40 дней</span>' : '—'}</td>
       <td>${esc(g.age) || '\u2014'}</td>
       <td class="num-cell">${g.people ?? '\u2014'}</td>
@@ -2050,9 +2032,6 @@ function requestDetails(r) {
     ['Заявка', r.mdg_status ? MDG_STATUS_LABEL[r.mdg_status] : null],
     // Из анкеты бота: кто ведущий у человека, если он уже состоит в группе или ведёт её.
     ['Ведущий группы', r.leader_name],
-    // Необязательные ответы анкеты, как написал человек: по ним служитель подбирает группу.
-    ['Удобное время', r.schedule],
-    ['Адрес', r.address],
     ['Источник', r.source],
     ['Служение', r.ministry],
     ['Рекомендованная группа', r.recommended],
@@ -2067,8 +2046,6 @@ function requestDetails(r) {
   const cells = items.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`);
   if (r.note) cells.push(`<div class="wide"><dt>Примечание</dt><dd>${esc(r.note)}</dd></div>`);
   if (r.extra) cells.push(`<div class="wide"><dt>Дополнительно</dt><dd>${esc(r.extra)}</dd></div>`);
-
-  cells.push(suggestionsBlock(r));
 
   // Ведение заявки: то, что раньше делала команда /close в боте.
   cells.push(`<div class="wide req-edit">
@@ -2130,40 +2107,32 @@ function ageBucket(raw) {
   return '65+';
 }
 
-/**
- * Группы в списке выбора для заявки: подобранные сервером (src/core/matching.ts) идут первыми,
- * в порядке подбора, и со звездой; остальные — по алфавиту. Группу с отметкой «Не направлять»
- * можно выбрать руками, но подписано, что направлять туда не принято.
- */
-function groupOptions(r) {
-  const rank = new Map((r.suggestions ?? []).map((s, i) => [s.groupId, i]));
-  const scored = groups.map((g) => ({ g, match: rank.has(g.id) }));
-  scored.sort((a, b) => Number(b.match) - Number(a.match)
-    || (a.match ? rank.get(a.g.id) - rank.get(b.g.id) : a.g.leader.localeCompare(b.g.leader, 'ru')));
-  return scored.map(({ g, match }) =>
-    `<option value="${g.id}"${g.id === r.group_id ? ' selected' : ''}>${match ? '★ ' : ''}${esc(g.leader)} · ${groupCode(g.id)}${g.do_not_refer ? ' · не направлять' : ''}</option>`,
-  ).join('');
+function bucketRange(bucket) {
+  if (bucket === '65+') return [65, 200];
+  const [lo, hi] = bucket.split('-').map(Number);
+  return [lo, hi];
 }
 
-/**
- * Блок «Подходящие группы» в карточке заявки: у каждой видно, почему она предложена.
- * Только для открытых заявок «хочу в группу» — у остальных подбирать нечего.
- */
-function suggestionsBlock(r) {
-  if (r.type !== 'join_group' || r.status === 'Исполнена' || r.status === 'Аннулирована') return '';
-  const items = (r.suggestions ?? []).map((s) => {
-    const g = groups.find((x) => x.id === s.groupId);
-    if (!g) return '';
-    return `<li class="suggest-item">
-      <span class="suggest-title">${s.fresh ? '<span class="pill live"><i></i>Новая</span> ' : ''}<b>${esc(g.leader)}</b> \u00b7 ${groupCode(g.id)} \u00b7 ${esc(g.district)}</span>
-      <span class="suggest-score" title="Очки подбора">${s.score} ${plural(s.score, 'очко', 'очка', 'очков')}</span>
-      <button type="button" class="btn-primary suggest-pick" data-id="${r.id}" data-group="${g.id}">Выбрать</button>
-      <span class="suggest-why">${esc(s.reasons.join(' \u00b7 '))}</span>
-    </li>`;
-  }).join('');
-  return `<div class="wide req-suggest"><dt>Подходящие группы</dt><dd>${items
-    ? `<ul class="suggest-list">${items}</ul>`
-    : '<span class="suggest-empty">Подходящих групп нет: проверьте возраст, район и «Приём новых» у групп.</span>'}</dd></div>`;
+/** Возрастной диапазон группы: свободный текст вида «35-50». Не разобрали — не участвует в подборе. */
+function groupAgeRange(raw) {
+  const m = raw ? /^(\d{2})\s*[-–—]\s*(\d{2})$/.exec(String(raw).trim()) : null;
+  return m ? [Number(m[1]), Number(m[2])] : null;
+}
+
+function rangesOverlap(a, b) { return a[0] <= b[1] && b[0] <= a[1]; }
+
+/** Кандидаты в группу для заявки: рекомендованные (по возрасту) — первыми и со звездой. */
+function groupOptions(r) {
+  const bucket = ageBucket(r.age);
+  const reqRange = bucket ? bucketRange(bucket) : null;
+  const scored = groups.map((g) => ({
+    g,
+    match: Boolean(reqRange && groupAgeRange(g.age) && rangesOverlap(reqRange, groupAgeRange(g.age))),
+  }));
+  scored.sort((a, b) => Number(b.match) - Number(a.match) || a.g.leader.localeCompare(b.g.leader, 'ru'));
+  return scored.map(({ g, match }) =>
+    `<option value="${g.id}"${g.id === r.group_id ? ' selected' : ''}>${match ? '★ ' : ''}${esc(g.leader)} · ${groupCode(g.id)}</option>`,
+  ).join('');
 }
 
 /* Заявки по месяцам: столбик на месяц, внутри — доли по исходу.
@@ -2353,18 +2322,6 @@ function renderRequests() {
         msg.textContent = 'Нет связи с сервером.';
       }
       btn.disabled = false;
-    };
-  });
-
-  // «Выбрать» только подставляет группу в список: сохраняет заявку по-прежнему кнопка «Сохранить».
-  $('#reqBody').querySelectorAll('.suggest-pick').forEach((btn) => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const id = btn.dataset.id;
-      $(`#reqBody .req-group[data-id="${id}"]`).value = btn.dataset.group;
-      const msg = $(`#reqBody .req-msg[data-id="${id}"]`);
-      msg.className = 'form-msg req-msg';
-      msg.textContent = 'Группа выбрана — нажмите «Сохранить».';
     };
   });
 
@@ -2657,7 +2614,6 @@ const GROUP_FIELDS = [
   { name: 'comment', label: 'Комментарий', type: 'textarea', wide: true, from: 'comment' },
   { name: 'checked', label: 'Данные проверены', type: 'checkbox', wide: true, from: 'checked' },
   { name: 'campaignRegistered', label: '«40 дней» — зарегистрирован в кампании', type: 'checkbox', wide: true, from: 'campaign_registered' },
-  { name: 'doNotRefer', label: 'Не направлять — скрыть группу из подбора', type: 'checkbox', wide: true, from: 'do_not_refer' },
 ];
 
 const RESPONSIBLE_OPTIONS = [...new Set([
@@ -2969,8 +2925,6 @@ function wireForm(formId, msgId, path, doneText) {
 // относительная ссылка ушла бы в корень сайта.
 const exportLink = $('#exportLink');
 if (exportLink) exportLink.href = (window.HG_BASE ?? './') + 'export.csv';
-const matchingLink = $('#matchingLink');
-if (matchingLink) matchingLink.href = (window.HG_BASE ?? './') + 'matching.xlsx';
 
 // Страница живёт на «/groups» без косой черты: относительный href в <link> браузер
 // разрешает от корня сайта, а не от «/groups/» — так же, как у exportLink выше.

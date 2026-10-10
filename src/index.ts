@@ -64,6 +64,7 @@ async function main(): Promise<void> {
     allowDbReset: cfg.ALLOW_DB_RESET,
     requestsRetentionDays: cfg.REQUESTS_RETENTION_DAYS,
     dashboardUrl: cfg.DASHBOARD_URL,
+    extraQuestions: cfg.EXTRA_QUESTIONS,
     logger,
   });
 

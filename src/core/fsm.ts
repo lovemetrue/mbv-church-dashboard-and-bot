@@ -16,6 +16,7 @@ import {
   mdgKeyboard,
   menuKeyboard,
   otherChurchKeyboard,
+  skipKeyboard,
   summaryKeyboard,
 } from './texts.js';
 
@@ -38,6 +39,10 @@ export type FsmState =
   | 'await_mdg'
   | 'await_location'
   | 'await_age'
+  /** Необязательно: когда человеку удобно ходить в группу (или вести её). */
+  | 'await_schedule'
+  /** Необязательно: улица и дом. */
+  | 'await_address'
   | 'await_leader_name'
   | 'summary'
   | 'menu'
@@ -64,10 +69,21 @@ export interface Draft {
   location?: string;
   /** Возрастная категория, а не число: спрашиваем кнопкой (см. AGE_GROUPS). */
   age?: string;
+  /** Удобные дни и время, как написал человек: разбирает служитель, а позже — нейросеть. */
+  schedule?: string;
+  /** Улица и дом, как написал человек. */
+  address?: string;
+  /**
+   * Уже зарегистрированный человек отвечает на досылку (кнопка «Ответить» в приглашении):
+   * после адреса сводки и новой регистрации не будет, только «Спасибо». Не пишется в профиль.
+   */
+  followUp?: boolean;
+  /** Когда человек нажал «Ответить» (мс): сутки отсюда — срок на ответ. */
+  followUpAt?: number;
   leaderName?: string;
 }
 
-export type ProfilePatch = Omit<Draft, 'consent' | 'phoneAttempts'>;
+export type ProfilePatch = Omit<Draft, 'consent' | 'phoneAttempts' | 'followUp' | 'followUpAt'>;
 
 export type RequestType = 'join_group' | 'lead_group' | 'question' | 'already_member' | 'already_leader';
 
@@ -132,7 +148,17 @@ export interface FsmInput {
   openQuestions?: number;
   /** Что нашла сверка телефона: у номера уже есть действующая группа в реестре. */
   leadPhoneTaken?: 'group';
+  /**
+   * Спрашивать ли удобное время и адрес. Роутер вычисляет по настройке EXTRA_QUESTIONS
+   * (см. rollout.ts); не передано — спрашиваем.
+   */
+  extraQuestions?: boolean;
+  /** Текущее время (мс): по нему считается срок на ответ в досылке. Не передано — срок не проверяем. */
+  now?: number;
 }
+
+/** Сколько человеку дано на ответ после нажатия «Ответить» в приглашении. */
+export const FOLLOW_UP_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface FsmResult {
   actions: OutAction[];
@@ -204,6 +230,27 @@ const askLocation = (draft: Draft, effects: Effect[] = []): FsmResult =>
 const askAge = (draft: Draft, effects: Effect[] = []): FsmResult =>
   stay('await_age', draft, [msg(T.askAge, ageKeyboard())], effects);
 
+const askSchedule = (draft: Draft, effects: Effect[] = []): FsmResult => {
+  const join = draft.mdgStatus === 'join';
+  // В досылке «необязательно» и «Пропустить» нет: человек сам нажал «Ответить».
+  return draft.followUp
+    ? stay('await_schedule', draft, [msg(join ? T.askScheduleJoinFollowUp : T.askScheduleOpenFollowUp)], effects)
+    : stay('await_schedule', draft, [msg(join ? T.askScheduleJoin : T.askScheduleOpen, skipKeyboard())], effects);
+};
+
+const askAddress = (draft: Draft, effects: Effect[] = []): FsmResult => {
+  const join = draft.mdgStatus === 'join';
+  return draft.followUp
+    ? stay('await_address', draft, [msg(join ? T.askAddressJoinFollowUp : T.askAddressOpenFollowUp)], effects)
+    : stay('await_address', draft, [msg(join ? T.askAddressJoin : T.askAddressOpen, skipKeyboard())], effects);
+};
+
+/** Конец досылки: благодарим и возвращаем в меню. Сводки и новой регистрации нет — они уже были. */
+const finishFollowUp = (draft: Draft, effects: Effect[] = []): FsmResult => {
+  const { followUp: _followUp, followUpAt: _at, ...rest } = draft;
+  return stay('menu', rest, [msg(T.followUpThanks, menuKeyboard())], effects);
+};
+
 const askLeaderName = (draft: Draft, effects: Effect[] = []): FsmResult =>
   stay('await_leader_name', draft, [msg(T.askLeaderName, backKeyboard())], effects);
 
@@ -223,6 +270,8 @@ export function profileRows(draft: Draft): string[] {
   if (draft.leaderName) rows.push(`Ведущий группы: ${draft.leaderName}`);
   if (draft.location) rows.push(`Район: ${draft.location}`);
   if (draft.age) rows.push(`Возраст: ${draft.age}`);
+  if (draft.schedule) rows.push(`Удобное время: ${draft.schedule}`);
+  if (draft.address) rows.push(`Адрес: ${draft.address}`);
   return rows;
 }
 
@@ -239,7 +288,7 @@ const showMenu = (draft: Draft, text: string): FsmResult =>
   stay('menu', draft, [msg(text, menuKeyboard())]);
 
 function profilePatch(draft: Draft): ProfilePatch {
-  const { consent: _consent, phoneAttempts: _attempts, ...patch } = draft;
+  const { consent: _consent, phoneAttempts: _attempts, followUp: _followUp, followUpAt: _at, ...patch } = draft;
   return patch;
 }
 
@@ -254,6 +303,8 @@ export function handleUpdate({
   openRequests,
   openQuestions,
   leadPhoneTaken,
+  extraQuestions,
+  now,
 }: FsmInput): FsmResult {
   const draft: Draft = { ...incoming };
   const alreadyOpen = (type: RequestType): boolean => (openRequests ?? []).includes(type);
@@ -268,6 +319,12 @@ export function handleUpdate({
     return registered ? showMenu(draft, T.welcomeBack) : askConsent();
   }
 
+  // Приглашение с двумя вопросами (рассылает служитель, см. /extra): кнопки живут в чате
+  // сколько угодно, поэтому нажатие обрабатываем в любом состоянии зарегистрированного.
+  if (update.kind === 'callback' && registered && (update.data === CB.extraStart || update.data === CB.extraLater)) {
+    return handleFollowUp(update.data, state, draft, participant, now);
+  }
+
   // Кнопки меню работают у зарегистрированного человека в любом состоянии.
   if (update.kind === 'callback' && registered && update.data.startsWith('menu:')) {
     return handleMenu(update.data, draft, leadBlock, participant, openQuestions ?? 0);
@@ -279,7 +336,9 @@ export function handleUpdate({
    * сводка покажет ответы от отменённой ветки.
    */
   if (update.kind === 'callback' && update.data === CB.back && draft.church) {
-    const { mdgStatus: _s, location: _l, age: _a, leaderName: _n, ...kept } = draft;
+    const {
+      mdgStatus: _s, location: _l, age: _a, schedule: _t, address: _d, leaderName: _n, ...kept
+    } = draft;
     return askMdg(kept);
   }
 
@@ -318,7 +377,13 @@ export function handleUpdate({
       return awaitLocation(update.text, draft);
 
     case 'await_age':
-      return awaitAge(update, draft);
+      return awaitAge(update, draft, extraQuestions !== false);
+
+    case 'await_schedule':
+      return awaitFreeText(update, draft, 'schedule', now);
+
+    case 'await_address':
+      return awaitFreeText(update, draft, 'address', now);
 
     case 'await_leader_name':
       if (update.kind !== 'text') return ignore('await_leader_name', draft);
@@ -478,7 +543,7 @@ function awaitLocation(raw: string, draft: Draft): FsmResult {
   return askAge({ ...draft, location }, [{ kind: 'save', patch: { location } }]);
 }
 
-function awaitAge(update: IncomingUpdate, draft: Draft): FsmResult {
+function awaitAge(update: IncomingUpdate, draft: Draft, extraQuestions: boolean): FsmResult {
   if (update.kind !== 'callback' || !update.data.startsWith(CB.agePrefix)) {
     return stay('await_age', draft, [msg(T.askAge, ageKeyboard())]);
   }
@@ -486,8 +551,60 @@ function awaitAge(update: IncomingUpdate, draft: Draft): FsmResult {
   const age = AGE_GROUPS[Number.parseInt(update.data.slice(CB.agePrefix.length), 10)];
   if (!age) return stay('await_age', draft, [msg(T.askAge, ageKeyboard())]);
 
-  return showSummary({ ...draft, age }, [{ kind: 'save', patch: { age } }]);
+  // Время и адрес нужны только для подбора группы, поэтому спрашиваем их у тех,
+  // кому группу подбирают или кто её открывает; возраст сохраняем сразу, не дожидаясь их.
+  // Если вопросы для этого человека выключены (см. rollout.ts) — сразу сводка, как раньше.
+  const saveAge: Effect[] = [{ kind: 'save', patch: { age } }];
+  return extraQuestions ? askSchedule({ ...draft, age }, saveAge) : showSummary({ ...draft, age }, saveAge);
 }
+
+/** Лимит длины необязательного текста: он уходит в разбор целиком, мусор там не нужен. */
+const FREE_TEXT_MAX = 300;
+
+/** Такие ответы значат «не хочу отвечать», а не данные: «нет» в базе как адрес только мешает. */
+const SKIP_WORDS = new Set(['нет', '-', '—', '–', 'пропустить']);
+
+/**
+ * Необязательный вопрос свободным текстом (время, адрес). Ответ не разбираем и не проверяем
+ * по смыслу — сохраняем как написан, чтобы не отпугнуть человека придирками. Пропустить можно
+ * кнопкой или словом «нет»: с телефона проще написать, чем искать кнопку.
+ */
+function awaitFreeText(
+  update: IncomingUpdate,
+  draft: Draft,
+  field: 'schedule' | 'address',
+  now?: number,
+): FsmResult {
+  // Досылка: на ответ даны сутки с нажатия «Ответить». Позже человек мог вернуться к чату по
+  // другому поводу, и его сообщение не должно записаться как время или адрес.
+  if (
+    draft.followUp && draft.followUpAt !== undefined && now !== undefined &&
+    now - draft.followUpAt > FOLLOW_UP_TTL_MS
+  ) {
+    const { followUp: _followUp, followUpAt: _at, ...rest } = draft;
+    return stay('menu', rest, [msg(T.followUpExpired, menuKeyboard())]);
+  }
+
+  const ask = field === 'schedule' ? askSchedule : askAddress;
+  const next = field === 'schedule' ? askAddress : draft.followUp ? finishFollowUp : showSummary;
+
+  if (update.kind === 'callback') {
+    return update.data === CB.skip ? next(draft) : ignore(stateOf(field), draft);
+  }
+  if (update.kind !== 'text') return ignore(stateOf(field), draft);
+
+  const value = update.text.trim().replace(/\s+/g, ' ');
+  if (SKIP_WORDS.has(value.toLowerCase())) return next(draft);
+  if (value.length > FREE_TEXT_MAX) {
+    return stay(stateOf(field), draft, [msg(T.freeTextTooLong), ...ask(draft).actions]);
+  }
+  if (value.length < 2) return ask(draft);
+
+  return next({ ...draft, [field]: value }, [{ kind: 'save', patch: { [field]: value } }]);
+}
+
+const stateOf = (field: 'schedule' | 'address'): FsmState =>
+  field === 'schedule' ? 'await_schedule' : 'await_address';
 
 function awaitLeaderName(raw: string, draft: Draft): FsmResult {
   const leaderName = raw.trim();
@@ -497,6 +614,25 @@ function awaitLeaderName(raw: string, draft: Draft): FsmResult {
   }
   // Возраст у состоящих в группе не спрашиваем: группа у человека уже есть.
   return showSummary({ ...draft, leaderName }, [{ kind: 'save', patch: { leaderName } }]);
+}
+
+/** Кому досылаем вопросы: тем, у кого заявка на посещение или на открытие группы. */
+const FOLLOW_UP_STATUSES: readonly (MdgStatus | null | undefined)[] = ['join', 'open', 'home'];
+
+function handleFollowUp(
+  data: string,
+  state: FsmState,
+  draft: Draft,
+  participant?: Participant,
+  now?: number,
+): FsmResult {
+  if (data === CB.extraLater) return stay('menu', draft, [msg(T.followUpLater, menuKeyboard())]);
+
+  // Тем, кому подбор не нужен (состоят в группе, ведут её), кнопку не отправляем; если
+  // она всё же пришла, молчим, а не втягиваем человека в лишние вопросы.
+  const mdgStatus = participant?.mdgStatus;
+  if (!mdgStatus || !FOLLOW_UP_STATUSES.includes(mdgStatus)) return ignore(state, draft);
+  return askSchedule({ mdgStatus, followUp: true, ...(now === undefined ? {} : { followUpAt: now }) });
 }
 
 function awaitConfirm(

@@ -44,6 +44,9 @@ export interface RequestWithUser {
   leader_name: string | null;
   registration_no: number | null;
   preferred_contact: string | null;
+  /** Необязательные ответы анкеты, как написал человек. */
+  schedule: string | null;
+  address: string | null;
   origin: 'таблица' | 'бот' | 'ui';
 }
 
@@ -57,7 +60,8 @@ const WITH_USER = `
          u.username,
          coalesce(u.location, r.place) AS location,
          u.age, u.church, u.mdg_status,
-         u.companions, u.leader_name, u.registration_no, u.preferred_contact
+         u.companions, u.leader_name, u.registration_no, u.preferred_contact,
+         u.schedule_raw AS schedule, u.address_raw AS address
     FROM requests r
     LEFT JOIN users u ON u.id = r.user_id`;
 
@@ -94,6 +98,9 @@ export interface DashboardRequest {
   mdg_status: MdgStatus | null;
   /** Кто ведущий у человека, если он уже состоит в группе или уже ведёт её — из анкеты бота. */
   leader_name: string | null;
+  /** Удобные дни и время и адрес из анкеты бота — как написал человек. */
+  schedule: string | null;
+  address: string | null;
 }
 
 /** Что можно заполнить в форме дашборда. */
@@ -282,6 +289,7 @@ export class RequestsRepo {
       final_group: string | null; cancel_reason: string | null; attendance: string | null;
       type: RequestType; text: string | null; origin: 'таблица' | 'бот' | 'ui';
       church: string | null; mdg_status: MdgStatus | null; leader_name: string | null;
+      schedule: string | null; address: string | null;
     }>(
       `SELECT r.id, r.group_id,
               coalesce(r.fio, u.full_name) AS fio,
@@ -296,7 +304,8 @@ export class RequestsRepo {
               r.source, r.ministry, r.note, r.extra, r.recommended, r.recommended_at,
               r.final_group, r.cancel_reason, r.attendance, r.type, r.text, r.origin,
               -- Ответы из анкеты бота: у заявок из таблицы церкви участника нет, будет null.
-              u.church, u.mdg_status, u.leader_name
+              u.church, u.mdg_status, u.leader_name,
+              u.schedule_raw AS schedule, u.address_raw AS address
          FROM requests r
          LEFT JOIN users u ON u.id = r.user_id
         WHERE r.archived_at IS NULL

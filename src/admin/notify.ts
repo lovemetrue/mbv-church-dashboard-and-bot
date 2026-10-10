@@ -51,6 +51,9 @@ export function formatRequest(r: RequestWithUser, dashboardUrl: string): string 
   // Район и возраст всегда отдельными строками: служителю так удобнее читать с телефона.
   lines.push(`📍 Район: ${r.location ? b(r.location) : 'не указан'}`);
   lines.push(`🎂 Возраст: ${r.age ? b(esc(r.age)) : 'не указан'}`);
+  // Вопросы необязательные: «не указан» не пишем, иначе у большинства заявок строки были бы пустыми.
+  if (r.schedule) lines.push(`🕒 Удобное время: ${b(r.schedule)}`);
+  if (r.address) lines.push(`🏠 Адрес: ${b(r.address)}`);
 
   if (r.companions) lines.push(`🤝 Планирует посещать: ${esc(r.companions)}`);
   if (r.leader_name) lines.push(`🙋 Ведущий группы: ${esc(r.leader_name)}`);

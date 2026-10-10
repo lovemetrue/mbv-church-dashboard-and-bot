@@ -16,8 +16,9 @@ export const ADMIN_MENU: ActionButton[][] = [
   ],
   [
     { label: '✏️ Загрузить день', command: '/setday' },
-    { label: '▶️ Старт', command: '/start' },
+    { label: '📝 Дослать вопросы', command: '/extra' },
   ],
+  [{ label: '▶️ Старт', command: '/start' }],
 ];
 
 /** Кнопка выхода из мини-диалога: показывается вместо основной клавиатуры, пока бот ждёт данные. */

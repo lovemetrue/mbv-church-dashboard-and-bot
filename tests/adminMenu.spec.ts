@@ -2,15 +2,15 @@ import { describe, expect, test } from 'vitest';
 import { ADMIN_MENU, RETIRED_LABELS, adminMenu, commandByLabel, retiredLabel } from '../src/admin/menu.js';
 
 describe('клавиатура служителя', () => {
-  test('на клавиатуре только то, что умеет один бот: рассылки, день и служебное', () => {
+  test('на клавиатуре только то, что умеет один бот: рассылки, день, досылка вопросов и служебное', () => {
     expect(adminMenu(true).flat().map((b) => b.command)).toEqual([
-      '/kit', '/broadcast', '/setday', '/start', '/reset',
+      '/kit', '/broadcast', '/setday', '/extra', '/start', '/reset',
     ]);
   });
 
   test('без разрешения на очистку кнопки очистки нет', () => {
     expect(adminMenu(false).flat().map((b) => b.command)).toEqual([
-      '/kit', '/broadcast', '/setday', '/start',
+      '/kit', '/broadcast', '/setday', '/extra', '/start',
     ]);
   });
 

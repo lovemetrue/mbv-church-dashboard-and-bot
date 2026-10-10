@@ -197,7 +197,7 @@ describe('человек не из МБВ', () => {
 });
 
 describe('ветка «готов открыть группу»', () => {
-  test('спрашивает район, затем возрастную категорию, затем сводку', () => {
+  test('спрашивает район, возрастную категорию, время и адрес, затем сводку', () => {
     const chosen = run('await_mdg', REQUIRED, tap(CB.mdgOpen));
     expect(chosen.state).toBe('await_location');
     expect(chosen.draft.mdgStatus).toBe('open');
@@ -209,8 +209,14 @@ describe('ветка «готов открыть группу»', () => {
 
     // Возраст выбирают кнопкой, а не пишут числом: быстрее и без ошибок ввода.
     const aged = run('await_age', located.draft, tap('age:2'));
-    expect(aged.state).toBe('summary');
+    expect(aged.state).toBe('await_schedule');
     expect(aged.draft.age).toBe('25-40');
+
+    const timed = run('await_schedule', aged.draft, text('пн, ср - с 17 до 22 часов'));
+    expect(timed.state).toBe('await_address');
+
+    const placed = run('await_address', timed.draft, text('ул Рылеева 32'));
+    expect(placed.state).toBe('summary');
   });
 
   test('возраст числом не принимается: ждём кнопку', () => {
@@ -268,13 +274,13 @@ describe('у кого уже есть действующая группа', () =
 });
 
 describe('ветка «хочу присоединиться к группе»', () => {
-  test('после района сразу возраст, а потом сводка: про компанию не спрашивают', () => {
+  test('после района возраст, время и адрес, а потом сводка: про компанию не спрашивают', () => {
     const draft: Draft = { ...REQUIRED, mdgStatus: 'join' };
     const located = run('await_location', draft, text('Приморский'));
     expect(located.state).toBe('await_age');
 
     const aged = run('await_age', located.draft, tap('age:1'));
-    expect(aged.state).toBe('summary');
+    expect(aged.state).toBe('await_schedule');
     expect(aged.draft.age).toBe('18-25');
   });
 
@@ -388,7 +394,7 @@ describe('сводка и подтверждение', () => {
   };
 
   test('показывает всё, что человек сообщил, и ссылку на политику', () => {
-    const r = run('await_age', { ...draft, age: undefined }, tap('age:2'));
+    const r = run('await_address', { ...draft, age: '25-40' }, tap(CB.skip));
     const shown = said(r);
     expect(shown).toContain('Иванов Иван Иванович');
     expect(shown).toContain('+7 900 123-45-67');
@@ -398,7 +404,7 @@ describe('сводка и подтверждение', () => {
   });
 
   test('на кнопке подтверждения нет галочки', () => {
-    const r = run('await_age', { ...draft, age: undefined }, tap('age:2'));
+    const r = run('await_address', { ...draft, age: '25-40' }, tap(CB.skip));
     expect(r.actions.at(-1)?.buttons?.flat()[0]?.text).toBe('Всё верно, зарегистрировать');
   });
 
@@ -599,5 +605,268 @@ describe('mdgRequestType — какую заявку заводить по от�
   test('без ответа про малую группу — заявки не заводим', () => {
     expect(mdgRequestType(undefined)).toBeNull();
     expect(mdgRequestType(null)).toBeNull();
+  });
+});
+
+describe('удобное время и адрес (необязательные вопросы)', () => {
+  const joiner: Draft = { ...REQUIRED, mdgStatus: 'join', location: 'Приморский', age: '25-40' };
+  const opener: Draft = { ...REQUIRED, mdgStatus: 'open', location: 'Приморский', age: '25-40' };
+
+  test('после возраста спрашивают удобное время и дают кнопку «Пропустить»', () => {
+    const r = run('await_age', { ...joiner, age: undefined }, tap('age:2'));
+    expect(r.state).toBe('await_schedule');
+    expect(said(r)).toContain('пн, ср');
+    expect(buttons(r)).toEqual([CB.skip]);
+  });
+
+  test('возраст сохраняется тем же шагом, что и раньше', () => {
+    const r = run('await_age', { ...joiner, age: undefined }, tap('age:2'));
+    expect(r.effects).toEqual([{ kind: 'save', patch: { age: '25-40' } }]);
+  });
+
+  test('время записывается как написал человек, без разбора', () => {
+    const r = run('await_schedule', joiner, text('  пн, ср - с 17 до 22 часов  '));
+    expect(r.state).toBe('await_address');
+    expect(r.draft.schedule).toBe('пн, ср - с 17 до 22 часов');
+    expect(r.effects).toEqual([{ kind: 'save', patch: { schedule: 'пн, ср - с 17 до 22 часов' } }]);
+    expect(said(r)).toContain('Рылеева');
+    expect(buttons(r)).toEqual([CB.skip]);
+  });
+
+  test('«Пропустить» на времени идёт дальше и ничего не записывает', () => {
+    const r = run('await_schedule', joiner, tap(CB.skip));
+    expect(r.state).toBe('await_address');
+    expect(r.draft.schedule).toBeUndefined();
+    expect(r.effects).toEqual([]);
+  });
+
+  test('адрес записывается как написал человек, после него сводка', () => {
+    const r = run('await_address', { ...joiner, schedule: 'вечером' }, text('ул Рылеева 32'));
+    expect(r.state).toBe('summary');
+    expect(r.draft.address).toBe('ул Рылеева 32');
+    expect(r.effects).toEqual([{ kind: 'save', patch: { address: 'ул Рылеева 32' } }]);
+  });
+
+  test('«Пропустить» на адресе ведёт на сводку без записи', () => {
+    const r = run('await_address', joiner, tap(CB.skip));
+    expect(r.state).toBe('summary');
+    expect(r.draft.address).toBeUndefined();
+    expect(r.effects).toEqual([]);
+  });
+
+  test('пропустить можно и словом: «нет» или тире считаются отказом, а не ответом', () => {
+    // Человек с телефона проще напишет «нет», чем найдёт кнопку, — а «нет» в базе
+    // как адрес или время только мешало бы.
+    for (const word of ['нет', 'Нет', '-', '—', 'пропустить']) {
+      const r = run('await_schedule', joiner, text(word));
+      expect(r.state).toBe('await_address');
+      expect(r.draft.schedule).toBeUndefined();
+      expect(r.effects).toEqual([]);
+    }
+  });
+
+  test('слишком длинный текст не принимается: он уйдёт в разбор целиком', () => {
+    const r = run('await_address', joiner, text('ул. Рылеева '.repeat(40)));
+    expect(r.state).toBe('await_address');
+    expect(r.draft.address).toBeUndefined();
+    expect(r.effects).toEqual([]);
+    expect(said(r)).toContain('короче');
+  });
+
+  test('на другие сообщения (фото, контакт) молчим и остаёмся на шаге', () => {
+    expect(run('await_schedule', joiner, contact('+79001112233')).actions).toEqual([]);
+    expect(run('await_address', joiner, contact('+79001112233')).state).toBe('await_address');
+  });
+
+  test('открывающему группу вопросы про место и время свои', () => {
+    const r = run('await_age', { ...opener, age: undefined }, tap('age:2'));
+    expect(r.state).toBe('await_schedule');
+    expect(said(r)).toContain('встречи');
+    const next = run('await_schedule', opener, text('пятница вечером'));
+    expect(said(next)).toContain('будет проходить');
+  });
+
+  test('если вопросы для этого человека выключены, после возраста сразу сводка, как раньше', () => {
+    // Так включают новые вопросы по одному человеку: остальные проходят прежнюю анкету.
+    const r = run('await_age', { ...joiner, age: undefined }, tap('age:2'), { extraQuestions: false });
+    expect(r.state).toBe('summary');
+    expect(r.draft.age).toBe('25-40');
+    expect(r.draft.schedule).toBeUndefined();
+    expect(r.effects).toEqual([{ kind: 'save', patch: { age: '25-40' } }]);
+  });
+
+  test('если настройка не передана, вопросы включены', () => {
+    expect(run('await_age', { ...joiner, age: undefined }, tap('age:2')).state).toBe('await_schedule');
+    expect(run('await_age', { ...joiner, age: undefined }, tap('age:2'), { extraQuestions: true }).state)
+      .toBe('await_schedule');
+  });
+
+  test('«готов дать дом» проходит те же вопросы', () => {
+    const r = run('await_age', { ...opener, mdgStatus: 'home', age: undefined }, tap('age:2'));
+    expect(r.state).toBe('await_schedule');
+  });
+
+  test('ведущему и состоящему в группе эти вопросы не задают', () => {
+    expect(run('await_mdg', REQUIRED, tap(CB.mdgLeader)).state).toBe('summary');
+    const member = run('await_leader_name', { ...REQUIRED, mdgStatus: 'member' }, text('Петров Пётр'));
+    expect(member.state).toBe('summary');
+  });
+
+  test('сводка показывает время и адрес, если они есть, и молчит, если нет', () => {
+    const filled = run('await_address', { ...joiner, schedule: 'пн, ср - с 17 до 22' }, text('ул Рылеева 32'));
+    expect(said(filled)).toContain('Удобное время: пн, ср - с 17 до 22');
+    expect(said(filled)).toContain('Адрес: ул Рылеева 32');
+    const skipped = run('await_address', joiner, tap(CB.skip));
+    expect(said(skipped)).not.toContain('Удобное время');
+    expect(said(skipped)).not.toContain('Адрес');
+  });
+
+  test('«Вернуться» к выбору про группу стирает и время с адресом отменённой ветки', () => {
+    const draft: Draft = { ...joiner, schedule: 'вечером', address: 'ул Рылеева 32' };
+    const r = run('await_address', draft, tap(CB.back));
+    expect(r.state).toBe('await_mdg');
+    expect(r.draft.schedule).toBeUndefined();
+    expect(r.draft.address).toBeUndefined();
+  });
+
+  test('подтверждение сохраняет время и адрес вместе с остальной анкетой', () => {
+    const draft: Draft = { ...joiner, schedule: 'вечером', address: 'ул Рылеева 32' };
+    const r = run('summary', draft, tap(CB.confirm));
+    expect(r.effects).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'save',
+          patch: expect.objectContaining({ schedule: 'вечером', address: 'ул Рылеева 32' }),
+        }),
+      ]),
+    );
+  });
+});
+
+describe('досылка вопросов тем, кто уже зарегистрирован', () => {
+  /** Уже зарегистрированный человек: анкета давно пройдена, номер присвоен. */
+  const known = (mdgStatus: Draft['mdgStatus']) => ({
+    registered: true,
+    participant: { complete: true, registrationNo: 4821, mdgStatus: mdgStatus ?? null, kitIssued: false },
+  });
+
+  test('«Ответить» начинает с вопроса про время, без «необязательно» и без «Пропустить»', () => {
+    const r = run('menu', {}, tap(CB.extraStart), known('join'));
+    expect(r.state).toBe('await_schedule');
+    expect(r.draft).toMatchObject({ followUp: true, mdgStatus: 'join' });
+    expect(said(r)).toContain('пн, ср');
+    // Человек уже согласился отвечать, нажав «Ответить», — отговорок в вопросе нет.
+    expect(said(r)).not.toContain('необязательно');
+    expect(buttons(r)).toEqual([]);
+  });
+
+  test('кнопка работает из любого состояния: приглашение могло лежать в чате давно', () => {
+    expect(run('idle', {}, tap(CB.extraStart), known('join')).state).toBe('await_schedule');
+    expect(run('await_question', {}, tap(CB.extraStart), known('open')).state).toBe('await_schedule');
+  });
+
+  test('готовому открыть группу вопросы про встречи и место группы', () => {
+    for (const status of ['open', 'home'] as const) {
+      const first = run('menu', {}, tap(CB.extraStart), known(status));
+      expect(said(first)).toContain('встречи');
+      const second = run('await_schedule', first.draft, text('пятница вечером'), known(status));
+      expect(said(second)).toContain('будет проходить');
+    }
+  });
+
+  test('время сохраняется и ведёт к адресу, тоже без «Пропустить»', () => {
+    const start = run('menu', {}, tap(CB.extraStart), known('join'));
+    const r = run('await_schedule', start.draft, text('пн, ср - с 17 до 22 часов'), known('join'));
+    expect(r.state).toBe('await_address');
+    expect(r.effects).toEqual([{ kind: 'save', patch: { schedule: 'пн, ср - с 17 до 22 часов' } }]);
+    expect(said(r)).toContain('Рылеева');
+    expect(said(r)).not.toContain('необязательно');
+    expect(buttons(r)).toEqual([]);
+  });
+
+  test('после адреса — благодарность и меню: ни сводки, ни новой регистрации, ни новой заявки', () => {
+    const draft: Draft = { mdgStatus: 'join', followUp: true, followUpAt: 1_000, schedule: 'вечером' };
+    const r = run('await_address', draft, text('ул Рылеева 32'), known('join'));
+    expect(r.state).toBe('menu');
+    expect(r.effects).toEqual([{ kind: 'save', patch: { address: 'ул Рылеева 32' } }]);
+    expect(said(r)).toContain('Спасибо');
+    expect(r.draft.followUp).toBeUndefined();
+    expect(r.draft.followUpAt).toBeUndefined();
+  });
+
+  test('«Не сейчас» вежливо закрывает приглашение и ничего не записывает', () => {
+    const r = run('menu', {}, tap(CB.extraLater), known('join'));
+    expect(r.state).toBe('menu');
+    expect(r.effects).toEqual([]);
+    expect(said(r)).toContain('Хорошо');
+  });
+
+  test('тем, кто состоит в группе или ведёт её, и незарегистрированным кнопка ничего не даёт', () => {
+    for (const status of ['member', 'leader', undefined] as const) {
+      const r = run('menu', {}, tap(CB.extraStart), known(status));
+      expect(r.state).not.toBe('await_schedule');
+      expect(r.effects).toEqual([]);
+    }
+    expect(run('idle', {}, tap(CB.extraStart)).state).not.toBe('await_schedule');
+  });
+
+  test('«нет» в ответ на вопрос досылки — отказ отвечать: ничего не записываем, но не зацикливаем', () => {
+    const r = run('await_address', { mdgStatus: 'join', followUp: true }, text('нет'), known('join'));
+    expect(r.state).toBe('menu');
+    expect(r.effects).toEqual([]);
+  });
+
+  describe('срок на ответ: сутки после нажатия «Ответить»', () => {
+    const HOUR = 60 * 60 * 1000;
+    const T0 = Date.UTC(2026, 9, 10, 12, 0, 0);
+
+    test('кнопка запоминает, когда человек начал отвечать', () => {
+      const r = run('menu', {}, tap(CB.extraStart), { ...known('join'), now: T0 });
+      expect(r.draft.followUpAt).toBe(T0);
+    });
+
+    test('в течение суток ответ принимается, и на втором вопросе тоже', () => {
+      const draft: Draft = { mdgStatus: 'join', followUp: true, followUpAt: T0 };
+      const first = run('await_schedule', draft, text('вечером'), { ...known('join'), now: T0 + 23 * HOUR });
+      expect(first.state).toBe('await_address');
+      expect(first.draft.followUpAt).toBe(T0);
+      const second = run('await_address', first.draft, text('ул Рылеева 32'), { ...known('join'), now: T0 + 24 * HOUR });
+      expect(second.state).toBe('menu');
+      expect(second.effects).toEqual([{ kind: 'save', patch: { address: 'ул Рылеева 32' } }]);
+    });
+
+    test('через сутки текст не записывается: бот объясняет, как ответить', () => {
+      const draft: Draft = { mdgStatus: 'join', followUp: true, followUpAt: T0 };
+      for (const state of ['await_schedule', 'await_address'] as const) {
+        const r = run(state, draft, text('случайное сообщение'), { ...known('join'), now: T0 + 24 * HOUR + 1 });
+        expect(r.state).toBe('menu');
+        expect(r.effects).toEqual([]);
+        expect(r.draft.followUp).toBeUndefined();
+        expect(said(r)).toContain('«Ответить»');
+      }
+    });
+
+    test('после срока кнопка «Ответить» в старом приглашении снова запускает вопросы', () => {
+      const r = run('menu', {}, tap(CB.extraStart), { ...known('join'), now: T0 + 72 * HOUR });
+      expect(r.state).toBe('await_schedule');
+      expect(r.draft.followUpAt).toBe(T0 + 72 * HOUR);
+    });
+
+    test('после срока ответ на второй вопрос тоже не записывается, а первый остаётся записанным', () => {
+      // Время человек успел указать (оно записано сразу), адрес пришёл слишком поздно.
+      const draft: Draft = { mdgStatus: 'join', followUp: true, followUpAt: T0, schedule: 'вечером' };
+      const r = run('await_address', draft, text('ул Рылеева 32'), { ...known('join'), now: T0 + 30 * HOUR });
+      expect(r.effects).toEqual([]);
+    });
+
+    test('время не передано — срок не проверяем (так работает анкета без досылки)', () => {
+      const draft: Draft = { mdgStatus: 'join', followUp: true, followUpAt: T0 };
+      expect(run('await_schedule', draft, text('вечером'), known('join')).state).toBe('await_address');
+    });
+
+    test('у анкеты без досылки срока нет: ответ через неделю принимается', () => {
+      const r = run('await_schedule', { ...REQUIRED, mdgStatus: 'join', age: '25-40' }, text('вечером'), { now: T0 + 168 * HOUR });
+      expect(r.state).toBe('await_address');
+    });
   });
 });

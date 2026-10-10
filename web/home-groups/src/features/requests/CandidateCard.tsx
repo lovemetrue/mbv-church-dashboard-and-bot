@@ -1,12 +1,12 @@
 import type { Candidate } from '@contracts';
 import { groupLabel } from '../../entities/format';
 import { ru } from '../../shared/i18n/ru';
-import { Button, Meter, Reasons } from '../../shared/ui';
+import { Meter, Reasons } from '../../shared/ui';
 import styles from './Requests.module.css';
 
 interface CandidateCardProps {
   candidate: Candidate;
-  /** Главное предложение подсвечивается рамкой и не имеет кнопки «Выбрать вместо». */
+  /** Главное предложение подсвечивается рамкой. Выбрать запасной вариант — через «Другая группа». */
   main?: boolean;
 }
 
@@ -32,11 +32,6 @@ export function CandidateCard({ candidate, main = false }: CandidateCardProps) {
         <span className={styles.free}>
           {where ? `${where} · ` : ''}мест: {group.free} из {group.capacity}
         </span>
-        {!main && (
-          <Button size="sm" soon>
-            {ru.requests.pickInstead}
-          </Button>
-        )}
       </div>
     </article>
   );

@@ -659,7 +659,14 @@ describe('bucketOf', () => {
     expect(bucketOf({ status: 'В работе', entry: undefined, callback: false, settings })).toBe('human');
     const none: PlanEntry = { kind: 'none', code: 'place', reason: 'Место не распознано' };
     expect(bucketOf({ status: 'В работе', entry: none, callback: false, settings })).toBe('human');
-    expect(bucketOf({ status: 'В работе', entry: none, callback: true, settings })).toBe('human');
+  });
+
+  test('отметка «нужен звонок» сильнее расчёта: и с планом, и без него заявка идёт в «перезвонить»', () => {
+    const none: PlanEntry = { kind: 'none', code: 'place', reason: 'Место не распознано' };
+    expect(bucketOf({ status: 'В работе', entry: none, callback: true, settings })).toBe('callback');
+    expect(bucketOf({ status: 'Новая', entry: undefined, callback: true, settings })).toBe('callback');
+    expect(bucketOf({ status: 'Новая', entry: entry(90), callback: true, settings })).toBe('callback');
+    expect(bucketOf({ status: 'Новая', entry: entry(90), callback: false, settings })).toBe('ready');
   });
 
   test('уверенность ниже порога — human, ровно на пороге — ready', () => {
@@ -677,7 +684,7 @@ describe('bucketOf', () => {
     expect(bucketOf({ status: 'В работе', entry: entry(85), callback: false, settings })).toBe('ready');
   });
 
-  test('слабый план при флаге «перезвонить» остаётся human: сначала нужно найти группу', () => {
-    expect(bucketOf({ status: 'В работе', entry: entry(40), callback: true, settings })).toBe('human');
+  test('слабый план при отметке «нужен звонок» не висит в «нужна помощь»: координатор взял заявку на себя', () => {
+    expect(bucketOf({ status: 'В работе', entry: entry(40), callback: true, settings })).toBe('callback');
   });
 });

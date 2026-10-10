@@ -10,3 +10,4 @@ export { KeyValue, type KvRow } from './KeyValue';
 export { Drawer, DrawerSection } from './Drawer';
 export { Popover } from './Popover';
 export { AgeTag } from './AgeTag';
+export { Modal } from './Modal';

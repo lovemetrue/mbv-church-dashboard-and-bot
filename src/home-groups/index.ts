@@ -2,6 +2,8 @@ import { createPool } from '../db/pool.js';
 import { RedisSessionStore } from '../dashboard/redisStore.js';
 import { SessionService } from '../dashboard/sessions.js';
 import { logger } from '../logger.js';
+import { PlacementRepo } from '../db/repos/placement.repo.js';
+import { createActions } from './actions.js';
 import { composeViews, engine } from './composition.js';
 import { createHomeGroupsServer } from './server.js';
 
@@ -15,8 +17,8 @@ const env = (name: string, fallback?: string): string => {
 /**
  * Сервис «Домашние группы»: свой контейнер, свой порт, корень сайта — сам сервис.
  *
- * От старого дашборда отличается тем, что бот-платформы и уведомления ему не нужны: только
- * чтение из базы. Пароли и Redis те же — один вход на оба сервиса, но с разными куками.
+ * От старого дашборда отличается тем, что бот-платформы и уведомления ему не нужны. Пишет он в
+ * базу только действиями координатора над заявками (`actions.ts`), каждое — с записью в журнал. Пароли и Redis те же — один вход на оба сервиса, но с разными куками.
  * Новых обязательных переменных нет: всё, чего не задано, берётся из значений по умолчанию.
  */
 async function main(): Promise<void> {
@@ -39,16 +41,23 @@ async function main(): Promise<void> {
   await store.connect();
   const db = createPool(env('DATABASE_URL'));
 
+  const login = env('DASHBOARD_LOGIN', 'mbv_admin');
+  const superLogin = env('DASHBOARD_SUPER_LOGIN', 'super_mbv_admin');
   const auth = new SessionService(store, {
-    password, login: env('DASHBOARD_LOGIN', 'mbv_admin'),
-    superPassword, superLogin: env('DASHBOARD_SUPER_LOGIN', 'super_mbv_admin'),
+    password, login,
+    superPassword, superLogin,
     ttlSeconds, maxAttempts: 5,
   });
 
+  // План считается не чаще раза в десять секунд на всех посетителей разом.
+  const views = composeViews(db, engine, { defaultCapacity, ttlMs: 10_000, timeZone: env('TIMEZONE', 'Europe/Moscow') });
+
   const server = createHomeGroupsServer({
     auth,
-    // План считается не чаще раза в десять секунд на всех посетителей разом.
-    views: composeViews(db, engine, { defaultCapacity, ttlMs: 10_000, timeZone: env('TIMEZONE', 'Europe/Moscow') }),
+    views,
+    actions: createActions(new PlacementRepo(db), { defaultCapacity }),
+    invalidateViews: () => views.invalidate(),
+    actorName: (role) => (role === 'super' ? superLogin : login),
     sessionTtlSeconds: ttlSeconds,
     secureCookie: env('DASHBOARD_COOKIE_SECURE', 'true') !== 'false',
     webDir: env('HG_WEB_DIR', '/app/web-dist'),

@@ -235,6 +235,8 @@ export function buildPlan(requests: RawRequest[] = RAW_REQUESTS, groups: RawGrou
     const confidence = Math.round(pick.score * (0.55 + 0.45 * (kn / 4)));
     byRequest.set(r.id, {
       proposal: {
+        // В фикстурах предложения всегда считает сервис: языковой модели («agent») здесь нет.
+        source: 'script',
         main: toCandidate(pick, confidence),
         knownParams: kn,
         alternatives: sorted.slice(1, 3).map((c) => toCandidate(c, null)),
@@ -292,6 +294,7 @@ export function buildRequests(): RequestsView {
       source: r.source,
       status: r.status,
       bucket: bucketOf(r, entry),
+      callback: r.callback,
       waitingDays: r.waitingDays,
       dataFill: [!!r.district, !!r.age, r.days.length > 0 || !!r.slot, !!r.street],
       proposal: entry?.proposal ?? null,

@@ -18,6 +18,14 @@ describe('фикстуры', () => {
     expect(t.total).toBe(t.counters.ready + t.counters.callback + t.counters.human + t.counters.done);
   });
 
+  test('поля действий в контракте заполнены: отметки звонка нет, а предложения даёт расчёт', () => {
+    const { items } = buildRequests();
+    expect(items.every((i) => i.callback === false)).toBe(true);
+    const withProposal = items.filter((i) => i.proposal);
+    expect(withProposal.length).toBeGreaterThan(0);
+    expect(withProposal.every((i) => i.proposal!.source === 'script')).toBe(true);
+  });
+
   test('в этапе A корзины «перезвонить» нет: флага на сервере ещё нет', () => {
     expect(buildToday().counters.callback).toBe(0);
   });

@@ -1,12 +1,13 @@
 /**
- * Контракт JSON API сервиса «Домашние группы» (версия 1, этап A: только чтение).
+ * Контракт JSON API сервиса «Домашние группы» (версия 1).
  *
  * Один файл, общий для сервера (`src/home-groups/`) и интерфейса (`web/home-groups/`):
  * интерфейс импортирует из него ТОЛЬКО типы (`import type`), поэтому ни кода, ни зависимостей
  * сервера в сборку не попадает. Только чистые типы: никаких импортов, никакой логики.
  *
  * Все адреса отдают JSON. Базовый адрес API — `/api/v1/`, строится от одной настройки на
- * стороне интерфейса. Все маршруты этапа A — GET; изменяющих запросов пока нет.
+ * стороне интерфейса. Чтение — GET; действия координатора — POST с телом JSON
+ * (`Content-Type: application/json`, см. «Действия» ниже).
  * Ответ 401 — нет сессии (интерфейс уводит на страницу входа), 403 — нет прав.
  *
  *   GET /api/v1/me            → Me
@@ -15,6 +16,10 @@
  *   GET /api/v1/groups        → GroupsView
  *   GET /api/v1/people        → PeopleView
  *   GET /api/v1/coordinators  → CoordinatorsView
+ *
+ *   POST /api/v1/requests/:id/approve   ApproveBody   → ActionOk | ActionError
+ *   POST /api/v1/requests/:id/reject    RejectBody    → ActionOk | ActionError
+ *   POST /api/v1/requests/:id/need-call NeedCallBody  → ActionOk | ActionError
  */
 
 export type Role = 'admin' | 'super';
@@ -38,8 +43,7 @@ export interface Reason {
  * Куда относится заявка на экране. Вычисляется из статуса заявки, плана и флага «перезвонить»:
  *  - done — статус «Исполнена»;
  *  - cancelled — «Аннулирована»;
- *  - callback — открыта, план хороший, но человеку надо перезвонить (в этапе A флага ещё нет,
- *    поэтому callback в этапе A не встречается);
+ *  - callback — открыта, и координатор отметил «нужен звонок» (поле заявки `callback`);
  *  - ready — открыта, план есть и уверенность не ниже порога;
  *  - human — открыта, а плана нет или он слабый: нужна помощь человека.
  */
@@ -77,6 +81,8 @@ export interface Candidate {
 }
 
 export interface Proposal {
+  /** Кто предложил: расчёт сервиса или (позже) языковая модель. Пока человек не утвердил, это только предложение. */
+  source: 'script' | 'agent';
   /** Группа, которую предлагает план. */
   main: Candidate;
   /** Сколько из четырёх параметров (район, возраст, день и время, улица) известно у человека. */
@@ -180,6 +186,8 @@ export interface RequestItem {
   /** Статус заявки в базе, без изменений. */
   status: string;
   bucket: Bucket;
+  /** Координатор отметил «нужен звонок»: человеку надо позвонить, прежде чем утверждать. */
+  callback: boolean;
   /** Дней с даты заявки; null, если даты нет. */
   waitingDays: number | null;
   /** Известны ли район, возраст, день и время, улица (в таком порядке). */
@@ -200,6 +208,44 @@ export interface RequestsView {
   /** Без отказов; порядок — как показывать: перезвонить, готово, нужна помощь, утверждено. */
   items: RequestItem[];
   counters: Counters;
+}
+
+// ── Действия координатора ───────────────────────────────────────────────────
+
+/** Почему координатор отклонил предложенную группу. `other` требует комментария. */
+export type RejectReason = 'time' | 'far' | 'age' | 'declined' | 'other';
+
+/** Утвердить: человек считается распределённым только после этого. */
+export interface ApproveBody {
+  /** Группа, в которую утверждаем: предложенная или выбранная вручную («Другая группа»). */
+  groupId: number;
+  /** Утвердить, даже если в группе нет свободных мест (интерфейс спрашивает подтверждение). */
+  force?: boolean;
+}
+
+export interface RejectBody {
+  groupId: number;
+  reason: RejectReason;
+  comment?: string;
+}
+
+export interface NeedCallBody {
+  /** true — поставить отметку «нужен звонок», false — снять. */
+  value: boolean;
+}
+
+export interface ActionOk {
+  ok: true;
+}
+
+/**
+ * Ошибка действия. Коды: 400 `bad_request`; 404 `not_found`;
+ * 409 `already_closed` (заявку уже закрыли), `group_unavailable` (группа в архиве, закрыта или
+ * «Не направлять»), `group_full` (мест нет; повторить с `force: true`).
+ */
+export interface ActionError {
+  error: 'bad_request' | 'not_found' | 'already_closed' | 'group_unavailable' | 'group_full';
+  message: string;
 }
 
 // ── Справочник ──────────────────────────────────────────────────────────────

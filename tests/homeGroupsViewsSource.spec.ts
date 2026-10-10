@@ -128,3 +128,31 @@ describe('общий снимок представлений', () => {
     await expect(failing).rejects.toThrow('сбой');
   });
 });
+
+describe('сброс снимка после действия координатора', () => {
+  test('после сброса свежий снимок не отдаётся: список сразу показывает результат действия', async () => {
+    const s = setup(10_000);
+    const first = s.get();
+    s.finish();
+    const a = await first;
+    s.get.invalidate();
+    const second = s.get();
+    expect(s.loads()).toBe(2);
+    s.finish();
+    expect(await second).not.toBe(a);
+  });
+
+  test('расчёт, начатый до сброса, не возвращает устаревший снимок в кэш', async () => {
+    const s = setup(10_000);
+    const stale = s.get();
+    s.get.invalidate();
+    s.finish();
+    await stale;
+    // Устаревший расчёт завершился после сброса: следующий запрос обязан читать заново.
+    const next = s.get();
+    expect(s.loads()).toBe(2);
+    s.finish();
+    await next;
+  });
+});
+

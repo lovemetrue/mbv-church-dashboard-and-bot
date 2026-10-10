@@ -33,7 +33,7 @@ function request(over: Partial<DashboardRequest> & { id: number }): DashboardReq
     phone: null, phones: [], age: null, place: null, source: null, ministry: null, note: null, extra: null,
     recommended: null, recommended_at: null, final_group: null, cancel_reason: null, attendance: null,
     type: 'join_group', text: null, origin: 'таблица', church: null, mdg_status: null, leader_name: null,
-    schedule: null, address: null,
+    schedule: null, address: null, callback: false,
     ...over,
   };
 }
@@ -726,5 +726,75 @@ describe('пустая база', () => {
     expect(views.today).toMatchObject({
       counters: { ready: 0, callback: 0, human: 0, done: 0, cancelled: 0 }, assigned: 0, total: 0,
     });
+  });
+});
+
+
+describe('решения координатора', () => {
+  test('отметка «нужен звонок» уходит в движок и выносит заявку в «перезвонить»', () => {
+    const { views, calls } = build({
+      groups: [group({ id: 1 })],
+      requests: [request({ id: 1, place: 'Приморский', callback: true })],
+    });
+    expect(calls.bucket.find((b) => b.status === 'Новая')?.callback).toBe(true);
+    expect(views.requests.items[0]).toMatchObject({ callback: true });
+  });
+
+  test('без отметки заявка не помечается звонком', () => {
+    const { views } = build({ groups: [group({ id: 1 })], requests: [request({ id: 1, place: 'Приморский' })] });
+    expect(views.requests.items[0]!.callback).toBe(false);
+  });
+
+  test('отклонённые координатором группы передаются движку, чтобы не предлагать их снова', () => {
+    const { calls } = build({
+      groups: [group({ id: 1 }), group({ id: 2 })],
+      requests: [request({ id: 7, place: 'Приморский' })],
+      rejectedGroups: new Map([[7, [1]]]),
+    });
+    expect(calls.plan[0]!.requests.find((r) => r.id === 7)!.rejectedGroupIds).toEqual([1]);
+  });
+
+  test('предложение помечено источником «расчёт»: пока человек не утвердил, это только предложение', () => {
+    const { views } = build({ groups: [group({ id: 1 })], requests: [request({ id: 1, place: 'Приморский' })] });
+    expect(views.requests.items[0]!.proposal?.source).toBe('script');
+  });
+
+  test('действия координатора попадают в ленту заявки с датой и автором', () => {
+    const at = new Date('2026-10-09T10:00:00Z');
+    const { views } = build({
+      groups: [group({ id: 1 }), group({ id: 2 })],
+      requests: [request({ id: 1, place: 'Приморский' })],
+      audit: [
+        { entity_id: 1, at, actor: 'mbv_admin', action: 'request.reject', after: { rejected_group_id: 1, reason: 'time' }, note: null },
+        { entity_id: 1, at, actor: 'mbv_admin', action: 'request.need_call', after: { callback: true }, note: null },
+        { entity_id: 2, at, actor: 'mbv_admin', action: 'request.need_call', after: { callback: true }, note: null },
+      ],
+    });
+    const log = views.requests.items[0]!.log;
+    expect(log.map((l) => l.text)).toContain('Отклонена группа ДГ-0001: не подошло время · mbv_admin');
+    expect(log.map((l) => l.text)).toContain('Отмечено «нужен звонок» · mbv_admin');
+    expect(log.filter((l) => l.at === '2026-10-09')).toHaveLength(2);
+    expect(log).toHaveLength(3);
+  });
+
+  test('при утверждении лента не дублирует строку «Утверждена» из самой заявки', () => {
+    const at = new Date('2026-10-09T10:00:00Z');
+    const { views } = build({
+      groups: [group({ id: 1 })],
+      requests: [request({ id: 1, status: 'Исполнена', group_id: 1, final_group: 'ДГ-0001, Ведущий 1' })],
+      audit: [{ entity_id: 1, at, actor: 'mbv_admin', action: 'request.approve', after: { final_group: 'ДГ-0001, Ведущий 1' }, note: null }],
+    });
+    const texts = views.requests.items[0]!.log.map((l) => l.text);
+    expect(texts.filter((t) => t.startsWith('Утвержд'))).toEqual(['Утверждено: ДГ-0001, Ведущий 1 · mbv_admin']);
+  });
+
+  test('комментарий к отказу показывается в ленте', () => {
+    const at = new Date('2026-10-09T10:00:00Z');
+    const { views } = build({
+      groups: [group({ id: 1 })],
+      requests: [request({ id: 1, place: 'Приморский' })],
+      audit: [{ entity_id: 1, at, actor: 'mbv_admin', action: 'request.reject', after: { rejected_group_id: 1, reason: 'other' }, note: 'просит группу без детей' }],
+    });
+    expect(views.requests.items[0]!.log.map((l) => l.text)).toContain('Отклонена группа ДГ-0001: другое («просит группу без детей») · mbv_admin');
   });
 });

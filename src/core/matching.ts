@@ -25,7 +25,7 @@ export const NEW_ENOUGH = 3;
 /** Больше служителю не нужно: дальше он всё равно выбирает из списка вручную. */
 export const MAX_SUGGESTIONS = 5;
 
-const PASSING_STATUSES = new Set(['Функционирует', 'Кампания']);
+export const PASSING_STATUSES = new Set(['Функционирует', 'Кампания']);
 const FRESH_STATUS = 'Кампания';
 
 export interface MatchPerson {

@@ -2,10 +2,12 @@ import type { RequestItem } from '@contracts';
 import { BUCKET_LABEL } from '../../entities/buckets';
 import { formatDateShort, formatPhone, groupLabel } from '../../entities/format';
 import { ru } from '../../shared/i18n/ru';
-import { AgeTag, Button, Drawer, DrawerSection, KeyValue, Pill, type KvRow } from '../../shared/ui';
+import { AgeTag, Drawer, DrawerSection, KeyValue, Pill, type KvRow } from '../../shared/ui';
 import { CandidateCard } from './CandidateCard';
 import { knownParams } from './model';
+import { ActionDialogs, ActionNoticeLine, isActionable, RequestActions } from './RequestActions';
 import styles from './Requests.module.css';
+import { useRequestActions, type RequestActionsState } from './useRequestActions';
 
 const noValue = <span className={styles.note}>{ru.reference.notSpecified}</span>;
 
@@ -20,7 +22,17 @@ function noPlanHint(code: NonNullable<RequestItem['noPlan']>['code']): string {
   }
 }
 
-function Proposal({ r }: { r: RequestItem }) {
+/** Кто предложил группу и напоминание, что предложение ещё не решение. */
+function ProposalSource({ source }: { source: NonNullable<RequestItem['proposal']>['source'] }) {
+  return (
+    <p className={styles.source}>
+      <b>{source === 'agent' ? ru.requests.act.sourceAgent : ru.requests.act.sourceScript}</b>
+      <span className={styles.note}>{ru.requests.act.notApproved}</span>
+    </p>
+  );
+}
+
+function Proposal({ r, act }: { r: RequestItem; act: RequestActionsState }) {
   if (r.bucket === 'done') {
     const text = r.finalGroup
       ? `${groupLabel(r.finalGroup)}, ${r.finalGroup.leader}`
@@ -58,16 +70,16 @@ function Proposal({ r }: { r: RequestItem }) {
             <b>{ru.requests.noPlanTitle}</b> {ru.requests.noPlanWeak}
           </div>
         )}
+        {!p && <RequestActions r={r} act={act} />}
         {p && (
           <>
+            <ProposalSource source={p.source} />
             <div className={styles.callout}>
               {ru.requests.weakPlan(p.main.confidence ?? p.main.score, groupLabel(p.main.group))}
             </div>
             {displaced}
             <CandidateCard candidate={p.main} main />
-            <div className={styles.actions}>
-              <Button soon>{ru.requests.approveAnyway}</Button>
-            </div>
+            <RequestActions r={r} act={act} />
           </>
         )}
       </>
@@ -77,21 +89,14 @@ function Proposal({ r }: { r: RequestItem }) {
   if (!p) return null;
   return (
     <>
+      <ProposalSource source={p.source} />
       {displaced}
       <CandidateCard candidate={p.main} main />
       <p className={styles.note}>
         {ru.requests.basedOn(p.knownParams)}
         {r.responsible ? ` ${ru.requests.responsible}: ${r.responsible}${r.responsible.endsWith('.') ? '' : '.'}` : ''}
       </p>
-      <div className={styles.actions}>
-        <Button variant="primary" soon>
-          {ru.requests.approve}
-        </Button>
-        <Button soon>{ru.requests.callThis}</Button>
-        <Button variant="ghost" soon>
-          {ru.requests.decline}
-        </Button>
-      </div>
+      <RequestActions r={r} act={act} />
       {p.alternatives.length > 0 && (
         <>
           <h4 className={styles.h4}>{ru.requests.otherVariants}</h4>
@@ -150,6 +155,9 @@ function Params({ r }: { r: RequestItem }) {
 }
 
 export function RequestCard({ r, onClose }: { r: RequestItem; onClose: () => void }) {
+  // Состояние действий держим здесь, а не в кнопках: после «Утвердить» кнопки пропадают,
+  // а подтверждение должно остаться на экране.
+  const act = useRequestActions(r);
   const contacts: KvRow[] = [
     { label: ru.requests.phone, value: r.phone ? <span className="num">{formatPhone(r.phone)}</span> : noValue },
     { label: ru.requests.place, value: r.place ?? noValue },
@@ -173,8 +181,12 @@ export function RequestCard({ r, onClose }: { r: RequestItem; onClose: () => voi
       onClose={onClose}
     >
       <DrawerSection title={ru.requests.proposalTitle}>
-        <Proposal r={r} />
+        {/* Пока открыто окно, ошибка показывается в нём. */}
+        {!act.dialog && <ActionNoticeLine notice={act.notice} />}
+        {r.callback && isActionable(r) && <div className={styles.callout}>{ru.requests.act.callbackMark}</div>}
+        <Proposal r={r} act={act} />
       </DrawerSection>
+      <ActionDialogs r={r} act={act} />
       <DrawerSection title={ru.requests.contacts}>
         <KeyValue rows={contacts} />
       </DrawerSection>

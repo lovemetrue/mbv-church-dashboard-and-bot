@@ -1,7 +1,9 @@
 import type { DashboardGroup } from '../../db/repos/groups.repo.js';
+import type { AuditRow } from '../../db/repos/audit.repo.js';
 import type { DashboardRequest } from '../../db/repos/requests.repo.js';
 import type { RegisteredParticipant } from '../../db/repos/users.repo.js';
 import type { CoordinatorRow } from '../../db/repos/coordinators.repo.js';
+import { groupCode } from '../../core/groups.js';
 import { formatPhone } from '../../core/phone.js';
 import type {
   Bucket, Candidate, Counters, CoordinatorItem, CoordinatorsView, GroupBrief, GroupItem, GroupsView,
@@ -18,6 +20,10 @@ export interface ViewsInput {
   requests: DashboardRequest[];
   participants: RegisteredParticipant[];
   coordinators: CoordinatorRow[];
+  /** Группы, которые координатор уже отклонил для заявки (заявка → группы). Нет — значит, отказов не было. */
+  rejectedGroups?: ReadonlyMap<number, readonly number[]>;
+  /** Действия над заявками из журнала: показываются в ленте карточки. */
+  audit?: readonly AuditRow[];
 }
 
 export interface ViewsOptions {
@@ -69,12 +75,40 @@ const ORIGIN_LABELS: Record<string, string> = { 'бот': 'Бот', 'табли�
 /** Окно «обратная связь свежая» для здоровья группы и сводки координаторов. */
 const FRESH_FEEDBACK_DAYS = 30;
 
+const REJECT_REASON_TEXT: Record<string, string> = {
+  time: 'не подошло время',
+  far: 'далеко',
+  age: 'не подходит возраст или состав',
+  declined: 'человек отказался',
+  other: 'другое',
+};
+
+/** Строка ленты по записи журнала; null — запись для ленты не предназначена. Личных данных в журнале нет. */
+function auditText(a: AuditRow): string | null {
+  const after = a.after ?? {};
+  switch (a.action) {
+    case 'request.approve':
+      return `Утверждено: ${String(after['final_group'] ?? '—')} · ${a.actor}`;
+    case 'request.reject': {
+      const id = Number(after['rejected_group_id']);
+      const reason = REJECT_REASON_TEXT[String(after['reason'])] ?? String(after['reason'] ?? '');
+      const note = nonBlank(a.note);
+      return `Отклонена группа ${Number.isFinite(id) ? groupCode(id) : '—'}: ${reason}${note ? ` («${note}»)` : ''} · ${a.actor}`;
+    }
+    case 'request.need_call':
+      return `Отмечено «нужен звонок» · ${a.actor}`;
+    case 'request.need_call_off':
+      return `Отметка «нужен звонок» снята · ${a.actor}`;
+    default:
+      return null;
+  }
+}
+
 const nonBlank = (s: string | null | undefined): string | null => {
   const t = s?.trim();
   return t ? t : null;
 };
 
-const groupCode = (id: number): string => `ДГ-${String(id).padStart(4, '0')}`;
 
 /** Телефон для показа: первый из списка номеров, иначе как записан; российский форматируем, остальное — как есть. */
 function displayPhone(phones: readonly string[] | null | undefined, phone: string | null | undefined): string | null {
@@ -103,7 +137,8 @@ function joinParts(parts: (string | null | undefined)[], sep: string): string | 
  */
 export function buildViews(input: ViewsInput, engine: PlanEngineApi, now: Date, options: ViewsOptions = {}): Views {
   const defaultCapacity = options.defaultCapacity ?? DEFAULT_CAPACITY;
-  const today = localIsoDate(now, options.timeZone ?? DEFAULT_TIME_ZONE);
+  const timeZone = options.timeZone ?? DEFAULT_TIME_ZONE;
+  const today = localIsoDate(now, timeZone);
   const generatedAt = now.toISOString();
   const settings = { ...engine.DEFAULT_SETTINGS, defaultCapacity };
 
@@ -167,7 +202,7 @@ export function buildViews(input: ViewsInput, engine: PlanEngineApi, now: Date, 
     days: [],
     slot: null,
     street: null,
-    rejectedGroupIds: [],
+    rejectedGroupIds: [...(input.rejectedGroups?.get(r.id) ?? [])],
     avoidDays: [],
     avoidSlots: [],
     pinnedGroupId: null,
@@ -184,7 +219,7 @@ export function buildViews(input: ViewsInput, engine: PlanEngineApi, now: Date, 
   const bucketById = new Map<number, Bucket>();
   for (const r of joinRequests) {
     bucketById.set(r.id, engine.bucketOf({
-      status: r.status, entry: plan.entries.get(r.id), callback: false, settings,
+      status: r.status, entry: plan.entries.get(r.id), callback: r.callback, settings,
     }));
   }
 
@@ -205,6 +240,8 @@ export function buildViews(input: ViewsInput, engine: PlanEngineApi, now: Date, 
     if (!main) return null;
     const displacedGroup = e.displaced ? brief(e.displaced.groupId) : null;
     return {
+      // Расчёт сервиса: предложения языковой модели придут отдельно, из таблицы предложений.
+      source: 'script',
       main,
       knownParams: e.knownParams,
       alternatives: e.alternatives.map((a) => candidate(a, null)).filter((c): c is Candidate => c !== null),
@@ -222,13 +259,22 @@ export function buildViews(input: ViewsInput, engine: PlanEngineApi, now: Date, 
       : { proposal: null, noPlan: { code: 'nogroup', reason: 'Предложенная группа не найдена в справочнике' } };
   };
 
+  const auditByRequest = new Map<number, AuditRow[]>();
+  for (const a of input.audit ?? []) auditByRequest.set(a.entity_id, [...(auditByRequest.get(a.entity_id) ?? []), a]);
+
   const logOf = (r: DashboardRequest, finalBrief: GroupBrief | null): LogEntry[] => {
     const log: LogEntry[] = [{ at: validIsoDate(r.date), text: `Заявка создана (${sourceLabel(r.origin, r.source)})` }];
     const recommended = nonBlank(r.recommended);
     if (recommended) log.push({ at: validIsoDate(r.recommended_at), text: `Рекомендована группа: ${recommended}` });
+    const trail = auditByRequest.get(r.id) ?? [];
     const approved = nonBlank(r.final_group)
       ?? (r.status === DONE && finalBrief ? `${finalBrief.code}, ${finalBrief.leader}` : null);
-    if (approved) log.push({ at: null, text: `Утверждена: ${approved}` });
+    // Если утверждение есть в журнале, строка о нём придёт оттуда — с автором и датой.
+    if (approved && !trail.some((a) => a.action === 'request.approve')) log.push({ at: null, text: `Утверждена: ${approved}` });
+    for (const a of trail) {
+      const text = auditText(a);
+      if (text) log.push({ at: a.at ? localIsoDate(a.at, timeZone) : null, text });
+    }
     const cancelReason = nonBlank(r.cancel_reason);
     if (cancelReason) log.push({ at: null, text: `Причина аннулирования: ${cancelReason}` });
     const attendance = nonBlank(r.attendance);
@@ -256,6 +302,7 @@ export function buildViews(input: ViewsInput, engine: PlanEngineApi, now: Date, 
       source: sourceLabel(r.origin, r.source),
       status: r.status,
       bucket,
+      callback: r.callback,
       waitingDays: pr.waitingDays,
       dataFill: [pr.district !== null, pr.ageRange !== null, pr.days.length > 0 || pr.slot !== null, pr.street !== null],
       proposal,

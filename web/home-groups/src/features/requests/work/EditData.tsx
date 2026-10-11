@@ -1,7 +1,8 @@
 import { useId, useState, type FormEvent } from 'react';
-import type { RequestEditBody, RequestItem } from '@contracts';
+import type { RequestEditBody } from '@contracts';
 import { ru } from '../../../shared/i18n/ru';
 import { Button } from '../../../shared/ui';
+import type { WorkSubject } from './subject';
 import styles from './work.module.css';
 import { WorkNoticeLine } from './WorkNotice';
 import type { RequestWorkState } from './useRequestWork';
@@ -21,7 +22,7 @@ const FIELD_NAME: Record<Key, string> = {
 const ORDER: Key[] = ['fio', 'phone', 'age', 'place', 'note'];
 
 /** Что подставляем в поля. Сравниваем с тем же: показанное и есть исходное, иначе непротронутое поле считалось бы изменённым. */
-function initialValues(r: RequestItem): Values {
+function initialValues(r: WorkSubject): Values {
   return {
     fio: r.fio,
     phone: r.phone ?? '',
@@ -31,7 +32,7 @@ function initialValues(r: RequestItem): Values {
   };
 }
 
-function EditForm({ r, work, onClose }: { r: RequestItem; work: RequestWorkState; onClose: () => void }) {
+function EditForm({ r, work, onClose }: { r: WorkSubject; work: RequestWorkState; onClose: () => void }) {
   const base = useId();
   const [initial] = useState(() => initialValues(r));
   const [values, setValues] = useState<Values>(initial);
@@ -107,7 +108,7 @@ function EditForm({ r, work, onClose }: { r: RequestItem; work: RequestWorkState
 }
 
 /** «Править данные»: форма открывается по кнопке и каждый раз заполняется свежими данными заявки. */
-export function EditData({ r, work }: { r: RequestItem; work: RequestWorkState }) {
+export function EditData({ r, work }: { r: WorkSubject; work: RequestWorkState }) {
   const headId = useId();
   const [open, setOpen] = useState(false);
   return (

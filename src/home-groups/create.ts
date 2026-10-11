@@ -71,8 +71,8 @@ export type RecordCreator = ReturnType<typeof createRecordCreator>;
 
 /** Ответ про малую группу в регистрации — подписи в третьем лице: форму заполняет служитель за человека. */
 const MDG_STATUSES: FormMeta['mdgStatuses'] = [
-  { value: 'open', label: 'готов открыть Малую группу' },
-  { value: 'home', label: 'готов предоставить свой дом для Малой группы' },
+  { value: 'open', label: 'хочет открыть Малую группу' },
+  { value: 'home', label: 'может предоставить свой дом для Малой группы' },
   { value: 'join', label: 'хочет присоединиться к Малой группе' },
   { value: 'member', label: 'уже состоит в Малой группе' },
   { value: 'leader', label: 'ведёт Малую группу' },
@@ -80,7 +80,7 @@ const MDG_STATUSES: FormMeta['mdgStatuses'] = [
 
 const REQUEST_TYPES: FormMeta['requestTypes'] = [
   { value: 'join_group', label: 'Хочет в домашнюю группу' },
-  { value: 'lead_group', label: 'Готов открыть группу' },
+  { value: 'lead_group', label: 'Хочет открыть группу' },
   { value: 'question', label: 'Вопрос служителю' },
   { value: 'already_member', label: 'Уже состоит в группе' },
   { value: 'already_leader', label: 'Уже ведёт группу' },

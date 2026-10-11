@@ -14,7 +14,7 @@ afterEach(() => vi.unstubAllGlobals());
 /** Сводка с разными числами в каждом поле: перепутанное поле плитки не пройдёт незамеченным. */
 const view = (patch: Partial<TeamView> = {}): TeamView => ({
   generatedAt: '2026-10-09T09:00:00+03:00',
-  totals: { open: 41, unassigned: 7, callback: 5, over7: 9, approvedWeek: 13 },
+  totals: { open: 41, unassigned: 7, callback: 5, over7: 9, approvedWeek: 13, otherOpen: 4 },
   aging: [
     { label: '0–2 дня', count: 20 },
     { label: '3–7 дней', count: 12 },
@@ -35,7 +35,7 @@ const view = (patch: Partial<TeamView> = {}): TeamView => ({
   ...patch,
 });
 
-const meAs = (role: Me['role']) => () => json({ role, legacyUrl: null });
+const meAs = (role: Me['role']) => () => json({ role });
 
 function open(team: TeamView | (() => Response) = view(), role: Me['role'] = 'super') {
   const fetchMock = stubFetchWithFixtures({

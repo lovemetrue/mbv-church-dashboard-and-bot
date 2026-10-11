@@ -107,7 +107,6 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
     audit: async (actor: string, action: string, after: unknown) => { auditCalls.push({ actor, action, after }); },
     logo: async () => Buffer.from('\x89PNG-логотип'),
     formMeta: async () => ({ districts: ['Приморский'], groupFormats: [], groupStatuses: [], compositions: [], requestStatuses: [], requestTypes: [], ageGroups: [], coordinators: [], churches: [], mdgStatuses: [] }),
-    legacyUrl: 'http://old.example:8090',
     staff: {
       view: async () => { staffCalls.push({ name: 'view', args: [] }); return { generatedAt: 'g', items: [], personal: { enabled: false, canEnable: false, activeWithPassword: 0, mailConfigured: false } }; },
       suggestLogin: async (...a: unknown[]) => { staffCalls.push({ name: 'suggest', args: a }); return { ok: true, login: 'p_ivanova' }; },
@@ -1081,9 +1080,9 @@ describe('создание записей и справочники форм', (
     expect(await r.json()).toMatchObject({ districts: ['Приморский'] });
   });
 
-  test('«кто я» отдаёт адрес старого дашборда', async () => {
+  test('«кто я» отдаёт роль', async () => {
     const r = await fetch(`${app.base}/api/v1/me`, { headers: { cookie: await signIn(REGULAR) } });
-    expect(await r.json()).toEqual({ role: 'admin', legacyUrl: 'http://old.example:8090' });
+    expect(await r.json()).toEqual({ role: 'admin' });
   });
 
   test('правка параметров заявки передаёт тело и автора', async () => {

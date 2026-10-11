@@ -1,9 +1,9 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import type { RequestItem } from '@contracts';
 import { ru } from '../../../shared/i18n/ru';
 import { Button } from '../../../shared/ui';
 import { copyText } from './clipboard';
 import { dialNumber } from './phone';
+import type { WorkSubject } from './subject';
 import styles from './work.module.css';
 
 const w = ru.requests.work;
@@ -16,7 +16,7 @@ const COPIED_MS = 4000;
  * телефона на мобильном и ничего не делают на компьютере, поэтому рядом всегда есть копирование.
  * Номер нигде не записывается и в адресную строку не попадает.
  */
-export function ContactLinks({ r, editable }: { r: RequestItem; editable: boolean }) {
+export function ContactLinks({ r, editable }: { r: WorkSubject; editable: boolean }) {
   const headId = useId();
   const [message, setMessage] = useState('');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);

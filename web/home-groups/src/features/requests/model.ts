@@ -10,7 +10,9 @@ import { RESP_NOBODY } from '../../shared/nav/params';
  * ФИО с местом склеены (как было: «Орлов Беговая» находит), а ответственный и комментарий
  * проверяются отдельно: запрос из нескольких слов не должен находить заявку «на стыке» чужих полей.
  */
-export function matchesSearch(r: RequestItem, query: string): boolean {
+export type Searchable = Pick<RequestItem, 'fio' | 'place' | 'responsible' | 'note' | 'phone'>;
+
+export function matchesSearch(r: Searchable, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
   if (`${r.fio} ${r.place ?? ''}`.toLowerCase().includes(q)) return true;
@@ -28,7 +30,7 @@ export function searchRequests(items: readonly RequestItem[], query: string): Re
  * Применяется вместе с поиском до счётчиков чипов, поэтому числа на чипах и очередь обзвона
  * (с соседними заявками в карточке) видят один и тот же список.
  */
-export function filterByResponsible(items: readonly RequestItem[], who: string): RequestItem[] {
+export function filterByResponsible<T extends Pick<RequestItem, 'responsible'>>(items: readonly T[], who: string): T[] {
   if (!who) return [...items];
   if (who === RESP_NOBODY) return items.filter((r) => !r.responsible);
   return items.filter((r) => r.responsible === who);

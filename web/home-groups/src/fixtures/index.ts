@@ -1,5 +1,6 @@
 import {
   buildSettingsAudit,
+  buildSettingsBot,
   buildSettingsErrors,
   buildSettingsHealth,
   buildSettingsPrompts,
@@ -9,6 +10,7 @@ import {
 } from './settings';
 import { buildFormMeta } from './formMeta';
 import { buildCoordinators, buildGroups, buildPeople, buildRequests, buildToday } from './build';
+import { buildCampaign } from './campaign';
 import { buildTeam } from './team';
 
 /** Ответ «сервера» в режиме фикстур. Путь — как в apiGet: «today», «requests»… */
@@ -16,7 +18,7 @@ export function fixtureResponse(path: string): unknown {
   switch (path.replace(/^\/+/, '').replace(/\/+$/, '')) {
     case 'me':
       // В демо вход полный, иначе вкладки «Настройки» не видно.
-      return { role: 'super', legacyUrl: 'https://church.example.org' };
+      return { role: 'super' };
     case 'form-meta':
       return buildFormMeta();
     case 'today':
@@ -31,6 +33,10 @@ export function fixtureResponse(path: string): unknown {
       return buildCoordinators();
     case 'team':
       return buildTeam();
+    case 'campaign':
+      return buildCampaign();
+    case 'settings/bot':
+      return buildSettingsBot();
     case 'settings/health':
       return buildSettingsHealth();
     case 'settings/errors':
@@ -61,10 +67,12 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
     const changed = open.filter((r) => r.proposal!.dataChanged).length;
     return { ok: true, created: 0, replaced: changed, unchanged: open.length - changed };
   }
-  // Рабочее место координатора: правка данных, «в работе у» и итог звонка. В демо данные не меняются, действие просто «получается».
-  if (/^requests\/\d+\/(edit|assign|call)$/.test(clean)) return { ok: true };
+  // Рабочее место координатора: правка данных, «в работе у», итог звонка, закрытие и возврат в работу. В демо данные не меняются, действие просто «получается».
+  if (/^requests\/\d+\/(edit|assign|call|close|reopen)$/.test(clean)) return { ok: true };
   // Правка и удаление записей справочника и заявок: в демо данные не меняются, действие просто «получается».
   if (/^(groups|coordinators|requests)\/\d+\/(update|delete)$/.test(clean)) return { ok: true };
+  // Удаление регистрации и настройка бота: в демо ничего не меняется, действие просто «получается».
+  if (/^people\/\d+\/delete$/.test(clean) || clean === 'settings/bot/extra-questions') return { ok: true };
   // Массовое действие: в демо все выбранные «обработаны», ничего не пропущено.
   if (clean === 'requests/bulk') return { ok: true, done: ((body ?? {}) as { ids?: number[] }).ids?.length ?? 0, skipped: 0 };
   const input = (body ?? {}) as { fullName?: string; email?: string; id?: number };

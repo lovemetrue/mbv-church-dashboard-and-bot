@@ -102,7 +102,7 @@ const CANCEL_TEXT: Record<string, string> = {
 };
 
 const TYPE_LABEL: Record<OtherItem['type'], string> = {
-  join_group: 'Хочет в домашнюю группу', lead_group: 'Готов открыть группу или дать дом', question: 'Вопрос служителю',
+  join_group: 'Хочет в домашнюю группу', lead_group: 'Хочет открыть группу или дать дом', question: 'Вопрос служителю',
   already_member: 'Уже состоит в группе', already_leader: 'Уже ведёт группу',
 };
 const OTHER_CLOSED_LIMIT = 200;

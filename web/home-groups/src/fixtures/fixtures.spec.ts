@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { buildCoordinators, buildGroups, buildPeople, buildRequests, buildToday } from './build';
 import { buildFormMeta } from './formMeta';
-import { fixtureActionResponse } from './index';
+import { fixtureActionResponse, fixtureResponse } from './index';
 
 describe('фикстуры', () => {
   test('счётчики сходятся со списком заявок, отказы в список не попадают', () => {
@@ -113,5 +113,15 @@ describe('фикстуры', () => {
     expect(res.ok).toBe(true);
     expect(buildPeople().items.map((p) => p.registrationNo)).not.toContain(res.registrationNo);
     expect(buildPeople().items.map((p) => p.userId)).not.toContain(res.id);
+  });
+
+  test('кампания и настройка бота отдаются демо-маршрутами, а удаление регистрации и сохранение настройки «получаются»', () => {
+    const campaign = fixtureResponse('campaign') as { days: { total: number; list: unknown[] } };
+    expect(campaign.days.list).toHaveLength(campaign.days.total);
+    const bot = fixtureResponse('settings/bot') as { extraQuestions: { mode: string; source: string } };
+    expect(['off', 'all', 'list']).toContain(bot.extraQuestions.mode);
+    expect(['settings', 'env']).toContain(bot.extraQuestions.source);
+    expect(fixtureActionResponse('people/1/delete', {})).toEqual({ ok: true });
+    expect(fixtureActionResponse('settings/bot/extra-questions', { mode: 'all' })).toEqual({ ok: true });
   });
 });

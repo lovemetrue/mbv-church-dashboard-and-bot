@@ -11,7 +11,7 @@ afterEach(() => {
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
-const meOf = (legacyUrl: string | null, role: 'admin' | 'super' = 'admin') => () => json({ role, legacyUrl });
+const meOf = (_unused: string | null, role: 'admin' | 'super' = 'admin') => () => json({ role });
 
 type FetchMock = ReturnType<typeof stubFetchWithFixtures>;
 const callsOf = (fetchMock: FetchMock) =>

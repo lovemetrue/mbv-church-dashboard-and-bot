@@ -3,6 +3,45 @@
  * текстом, цвет лишь усиливает.
  */
 
+/* Сегмент разделов вверху «Команды»: две кнопки в ряд, активная залита акцентом. */
+.switch {
+  display: inline-flex;
+  max-width: 100%;
+  margin-bottom: 16px;
+  padding: 3px;
+  gap: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.switchBtn {
+  min-height: var(--tap);
+  padding: 0 16px;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font: inherit;
+  font-weight: 500;
+}
+.switchBtn:hover {
+  color: var(--ink);
+}
+.switchBtn[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+@media (max-width: 560px) {
+  .switch {
+    display: flex;
+  }
+  .switchBtn {
+    flex: 1 1 0;
+    padding: 0 8px;
+  }
+}
+
 .page {
   display: flex;
   flex-direction: column;
@@ -21,7 +60,7 @@
 /* ── плитки ──────────────────────────────────────────────────────────────── */
 .tiles {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px;
   margin: 0;
 }
@@ -34,12 +73,9 @@
   .tiles {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  /* Пятая плитка одна в последнем ряду: растягиваем, чтобы не было дыры. */
-  .tile:last-child {
-    grid-column: 1 / -1;
-  }
 }
 .tile {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -66,6 +102,32 @@
 }
 .tileNum.ok {
   color: var(--ok);
+}
+/* Число-ссылка: кнопка растянута на всю плитку (::after), чтобы попасть пальцем; выглядит как число с подчёркиванием. */
+.tileLink {
+  padding: 0;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: var(--accent);
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+.tileLink::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+.tile:has(.tileLink):hover {
+  border-color: var(--accent);
+}
+.tile:has(.tileLink:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* ── разделы ─────────────────────────────────────────────────────────────── */

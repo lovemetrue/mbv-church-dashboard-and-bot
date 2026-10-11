@@ -1,8 +1,10 @@
 import { useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useMe } from '../shared/api/queries';
 import { ru } from '../shared/i18n/ru';
 import { useAppNav } from '../shared/nav';
 import { LoadingState } from '../shared/ui';
+import { isRegistrationPath, RegistrationPage } from '../features/create/RegistrationPage';
 import { RequestsScreen } from '../features/requests/RequestsScreen';
 import { ReferenceScreen } from '../features/reference/ReferenceScreen';
 import { SettingsScreen } from '../features/settings/SettingsScreen';
@@ -31,8 +33,18 @@ function SettingsRoute() {
   return denied ? null : <LoadingState />;
 }
 
-/** Оболочка: шапка, вкладки и содержимое выбранной вкладки. Роутер и провайдеры — снаружи. */
+/**
+ * Оболочка: шапка, вкладки и содержимое выбранной вкладки. Роутер и провайдеры — снаружи.
+ * Страница `/registration` решается до оболочки, а не внутри неё: оболочка при показе тут же начинает читать
+ * заявки и «Сегодня», а волонтёру на месте нужна только форма.
+ */
 export function App() {
+  const { pathname } = useLocation();
+  if (isRegistrationPath(pathname)) return <RegistrationPage />;
+  return <Shell />;
+}
+
+function Shell() {
   const nav = useAppNav();
   return (
     <div className={styles.wrap}>

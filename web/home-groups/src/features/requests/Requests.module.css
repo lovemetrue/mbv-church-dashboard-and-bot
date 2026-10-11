@@ -825,3 +825,45 @@
   font-size: 13px;
   color: var(--muted);
 }
+
+/* Переключатель «Хотят в группу | Другие обращения»: две кнопки в ряд над списком, на телефоне делят ширину. */
+.views {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.views > button {
+  min-height: var(--tap);
+  flex: 0 1 auto;
+}
+@media (max-width: 700px) {
+  .views > button {
+    flex: 1 1 0;
+    min-width: 0;
+    justify-content: center;
+    text-align: center;
+  }
+}
+
+/* Итог закрытия: тихая строка, как «Пришло новых заявок». Пустая область места не занимает. */
+.closedNote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 0 0 12px;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  background: var(--ok-soft);
+  color: var(--ok);
+  font-size: 13px;
+  font-weight: 500;
+}
+.closedNote p {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.closedNoteEmpty:empty {
+  display: none;
+}

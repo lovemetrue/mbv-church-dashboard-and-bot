@@ -28,17 +28,6 @@ const env = (name: string, fallback?: string): string => {
  * базу только действиями координатора над заявками (`actions.ts`), каждое — с записью в журнал. Пароли и Redis те же — один вход на оба сервиса, но с разными куками.
  * Новых обязательных переменных нет: всё, чего не задано, берётся из значений по умолчанию.
  */
-/** Адрес старого дашборда без пути: `DASHBOARD_URL` у бота вида `http://host:8090/groups`. Нет или непонятен — null. */
-function legacyOrigin(): string | null {
-  const raw = process.env['DASHBOARD_URL']?.trim();
-  if (!raw) return null;
-  try {
-    return new URL(raw).origin;
-  } catch {
-    return null;
-  }
-}
-
 async function main(): Promise<void> {
   const password = env('DASHBOARD_PASSWORD');
   if (password.length < 8) throw new Error('DASHBOARD_PASSWORD короче восьми символов');
@@ -108,7 +97,6 @@ async function main(): Promise<void> {
     audit,
     logo: async () => readFile(join(env('HG_ASSETS_DIR', '/app/dashboard/assets'), 'church-logo.png')).catch(() => null),
     formMeta,
-    legacyUrl: legacyOrigin(),
     views,
     actions: createActions(placement, { defaultCapacity }, matching),
     matching,

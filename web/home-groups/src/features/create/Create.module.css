@@ -278,3 +278,78 @@ textarea.control {
     justify-content: center;
   }
 }
+
+/* ── адрес отдельной страницы регистрации (внизу окна) ───────────────────── */
+
+.pageLink {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  text-align: left;
+  min-width: 0;
+  max-width: 100%;
+}
+.pageLinkText {
+  flex: 1 1 220px;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.pageLinkUrl {
+  color: var(--ink);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.pageLinkOk {
+  flex-basis: 100%;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ok);
+}
+
+/* ── отдельная страница регистрации (/registration) ──────────────────────── */
+
+.standalone {
+  max-width: 640px;
+  margin-inline: auto;
+  padding: 12px var(--gutter) 48px;
+  padding-top: max(12px, env(safe-area-inset-top, 0px));
+  padding-bottom: max(48px, env(safe-area-inset-bottom, 0px));
+}
+.standaloneHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.standaloneTitle {
+  font-size: 20px;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.standaloneLogout {
+  margin: 0;
+  flex: none;
+}
+/* Те же отступы, что у тела окна: плавающая полоса кнопок рассчитана на них (см. .foot). */
+.standaloneCard {
+  min-width: 0;
+  padding: 14px 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  /* Полоса кнопок на телефоне без скруглённых углов: обрезаем по рамке карточки. */
+  overflow: hidden;
+}
+/* На странице кнопка идёт в конце формы, а не прилипает к краю экрана: иначе она закрывает подпись над ней. */
+.standaloneCard .foot {
+  position: static;
+}

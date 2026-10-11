@@ -1,5 +1,6 @@
 import type { RequestItem, TeamActivity, TeamView, TeamWorkload } from '@contracts';
 import { buildRequests } from './build';
+import { buildOthers } from './others';
 
 /** Заявка ждёт «дольше недели» — как на сервере (`api/team.ts`): с восьмого дня. */
 const STUCK_DAYS = 7;
@@ -57,6 +58,7 @@ export function buildTeam(): TeamView {
       callback: open.filter((r) => r.bucket === 'callback').length,
       over7: open.filter((r) => (r.waitingDays ?? 0) > STUCK_DAYS).length,
       approvedWeek: activity.reduce((sum, a) => sum + a.approved, 0),
+      otherOpen: buildOthers().filter((o) => o.state === 'open').length,
     },
     aging,
     workload,

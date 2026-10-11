@@ -1,0 +1,152 @@
+/* «Другие обращения»: список и карточка. Цвета — только токены темы. */
+.listbox {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.1fr) minmax(0, 0.9fr);
+  gap: 12px;
+  align-items: start;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line-soft);
+  background: var(--surface);
+}
+.rows .row {
+  cursor: pointer;
+}
+.rows .row:hover {
+  background: var(--surface-2);
+}
+.head {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-weight: 600;
+  border-top: 0;
+  background: var(--surface-2);
+  align-items: center;
+}
+.selected,
+.rows .selected:hover {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.who {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  row-gap: 2px;
+}
+.nameBtn {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-weight: 600;
+  text-align: left;
+  color: var(--ink);
+  min-height: 24px;
+  overflow-wrap: anywhere;
+}
+.nameBtn:hover {
+  color: var(--accent);
+}
+.place {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.inWork {
+  flex-basis: 100%;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+.kind {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+.type {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.contact {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.note {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* На телефоне строка складывается: имя на всю ширину, под ним тип и контакт в два столбца. */
+@media (max-width: 700px) {
+  .head {
+    display: none;
+  }
+  .row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: 'who who' 'kind contact';
+    gap: 6px 12px;
+    padding: 12px;
+    min-height: var(--tap);
+  }
+  .who {
+    grid-area: who;
+  }
+  .kind {
+    grid-area: kind;
+  }
+  .contact {
+    grid-area: contact;
+  }
+}
+
+/* Карточка */
+.callout {
+  background: var(--warn-soft);
+  color: var(--warn);
+  border-radius: var(--radius);
+  padding: 9px 11px;
+  font-size: 13px;
+  margin-bottom: 10px;
+  overflow-wrap: anywhere;
+}
+.typeInTitle {
+  margin: 0 6px;
+  overflow-wrap: anywhere;
+}
+.log {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.log li {
+  padding: 2px 0;
+  overflow-wrap: anywhere;
+}

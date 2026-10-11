@@ -114,3 +114,27 @@ export function DeleteRequestSection({ id, fio, onDeleted }: { id: number; fio: 
     </DrawerSection>
   );
 }
+
+/**
+ * «Удалить регистрацию» в конце карточки человека. Только для участника (есть `userId`): у заявки из таблицы
+ * регистрации нет, стирать нечего. Удаление необратимо и уносит заявки и рассылки человека, поэтому в окне
+ * подтверждения так и сказано. Раздела нет вовсе, если вход не полный. `onDeleted` закрывает карточку.
+ */
+export function DeletePersonSection({ userId, fio, onDeleted }: { userId: number | null; fio: string; onDeleted: () => void }) {
+  const canDelete = useCanDelete();
+  if (!canDelete || userId === null) return null;
+  return (
+    <DrawerSection>
+      <div className={styles.actions}>
+        <DeleteRecord
+          label={m.person.delete}
+          ariaLabel={m.person.deleteAria(fio)}
+          title={m.person.deleteTitle(fio)}
+          text={m.person.deleteText}
+          path={`people/${userId}/delete`}
+          onDeleted={onDeleted}
+        />
+      </div>
+    </DrawerSection>
+  );
+}

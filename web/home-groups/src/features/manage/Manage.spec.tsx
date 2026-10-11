@@ -9,7 +9,7 @@ afterEach(() => vi.unstubAllGlobals());
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 /** Обычный вход: удалять нельзя. Полный вход в фикстурах по умолчанию. */
-const asAdmin = { me: () => json({ role: 'admin', legacyUrl: null }) };
+const asAdmin = { me: () => json({ role: 'admin' }) };
 const DELETE_TEXT = 'Запись пропадёт из списков. Восстановить её сможет только разработчик.';
 
 type FetchMock = ReturnType<typeof stubFetchWithFixtures>;
@@ -162,14 +162,62 @@ describe('правка группы', () => {
     expect(posts(fetchMock)).toHaveLength(0);
   });
 
-  test('в форме нет полей адреса и телефона, зато есть пометка, где их менять', async () => {
+  test('поля «Новый телефон ведущего», «Новый телефон соведущего» и «Новый адрес» пустые и с подсказкой, как заменять', async () => {
     stubFetchWithFixtures();
     const user = userEvent.setup();
     const { dialog } = await openGroupEdit(user);
-    expect(within(dialog).getByText('Адрес и телефоны меняются в старом дашборде.')).toBeInTheDocument();
-    expect(within(dialog).queryByLabelText(/Адрес|Телефон/)).not.toBeInTheDocument();
-    // Телефон ведущего (79112003145) в окне правки не показывается ни в каком виде.
+    const hint = 'Текущее значение не показывается. Впишите, чтобы заменить; оставьте пустым, чтобы не менять.';
+    for (const name of ['Новый телефон ведущего', 'Новый телефон соведущего', 'Новый адрес']) {
+      const field = within(dialog).getByRole('textbox', { name });
+      expect(field).toHaveValue('');
+      expect(field).toHaveAccessibleDescription(hint);
+    }
+    // Старой пометки про другой дашборд нет, а телефон ведущего (79112003145) не показывается ни в каком виде.
+    expect(within(dialog).queryByText(/дашборд/i)).not.toBeInTheDocument();
     expect(dialog.textContent).not.toMatch(/9112003145|911.?200.?31.?45/);
+  });
+
+  test('пустые поля телефонов и адреса в запрос не попадают: пустая строка стёрла бы значение в базе', async () => {
+    const fetchMock = stubFetchWithFixtures({ 'groups/1/update': () => json({ ok: true }) });
+    const user = userEvent.setup();
+    const { dialog } = await openGroupEdit(user);
+    await user.type(within(dialog).getByRole('textbox', { name: 'Комментарий' }), 'x');
+    await user.click(saveButton(dialog));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    const fields = (posts(fetchMock)[0]!.body as { fields: Record<string, string> }).fields;
+    expect(fields).toEqual({ comment: expect.stringContaining('x') });
+    expect(fields).not.toHaveProperty('phone');
+    expect(fields).not.toHaveProperty('coLeaderPhone');
+    expect(fields).not.toHaveProperty('address');
+  });
+
+  test('заполненные поля уходят под именами phone, coLeaderPhone и address, остальное не трогается', async () => {
+    const fetchMock = stubFetchWithFixtures({ 'groups/1/update': () => json({ ok: true }) });
+    const user = userEvent.setup();
+    const { dialog } = await openGroupEdit(user);
+    await user.type(within(dialog).getByRole('textbox', { name: 'Новый телефон ведущего' }), ' +7 911 111 22 33 ');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Новый телефон соведущего' }), '+7 922 333 44 55');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Новый адрес' }), 'ул. Садовая, 5');
+    await user.click(saveButton(dialog));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect(posts(fetchMock)[0]).toEqual({
+      path: 'groups/1/update',
+      body: { fields: { phone: '+7 911 111 22 33', coLeaderPhone: '+7 922 333 44 55', address: 'ул. Садовая, 5' } },
+    });
+  });
+
+  test('«Сохранить» включается от одного нового адреса; поле, заполненное и снова очищенное, не отправляется', async () => {
+    stubFetchWithFixtures();
+    const user = userEvent.setup();
+    const { dialog } = await openGroupEdit(user);
+    const address = within(dialog).getByRole('textbox', { name: 'Новый адрес' });
+    expect(saveButton(dialog)).toBeDisabled();
+    await user.type(address, 'ул. Садовая, 5');
+    expect(saveButton(dialog)).toBeEnabled();
+    await user.clear(address);
+    expect(saveButton(dialog)).toBeDisabled();
+    await user.type(address, '   ');
+    expect(saveButton(dialog)).toBeDisabled();
   });
 
   test('успех закрывает окно, пишет подтверждение в карточке и перечитывает все списки', async () => {

@@ -1,19 +1,24 @@
-import { useEffect, useId, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { RequestsView } from '@contracts';
 import { BUCKET_LABEL, LIST_BUCKETS, type BucketFilter } from '../../entities/buckets';
 import { useRequests } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
-import { RESP_NOBODY, useAppNav } from '../../shared/nav';
+import { useAppNav } from '../../shared/nav';
 import { SavedViewsMenu } from '../../shared/savedViews';
 import { Button, Chip, EmptyState, ErrorState, LoadingState } from '../../shared/ui';
-import { countBuckets, filterByBucket, filterByResponsible, responsibleNames, searchRequests } from './model';
+import { countBuckets, filterByBucket, filterByResponsible, searchRequests } from './model';
 import { BulkPanel } from './bulk/BulkPanel';
 import { useBulk } from './bulk/useBulk';
+import { ClosedNote } from './ClosedNote';
 import { MatchingPanel } from './MatchingPanel';
+import { OthersContent } from './others/OthersContent';
+import { openOthersCount } from './others/model';
 import { RequestCard, type RequestNeighbors } from './RequestCard';
 import { RequestList } from './RequestList';
 import styles from './Requests.module.css';
+import { ResponsibleSelect } from './ResponsibleSelect';
 import { useNewArrivals } from './useNewArrivals';
+import { ViewSwitch } from './ViewSwitch';
 
 export function RequestsScreen() {
   const query = useRequests();
@@ -22,7 +27,31 @@ export function RequestsScreen() {
   return <RequestsContent data={query.data} />;
 }
 
+/**
+ * Экран «Заявки» в одном из двух режимов списка: «Хотят в группу» (подбор) или «Другие обращения».
+ * Итог закрытия хранится здесь, выше обоих списков: карточка после закрытия уходит с экрана, а итог
+ * должен пережить и её, и переключение режима.
+ */
 export function RequestsContent({ data }: { data: RequestsView }) {
+  const nav = useAppNav();
+  const [note, setNote] = useState<string | null>(null);
+  // Сервер старой версии мог ещё не прислать `others`: без этой подстраховки экран заявок упал бы целиком.
+  const safe = data.others ? data : { ...data, others: [] };
+  const props = { data: safe, note, onClosed: setNote, onHideNote: () => setNote(null) };
+  return nav.view === 'others' ? <OthersContent {...props} /> : <WaitingContent {...props} />;
+}
+
+function WaitingContent({
+  data,
+  note,
+  onClosed,
+  onHideNote,
+}: {
+  data: RequestsView;
+  note: string | null;
+  onClosed: (text: string) => void;
+  onHideNote: () => void;
+}) {
   const nav = useAppNav();
   // Поиск и «В работе у» сужают список до чипов: счётчики, очередь обзвона и «Следующая заявка»
   // считаются по одному и тому же найденному.
@@ -58,6 +87,8 @@ export function RequestsContent({ data }: { data: RequestsView }) {
   return (
     <div className={styles.work}>
       <div className={styles.main}>
+        <ViewSwitch view="wait" openOthers={openOthersCount(data.others)} onChange={nav.setView} />
+        <ClosedNote note={note} onHide={onHideNote} />
         <MatchingPanel matching={data.matching} dataChanged={dataChanged} />
         {/* Область живая и есть всегда: скринридер читает только то, что в неё добавили. */}
         <div role="status" className={arrivals.count > 0 ? styles.arrived : undefined}>
@@ -105,7 +136,15 @@ export function RequestsContent({ data }: { data: RequestsView }) {
 
       {nav.requestId != null ? (
         selected ? (
-          <RequestCard r={selected} onClose={nav.closeRequest} neighbors={neighbors} />
+          <RequestCard
+            r={selected}
+            onClose={nav.closeRequest}
+            neighbors={neighbors}
+            onClosed={(text) => {
+              onClosed(text);
+              nav.closeRequest();
+            }}
+          />
         ) : (
           <aside className={styles.placeholder} role="status">
             <EmptyState>{ru.requests.notFound}</EmptyState>
@@ -116,39 +155,6 @@ export function RequestsContent({ data }: { data: RequestsView }) {
           <EmptyState hint={ru.requests.emptyPaneHint}>{ru.requests.emptyPane}</EmptyState>
         </aside>
       )}
-    </div>
-  );
-}
-
-/** Список «В работе у». Имена берём из всех заявок, а не из найденных: иначе выбор сам себя сужал бы. */
-function ResponsibleSelect({
-  items,
-  value,
-  onChange,
-}: {
-  items: RequestsView['items'];
-  value: string;
-  onChange: (who: string) => void;
-}) {
-  const id = useId();
-  const names = useMemo(() => responsibleNames(items), [items]);
-  // Имя из старой ссылки, которого в очереди уже нет, оставляем в списке: иначе выбор показывал бы
-  // «Все», а список при этом был бы пуст.
-  const extra = value && value !== RESP_NOBODY && !names.includes(value) ? value : null;
-  return (
-    <div className={styles.respBox}>
-      <label htmlFor={id} className={styles.respLabel}>
-        {ru.requests.respFilterLabel}
-      </label>
-      <select id={id} className={styles.respSelect} value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">{ru.requests.respFilterAll}</option>
-        <option value={RESP_NOBODY}>{ru.requests.respFilterNobody}</option>
-        {[...names, ...(extra ? [extra] : [])].map((n) => (
-          <option key={n} value={n}>
-            {n}
-          </option>
-        ))}
-      </select>
     </div>
   );
 }

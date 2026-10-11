@@ -4,9 +4,11 @@ import type {
   ActionOk,
   CreateStaffBody,
   DeliveryOk,
+  ExtraQuestionsBody,
   PersonalModeBody,
   SavePromptBody,
   SettingsAuditView,
+  SettingsBotView,
   SettingsErrorsView,
   SettingsHealthView,
   SettingsPromptsView,
@@ -36,6 +38,7 @@ export const settingsKeys = {
   audit: ['settings', 'audit'],
   prompts: ['settings', 'prompts'],
   staff: ['settings', 'staff'],
+  bot: ['settings', 'bot'],
 } as const;
 
 const common = {
@@ -133,5 +136,32 @@ export function useStaffActions() {
     invite: (body: StaffIdBody) => changing<DeliveryOk>('settings/staff/invite', body),
     reset: (body: StaffIdBody) => changing<DeliveryOk>('settings/staff/reset', body),
     setPersonalMode: (body: PersonalModeBody) => changing<ActionOk>('settings/staff/personal-mode', body),
+  };
+}
+
+/** Настройка бота — раз в минуту, как инструкции: её могли сохранить с другого устройства. */
+export const BOT_REFRESH_MS = 60_000;
+
+export function useSettingsBot(): UseQueryResult<SettingsBotView> {
+  return useQuery({
+    queryKey: settingsKeys.bot,
+    queryFn: ({ signal }) => apiGet<SettingsBotView>('settings/bot', signal),
+    ...common,
+    refetchInterval: BOT_REFRESH_MS,
+    refetchIntervalInBackground: false,
+  });
+}
+
+/**
+ * Сохранение «кому задавать новые вопросы анкеты». После успеха ждём перечитывания настройки: пока экран показывает
+ * прежний источник («из файла .env»), считать сохранение принятым рано. Ошибку не глотаем — её показывает вызвавший.
+ */
+export function useBotActions() {
+  const queryClient = useQueryClient();
+  return {
+    async saveExtraQuestions(body: ExtraQuestionsBody): Promise<void> {
+      await apiPost('settings/bot/extra-questions', body);
+      await queryClient.invalidateQueries({ queryKey: settingsKeys.bot });
+    },
   };
 }

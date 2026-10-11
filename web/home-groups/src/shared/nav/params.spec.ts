@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { parseBucket, parseEntity, parseId, parseTab, patchParams, tabParams, visibleTabs } from './params';
+import { parseBucket, parseEntity, parseId, parseOtherFilter, parseTab, parseView, patchParams, tabParams, visibleTabs } from './params';
 
 const p = (s: string) => new URLSearchParams(s);
 
@@ -55,5 +55,26 @@ describe('вкладки по ролям', () => {
 
   test('при смене вкладки на «Настройки» внутренний раздел сбрасывается', () => {
     expect(tabParams(p('tab=settings&sec=audit'), 'reference').toString()).toBe('tab=reference');
+  });
+});
+
+describe('режим списка «Заявок» в адресе', () => {
+  test('view=others включает «Другие обращения», всё остальное — обычный список', () => {
+    expect(parseView('others')).toBe('others');
+    expect(parseView(null)).toBe('wait');
+    expect(parseView('wait')).toBe('wait');
+    expect(parseView('что-то')).toBe('wait');
+  });
+
+  test('чип обращений: неизвестное значение — «Открытые»', () => {
+    expect(parseOtherFilter(null)).toBe('open');
+    expect(parseOtherFilter('done')).toBe('done');
+    expect(parseOtherFilter('cancelled')).toBe('cancelled');
+    expect(parseOtherFilter('all')).toBe('all');
+    expect(parseOtherFilter('human')).toBe('open');
+  });
+
+  test('при смене вкладки режим списка и чип обращений сбрасываются', () => {
+    expect(tabParams(p('tab=requests&view=others&ostate=done&q=иван'), 'team').toString()).toBe('tab=team&q=%D0%B8%D0%B2%D0%B0%D0%BD');
   });
 });

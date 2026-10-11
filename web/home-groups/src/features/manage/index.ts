@@ -1,1 +1,1 @@
-export { CoordinatorActions, DeleteRequestSection, GroupActions } from './ManageActions';
+export { CoordinatorActions, DeletePersonSection, DeleteRequestSection, GroupActions } from './ManageActions';

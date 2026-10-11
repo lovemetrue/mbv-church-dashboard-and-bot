@@ -25,11 +25,14 @@ export function DangerButton({
  */
 export function DeleteDialog({
   title,
+  text = ru.manage.deleteText,
   path,
   onClose,
   onDeleted,
 }: {
   title: string;
+  /** Что именно произойдёт; по умолчанию — про мягкое удаление записи справочника. */
+  text?: string;
   /** Адрес действия относительно /api/v1/, например `groups/12/delete`. */
   path: string;
   onClose: () => void;
@@ -51,7 +54,7 @@ export function DeleteDialog({
 
   return (
     <Modal title={title} onClose={() => !busyRef.current && onClose()}>
-      <p className={styles.confirm}>{ru.manage.deleteText}</p>
+      <p className={styles.confirm}>{text}</p>
       {error && (
         <p className={styles.formError} role="alert">
           {error}
@@ -78,12 +81,14 @@ export function DeleteRecord({
   label = ru.manage.delete,
   ariaLabel,
   title,
+  text,
   path,
   onDeleted,
 }: {
   label?: string;
   ariaLabel: string;
   title: string;
+  text?: string;
   path: string;
   onDeleted: () => void;
 }) {
@@ -98,6 +103,7 @@ export function DeleteRecord({
       {open && (
         <DeleteDialog
           title={title}
+          text={text}
           path={path}
           onClose={() => setOpen(false)}
           onDeleted={() => {

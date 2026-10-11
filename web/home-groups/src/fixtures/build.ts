@@ -44,6 +44,7 @@ import {
   type RawGroup,
   type RawRequest,
 } from './raw';
+import { buildOthers } from './others';
 import { requestExtras } from './requestExtras';
 
 const DEFAULT_CAPACITY = 10;
@@ -330,7 +331,7 @@ export function buildRequests(): RequestsView {
     waiting: items.filter((x) => x.bucket !== 'done' && x.proposal && !x.proposal.saved).length,
     saved: items.filter((x) => x.bucket !== 'done' && x.proposal?.saved).length,
   };
-  return { generatedAt: GENERATED_AT, matching, items, counters };
+  return { generatedAt: GENERATED_AT, matching, items, counters, others: buildOthers() };
 }
 
 export function buildToday(): TodayView {

@@ -1074,7 +1074,7 @@ describe('остальные обращения', () => {
     });
     expect(views.requests.items.map((i) => i.id)).toEqual([1]);
     expect(views.requests.others.map((o) => [o.id, o.typeLabel, o.state])).toEqual([
-      [2, 'Готов открыть группу или дать дом', 'open'], [3, 'Вопрос служителю', 'open'],
+      [2, 'Хочет открыть группу или дать дом', 'open'], [3, 'Вопрос служителю', 'open'],
     ]);
     expect(views.team.totals.otherOpen).toBe(2);
   });

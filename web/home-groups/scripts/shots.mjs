@@ -72,6 +72,15 @@ const SCREENS = [
   // Рабочее место координатора: связь, «в работе у», итог звонка и форма «Править данные» (заявка 1 с планом).
   { name: 'requests-work', url: '/?tab=requests&req=1', ready: '[role=dialog][aria-label^="Карточка заявки"]', scroll: 'text=Связаться' },
   { name: 'requests-work-edit', url: '/?tab=requests&req=1', ready: '[role=dialog][aria-label^="Карточка заявки"]', click: 'button:has-text("Править данные")', then: 'form[aria-label="Правка данных заявки"]', scroll: 'form[aria-label="Правка данных заявки"] button[type=submit]' },
+  // Закрытие заявки: окно с выбором исхода и с причинами аннулирования; «Другие обращения»: список, карточки, возврат в работу.
+  { name: 'requests-close', url: '/?tab=requests&req=1', ready: '[role=dialog][aria-label^="Карточка заявки"]', click: 'button:has-text("Закрыть заявку…")', then: '[role=dialog][aria-modal=true]' },
+  { name: 'requests-close-cancel', url: '/?tab=requests&req=1', ready: '[role=dialog][aria-label^="Карточка заявки"]', click: ['button:has-text("Закрыть заявку…")', 'label:has-text("Аннулировать")', 'label:has-text("Другое")'], then: '[role=dialog][aria-modal=true] textarea' },
+  { name: 'others-list', url: '/?tab=requests&view=others', ready: 'ul[aria-label="Список обращений"]' },
+  { name: 'others-list-all', url: '/?tab=requests&view=others&ostate=all', ready: 'ul[aria-label="Список обращений"]' },
+  { name: 'others-card', url: '/?tab=requests&view=others&req=202', ready: '[role=dialog][aria-label^="Карточка обращения"]' },
+  { name: 'others-card-work', url: '/?tab=requests&view=others&req=202', ready: '[role=dialog][aria-label^="Карточка обращения"]', scroll: 'button:has-text("Закрыть заявку…")' },
+  { name: 'others-card-cancelled', url: '/?tab=requests&view=others&ostate=cancelled&req=205', ready: '[role=dialog][aria-label^="Карточка обращения"]', scroll: 'button:has-text("Вернуть в работу")' },
+  { name: 'others-reopen', url: '/?tab=requests&view=others&ostate=cancelled&req=205', ready: '[role=dialog][aria-label^="Карточка обращения"]', click: 'button:has-text("Вернуть в работу")', then: '[role=dialog][aria-modal=true]' },
   { name: 'requests-original', url: '/?tab=requests&req=1', ready: '[role=dialog][aria-label^="Карточка заявки"]', click: '[role=dialog] button[aria-expanded="false"]', scroll: 'text=Как система это поняла' },
   // «Подобрать заново»: обычная заявка (кнопка и подсказка) и заявка, у которой данные изменились после закрепления.
   { name: 'requests-rematch', url: '/?tab=requests&req=1', ready: '[role=dialog][aria-label^="Карточка заявки"]', scroll: 'button:has-text("Подобрать заново")' },
@@ -140,6 +149,32 @@ const SCREENS = [
   },
   // Справочник «Люди»: карточка человека с номером регистрации и ссылками.
   { name: 'reference-people-card', url: '/?tab=reference&ent=people&rec=u1', ready: '[role=dialog][aria-label^="Карточка человека"]' },
+  // «Команда → Кампания «40 дней»», страница /registration для волонтёров, «Настройки → Бот», новые поля правки группы
+  // и удаление регистрации из карточки человека.
+  { name: 'team-campaign', url: '/?tab=team&sec=campaign', ready: 'ul[aria-label="Материалы по дням кампании"]', full: true },
+  { name: 'registration-page', url: '/registration', ready: 'select', full: true },
+  {
+    name: 'registration-page-join',
+    url: '/registration',
+    ready: 'select',
+    fill: [['input[type=text] >> nth=0', 'Анна Петрова']],
+    select: [['select >> nth=1', 'join']],
+    after: 'select >> nth=2',
+    full: true,
+  },
+  {
+    name: 'registration-page-done',
+    url: '/registration',
+    ready: 'select',
+    fill: [['input[type=text] >> nth=0', 'Анна Петрова'], ['input[type=text] >> nth=1', '+7 911 000 11 22']],
+    submit: 'main button[type=submit]:has-text("Зарегистрировать")',
+    after: 'main img',
+    full: true,
+  },
+  { name: 'settings-bot', url: '/?tab=settings&sec=bot', ready: 'input[type=radio]', full: true },
+  { name: 'settings-bot-list', url: '/?tab=settings&sec=bot', ready: 'input[type=radio]', click: 'label:has-text("Только этим людям")', then: 'input[type=text]', fill: [['input[type=text]', '111111111, max:222222222']], full: true },
+  { name: 'manage-group-edit-write', url: '/?tab=reference&rec=2', ready: '[role=dialog][aria-label^="Карточка группы"]', click: 'button[aria-label^="Править группу"]', then: '[role=dialog][aria-modal=true] select >> nth=3', scroll: 'text=Новый адрес' },
+  { name: 'reference-people-card-delete', url: '/?tab=reference&ent=people&rec=u1', ready: '[role=dialog][aria-label^="Карточка человека"]', click: 'button[aria-label^="Удалить регистрацию"]', then: '[role=dialog][aria-modal=true] button:has-text("Удалить")' },
   // Справочник групп сразу после открытия: закрытая скрыта, отбор по умолчанию виден чипом.
   { name: 'reference-groups-default', url: '/?tab=reference', ready: 'table' },
   // Закрытая группа с длинным ФИО: ведущий обрезан многоточием.
@@ -163,6 +198,11 @@ const SHOTS = [
   ['settings-health', 1280, 'dark'],
   ['settings-health', 400, 'gray'],
   ...['today', 'requests', 'reference-groups', 'reference-people'].map((s) => [s, 1280, 'light']),
+  // Кампания, страница регистрации, настройка бота, новые поля правки группы, удаление регистрации.
+  ...['team-campaign', 'registration-page', 'registration-page-join', 'registration-page-done', 'settings-bot', 'settings-bot-list', 'manage-group-edit-write', 'reference-people-card-delete'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
+  ['team-campaign', 400, 'dark'],
+  ['registration-page', 400, 'gray'],
+  ['settings-bot', 400, 'dark'],
   ['today', 1280, 'dark'],
   ['today', 1280, 'gray'],
   ['requests', 1280, 'gray'],
@@ -190,6 +230,10 @@ const SHOTS = [
   ['today-pult', 1024, 'light'],
   ...['requests-resp', 'requests-views', 'reference-views'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
   ...['team', 'requests-bulk', 'requests-bulk-confirm'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
+  ...['requests-close', 'requests-close-cancel', 'others-list', 'others-card', 'others-card-work', 'others-card-cancelled', 'others-reopen'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
+  ['others-list-all', 400, 'light'],
+  ['others-list', 400, 'dark'],
+  ['others-card-work', 400, 'gray'],
   ['team', 400, 'dark'],
   ['team', 1280, 'gray'],
 ];

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { ru } from '../../shared/i18n/ru';
 import { Button } from '../../shared/ui';
 import styles from './Create.module.css';
@@ -19,11 +19,14 @@ interface RecordFormProps {
   submitLabel: string;
   /** Подпись кнопки, пока идёт запрос; по умолчанию «Создаём…». */
   busyLabel?: string;
-  onClose: () => void;
+  /** Закрыть окно с формой. Без него (форма на отдельной странице) кнопки «Отмена» нет: закрывать нечего. */
+  onClose?: () => void;
   /** Запись создана: тот, кто открыл окно, закрывает его и показывает подтверждение. */
   onCreated: (created: CreatedRecord) => void;
   /** Идёт ли отправка: окно с формой по этому признаку не даёт себя закрыть, не дождавшись ответа. */
   onBusyChange?: (busy: boolean) => void;
+  /** Строка над кнопками (например, адрес отдельной страницы регистрации). */
+  footnote?: ReactNode;
 }
 
 /**
@@ -33,7 +36,7 @@ interface RecordFormProps {
  * отказ показывается над кнопками, не стирая набранного.
  * Пустые поля не отправляются: сервер читает «нет поля» и «пусто» одинаково, а тело остаётся короче.
  */
-export function RecordForm({ spec, path, submitLabel, busyLabel, onClose, onCreated, onBusyChange }: RecordFormProps) {
+export function RecordForm({ spec, path, submitLabel, busyLabel, onClose, onCreated, onBusyChange, footnote }: RecordFormProps) {
   const uid = useId();
   const { submit, busy } = useCreateRecord(path);
   const [values, setValues] = useState<Record<string, string>>(spec.initial);
@@ -158,10 +161,13 @@ export function RecordForm({ spec, path, submitLabel, busyLabel, onClose, onCrea
           {serverError}
         </p>
       )}
+      {footnote}
       <div className={styles.foot}>
-        <Button onClick={onClose} disabled={busy}>
-          {ru.create.cancel}
-        </Button>
+        {onClose && (
+          <Button onClick={onClose} disabled={busy}>
+            {ru.create.cancel}
+          </Button>
+        )}
         <Button type="submit" variant="primary" disabled={busy}>
           {busy ? (busyLabel ?? ru.create.submitting) : submitLabel}
         </Button>

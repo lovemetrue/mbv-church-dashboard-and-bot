@@ -5,6 +5,7 @@
 import type {
   DeliveryOk,
   SettingsAuditView,
+  SettingsBotView,
   SettingsErrorsView,
   SettingsHealthView,
   SettingsPromptsView,
@@ -368,4 +369,12 @@ export function fixtureSuggestLogin(fullName: string): string {
  */
 export function fixtureStaffDelivery(email: string, id?: number): DeliveryOk {
   return { ok: true, delivery: 'link', email, path: '/set-password?token=demo-d41d8cd98f00b204e9800998ecf8427e', ...(id ? { id } : {}) };
+}
+
+/** Настройка «новые вопросы анкеты» в демо: значение пока из файла `.env`, в настройках его не меняли. */
+export function buildSettingsBot(): SettingsBotView {
+  return {
+    generatedAt: GENERATED_AT,
+    extraQuestions: { mode: 'off', ids: '', source: 'env', envValue: 'off' },
+  };
 }

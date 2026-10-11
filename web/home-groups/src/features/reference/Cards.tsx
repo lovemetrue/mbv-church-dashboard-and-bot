@@ -6,7 +6,7 @@ import { ru } from '../../shared/i18n/ru';
 import { useAppNav } from '../../shared/nav';
 import { Button, Drawer, DrawerSection, KeyValue, LoadingState, Meter, NewGroupIcon, Pill, type KvRow } from '../../shared/ui';
 import { LinkButton } from '../create';
-import { CoordinatorActions, GroupActions } from '../manage';
+import { CoordinatorActions, DeletePersonSection, GroupActions } from '../manage';
 import styles from './Reference.module.css';
 
 const noValue = <span className={styles.note}>{ru.reference.notSpecified}</span>;
@@ -163,6 +163,7 @@ export function PersonCard({ p, onClose }: { p: PersonItem; onClose: () => void 
           </Button>
         </DrawerSection>
       )}
+      <DeletePersonSection userId={p.userId} fio={p.fio} onDeleted={onClose} />
     </Drawer>
   );
 }

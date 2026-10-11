@@ -6,7 +6,7 @@ export interface Option {
   label: string;
 }
 
-/** Описание одного поля формы. Имя совпадает с именем поля формы старого дашборда (`forms.ts`). */
+/** Описание одного поля формы. Имя совпадает с именем поля в теле запроса API. */
 export interface FieldSpec {
   name: string;
   label: string;

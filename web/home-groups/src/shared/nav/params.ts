@@ -8,6 +8,8 @@ import { isBucketFilter, type BucketFilter } from '../../entities/buckets';
  *   tab     today (по умолчанию) | requests | team | reference | settings (только полный вход)
  *   q       поиск по заявкам (общий для шапки)
  *   bucket  all (по умолчанию) | queue (к обзвону: ready + callback) | ready | callback | human | done
+ *   view    others — «Другие обращения» вместо списка «Хотят в группу»; без параметра — обычный список
+ *   ostate  чип списка обращений: done | cancelled | all; без параметра — открытые
  *   resp    «В работе у»: имя ответственного, RESP_NOBODY («-») — заявки, которые никто не взял; без параметра — все
  *   req     открытая заявка
  *   ent     groups (по умолчанию) | people | coordinators
@@ -45,6 +47,8 @@ export function parseEntity(v: string | null): EntityId {
 export function parseBucket(v: string | null): BucketFilter {
   return isBucketFilter(v) ? v : 'all';
 }
+/** Разбор режима списка и чипа обращений живёт рядом с их типами. */
+export { parseOtherFilter, parseView } from '../../entities/others';
 export function parseId(v: string | null): number | null {
   if (!v || !/^\d+$/.test(v)) return null;
   return Number(v);

@@ -72,8 +72,6 @@ export type Role = 'admin' | 'super';
 
 export interface Me {
   role: Role;
-  /** Адрес старого дашборда (для того, что пока живёт только там, например регистрации участников); null — не задан. */
-  legacyUrl: string | null;
 }
 
 // ── общее ───────────────────────────────────────────────────────────────────
@@ -465,7 +463,7 @@ export interface CloseBody {
 export interface OtherItem {
   id: number;
   type: 'join_group' | 'lead_group' | 'question' | 'already_member' | 'already_leader';
-  /** «Готов открыть группу», «Вопрос служителю» и т. д. */
+  /** «Хочет открыть группу», «Вопрос служителю» и т. д. */
   typeLabel: string;
   state: 'open' | 'done' | 'cancelled';
   fio: string;

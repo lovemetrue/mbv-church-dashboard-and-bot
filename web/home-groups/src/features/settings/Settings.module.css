@@ -510,3 +510,46 @@
 .dialogFoot button {
   min-height: var(--tap);
 }
+
+/* ── бот: кому задавать новые вопросы анкеты ─────────────────────────────── */
+
+.radios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--tap);
+  padding: 0 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.radio:has(input:checked) {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.radio input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.source {
+  margin: 14px 0 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+/* Подсказки блока бота: небольшой отступ от поля и от рамки, иначе текст липнет к ним. */
+.hintLine {
+  margin-top: 6px;
+}
+.hintBelow {
+  margin-top: 10px;
+}

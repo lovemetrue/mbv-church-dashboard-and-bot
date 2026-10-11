@@ -8,14 +8,25 @@ import styles from './Team.module.css';
 
 const t = ru.team;
 
-/** Пять плиток сверху. Подпись идёт первой в разметке (список определений), число — под ней. */
+/**
+ * Шесть плиток сверху. Подпись идёт первой в разметке (список определений), число — под ней.
+ * Плитка «Других обращений открыто» ведёт в «Заявки» в режиме «Другие обращения»: остальные плитки — просто числа.
+ */
 export function Tiles({ totals }: { totals: TeamView['totals'] }) {
-  const tiles: { label: string; value: number; tone?: 'warn' | 'ok' }[] = [
+  const nav = useAppNav();
+  // Сервер старой версии мог не прислать поле: показываем ноль, а не «undefined».
+  const otherOpen = totals.otherOpen ?? 0;
+  const tiles: { label: string; value: number; tone?: 'warn' | 'ok'; open?: { aria: string; go: () => void } }[] = [
     { label: t.tileOpen, value: totals.open },
     { label: t.tileUnassigned, value: totals.unassigned, tone: totals.unassigned > 0 ? 'warn' : undefined },
     { label: t.tileCallback, value: totals.callback },
     { label: t.tileOver7, value: totals.over7, tone: totals.over7 > 0 ? 'warn' : undefined },
     { label: t.tileApprovedWeek, value: totals.approvedWeek, tone: 'ok' },
+    {
+      label: ru.requests.others.teamTile,
+      value: otherOpen,
+      open: { aria: ru.requests.others.teamTileAria(otherOpen), go: nav.goOthers },
+    },
   ];
   return (
     <section aria-label={t.tilesLabel}>
@@ -23,7 +34,15 @@ export function Tiles({ totals }: { totals: TeamView['totals'] }) {
         {tiles.map((tile) => (
           <div key={tile.label} className={styles.tile}>
             <dt className={styles.tileLabel}>{tile.label}</dt>
-            <dd className={`${styles.tileNum} ${tile.tone ? styles[tile.tone] : ''} num`}>{tile.value}</dd>
+            <dd className={`${styles.tileNum} ${tile.tone ? styles[tile.tone] : ''} num`}>
+              {tile.open ? (
+                <button type="button" className={styles.tileLink} aria-label={tile.open.aria} onClick={tile.open.go}>
+                  {tile.value}
+                </button>
+              ) : (
+                tile.value
+              )}
+            </dd>
           </div>
         ))}
       </dl>

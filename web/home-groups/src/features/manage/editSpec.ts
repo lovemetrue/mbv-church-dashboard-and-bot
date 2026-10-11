@@ -15,7 +15,7 @@ export interface EditField {
   /** Пояснение под полем. */
   hint?: string;
   placeholder?: string;
-  inputMode?: 'numeric';
+  inputMode?: 'numeric' | 'tel';
   /** На всю ширину окна, а не в половину. */
   wide?: boolean;
 }
@@ -66,6 +66,10 @@ function feedbackNow(days: number | null): string {
  * Форма правки группы. Сервер не отдаёт интерфейсу «время» и «дату обратной связи» в чистом виде
  * (только собранное «Вт, вечер» и «дней назад»), поэтому эти поля пустые и отправляются, только если
  * их вписали; под ними подсказка с текущим значением.
+ *
+ * Телефоны ведущего и соведущего и адрес сервер только принимает: назад их не отдаёт (в карточке нельзя
+ * показывать то, что не нужно всем координаторам). Поэтому три поля «Новый …» тоже пустые и пишущие:
+ * непустое заменяет значение, пустое не отправляется вовсе (пустая строка стёрла бы его в базе).
  */
 export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
   const t = m.group.fields;
@@ -88,6 +92,9 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
       { name: 'composition', label: t.composition, kind: 'select', options: withCurrent(meta.compositions, g.composition) },
       { name: 'coordinator', label: t.coordinator, kind: 'select', options: withCurrent(meta.coordinators, g.coordinator) },
       { name: 'coLeader', label: t.coLeader, kind: 'text' },
+      { name: 'phone', label: t.newPhone, kind: 'text', inputMode: 'tel', hint: m.group.writeOnlyHint },
+      { name: 'coLeaderPhone', label: t.newCoLeaderPhone, kind: 'text', inputMode: 'tel', hint: m.group.writeOnlyHint },
+      { name: 'address', label: t.newAddress, kind: 'text', wide: true, hint: m.group.writeOnlyHint },
       { name: 'feedbackAt', label: t.feedbackAt, kind: 'date', hint: `${feedbackNow(g.verifiedDaysAgo)} ${keep}` },
       { name: 'comment', label: t.comment, kind: 'textarea', wide: true },
       { name: 'doNotRefer', label: m.group.doNotRefer, kind: 'checkbox', wide: true, hint: m.group.doNotReferHint },
@@ -103,11 +110,13 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
       composition: g.composition ?? '',
       coordinator: g.coordinator ?? '',
       coLeader: g.coLeader ?? '',
+      phone: '',
+      coLeaderPhone: '',
+      address: '',
       feedbackAt: '',
       comment: g.comment ?? '',
       doNotRefer: g.doNotRefer ? '1' : '',
     },
-    note: m.group.closedNote,
   };
 }
 

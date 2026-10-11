@@ -70,8 +70,6 @@ export interface HomeGroupsDeps {
   logo?: () => Promise<Buffer | null>;
   /** Справочники для форм создания. */
   formMeta: () => Promise<FormMeta>;
-  /** Адрес старого дашборда (источник — `DASHBOARD_URL`): для того, что пока живёт только там. */
-  legacyUrl?: string | null;
   /** Подбор для новых заявок: запуск и переключатель автоматического режима. */
   matching: {
     run(actor: string): Promise<MatchingRunOk>;
@@ -576,7 +574,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     if (path === '/api/v1/me') {
       const role = await deps.auth.roleOf(sid);
       if (!role) { sendJson(res, 401, { error: 'unauthorized' }); return; }
-      const me: Me = { role, legacyUrl: deps.legacyUrl ?? null };
+      const me: Me = { role };
       sendJson(res, 200, me);
       return;
     }

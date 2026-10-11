@@ -3,6 +3,7 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { ApiError, apiPost } from '../../shared/api/client';
 import { queryKeys, useMe } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
+import { CAMPAIGN_KEY } from '../campaign/useCampaign';
 import { FORM_META_KEY } from '../create/useFormMeta';
 
 /**
@@ -15,12 +16,22 @@ export function useCanDelete(): boolean {
 
 /**
  * Перечитывает всё, что правка или удаление могли задеть: заявки и «Сегодня» (имя координатора и
- * закреплённые группы живут и там), группы, людей, координаторов и справочники форм (в них имена
+ * закреплённые группы живут и там), группы, людей, координаторов, «Команду» и «Кампанию» (их числа считаются
+ * из заявок и регистраций, а удаление регистрации стирает и то и другое) и справочники форм (в них имена
  * координаторов). Справочники форм сейчас никто не показывает, поэтому они лишь помечаются
  * устаревшими и читаются заново при следующем открытии формы.
  */
 export function refreshAfterManage(client: QueryClient): Promise<unknown> {
-  const keys = [queryKeys.requests, queryKeys.today, queryKeys.groups, queryKeys.people, queryKeys.coordinators, FORM_META_KEY];
+  const keys = [
+    queryKeys.requests,
+    queryKeys.today,
+    queryKeys.groups,
+    queryKeys.people,
+    queryKeys.coordinators,
+    queryKeys.team,
+    CAMPAIGN_KEY,
+    FORM_META_KEY,
+  ];
   return Promise.all(keys.map((queryKey) => client.invalidateQueries({ queryKey })));
 }
 

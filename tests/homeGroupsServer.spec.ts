@@ -42,7 +42,7 @@ const nextIp = () => `10.2.0.${++ipCounter}`;
 interface ActionCall { name: string; id: number; body: unknown; actor: string }
 interface Started {
   base: string; viewsCalls: () => number; close: () => void; setViews: (f: () => Promise<ReturnType<typeof sampleViews>>) => void;
-  actionCalls: ActionCall[]; invalidations: () => number; setOutcome: (o: ActionOutcome) => void;
+  actionCalls: ActionCall[]; auditCalls: { actor: string; action: string; after: unknown }[]; invalidations: () => number; setOutcome: (o: ActionOutcome) => void;
   matchingCalls: { name: string; actor: string; enabled?: boolean }[];
   setSettingsOutcome: (o: ActionOutcome) => void;
   createCalls: { what: string; body: unknown; actor: string }[]; setCreate: (o: { ok: true; id: number } | { ok: false; error: string; message: string }) => void;
@@ -56,6 +56,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
   let outcome: ActionOutcome = { ok: true };
   let settingsOutcome: ActionOutcome = { ok: true };
   const actionCalls: ActionCall[] = [];
+  const auditCalls: { actor: string; action: string; after: unknown }[] = [];
   const matchingCalls: { name: string; actor: string; enabled?: boolean }[] = [];
   const settingsCalls: { name: string; actor?: string; body?: unknown }[] = [];
   const staffCalls: { name: string; args: unknown[] }[] = [];
@@ -70,7 +71,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
   };
   let views: () => Promise<ReturnType<typeof sampleViews>> = async () => sampleViews();
   const server = createHomeGroupsServer({
-    actions: { approve: record('approve'), reject: record('reject'), setNeedCall: record('need-call'), setParams: record('params'), rematch: async (id: number, actor: string) => { actionCalls.push({ name: 'rematch', id, body: undefined, actor }); return outcome; }, edit: record('edit'), assign: record('assign'), call: record('call') },
+    actions: { approve: record('approve'), reject: record('reject'), setNeedCall: record('need-call'), setParams: record('params'), rematch: async (id: number, actor: string) => { actionCalls.push({ name: 'rematch', id, body: undefined, actor }); return outcome; }, edit: record('edit'), assign: record('assign'), call: record('call'), bulk: async (body: unknown, actor: string) => { actionCalls.push({ name: 'bulk', id: 0, body, actor }); return { ok: true as const, done: 2, skipped: 1 }; } },
     matching: {
       run: async (actor) => { matchingCalls.push({ name: 'run', actor }); return { ok: true, created: 2, replaced: 1, unchanged: 3 }; },
       rerunAll: async (actor) => { matchingCalls.push({ name: 'rerun-all', actor }); return { ok: true, created: 5, replaced: 0, unchanged: 0 }; },
@@ -88,6 +89,16 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
       qr: async (id: number) => (id === 5 ? Buffer.from('\x89PNG-фейк') : null),
       card: async (id: number) => (id === 5 ? { registrationNo: 4242, fullName: 'Иван Петров', phone: '+79110001122', church: null, mdgStatus: null } : null),
     } as never,
+    manager: {
+      updateGroup: async (id: number, body: unknown, actor: string) => { actionCalls.push({ name: 'group.update', id, body, actor }); return outcome; },
+      deleteGroup: async (id: number, actor: string) => { actionCalls.push({ name: 'group.delete', id, body: undefined, actor }); return outcome; },
+      createCoordinator: async (body: unknown, actor: string) => { createCalls.push({ what: 'coordinator', body, actor }); return createOutcome; },
+      updateCoordinator: async (id: number, body: unknown, actor: string) => { actionCalls.push({ name: 'coordinator.update', id, body, actor }); return outcome; },
+      deleteCoordinator: async (id: number, actor: string) => { actionCalls.push({ name: 'coordinator.delete', id, body: undefined, actor }); return outcome; },
+      deleteRequest: async (id: number, actor: string) => { actionCalls.push({ name: 'request.delete', id, body: undefined, actor }); return outcome; },
+    } as never,
+    exporter: { requests: async () => '\uFEFF№;ФИО\r\n1;Мария\r\n', people: async () => '\uFEFFномер\r\n' },
+    audit: async (actor: string, action: string, after: unknown) => { auditCalls.push({ actor, action, after }); },
     logo: async () => Buffer.from('\x89PNG-логотип'),
     formMeta: async () => ({ districts: ['Приморский'], groupFormats: [], groupStatuses: [], compositions: [], requestStatuses: [], requestTypes: [], ageGroups: [], coordinators: [], churches: [], mdgStatuses: [] }),
     legacyUrl: 'http://old.example:8090',
@@ -129,7 +140,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
     viewsCalls: () => calls,
     close: () => { server.close(); },
     setViews: (f) => { views = f; },
-    actionCalls, matchingCalls, settingsCalls, reported, staffCalls, createCalls, setCreate: (o) => { createOutcome = o; }, setTokenInfo: (v) => { tokenInfo = v; }, setComplete: (v) => { complete = v; }, setSettingsOutcome: (o: ActionOutcome) => { settingsOutcome = o; }, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
+    actionCalls, auditCalls, matchingCalls, settingsCalls, reported, staffCalls, createCalls, setCreate: (o) => { createOutcome = o; }, setTokenInfo: (v) => { tokenInfo = v; }, setComplete: (v) => { complete = v; }, setSettingsOutcome: (o: ActionOutcome) => { settingsOutcome = o; }, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
   };
 }
 
@@ -177,7 +188,7 @@ function raw(base: string, path: string, method = 'GET', headers: Record<string,
   });
 }
 
-const API_ROUTES = ['me', 'today', 'requests', 'groups', 'people', 'coordinators'];
+const API_ROUTES = ['me', 'team', 'today', 'requests', 'groups', 'people', 'coordinators'];
 
 describe('вход и выход', () => {
   test('страница входа отдаётся без сессии, по-русски, без подсказки логина', async () => {
@@ -665,7 +676,7 @@ describe('действия координатора над заявкой', () =
   test('чужие адреса действий — 404, а GET по адресу действия не выполняет его', async () => {
     const cookie = await signIn();
     const before = app.actionCalls.length;
-    for (const path of ['abc/approve', '1/delete', '1/approve/extra', '1']) {
+    for (const path of ['abc/approve', '1/remove', '1/approve/extra', '1']) {
       expect((await act(cookie, path, { groupId: 1 })).status, path).toBe(404);
     }
     const g = await fetch(`${app.base}/api/v1/requests/1/approve`, { headers: { cookie } });
@@ -1001,7 +1012,7 @@ describe('создание записей и справочники форм', (
   });
 
   test('чужие адреса создания — 404', async () => {
-    expect((await create(await signIn(), 'coordinators', { fields: {} })).status).toBe(404);
+    expect((await create(await signIn(), 'staff', { fields: {} })).status).toBe(404);
   });
 
   test('регистрация участника: тело и автор передаются, ответ несёт номер регистрации, снимок сбрасывается', async () => {
@@ -1100,6 +1111,77 @@ describe('рабочие действия координатора: правка
     expect(r.status).toBe(200);
     expect(app.actionCalls.at(-1)).toEqual({ name: action, id: 12, body, actor: REGULAR.login });
     expect(app.invalidations()).toBe(inv + 1);
+  });
+});
+
+describe('руководитель: массовые действия, правка и удаление справочника, выгрузка', () => {
+  const post = (cookie: string | null, path: string, body: unknown) => fetch(`${app.base}/api/v1/${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body),
+  });
+  const get = (cookie: string | null, path: string) => fetch(`${app.base}/api/v1/${path}`, { headers: cookie ? { cookie } : {} });
+
+  test('массовое действие: без сессии 401, с сессией — тело и автор передаются, ответ с числами, снимок сбрасывается', async () => {
+    expect((await post(null, 'requests/bulk', {})).status).toBe(401);
+    const inv = app.invalidations();
+    const body = { ids: [1, 2, 3], action: 'assign', responsible: 'Анна' };
+    const r = await post(await signIn(REGULAR), 'requests/bulk', body);
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, done: 2, skipped: 1 });
+    expect(app.actionCalls.at(-1)).toEqual({ name: 'bulk', id: 0, body, actor: REGULAR.login });
+    expect(app.invalidations()).toBe(inv + 1);
+  });
+
+  test.each([
+    ['groups/5/update', { fields: { people: '8' } }, 'group.update'],
+    ['coordinators/5/update', { fields: { role: 'x' } }, 'coordinator.update'],
+  ])('%s доступно и обычному входу', async (path, body, name) => {
+    const r = await post(await signIn(REGULAR), path, body);
+    expect(r.status).toBe(200);
+    expect(app.actionCalls.at(-1)).toEqual({ name, id: 5, body, actor: REGULAR.login });
+  });
+
+  test.each([
+    ['groups/5/delete', 'group.delete'], ['coordinators/5/delete', 'coordinator.delete'], ['requests/5/delete', 'request.delete'],
+  ])('%s: обычному входу 403 и ничего не вызвано, полному — выполняется', async (path, name) => {
+    const before = app.actionCalls.length;
+    const denied = await post(await signIn(REGULAR), path, {});
+    expect(denied.status).toBe(403);
+    expect(app.actionCalls.length).toBe(before);
+    const ok = await post(await signIn(SUPER), path, {});
+    expect(ok.status).toBe(200);
+    expect(app.actionCalls.at(-1)).toMatchObject({ name, id: 5, actor: SUPER.login });
+  });
+
+  test('новый координатор заводится через общий путь создания', async () => {
+    const r = await post(await signIn(REGULAR), 'coordinators/create', { fields: { name: 'Анна', role: 'Координатор' } });
+    expect(r.status).toBe(200);
+    expect(app.createCalls.at(-1)).toMatchObject({ what: 'coordinator', actor: REGULAR.login });
+  });
+
+  test('выгрузка CSV: без сессии 401, обычному входу 403, полному — файл и запись в журнал без содержимого', async () => {
+    expect((await get(null, 'export/requests.csv')).status).toBe(401);
+    expect((await get(await signIn(REGULAR), 'export/requests.csv')).status).toBe(403);
+    const before = app.auditCalls.length;
+    const r = await get(await signIn(SUPER), 'export/requests.csv');
+    expect(r.status).toBe(200);
+    expect(r.headers.get('content-type')).toMatch(/text\/csv/);
+    expect(r.headers.get('content-disposition')).toMatch(/attachment; filename="requests-\d{4}-\d{2}-\d{2}\.csv"/);
+    expect(r.headers.get('cache-control')).toBe('no-store');
+    expect(await r.text()).toContain('Мария');
+    expect(app.auditCalls.length).toBe(before + 1);
+    expect(app.auditCalls.at(-1)).toEqual({ actor: SUPER.login, action: 'export.csv', after: { what: 'requests' } });
+  });
+
+  test('выгрузка людей — те же правила', async () => {
+    expect((await get(await signIn(REGULAR), 'export/people.csv')).status).toBe(403);
+    expect((await get(await signIn(SUPER), 'export/people.csv')).status).toBe(200);
+  });
+
+  test('сводка команды отдаётся после входа', async () => {
+    expect((await get(null, 'team')).status).toBe(401);
+    const r = await get(await signIn(REGULAR), 'team');
+    expect(r.status).toBe(200);
+    expect(await r.json()).toHaveProperty('totals');
   });
 });
 

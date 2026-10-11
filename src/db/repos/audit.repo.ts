@@ -22,6 +22,8 @@ export interface AuditFullRow {
   note: string | null;
 }
 
+export interface ActivityRow { actor: string; action: string; n: number }
+
 /** Журнал действий (чтение). Пишут в него репозитории, которые меняют данные, в той же транзакции. */
 export class AuditRepo {
   constructor(private readonly db: Pool) {}
@@ -41,6 +43,22 @@ export class AuditRepo {
       `SELECT id::int AS id, at, actor, service, action, entity_type, entity_id::int AS entity_id, before, after, note
          FROM audit_log ORDER BY at DESC, id DESC LIMIT $1`,
       [limit],
+    );
+    return rows;
+  }
+
+  /**
+   * Сколько действий каждого человека за последние дни: для сводки руководителя. Считаем только
+   * действия над заявками, которые координатор делает руками; автоматический подбор не в счёте.
+   */
+  async activitySince(days: number): Promise<ActivityRow[]> {
+    const { rows } = await this.db.query<ActivityRow>(
+      `SELECT actor, action, count(*)::int AS n
+         FROM audit_log
+        WHERE service = 'home-groups' AND entity_type = 'request' AND at >= now() - ($1::int * interval '1 day')
+          AND action IN ('request.call', 'request.approve', 'request.reject', 'request.edit', 'request.assign')
+        GROUP BY actor, action`,
+      [days],
     );
     return rows;
   }

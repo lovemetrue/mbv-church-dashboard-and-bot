@@ -1,5 +1,5 @@
 import type { DashboardGroup } from '../../db/repos/groups.repo.js';
-import type { AuditRow } from '../../db/repos/audit.repo.js';
+import type { ActivityRow, AuditRow } from '../../db/repos/audit.repo.js';
 import type { DashboardRequest } from '../../db/repos/requests.repo.js';
 import type { RegisteredParticipant } from '../../db/repos/users.repo.js';
 import type { CoordinatorRow } from '../../db/repos/coordinators.repo.js';
@@ -8,11 +8,12 @@ import { inputSignature } from '../plan/signature.js';
 import { formatPhone } from '../../core/phone.js';
 import type {
   Bucket, Candidate, Counters, CoordinatorItem, CoordinatorsView, GroupBrief, GroupItem, GroupsView,
-  HealthItem, LogEntry, MatchingStatus, NoPlan, OriginalField, ParamInfo, PeopleView, PersonItem, Proposal, RequestItem, RequestsView, TodayView,
+  HealthItem, LogEntry, MatchingStatus, NoPlan, OriginalField, ParamInfo, PeopleView, PersonItem, Proposal, RequestItem, RequestsView, TeamView, TodayView,
 } from '../contracts.js';
 import type {
   Day, PlanEngineApi, PlanEntry, PlanEntryProposal, PlanGroup, PlanOutput, PlanRequest, ScoredGroup, Slot,
 } from '../plan/types.js';
+import { buildTeam } from './team.js';
 import { daysSince, localIsoDate, validIsoDate } from './dates.js';
 
 /** Уже загруженные строки: функция ниже ничего не читает из базы и не знает про сеть. */
@@ -25,6 +26,8 @@ export interface ViewsInput {
   rejectedGroups?: ReadonlyMap<number, readonly number[]>;
   /** Действия над заявками из журнала: показываются в ленте карточки. */
   audit?: readonly AuditRow[];
+  /** Действия за неделю по людям (для сводки руководителя). */
+  activity?: readonly ActivityRow[];
   /**
    * Накопленные предложения (заявка → группа и кто предложил). Они закрепляют выбор: движок
    * сохраняет группу, пока она остаётся доступной, и подбирает новые заявки вокруг неё.
@@ -45,6 +48,7 @@ export interface ViewsOptions {
 
 /** Всё, что отдают ручки API, посчитанное за один проход по одному снимку данных. */
 export interface Views {
+  team: TeamView;
   today: TodayView;
   requests: RequestsView;
   groups: GroupsView;
@@ -541,6 +545,7 @@ export function buildViewsWithPlan(
   ).length;
 
   const views: Views = {
+    team: buildTeam(requestItems, [...(input.activity ?? [])], generatedAt),
     today: {
       generatedAt,
       counters,

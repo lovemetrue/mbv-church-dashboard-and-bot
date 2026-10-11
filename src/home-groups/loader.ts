@@ -14,7 +14,7 @@ export interface LoaderRepos {
   coordinators: Pick<CoordinatorsRepo, 'listActive'>;
   placement: Pick<PlacementRepo, 'rejectedGroups' | 'activeProposals' | 'placedSinceFeedback'>;
   settings: Pick<SettingsRepo, 'get'>;
-  audit: Pick<AuditRepo, 'requestEntries'>;
+  audit: Pick<AuditRepo, 'requestEntries' | 'activitySince'>;
 }
 
 /**
@@ -23,20 +23,21 @@ export interface LoaderRepos {
  */
 export function createLoader(repos: LoaderRepos, opts: { timeZone?: string } = {}): () => Promise<ViewsInput> {
   return async () => {
-    const [groups, requests, participants, coordinators, rejectedGroups, audit, activeProposals, placedNew, auto, lastRun] = await Promise.all([
+    const [groups, requests, participants, coordinators, rejectedGroups, audit, activity, activeProposals, placedNew, auto, lastRun] = await Promise.all([
       repos.groups.forDashboard(),
       repos.requests.forDashboard(),
       repos.users.listRegistered(),
       repos.coordinators.listActive(),
       repos.placement.rejectedGroups(),
       repos.audit.requestEntries(),
+      repos.audit.activitySince(7),
       repos.placement.activeProposals(),
       repos.placement.placedSinceFeedback(opts.timeZone),
       repos.settings.get<boolean>('matching.auto'),
       repos.settings.get<NonNullable<ViewsInput['matching']>['lastRun']>('matching.last_run'),
     ]);
     return {
-      groups, requests, participants, coordinators, rejectedGroups, audit, activeProposals, placedNew,
+      groups, requests, participants, coordinators, rejectedGroups, audit, activity, activeProposals, placedNew,
       matching: { auto: auto === true, lastRun: lastRun ?? null },
     };
   };

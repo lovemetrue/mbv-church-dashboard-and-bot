@@ -18,6 +18,9 @@ import { createSettings } from '../platform/settings/service.js';
 import { realHealthSources, collectHealth } from '../platform/settings/health.js';
 import { createFormMeta, createRecordCreator } from './create.js';
 import { createRegistrar } from './registration.js';
+import { createManager } from './manage.js';
+import { requestsToCsv } from './export.js';
+import { usersToCsv } from '../core/csv.js';
 import type { RequestWithUser } from '../db/repos/requests.repo.js';
 import { createLoader } from './loader.js';
 import { createMatching } from './matching/run.js';
@@ -82,8 +85,18 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   const notify = opts.notify ?? (async () => undefined);
   const creator = createRecordCreator({ requests: requestsRepo, groups: new GroupsRepo(db), audit: new AuditRepo(db), notify });
   const registrar = createRegistrar({ users: new UsersRepo(db), requests: requestsRepo, audit: new AuditRepo(db), notify });
+  const manager = createManager({
+    groups: new GroupsRepo(db), coordinators: new CoordinatorsRepo(db), requests: requestsRepo, audit: new AuditRepo(db),
+  });
+  const usersRepo = new UsersRepo(db);
+  const exporter = {
+    requests: async () => requestsToCsv((await views()).requests.items),
+    people: async () => usersToCsv(await usersRepo.exportRows()),
+  };
+  const auditRepo = new AuditRepo(db);
+  const audit = (actor: string, action: string, after: unknown) => auditRepo.write(actor, action, 'export', null, after);
   const formMeta = createFormMeta(new CoordinatorsRepo(db));
-  return { views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, formMeta };
+  return { views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, formMeta };
 }
 
 export function composeViews(db: Pool, engine: PlanEngineApi, opts: ComposeOptions): ViewsSource {

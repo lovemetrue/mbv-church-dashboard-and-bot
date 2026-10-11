@@ -65,6 +65,41 @@ describe('разбор тела запроса', () => {
   });
 });
 
+describe('массовые действия над заявками', () => {
+  const mk = async (status = 'Новая') => (await db.query<{ id: number }>(
+    `INSERT INTO requests (type, status, fio, origin) VALUES ('join_group', $1, 'М', 'ui') RETURNING id`, [status])).rows[0]!.id;
+  const actions = () => createActions(new PlacementRepo(db), { defaultCapacity: 10 });
+
+  test('передача нескольких заявок: открытые передаются, закрытые и чужие номера пропускаются', async () => {
+    const [a, b, closed] = [await mk(), await mk(), await mk('Исполнена')];
+    const out = await actions().bulk({ ids: [a, b, closed, 99999], action: 'assign', responsible: 'Анна' }, 'boss');
+    expect(out).toEqual({ ok: true, done: 2, skipped: 2 });
+    const rows = (await db.query('SELECT id, responsible FROM requests ORDER BY id')).rows;
+    expect(rows.map((r) => r.responsible)).toEqual(['Анна', 'Анна', null]);
+    expect((await db.query(`SELECT count(*)::int AS n FROM audit_log WHERE action='request.assign'`)).rows[0].n).toBe(2);
+  });
+
+  test('«нужен звонок» ставится сразу нескольким', async () => {
+    const [a, b] = [await mk(), await mk()];
+    expect(await actions().bulk({ ids: [a, b], action: 'need-call', value: true }, 'boss')).toEqual({ ok: true, done: 2, skipped: 0 });
+    expect((await db.query('SELECT callback FROM requests')).rows.every((r) => r.callback)).toBe(true);
+  });
+
+  test('повторяющиеся номера считаются один раз', async () => {
+    const a = await mk();
+    expect(await actions().bulk({ ids: [a, a, a], action: 'assign', responsible: 'Анна' }, 'boss')).toEqual({ ok: true, done: 1, skipped: 0 });
+  });
+
+  test.each([
+    [null], [{}], [{ ids: [] , action: 'assign'}], [{ ids: [1], action: 'удалить' }], [{ ids: ['1'], action: 'assign' }],
+    [{ ids: [1], action: 'need-call' }], [{ ids: [1], action: 'assign', responsible: 5 }],
+    [{ ids: Array.from({ length: 101 }, (_, i) => i + 1), action: 'assign', responsible: 'Анна' }],
+  ])('неверное тело %j отклоняется до обращения к базе', async (body) => {
+    expect(await actions().bulk(body, 'boss')).toMatchObject({ ok: false, error: 'bad_request' });
+    expect((await db.query('SELECT count(*)::int AS n FROM audit_log')).rows[0].n).toBe(0);
+  });
+});
+
 describe('утверждение через HTTP на живой базе', () => {
   async function start(engine = createFakeEngine().engine) {
     const store = new Map<string, string>();
@@ -84,6 +119,10 @@ describe('утверждение через HTTP на живой базе', () =
       matching: composed.matching,
       settings: composed.settings,
       creator: composed.creator,
+      registrar: composed.registrar,
+      manager: composed.manager,
+      exporter: composed.exporter,
+      audit: composed.audit,
       formMeta: composed.formMeta,
       staff: composed.staff,
       reportError: (source, err, context) => { void composed.errors.record(source, err instanceof Error ? err.message : String(err), context); },

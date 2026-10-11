@@ -79,7 +79,7 @@ async function main(): Promise<void> {
     totalDays: Number(env('CAMPAIGN_DAYS', '40')),
     timezone: env('TIMEZONE', 'Europe/Moscow'),
   };
-  const { views, matching, placement, settings, errors, staff, creator, registrar, formMeta } = composeService(db, engine, {
+  const { views, matching, placement, settings, errors, staff, creator, registrar, manager, exporter, audit, formMeta } = composeService(db, engine, {
     notify: notifierFromEnv(db, process.env, schedule, 'домашние группы'),
     defaultCapacity, ttlMs: 10_000, timeZone: env('TIMEZONE', 'Europe/Moscow'),
     store,
@@ -99,6 +99,9 @@ async function main(): Promise<void> {
     staff,
     creator,
     registrar,
+    manager,
+    exporter,
+    audit,
     logo: async () => readFile(join(env('HG_ASSETS_DIR', '/app/dashboard/assets'), 'church-logo.png')).catch(() => null),
     formMeta,
     legacyUrl: legacyOrigin(),

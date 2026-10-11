@@ -225,6 +225,12 @@ export class GroupsRepo {
     return (await this.syncCampaignRegistered(row.id)) ?? row;
   }
 
+  /** Одна живая (не убранная) группа по номеру. */
+  async findActive(id: number): Promise<GroupRow | null> {
+    const { rows } = await this.db.query<GroupRow>('SELECT * FROM groups WHERE id = $1 AND archived_at IS NULL', [id]);
+    return rows[0] ?? null;
+  }
+
   async listActive(limit = 50): Promise<GroupRow[]> {
     const { rows } = await this.db.query<GroupRow>(
       `SELECT * FROM groups WHERE archived_at IS NULL ORDER BY created_at DESC, id DESC LIMIT $1`,

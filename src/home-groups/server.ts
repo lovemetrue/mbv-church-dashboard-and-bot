@@ -9,6 +9,7 @@ import { ACTION_STATUS, type RequestActions } from './actions.js';
 import type { FormMeta } from './contracts.js';
 import type { RecordCreator } from './create.js';
 import type { Registrar } from './registration.js';
+import type { Manager } from './manage.js';
 import { registrationCardPage } from '../dashboard/registrationCard.js';
 import type { Settings } from '../platform/settings/service.js';
 import type { ActionError, ActionOk, MatchingRunOk, Me, Role } from './contracts.js';
@@ -52,6 +53,12 @@ export interface HomeGroupsDeps {
   actions: RequestActions;
   /** Создание заявки и группы из «+ Создать». */
   creator: RecordCreator;
+  /** Правка и удаление групп, координаторов, заявок. */
+  manager: Manager;
+  /** Выгрузки в CSV (с телефонами): только полный вход. */
+  exporter: { requests(): Promise<string>; people(): Promise<string> };
+  /** Запись в журнал вне заявки (выгрузка): без содержимого. */
+  audit: (actor: string, action: string, after: unknown) => Promise<void>;
   /** Регистрация участника служителем, QR и данные печатной карточки. */
   registrar: Registrar;
   /** Эмблема церкви для печатной карточки; нет файла — null (карточка без эмблемы). */
@@ -101,14 +108,18 @@ const CONTENT_TYPES: Record<string, string> = {
 class BodyTooLarge extends Error {}
 
 const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode)$/;
-const CREATE_PATH = /^\/api\/v1\/(requests|groups|people)\/create$/;
+const CREATE_PATH = /^\/api\/v1\/(requests|groups|people|coordinators)\/create$/;
+/** `POST /api/v1/groups/5/update`: правка и удаление записей справочника. */
+const MANAGE_PATH = /^\/api\/v1\/(groups|coordinators)\/(\d{1,15})\/(update|delete)$/;
+const BULK_PATH = '/api/v1/requests/bulk';
+const EXPORT_PATH = /^\/api\/v1\/export\/(requests|people)\.csv$/;
 /** `GET /api/v1/people/12/card`: печатная карточка регистрации и её QR. */
 const PERSON_PATH = /^\/api\/v1\/people\/(\d{1,15})\/(qr|card)$/;
 const LOGO_PATH = '/api/v1/assets/church-logo.png';
 const MATCHING_PATH = /^\/api\/v1\/matching\/(run|auto|rerun-all)$/;
 
 /** `POST /api/v1/requests/12/approve`: номер заявки — цифры, длиннее пятнадцати не бывает (Number безопасен). */
-const ACTION_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/(approve|reject|need-call|params|rematch|edit|assign|call)$/;
+const ACTION_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/(approve|reject|need-call|params|rematch|edit|assign|call|delete)$/;
 
 /** Адрес клиента: за nginx настоящий адрес приходит заголовком (как в старом дашборде). */
 function clientIp(req: IncomingMessage): string {
@@ -356,6 +367,10 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     const call = await readAuthedJson(req, res, sid);
     if (!call) return;
     const { actor, body } = call;
+    if (action === 'delete' && call.role !== 'super') {
+      sendJson(res, 403, { error: 'forbidden', message: 'Удалять может только полный вход.' } satisfies ActionError);
+      return;
+    }
     const outcome = action === 'approve' ? await deps.actions.approve(requestId, body, actor)
       : action === 'reject' ? await deps.actions.reject(requestId, body, actor)
       : action === 'params' ? await deps.actions.setParams(requestId, body, actor)
@@ -363,6 +378,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       : action === 'edit' ? await deps.actions.edit(requestId, body, actor)
       : action === 'assign' ? await deps.actions.assign(requestId, body, actor)
       : action === 'call' ? await deps.actions.call(requestId, body, actor)
+      : action === 'delete' ? await deps.manager.deleteRequest(requestId, actor)
       : await deps.actions.setNeedCall(requestId, body, actor);
 
     if (!outcome.ok) {
@@ -415,6 +431,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     if (!call) return;
     const outcome = what === 'requests' ? await deps.creator.request(call.body, call.actor)
       : what === 'people' ? await deps.registrar.register(call.body, call.actor)
+      : what === 'coordinators' ? await deps.manager.createCoordinator(call.body, call.actor)
       : await deps.creator.group(call.body, call.actor);
     if (!outcome.ok) {
       sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
@@ -423,6 +440,61 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     deps.invalidateViews();
     logger.info({ actor: call.actor, what, id: outcome.id }, what === 'people' ? 'домашние группы: участник зарегистрирован' : 'домашние группы: запись создана');
     sendJson(res, 200, outcome);
+  }
+
+  /** Правка и удаление записи справочника. Удалять может только полный вход (как в старом дашборде). */
+  async function handleManage(req: IncomingMessage, res: ServerResponse, what: string, id: number, action: string, sid: string | undefined): Promise<void> {
+    const call = await readAuthedJson(req, res, sid);
+    if (!call) return;
+    if (action === 'delete' && call.role !== 'super') {
+      sendJson(res, 403, { error: 'forbidden', message: 'Удалять может только полный вход.' } satisfies ActionError);
+      return;
+    }
+    const outcome = what === 'groups'
+      ? (action === 'update' ? await deps.manager.updateGroup(id, call.body, call.actor) : await deps.manager.deleteGroup(id, call.actor))
+      : (action === 'update' ? await deps.manager.updateCoordinator(id, call.body, call.actor) : await deps.manager.deleteCoordinator(id, call.actor));
+    if (!outcome.ok) {
+      sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
+      return;
+    }
+    deps.invalidateViews();
+    logger.info({ actor: call.actor, what, id, action }, 'домашние группы: изменение справочника');
+    sendJson(res, 200, { ok: true } satisfies ActionOk);
+  }
+
+  /** Сразу несколько заявок: передать координатору или поставить отметку «нужен звонок». */
+  async function handleBulk(req: IncomingMessage, res: ServerResponse, sid: string | undefined): Promise<void> {
+    const call = await readAuthedJson(req, res, sid);
+    if (!call) return;
+    const outcome = await deps.actions.bulk(call.body, call.actor);
+    if (!outcome.ok) {
+      sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
+      return;
+    }
+    deps.invalidateViews();
+    logger.info({ actor: call.actor, done: outcome.done, skipped: outcome.skipped }, 'домашние группы: массовое действие над заявками');
+    sendJson(res, 200, outcome);
+  }
+
+  /** Выгрузка с телефонами: только полный вход, и каждая выгрузка остаётся в журнале. */
+  async function handleExport(res: ServerResponse, what: string, sid: string | undefined): Promise<void> {
+    const role = await deps.auth.roleOf(sid);
+    if (role !== 'super') {
+      sendJson(res, 403, { error: 'forbidden', message: 'Выгрузка доступна только полному входу.' } satisfies ActionError);
+      return;
+    }
+    const identity = await deps.auth.identityOf?.(sid);
+    const actor = identity?.login ?? deps.actorName(role);
+    const csv = what === 'requests' ? await deps.exporter.requests() : await deps.exporter.people();
+    await deps.audit(actor, 'export.csv', { what });
+    logger.info({ actor, what }, 'домашние группы: выгрузка в CSV');
+    res.writeHead(200, {
+      ...BASE_HEADERS,
+      'content-type': 'text/csv; charset=utf-8',
+      'content-disposition': `attachment; filename="${what}-${new Date().toISOString().slice(0, 10)}.csv"`,
+      'cache-control': 'no-store',
+    });
+    res.end(csv);
   }
 
   /** QR и печатная карточка регистрации: за сессией (проверена выше), с именем и телефоном — кэшировать нельзя. */
@@ -476,6 +548,9 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     if (settingsPost) { await handleSettingsPost(req, res, settingsPost[1]!, sid); return; }
     const create = req.method === 'POST' ? CREATE_PATH.exec(path) : null;
     if (create) { await handleCreate(req, res, create[1]!, sid); return; }
+    if (req.method === 'POST' && path === BULK_PATH) { await handleBulk(req, res, sid); return; }
+    const manage = req.method === 'POST' ? MANAGE_PATH.exec(path) : null;
+    if (manage) { await handleManage(req, res, manage[1]!, Number(manage[2]), manage[3]!, sid); return; }
     const match = req.method === 'POST' ? MATCHING_PATH.exec(path) : null;
     if (match) { await handleMatching(req, res, match[1]!, sid); return; }
     // Всё остальное — только чтение. Любой другой не-GET отвечает 404, как изменяющие маршруты
@@ -510,6 +585,8 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       return;
     }
 
+    const exp = EXPORT_PATH.exec(path);
+    if (exp) { await handleExport(res, exp[1]!, sid); return; }
     const person = PERSON_PATH.exec(path);
     if (person) { await handlePerson(res, Number(person[1]), person[2]!); return; }
     if (path === LOGO_PATH) {
@@ -522,6 +599,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     if (path === '/api/v1/form-meta') { sendJson(res, 200, await deps.formMeta()); return; }
 
     const pick: Record<string, (v: Views) => unknown> = {
+      '/api/v1/team': (v) => v.team,
       '/api/v1/today': (v) => v.today,
       '/api/v1/requests': (v) => v.requests,
       '/api/v1/groups': (v) => v.groups,

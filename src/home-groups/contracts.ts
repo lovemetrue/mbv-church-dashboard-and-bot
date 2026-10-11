@@ -27,6 +27,16 @@
  *   POST /api/v1/requests/:id/edit     RequestEditBody → ActionOk | ActionError (ФИО, телефон, возраст, район, комментарий)
  *   POST /api/v1/requests/:id/assign    AssignBody      → ActionOk | ActionError («в работе у»)
  *   POST /api/v1/requests/:id/call      CallBody        → ActionOk | ActionError (итог звонка)
+ *   GET  /api/v1/team                   → TeamView (нагрузка, сроки ожидания, действия за неделю)
+ *   POST /api/v1/requests/bulk          BulkBody → BulkOk | ActionError (передать или отметить «нужен звонок» сразу нескольким)
+ *   POST /api/v1/groups/:id/update      UpdateBody → ActionOk | ActionError (правка части полей группы; адрес и телефоны не отдаются)
+ *   POST /api/v1/groups/:id/delete      (тело {})  → ActionOk | ActionError (только super; скрывает, а не стирает)
+ *   POST /api/v1/coordinators/create    CreateRecordBody → CreateRecordOk | ActionError
+ *   POST /api/v1/coordinators/:id/update UpdateBody → ActionOk | ActionError
+ *   POST /api/v1/coordinators/:id/delete (тело {}) → ActionOk | ActionError (только super)
+ *   POST /api/v1/requests/:id/delete    (тело {})  → ActionOk | ActionError (только super)
+ *   GET  /api/v1/export/requests.csv    → CSV (только super; в нём телефоны)
+ *   GET  /api/v1/export/people.csv      → CSV (только super)
  *   POST /api/v1/requests/:id/rematch  (тело {})         → ActionOk | ActionError (подобрать заново одну заявку)
  *   POST /api/v1/matching/rerun-all    (тело {})         → MatchingRunOk | ActionError (пересчитать все закреплённые предложения)
  *   GET /api/v1/form-meta         → FormMeta            (справочники для форм «Создать»)
@@ -331,6 +341,70 @@ export interface CallBody {
   /** Дозвонился · не дозвонился · просил перезвонить позже · отказался. «Не дозвонился» и «позже» оставляют заявку в «Перезвонить», «дозвонился» и «отказался» снимают отметку. */
   result: CallResult;
   comment?: string | null;
+}
+
+/** Правка записи справочника: присланные поля меняются, остальные (в том числе закрытые) остаются как были. */
+export interface UpdateBody {
+  fields: Record<string, string>;
+}
+
+export interface BulkBody {
+  /** Номера заявок, не больше 100. */
+  ids: number[];
+  action: 'assign' | 'need-call';
+  /** Для assign: имя координатора, null или пусто — снять. */
+  responsible?: string | null;
+  /** Для need-call: поставить (true) или снять (false) отметку. */
+  value?: boolean;
+}
+
+export interface BulkOk {
+  ok: true;
+  /** Сколько заявок обработано (в том числе уже стоявших в нужном состоянии). */
+  done: number;
+  /** Сколько пропущено: закрыты или не найдены. */
+  skipped: number;
+}
+
+export interface TeamWorkload {
+  /** Имя координатора из «в работе у»; null — заявки, которые никто не взял. */
+  name: string | null;
+  open: number;
+  /** Из них ждут звонка. */
+  callback: number;
+  /** Из них ждут больше недели. */
+  over7: number;
+  /** Сколько дней ждёт самая старая; null — дат нет. */
+  oldestDays: number | null;
+}
+
+export interface TeamActivity {
+  /** Логин, под которым выполнено действие. Пока вход общий, все действия под одним именем. */
+  actor: string;
+  calls: number;
+  approved: number;
+  rejected: number;
+  edits: number;
+  assigned: number;
+}
+
+export interface TeamView {
+  generatedAt: string;
+  totals: {
+    open: number;
+    unassigned: number;
+    callback: number;
+    over7: number;
+    /** Утверждено за последние 7 дней. */
+    approvedWeek: number;
+  };
+  /** Сколько открытых заявок ждут: 0–2 дня, 3–7, 8–14, 15 и больше, дата неизвестна. */
+  aging: { label: string; count: number }[];
+  workload: TeamWorkload[];
+  /** Самые старые открытые заявки (ждут больше недели), не больше 20. */
+  stuck: { id: number; fio: string; waitingDays: number; responsible: string | null; bucket: Bucket }[];
+  /** Действия за последние 7 дней по логинам. */
+  activity: TeamActivity[];
 }
 
 export interface RequestsView {

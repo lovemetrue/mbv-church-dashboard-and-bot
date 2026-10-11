@@ -1051,3 +1051,14 @@ describe('закрепление и изменившиеся данные', () =
     expect(views.people.items.find((p) => p.key === 'r9')).toMatchObject({ userId: null, registrationNo: null });
   });
 });
+
+describe('сводка команды в представлениях', () => {
+  test('сводка строится из тех же заявок и действий за неделю, что пришли в загрузку', () => {
+    const { views } = build({
+      requests: [request({ id: 1, responsible: 'Анна' }), request({ id: 2 })],
+      activity: [{ actor: 'anna', action: 'request.call', n: 2 }],
+    });
+    expect(views.team.totals).toMatchObject({ open: 2, unassigned: 1 });
+    expect(views.team.activity).toEqual([{ actor: 'anna', calls: 2, approved: 0, rejected: 0, edits: 0, assigned: 0 }]);
+  });
+});

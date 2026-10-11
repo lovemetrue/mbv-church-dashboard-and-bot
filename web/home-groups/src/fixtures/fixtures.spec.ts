@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { buildCoordinators, buildGroups, buildPeople, buildRequests, buildToday } from './build';
+import { buildFormMeta } from './formMeta';
+import { fixtureActionResponse } from './index';
 
 describe('фикстуры', () => {
   test('счётчики сходятся со списком заявок, отказы в список не попадают', () => {
@@ -84,5 +86,32 @@ describe('фикстуры', () => {
     const items = buildGroups().items;
     expect(items.some((g) => g.isNew)).toBe(true);
     expect(items.some((g) => !g.isNew)).toBe(true);
+  });
+
+  test('у части людей есть номер регистрации и участник, у остальных нет: видны оба случая карточки', () => {
+    const items = buildPeople().items;
+    expect(items.some((p) => p.registrationNo !== null && p.userId !== null)).toBe(true);
+    expect(items.some((p) => p.registrationNo === null)).toBe(true);
+    // Номер без участника не бывает: карточка и QR строятся по id участника.
+    expect(items.every((p) => p.registrationNo === null || p.userId !== null)).toBe(true);
+    const numbers = items.map((p) => p.registrationNo).filter((n) => n !== null);
+    expect(new Set(numbers).size).toBe(numbers.length);
+  });
+
+  test('справочники формы содержат церкви и ответы про малую группу с кодами ветвления анкеты', () => {
+    const meta = buildFormMeta();
+    expect(meta.churches.length).toBeGreaterThan(0);
+    expect(meta.mdgStatuses.map((s) => s.value)).toEqual(['open', 'home', 'join', 'member', 'leader']);
+  });
+
+  test('регистрация в режиме фикстур отвечает id и номером, которых нет у существующих людей', () => {
+    const res = fixtureActionResponse('people/create', { fields: { fio: 'Анна', phone: '9110001122' } }) as {
+      ok: true;
+      id: number;
+      registrationNo: number;
+    };
+    expect(res.ok).toBe(true);
+    expect(buildPeople().items.map((p) => p.registrationNo)).not.toContain(res.registrationNo);
+    expect(buildPeople().items.map((p) => p.userId)).not.toContain(res.id);
   });
 });

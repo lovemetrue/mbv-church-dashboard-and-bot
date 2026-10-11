@@ -285,7 +285,7 @@ describe('накопленные предложения', () => {
     const g = await group();
     const r = await request();
     await repo.syncProposals([desired(r, g)], 'a');
-    expect((await repo.activeProposals()).get(r)).toEqual({ groupId: g, source: 'script' });
+    expect((await repo.activeProposals()).get(r)).toEqual({ groupId: g, source: 'script', inputHash: null });
   });
 
   test('утверждение без сохранённого предложения по-прежнему работает рядом с накопленными', async () => {
@@ -393,5 +393,74 @@ describe('улица и удобное время, поправленные ко
     const closed = await request({ status: 'Исполнена' });
     expect(await repo.setParams(closed, { street: 'х' }, 'a')).toMatchObject({ ok: false, error: 'already_closed' });
     expect(await repo.setParams(99999, { street: 'х' }, 'a')).toMatchObject({ ok: false, error: 'not_found' });
+  });
+});
+
+
+describe('«подобрать заново» и отпечаток данных', () => {
+  const d = (requestId: number, groupId: number, inputHash = 'h1') => ({ requestId, groupId, confidence: 80, rationale: [], inputHash });
+  const hashOf = async (r: number) => (await db.query(`SELECT input_hash FROM placement_proposals WHERE request_id = $1 AND status = 'proposed'`, [r])).rows[0]?.input_hash;
+
+  test('отпечаток сохраняется с предложением и читается вместе с закреплёнными', async () => {
+    const g = await group();
+    const r = await request();
+    await repo.syncProposals([d(r, g, 'abc')], 'a');
+    expect(await hashOf(r)).toBe('abc');
+    expect((await repo.activeProposals()).get(r)).toEqual({ groupId: g, source: 'script', inputHash: 'abc' });
+  });
+
+  test('та же группа по новым данным: предложение остаётся, отпечаток обновляется, замены нет', async () => {
+    const g = await group();
+    const r = await request();
+    await repo.syncProposals([d(r, g, 'old')], 'a');
+    expect(await repo.syncProposals([d(r, g, 'new')], 'a')).toEqual({ created: 0, replaced: 0, unchanged: 1 });
+    expect(await hashOf(r)).toBe('new');
+    expect((await proposals())).toHaveLength(1);
+  });
+
+  test('«заново» для одной заявки снимает только её предложение; отклонённое остаётся отклонённым', async () => {
+    const g = await group();
+    const g2 = await group({ leader: 'Пётр' });
+    const r1 = await request();
+    const r2 = await request();
+    await repo.syncProposals([d(r1, g), d(r2, g2)], 'a');
+    await repo.reject(r1, g2, 'far', null, 'a');
+    expect(await repo.resetProposals(r1, 'mbv_admin')).toEqual({ ok: true });
+    const rows = await proposals();
+    expect(rows.find((x) => Number(x.request_id) === r1 && x.group_id === g)!.status).toBe('superseded');
+    expect(rows.find((x) => Number(x.request_id) === r1 && x.group_id === g2)!.status).toBe('rejected');
+    expect(rows.find((x) => Number(x.request_id) === r2)!.status).toBe('proposed');
+    expect((await audits()).some((a) => a.action === 'request.rematch' && a.actor === 'mbv_admin')).toBe(true);
+  });
+
+  test('«заново» закрытой или несуществующей заявки отклоняется', async () => {
+    const closed = await request({ status: 'Исполнена' });
+    expect(await repo.resetProposals(closed, 'a')).toMatchObject({ ok: false, error: 'already_closed' });
+    expect(await repo.resetProposals(99999, 'a')).toMatchObject({ ok: false, error: 'not_found' });
+  });
+
+  test('«пересчитать все» снимает закреплённое у открытых заявок и не трогает утверждённые', async () => {
+    const g = await group();
+    const open1 = await request();
+    const open2 = await request();
+    await repo.syncProposals([d(open1, g), d(open2, g)], 'a');
+    const done = await request();
+    await repo.approve(done, g, 'a', OPTS);
+    expect(await repo.resetProposals(null, 'a')).toEqual({ ok: true });
+    const rows = await proposals();
+    expect(rows.filter((x) => x.status === 'proposed')).toHaveLength(0);
+    expect(rows.filter((x) => Number(x.request_id) === done)[0]!.status).toBe('approved');
+    expect((await audits()).find((a) => a.action === 'matching.rerun_all')!.after).toEqual({ reset: 2 });
+  });
+
+  test('синхронизация с ограничением по заявкам не снимает предложения остальных', async () => {
+    const g = await group();
+    const r1 = await request();
+    const r2 = await request();
+    await repo.syncProposals([d(r1, g), d(r2, g)], 'a');
+    // Для r1 расчёт больше ничего не даёт, но ограничение только на r1: r2 остаётся.
+    expect(await repo.syncProposals([], 'a', new Set([r1]))).toEqual({ created: 0, replaced: 1, unchanged: 0 });
+    expect((await repo.activeProposals()).has(r2)).toBe(true);
+    expect((await repo.activeProposals()).has(r1)).toBe(false);
   });
 });

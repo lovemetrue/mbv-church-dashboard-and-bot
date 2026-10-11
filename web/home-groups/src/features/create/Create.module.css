@@ -50,20 +50,6 @@
 .item:focus-visible {
   outline-offset: -2px;
 }
-.itemDisabled {
-  color: var(--muted);
-  cursor: default;
-}
-.itemDisabled:hover {
-  background: none;
-  color: var(--muted);
-}
-.itemHint {
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--muted);
-  white-space: normal;
-}
 
 @media (max-width: 700px) {
   /* Стрелка у кнопки на телефоне лишняя: без неё плашка, «Создать» и выбор темы умещаются в одну строку. */
@@ -240,4 +226,55 @@ textarea.control {
 .noticeText {
   font-weight: 600;
   overflow-wrap: anywhere;
+}
+
+/* ── регистрация участника ───────────────────────────────────────────────── */
+
+.intro {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  text-align: center;
+}
+.doneText {
+  margin: 0;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+.doneTitle {
+  font-weight: 700;
+  color: var(--ok);
+}
+/* QR остаётся светлым в любой теме: на тёмном фоне тёмный код сканер не прочитает. */
+.qr {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+}
+.doneActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  max-width: 100%;
+}
+@media (max-width: 700px) {
+  .doneActions {
+    flex-direction: column;
+    align-self: stretch;
+  }
+  .doneActions > * {
+    justify-content: center;
+  }
 }

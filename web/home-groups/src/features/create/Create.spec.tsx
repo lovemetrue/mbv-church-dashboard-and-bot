@@ -75,37 +75,6 @@ describe('«+ Создать»: меню', () => {
     ]);
   });
 
-  test('пока ответ /me не пришёл, в меню нет пункта «Участник»', async () => {
-    stubFetchWithFixtures({ me: () => new Promise<Response>(() => {}) });
-    const user = userEvent.setup();
-    renderAt(<App />, REFERENCE);
-    await user.click(createButton());
-    const menu = screen.getByRole('menu', { name: 'Что создать' });
-    expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Заявка', 'Группа']);
-  });
-
-  test('«Участник (регистрация)» ведёт на legacyUrl/registration в новой вкладке', async () => {
-    stubFetchWithFixtures({ me: meOf('https://old.example.org') });
-    const user = userEvent.setup();
-    renderAt(<App />, REFERENCE);
-    const menu = await openMenu(user);
-    const link = within(menu).getByRole('menuitem', { name: /Участник/ });
-    expect(link).toHaveAttribute('href', 'https://old.example.org/registration');
-    expect(link).toHaveAttribute('target', '_blank');
-    expect(link.getAttribute('rel')).toContain('noopener');
-  });
-
-  test('без адреса старого дашборда «Участник» отключён и объясняет почему', async () => {
-    stubFetchWithFixtures({ me: meOf(null) });
-    const user = userEvent.setup();
-    renderAt(<App />, REFERENCE);
-    const menu = await openMenu(user);
-    const item = within(menu).getByRole('menuitem', { name: /Участник/ });
-    expect(item).toHaveAttribute('aria-disabled', 'true');
-    expect(item).not.toHaveAttribute('href');
-    expect(item).toHaveAccessibleDescription('Регистрация участников пока в старом дашборде, адрес не настроен');
-  });
-
   test('Esc закрывает меню и возвращает фокус на кнопку', async () => {
     stubFetchWithFixtures({ me: meOf(null) });
     const user = userEvent.setup();

@@ -1,9 +1,15 @@
-import { useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { ru } from '../../shared/i18n/ru';
 import { Button } from '../../shared/ui';
 import styles from './Create.module.css';
 import type { FieldSpec, FormSpec } from './specs';
 import { useCreateRecord, type CreatePath } from './useCreateRecord';
+
+/** Что вернул сервер: у регистрации участника есть ещё номер регистрации. */
+export interface CreatedRecord {
+  id: number;
+  registrationNo?: number;
+}
 
 type Control = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 
@@ -11,18 +17,23 @@ interface RecordFormProps {
   spec: FormSpec;
   path: CreatePath;
   submitLabel: string;
+  /** Подпись кнопки, пока идёт запрос; по умолчанию «Создаём…». */
+  busyLabel?: string;
   onClose: () => void;
   /** Запись создана: тот, кто открыл окно, закрывает его и показывает подтверждение. */
-  onCreated: (id: number) => void;
+  onCreated: (created: CreatedRecord) => void;
+  /** Идёт ли отправка: окно с формой по этому признаку не даёт себя закрыть, не дождавшись ответа. */
+  onBusyChange?: (busy: boolean) => void;
 }
 
 /**
- * Форма создания записи: одна на заявку и на группу, различаются только описанием полей.
+ * Форма создания записи: одна на заявку, группу и регистрацию участника, различаются описанием полей.
+ * Поле с `showWhen` рисуется, проверяется и отправляется, только пока оно видно.
  * На месте проверяется лишь то, что обязательное поле не пусто; всё остальное решает сервер, и его
  * отказ показывается над кнопками, не стирая набранного.
  * Пустые поля не отправляются: сервер читает «нет поля» и «пусто» одинаково, а тело остаётся короче.
  */
-export function RecordForm({ spec, path, submitLabel, onClose, onCreated }: RecordFormProps) {
+export function RecordForm({ spec, path, submitLabel, busyLabel, onClose, onCreated, onBusyChange }: RecordFormProps) {
   const uid = useId();
   const { submit, busy } = useCreateRecord(path);
   const [values, setValues] = useState<Record<string, string>>(spec.initial);
@@ -30,7 +41,16 @@ export function RecordForm({ spec, path, submitLabel, onClose, onCreated }: Reco
   const [serverError, setServerError] = useState<string | null>(null);
   const refs = useRef<Record<string, Control | null>>({});
 
-  const all = [...spec.fields, ...(spec.address ? [spec.address] : [])];
+  // Видимые поля пересчитываются от введённого: ветвление (`showWhen`) зависит от соседних полей.
+  const isShown = (f: FieldSpec) => !f.showWhen || f.showWhen(values);
+  const shownFields = spec.fields.filter(isShown);
+  const all = [...shownFields, ...(spec.address ? [spec.address] : [])];
+
+  const busyChange = useRef(onBusyChange);
+  busyChange.current = onBusyChange;
+  useEffect(() => {
+    busyChange.current?.(busy);
+  }, [busy]);
 
   const change = (name: string, value: string) => {
     setValues((v) => ({ ...v, [name]: value }));
@@ -61,7 +81,7 @@ export function RecordForm({ spec, path, submitLabel, onClose, onCreated }: Reco
     const result = await submit(fields);
     // Окно могли закрыть, пока шёл запрос: запись всё равно создана, подтверждение показывает родитель.
     if (result === null) return;
-    if (result.ok) onCreated(result.id);
+    if (result.ok) onCreated({ id: result.id, registrationNo: result.registrationNo });
     else setServerError(result.message);
   }
 
@@ -87,7 +107,7 @@ export function RecordForm({ spec, path, submitLabel, onClose, onCreated }: Reco
         </label>
         {f.kind === 'select' ? (
           <select {...common} ref={setRef} onChange={(e) => change(f.name, e.target.value)}>
-            <option value="">{f.required ? ru.create.choose : ru.create.notChosen}</option>
+            <option value="">{f.emptyLabel ?? (f.required ? ru.create.choose : ru.create.notChosen)}</option>
             {(f.options ?? []).map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
@@ -119,7 +139,8 @@ export function RecordForm({ spec, path, submitLabel, onClose, onCreated }: Reco
   const addressHint = `${uid}-address-hint`;
   return (
     <form onSubmit={(e) => void onSubmit(e)} noValidate>
-      <div className={styles.grid}>{spec.fields.map((f) => renderField(f))}</div>
+      {spec.intro && <p className={styles.intro}>{spec.intro}</p>}
+      <div className={styles.grid}>{shownFields.map((f) => renderField(f))}</div>
 
       {spec.address && (
         <fieldset className={styles.addressBlock}>
@@ -142,7 +163,7 @@ export function RecordForm({ spec, path, submitLabel, onClose, onCreated }: Reco
           {ru.create.cancel}
         </Button>
         <Button type="submit" variant="primary" disabled={busy}>
-          {busy ? ru.create.submitting : submitLabel}
+          {busy ? (busyLabel ?? ru.create.submitting) : submitLabel}
         </Button>
       </div>
     </form>

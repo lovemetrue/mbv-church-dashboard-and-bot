@@ -4,12 +4,13 @@ import { BUCKET_LABEL, LIST_BUCKETS, type BucketFilter } from '../../entities/bu
 import { useRequests } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
 import { useAppNav } from '../../shared/nav';
-import { Chip, EmptyState, ErrorState, LoadingState } from '../../shared/ui';
+import { Button, Chip, EmptyState, ErrorState, LoadingState } from '../../shared/ui';
 import { countBuckets, filterByBucket, searchRequests } from './model';
 import { MatchingPanel } from './MatchingPanel';
 import { RequestCard, type RequestNeighbors } from './RequestCard';
 import { RequestList } from './RequestList';
 import styles from './Requests.module.css';
+import { useNewArrivals } from './useNewArrivals';
 
 export function RequestsScreen() {
   const query = useRequests();
@@ -35,12 +36,30 @@ export function RequestsContent({ data }: { data: RequestsView }) {
     prevBucket.current = nav.bucket;
   }, [nav, visible]);
 
+  const arrivals = useNewArrivals(data.items);
+  // Заявки с изменившимися данными: их закреплённые предложения устарели. Утверждённых не считаем.
+  const dataChanged = useMemo(
+    () => data.items.filter((r) => r.bucket !== 'done' && r.bucket !== 'cancelled' && r.proposal?.dataChanged).length,
+    [data.items],
+  );
+
   const neighbors = useNeighbors(visible, selected?.id ?? null, nav.selectRequest);
 
   return (
     <div className={styles.work}>
       <div className={styles.main}>
-        <MatchingPanel matching={data.matching} />
+        <MatchingPanel matching={data.matching} dataChanged={dataChanged} />
+        {/* Область живая и есть всегда: скринридер читает только то, что в неё добавили. */}
+        <div role="status" className={arrivals.count > 0 ? styles.arrived : undefined}>
+          {arrivals.count > 0 && (
+            <>
+              <span>{ru.requests.arrived.text(arrivals.count)}</span>
+              <Button variant="ghost" onClick={arrivals.dismiss}>
+                {ru.requests.arrived.hide}
+              </Button>
+            </>
+          )}
+        </div>
         <div className={styles.bar} role="group" aria-label={ru.requests.chipsLabel}>
           <Chip pressed={nav.bucket === 'all'} count={counts.all} onClick={() => nav.setBucket('all')}>
             Все

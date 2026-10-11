@@ -31,6 +31,9 @@ const schema = z.object({
   // Домена пока нет — сайт открывают по IP и порту напрямую.
   DASHBOARD_URL: z.string().url().default('http://5.23.48.25:8090/groups'),
 
+  // Адрес нового интерфейса «Домашние группы»: сообщения служителю о заявках ведут туда. Пусто — на старый дашборд.
+  HG_PUBLIC_URL: z.string().default(''),
+
   ADMIN_IDS_TELEGRAM: idList,
   ADMIN_IDS_MAX: idList,
 

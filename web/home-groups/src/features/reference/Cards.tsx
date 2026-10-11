@@ -1,9 +1,11 @@
 import type { CoordinatorItem, GroupItem, PersonItem } from '@contracts';
 import { formatDateFull, formatPhone, groupLabel, healthTone } from '../../entities/format';
+import { registrationCardUrl, registrationQrUrl } from '../../shared/api/base';
 import { useGroups } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
 import { useAppNav } from '../../shared/nav';
 import { Button, Drawer, DrawerSection, KeyValue, LoadingState, Meter, NewGroupIcon, Pill, type KvRow } from '../../shared/ui';
+import { LinkButton } from '../create';
 import styles from './Reference.module.css';
 
 const noValue = <span className={styles.note}>{ru.reference.notSpecified}</span>;
@@ -134,12 +136,24 @@ export function PersonCard({ p, onClose }: { p: PersonItem; onClose: () => void 
     { label: 'Откуда', value: p.from },
     { label: 'Малая группа', value: p.mdgLabel },
     { label: 'Дата', value: p.date ? formatDateFull(p.date) : noValue },
+    ...(p.registrationNo !== null ? [{ label: ru.create.registration.numberRow, value: <span className="num">№{p.registrationNo}</span> }] : []),
   ];
+  // Печатная карточка и QR строятся по участнику: у заявки из таблицы без участника их нет,
+  // и у участника без номера регистрации тоже (карточку нечем подписать).
+  const registrationLinks = p.userId !== null && p.registrationNo !== null ? { card: registrationCardUrl(p.userId), qr: registrationQrUrl(p.userId) } : null;
   return (
     <Drawer label={`Карточка человека: ${p.fio}`} title={p.fio} onClose={onClose}>
       <DrawerSection>
         <KeyValue rows={rows} />
       </DrawerSection>
+      {registrationLinks && (
+        <DrawerSection>
+          <div className={styles.cardActions}>
+            <LinkButton href={registrationLinks.card}>{ru.create.registration.cardLink}</LinkButton>
+            <LinkButton href={registrationLinks.qr}>{ru.create.registration.qrLink}</LinkButton>
+          </div>
+        </DrawerSection>
+      )}
       {p.requestId !== null && (
         <DrawerSection>
           <Button variant="primary" onClick={() => nav.openRequest(p.requestId as number)}>

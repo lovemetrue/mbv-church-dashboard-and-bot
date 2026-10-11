@@ -1,18 +1,14 @@
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useMe } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
 import { tabParams, useAppNav } from '../../shared/nav';
 import { Button } from '../../shared/ui';
 import styles from './Create.module.css';
-import { CreateDialog, type CreateKind } from './CreateDialog';
+import { CreateDialog, type CreateKind, type DialogKind } from './CreateDialog';
 import { CreateNotice } from './CreateNotice';
 
 /** «ДГ-0013»: как `groupCode` на сервере, id с нулями до четырёх знаков. */
 export const groupCodeOf = (id: number): string => `ДГ-${String(id).padStart(4, '0')}`;
-
-/** Адрес регистрации в старом дашборде; хвостовую косую черту убираем, чтобы не вышло `//registration`. */
-const registrationUrl = (legacyUrl: string): string => `${legacyUrl.replace(/\/+$/, '')}/registration`;
 
 interface Notice {
   kind: CreateKind;
@@ -22,21 +18,18 @@ interface Notice {
 /**
  * Кнопка «+ Создать» с меню и всем, что за ней: окна форм и подтверждение результата.
  * Меню по шаблону WAI-ARIA (menu button): стрелки, Home/End, Esc возвращает фокус на кнопку,
- * клик вне закрывает. Пока /me не ответил, пункта «Участник» нет: не знаем, есть ли куда вести.
+ * клик вне закрывает. «Участник (регистрация)» открывает форму в окне, как «Заявка» и «Группа».
  */
 export function CreateMenu() {
   const nav = useAppNav();
   const [, setParams] = useSearchParams();
-  const me = useMe();
   const [open, setOpen] = useState(false);
-  const [dialog, setDialog] = useState<CreateKind | null>(null);
+  const [dialog, setDialog] = useState<DialogKind | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
-  const hintId = useId();
-  const nameId = useId();
 
   const items = (): HTMLElement[] =>
     Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
@@ -81,7 +74,7 @@ export function CreateMenu() {
     list[next]?.focus();
   };
 
-  const choose = (kind: CreateKind) => {
+  const choose = (kind: DialogKind) => {
     // Фокус на кнопку до открытия окна: окно запоминает, откуда пришло, и вернёт фокус туда,
     // а пункт меню к тому времени уже исчез бы из страницы.
     triggerRef.current?.focus();
@@ -109,7 +102,6 @@ export function CreateMenu() {
   };
 
   const dismissNotice = useCallback(() => setNotice(null), []);
-  const legacyUrl = me.data?.legacyUrl;
 
   return (
     <div className={styles.root} ref={rootRef}>
@@ -138,49 +130,14 @@ export function CreateMenu() {
             <button type="button" role="menuitem" tabIndex={-1} className={styles.item} onClick={() => choose('group')}>
               {ru.create.group}
             </button>
-            {legacyUrl ? (
-              <a
-                role="menuitem"
-                tabIndex={-1}
-                className={styles.item}
-                aria-describedby={hintId}
-                href={registrationUrl(legacyUrl)}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => setOpen(false)}
-              >
-                <span>
-                  {ru.create.member}
-                  <span aria-hidden="true"> ↗</span>
-                </span>
-                <span id={hintId} className="visually-hidden">
-                  {ru.create.memberOpensOld}
-                </span>
-              </a>
-            ) : me.data ? (
-              // Пункт виден, но отключён: служителю надо знать, что регистрация есть и где она. Фокус на нём
-              // остаётся (aria-disabled, а не disabled), чтобы скринридер дочитал причину.
-              <button
-                type="button"
-                role="menuitem"
-                tabIndex={-1}
-                aria-disabled="true"
-                aria-labelledby={nameId}
-                aria-describedby={hintId}
-                className={`${styles.item} ${styles.itemDisabled}`}
-                onClick={(e) => e.preventDefault()}
-              >
-                <span id={nameId}>{ru.create.member}</span>
-                <span id={hintId} className={styles.itemHint}>
-                  {ru.create.memberNoLegacy}
-                </span>
-              </button>
-            ) : null}
+            <button type="button" role="menuitem" tabIndex={-1} className={styles.item} onClick={() => choose('member')}>
+              {ru.create.member}
+            </button>
           </div>
         </>
       )}
 
-      {dialog && <CreateDialog kind={dialog} onClose={() => setDialog(null)} onCreated={(id) => created(dialog, id)} />}
+      {dialog && <CreateDialog kind={dialog} onClose={() => setDialog(null)} onCreated={created} />}
       {notice && (
         <CreateNotice
           text={notice.kind === 'request' ? ru.create.createdRequest(notice.id) : ru.create.createdGroup(groupCodeOf(notice.id))}

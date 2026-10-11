@@ -132,3 +132,29 @@ describe('сообщение служителю о заявке', () => {
     expect(text).not.toContain('<script>');
   });
 });
+
+import { requestLinkBuilder } from '../src/admin/links.js';
+
+describe('ссылка на заявку в сообщении служителю', () => {
+  test('без нового интерфейса ссылка ведёт в старый дашборд, как раньше', () => {
+    expect(formatRequest(request({ id: 7 }), DASHBOARD_URL)).toContain(`${DASHBOARD_URL}?request=7`);
+  });
+
+  test('с адресом нового интерфейса ссылка ведёт сразу на заявку в нём', () => {
+    const text = formatRequest(request({ id: 7 }), DASHBOARD_URL, 'http://5.23.48.25:8092/?tab=requests&req=7');
+    expect(text).toContain('http://5.23.48.25:8092/?tab=requests&amp;req=7');
+    expect(text).not.toContain(`${DASHBOARD_URL}?request=7`);
+  });
+
+  test.each([
+    ['http://5.23.48.25:8092', 'http://5.23.48.25:8092/?tab=requests&req=12'],
+    ['http://5.23.48.25:8092/', 'http://5.23.48.25:8092/?tab=requests&req=12'],
+    ['https://hg.example.org/groups-new/', 'https://hg.example.org/groups-new/?tab=requests&req=12'],
+  ])('адрес «%s» даёт ссылку %s', (base, link) => {
+    expect(requestLinkBuilder(base)!(12)).toBe(link);
+  });
+
+  test.each([undefined, '', '   ', 'не адрес', 'ftp://x.example'])('«%s» не годится — остаётся старая ссылка', (base) => {
+    expect(requestLinkBuilder(base)).toBeUndefined();
+  });
+});

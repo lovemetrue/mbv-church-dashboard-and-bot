@@ -8,6 +8,8 @@ import { logger } from '../logger.js';
 import { ACTION_STATUS, type RequestActions } from './actions.js';
 import type { FormMeta } from './contracts.js';
 import type { RecordCreator } from './create.js';
+import type { Registrar } from './registration.js';
+import { registrationCardPage } from '../dashboard/registrationCard.js';
 import type { Settings } from '../platform/settings/service.js';
 import type { ActionError, ActionOk, MatchingRunOk, Me, Role } from './contracts.js';
 import type { Views } from './api/views.js';
@@ -50,6 +52,10 @@ export interface HomeGroupsDeps {
   actions: RequestActions;
   /** Создание заявки и группы из «+ Создать». */
   creator: RecordCreator;
+  /** Регистрация участника служителем, QR и данные печатной карточки. */
+  registrar: Registrar;
+  /** Эмблема церкви для печатной карточки; нет файла — null (карточка без эмблемы). */
+  logo?: () => Promise<Buffer | null>;
   /** Справочники для форм создания. */
   formMeta: () => Promise<FormMeta>;
   /** Адрес старого дашборда (источник — `DASHBOARD_URL`): для того, что пока живёт только там. */
@@ -57,6 +63,7 @@ export interface HomeGroupsDeps {
   /** Подбор для новых заявок: запуск и переключатель автоматического режима. */
   matching: {
     run(actor: string): Promise<MatchingRunOk>;
+    rerunAll(actor: string): Promise<MatchingRunOk>;
     setAuto(enabled: boolean, actor: string): Promise<void>;
   };
   /** Раздел «Настройки»: только для полного входа. */
@@ -94,11 +101,14 @@ const CONTENT_TYPES: Record<string, string> = {
 class BodyTooLarge extends Error {}
 
 const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode)$/;
-const CREATE_PATH = /^\/api\/v1\/(requests|groups)\/create$/;
-const MATCHING_PATH = /^\/api\/v1\/matching\/(run|auto)$/;
+const CREATE_PATH = /^\/api\/v1\/(requests|groups|people)\/create$/;
+/** `GET /api/v1/people/12/card`: печатная карточка регистрации и её QR. */
+const PERSON_PATH = /^\/api\/v1\/people\/(\d{1,15})\/(qr|card)$/;
+const LOGO_PATH = '/api/v1/assets/church-logo.png';
+const MATCHING_PATH = /^\/api\/v1\/matching\/(run|auto|rerun-all)$/;
 
 /** `POST /api/v1/requests/12/approve`: номер заявки — цифры, длиннее пятнадцати не бывает (Number безопасен). */
-const ACTION_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/(approve|reject|need-call|params)$/;
+const ACTION_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/(approve|reject|need-call|params|rematch)$/;
 
 /** Адрес клиента: за nginx настоящий адрес приходит заголовком (как в старом дашборде). */
 function clientIp(req: IncomingMessage): string {
@@ -349,6 +359,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     const outcome = action === 'approve' ? await deps.actions.approve(requestId, body, actor)
       : action === 'reject' ? await deps.actions.reject(requestId, body, actor)
       : action === 'params' ? await deps.actions.setParams(requestId, body, actor)
+      : action === 'rematch' ? await deps.actions.rematch(requestId, actor)
       : await deps.actions.setNeedCall(requestId, body, actor);
 
     if (!outcome.ok) {
@@ -369,6 +380,12 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     if (!call) return;
     const { role, actor, body } = call;
 
+    if (action === 'rerun-all') {
+      const result = await deps.matching.rerunAll(actor);
+      logger.info({ actor, ...result }, 'домашние группы: подбор пересчитан заново');
+      sendJson(res, 200, result);
+      return;
+    }
     if (action === 'run') {
       const result = await deps.matching.run(actor);
       logger.info({ actor, ...result }, 'домашние группы: подбор по кнопке');
@@ -393,14 +410,30 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
   async function handleCreate(req: IncomingMessage, res: ServerResponse, what: string, sid: string | undefined): Promise<void> {
     const call = await readAuthedJson(req, res, sid);
     if (!call) return;
-    const outcome = what === 'requests' ? await deps.creator.request(call.body, call.actor) : await deps.creator.group(call.body, call.actor);
+    const outcome = what === 'requests' ? await deps.creator.request(call.body, call.actor)
+      : what === 'people' ? await deps.registrar.register(call.body, call.actor)
+      : await deps.creator.group(call.body, call.actor);
     if (!outcome.ok) {
       sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
       return;
     }
     deps.invalidateViews();
-    logger.info({ actor: call.actor, what, id: outcome.id }, 'домашние группы: запись создана');
+    logger.info({ actor: call.actor, what, id: outcome.id }, what === 'people' ? 'домашние группы: участник зарегистрирован' : 'домашние группы: запись создана');
     sendJson(res, 200, outcome);
+  }
+
+  /** QR и печатная карточка регистрации: за сессией (проверена выше), с именем и телефоном — кэшировать нельзя. */
+  async function handlePerson(res: ServerResponse, id: number, what: string): Promise<void> {
+    if (what === 'qr') {
+      const png = await deps.registrar.qr(id);
+      if (!png) { sendJson(res, 404, { error: 'not_found' }); return; }
+      res.writeHead(200, { ...BASE_HEADERS, 'content-type': 'image/png', 'cache-control': 'no-store' });
+      res.end(png);
+      return;
+    }
+    const info = await deps.registrar.card(id);
+    if (!info) { sendText(res, 404, 'Регистрация не найдена.'); return; }
+    sendHtml(res, 200, registrationCardPage(info, `/api/v1/people/${id}/qr`, LOGO_PATH));
   }
 
   /** Правка инструкций агентов: только полный вход, как и весь раздел «Настройки». */
@@ -474,6 +507,15 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       return;
     }
 
+    const person = PERSON_PATH.exec(path);
+    if (person) { await handlePerson(res, Number(person[1]), person[2]!); return; }
+    if (path === LOGO_PATH) {
+      const png = deps.logo ? await deps.logo() : null;
+      if (!png) { sendJson(res, 404, { error: 'not_found' }); return; }
+      res.writeHead(200, { ...BASE_HEADERS, 'content-type': 'image/png', 'cache-control': 'no-store' });
+      res.end(png);
+      return;
+    }
     if (path === '/api/v1/form-meta') { sendJson(res, 200, await deps.formMeta()); return; }
 
     const pick: Record<string, (v: Views) => unknown> = {

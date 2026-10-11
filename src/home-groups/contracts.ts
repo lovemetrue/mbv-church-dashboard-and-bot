@@ -21,6 +21,11 @@
  *   POST /api/v1/requests/:id/reject    RejectBody    → ActionOk | ActionError
  *   POST /api/v1/requests/:id/need-call NeedCallBody  → ActionOk | ActionError
  *
+ *   POST /api/v1/people/create         CreateRecordBody  → CreateRegistrationOk | ActionError (регистрация участника)
+ *   GET  /api/v1/people/:id/card       → HTML-страница печатной карточки с QR (открывается в новой вкладке)
+ *   GET  /api/v1/people/:id/qr         → PNG с QR регистрации
+ *   POST /api/v1/requests/:id/rematch  (тело {})         → ActionOk | ActionError (подобрать заново одну заявку)
+ *   POST /api/v1/matching/rerun-all    (тело {})         → MatchingRunOk | ActionError (пересчитать все закреплённые предложения)
  *   GET /api/v1/form-meta         → FormMeta            (справочники для форм «Создать»)
  *   POST /api/v1/requests/:id/params   RequestParamsBody → ActionOk | ActionError (улица и удобное время вручную)
  *   POST /api/v1/requests/create       CreateRecordBody  → CreateRecordOk | ActionError
@@ -107,6 +112,8 @@ export interface Candidate {
 }
 
 export interface Proposal {
+  /** Данные заявки изменились после закрепления (район, возраст, время, улица): закреплённая группа ещё не пересчитана, нужно «подобрать заново». */
+  dataChanged: boolean;
   /** Предложение закреплено: сохранено в «предварительно» и не изменится само, пока группа доступна. Иначе это свежий расчёт, он может поменяться при следующем показе. */
   saved: boolean;
   /** Кто предложил: расчёт сервиса или (позже) языковая модель. Пока человек не утвердил, это только предложение. */
@@ -359,6 +366,17 @@ export interface CreateRecordOk {
   id: number;
 }
 
+/**
+ * Регистрация участника (поля — как у формы регистрации старого дашборда: fio, phone, church, mdgStatus,
+ * leaderName, location, age, preferredContact, comment). Номер регистрации нужен для карточки и QR.
+ */
+export interface CreateRegistrationOk {
+  ok: true;
+  /** id участника: по нему открываются `/api/v1/people/:id/card` и `/qr`. */
+  id: number;
+  registrationNo: number;
+}
+
 /** Справочники для форм: серверные списки, чтобы интерфейс не держал свою копию. */
 export interface FormMeta {
   districts: string[];
@@ -371,6 +389,10 @@ export interface FormMeta {
   ageGroups: string[];
   /** Имена координаторов для поля «Координатор» / «Ответственный». */
   coordinators: string[];
+  /** Церкви для формы регистрации. */
+  churches: string[];
+  /** Ответ про малую группу в регистрации (value → подпись). */
+  mdgStatuses: { value: string; label: string }[];
 }
 
 // ── Справочник ──────────────────────────────────────────────────────────────
@@ -421,6 +443,10 @@ export interface PersonItem {
   district: string | null;
   /** Откуда: «Бот · Telegram», «Таблица», «Форма регистрации». */
   from: string;
+  /** id участника в боте/регистрации; null — запись только из таблицы (заявка без участника). */
+  userId: number | null;
+  /** Номер регистрации (для печатной карточки и QR); null — нет. */
+  registrationNo: number | null;
   /** Что ответил про малую группу: «Хочет в группу», «Откроет свою группу», «Уже в группе»… */
   mdgLabel: string;
   /** ISO-дата регистрации или заявки. */

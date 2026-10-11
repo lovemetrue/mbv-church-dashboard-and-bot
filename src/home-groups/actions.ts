@@ -11,6 +11,7 @@ export interface RequestActions {
   reject(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
   setNeedCall(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
   setParams(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
+  rematch(requestId: number, actor: string): Promise<ActionOutcome>;
 }
 
 const bad = (message: string): ActionOutcome => ({ ok: false, error: 'bad_request', message });
@@ -18,7 +19,11 @@ const bad = (message: string): ActionOutcome => ({ ok: false, error: 'bad_reques
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isId = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v > 0;
 
-export function createActions(placement: PlacementRepo, opts: { defaultCapacity: number }): RequestActions {
+export function createActions(
+  placement: PlacementRepo,
+  opts: { defaultCapacity: number },
+  matching?: { rematch(requestId: number, actor: string): Promise<ActionOutcome> },
+): RequestActions {
   return {
     async approve(requestId, body, actor) {
       if (!isRecord(body) || !isId(body['groupId'])) return bad('Нужно указать группу.');
@@ -52,6 +57,11 @@ export function createActions(placement: PlacementRepo, opts: { defaultCapacity:
         out[key] = v;
       }
       return placement.setParams(requestId, out, actor);
+    },
+
+    async rematch(requestId, actor) {
+      if (!matching) return { ok: false, error: 'not_found', message: 'Подбор недоступен.' };
+      return matching.rematch(requestId, actor);
     },
 
     async setNeedCall(requestId, body, actor) {

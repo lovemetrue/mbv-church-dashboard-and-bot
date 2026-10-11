@@ -30,11 +30,13 @@ describe('«Заявки»: закреплено или свежий расчё�
     renderAt(<App />, '/?tab=requests');
     const list = await screen.findByRole('list', { name: 'Список заявок' });
     const withPlan = buildRequests().items.filter((r) => r.proposal && r.bucket !== 'done');
-    const savedCount = withPlan.filter((r) => r.proposal!.saved).length;
+    // у закреплённых с изменившимися данными вместо «Закреплено» стоит «Данные изменились»
+    const savedCount = withPlan.filter((r) => r.proposal!.saved && !r.proposal!.dataChanged).length;
+    const unsavedCount = withPlan.filter((r) => !r.proposal!.saved).length;
     expect(savedCount).toBeGreaterThan(0);
-    expect(savedCount).toBeLessThan(withPlan.length);
+    expect(unsavedCount).toBeGreaterThan(0);
     expect(within(list).getAllByText('Закреплено')).toHaveLength(savedCount);
-    expect(within(list).getAllByText('Расчёт, не закреплено')).toHaveLength(withPlan.length - savedCount);
+    expect(within(list).getAllByText('Расчёт, не закреплено')).toHaveLength(unsavedCount);
   });
 
   test('у утверждённой заявки метки нет', async () => {

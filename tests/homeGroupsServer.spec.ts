@@ -70,16 +70,26 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
   };
   let views: () => Promise<ReturnType<typeof sampleViews>> = async () => sampleViews();
   const server = createHomeGroupsServer({
-    actions: { approve: record('approve'), reject: record('reject'), setNeedCall: record('need-call'), setParams: record('params') },
+    actions: { approve: record('approve'), reject: record('reject'), setNeedCall: record('need-call'), setParams: record('params'), rematch: async (id: number, actor: string) => { actionCalls.push({ name: 'rematch', id, body: undefined, actor }); return outcome; } },
     matching: {
       run: async (actor) => { matchingCalls.push({ name: 'run', actor }); return { ok: true, created: 2, replaced: 1, unchanged: 3 }; },
+      rerunAll: async (actor) => { matchingCalls.push({ name: 'rerun-all', actor }); return { ok: true, created: 5, replaced: 0, unchanged: 0 }; },
       setAuto: async (enabled, actor) => { matchingCalls.push({ name: 'auto', actor, enabled }); },
     },
     creator: {
       request: async (body: unknown, actor: string) => { createCalls.push({ what: 'request', body, actor }); return createOutcome; },
       group: async (body: unknown, actor: string) => { createCalls.push({ what: 'group', body, actor }); return createOutcome; },
     } as never,
-    formMeta: async () => ({ districts: ['Приморский'], groupFormats: [], groupStatuses: [], compositions: [], requestStatuses: [], requestTypes: [], ageGroups: [], coordinators: [] }),
+    registrar: {
+      register: async (body: unknown, actor: string) => {
+        createCalls.push({ what: 'registration', body, actor });
+        return createOutcome.ok ? { ok: true as const, id: createOutcome.id, registrationNo: 4242 } : createOutcome;
+      },
+      qr: async (id: number) => (id === 5 ? Buffer.from('\x89PNG-фейк') : null),
+      card: async (id: number) => (id === 5 ? { registrationNo: 4242, fullName: 'Иван Петров', phone: '+79110001122', church: null, mdgStatus: null } : null),
+    } as never,
+    logo: async () => Buffer.from('\x89PNG-логотип'),
+    formMeta: async () => ({ districts: ['Приморский'], groupFormats: [], groupStatuses: [], compositions: [], requestStatuses: [], requestTypes: [], ageGroups: [], coordinators: [], churches: [], mdgStatuses: [] }),
     legacyUrl: 'http://old.example:8090',
     staff: {
       view: async () => { staffCalls.push({ name: 'view', args: [] }); return { generatedAt: 'g', items: [], personal: { enabled: false, canEnable: false, activeWithPassword: 0, mailConfigured: false } }; },
@@ -991,7 +1001,60 @@ describe('создание записей и справочники форм', (
   });
 
   test('чужие адреса создания — 404', async () => {
-    expect((await create(await signIn(), 'people', { fields: {} })).status).toBe(404);
+    expect((await create(await signIn(), 'coordinators', { fields: {} })).status).toBe(404);
+  });
+
+  test('регистрация участника: тело и автор передаются, ответ несёт номер регистрации, снимок сбрасывается', async () => {
+    const cookie = await signIn(REGULAR);
+    const inv = app.invalidations();
+    const body = { fields: { fio: 'Иван Петров', phone: '+7 911 000-11-22' } };
+    const r = await create(cookie, 'people', body);
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, id: 77, registrationNo: 4242 });
+    expect(app.createCalls.at(-1)).toEqual({ what: 'registration', body, actor: REGULAR.login });
+    expect(app.invalidations()).toBe(inv + 1);
+  });
+
+  test('регистрация без сессии — 401 и ничего не вызвано', async () => {
+    const before = app.createCalls.length;
+    expect((await create(null, 'people', { fields: {} })).status).toBe(401);
+    expect(app.createCalls.length).toBe(before);
+  });
+
+  describe('карточка регистрации', () => {
+    const get = (path: string, cookie?: string) => fetch(`${app.base}${path}`, { headers: cookie ? { cookie } : {} });
+
+    test('без сессии ни карточка, ни QR, ни эмблема не открываются', async () => {
+      for (const path of ['/api/v1/people/5/card', '/api/v1/people/5/qr', '/api/v1/assets/church-logo.png']) {
+        expect((await get(path)).status, path).toBe(401);
+      }
+    });
+
+    test('карточка — HTML со ссылками на QR и эмблему внутри сервиса, без кэша', async () => {
+      const r = await get('/api/v1/people/5/card', await signIn());
+      expect(r.status).toBe(200);
+      expect(r.headers.get('content-type')).toMatch(/text\/html/);
+      expect(r.headers.get('cache-control')).toBe('no-store');
+      const html = await r.text();
+      expect(html).toContain('Иван Петров');
+      expect(html).toContain('/api/v1/people/5/qr');
+      expect(html).toContain('/api/v1/assets/church-logo.png');
+    });
+
+    test('QR и эмблема — PNG без кэша; чужой номер — 404', async () => {
+      const cookie = await signIn();
+      const qr = await get('/api/v1/people/5/qr', cookie);
+      expect(qr.status).toBe(200);
+      expect(qr.headers.get('content-type')).toBe('image/png');
+      expect(qr.headers.get('cache-control')).toBe('no-store');
+      expect((await get('/api/v1/assets/church-logo.png', cookie)).headers.get('content-type')).toBe('image/png');
+      expect((await get('/api/v1/people/6/qr', cookie)).status).toBe(404);
+      expect((await get('/api/v1/people/6/card', cookie)).status).toBe(404);
+    });
+
+    test('номер не из цифр не доходит до базы: 404', async () => {
+      expect((await get('/api/v1/people/abc/card', await signIn())).status).toBe(404);
+    });
   });
 
   test('справочники форм: без сессии 401, с сессией — списки', async () => {
@@ -1014,5 +1077,44 @@ describe('создание записей и справочники форм', (
     });
     expect(r.status).toBe(200);
     expect(app.actionCalls.at(-1)).toEqual({ name: 'params', id: 12, body, actor: SUPER.login });
+  });
+});
+
+
+describe('«подобрать заново»', () => {
+  const post = (cookie: string | null, path: string, body: unknown = {}) =>
+    fetch(`${app.base}/api/v1/${path}`, { method: 'POST', headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body) });
+
+  test('без сессии ни одно, ни все предложения не пересчитываются', async () => {
+    const a = app.actionCalls.length;
+    const m = app.matchingCalls.length;
+    expect((await post(null, 'requests/5/rematch')).status).toBe(401);
+    expect((await post(null, 'matching/rerun-all')).status).toBe(401);
+    expect(app.actionCalls.length).toBe(a);
+    expect(app.matchingCalls.length).toBe(m);
+  });
+
+  test('одна заявка: номер и автор передаются, снимок сбрасывается', async () => {
+    const inv = app.invalidations();
+    const r = await post(await signIn(REGULAR), 'requests/12/rematch');
+    expect(r.status).toBe(200);
+    expect(app.actionCalls.at(-1)).toEqual({ name: 'rematch', id: 12, body: undefined, actor: REGULAR.login });
+    expect(app.invalidations()).toBe(inv + 1);
+  });
+
+  test('закрытая заявка — 409 с текстом', async () => {
+    app.setOutcome({ ok: false, error: 'already_closed', message: 'Заявку уже обработали.' });
+    try {
+      const r = await post(await signIn(), 'requests/12/rematch');
+      expect(r.status).toBe(409);
+      expect(await r.json()).toEqual({ error: 'already_closed', message: 'Заявку уже обработали.' });
+    } finally { app.setOutcome({ ok: true }); }
+  });
+
+  test('«пересчитать все» доступно обычному входу и отвечает итогом', async () => {
+    const r = await post(await signIn(REGULAR), 'matching/rerun-all');
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, created: 5, replaced: 0, unchanged: 0 });
+    expect(app.matchingCalls.at(-1)).toEqual({ name: 'rerun-all', actor: REGULAR.login });
   });
 });

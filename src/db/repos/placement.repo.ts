@@ -32,6 +32,8 @@ interface RequestState {
 export interface DesiredProposal {
   requestId: number;
   groupId: number;
+  /** Отпечаток данных заявки, по которым получено предложение (см. plan/signature.ts). */
+  inputHash?: string;
   confidence: number;
   /** Причины подбора как показываются человеку: [{tone, text}]. */
   rationale: unknown;
@@ -257,6 +259,39 @@ export class PlacementRepo {
     });
   }
 
+  /**
+   * «Подобрать заново»: снимает закреплённые предложения (одной заявки или всех открытых), чтобы
+   * следующий расчёт собрал их с нуля. Утверждённое и отклонённое не трогает: отклонённые группы и
+   * дальше исключены из подбора. Для одной заявки проверяет, что она открыта.
+   */
+  async resetProposals(requestId: number | null, actor: string): Promise<ActionOutcome> {
+    return this.tx(async (c) => {
+      if (requestId !== null) {
+        const state = await this.lockOpenRequest(c, requestId);
+        if (PlacementRepo.isFailure(state)) return state;
+        await c.query(
+          `UPDATE placement_proposals SET status = 'superseded', decided_by = $2, decided_at = now()
+            WHERE request_id = $1 AND status = 'proposed'`,
+          [requestId, actor],
+        );
+        await this.audit(c, actor, 'request.rematch', requestId, null, null, null);
+      } else {
+        const res = await c.query(
+          `UPDATE placement_proposals p SET status = 'superseded', decided_by = $1, decided_at = now()
+             FROM requests r
+            WHERE r.id = p.request_id AND p.status = 'proposed' AND p.group_id IS NOT NULL
+              AND r.status NOT IN ('Исполнена', 'Аннулирована') AND r.archived_at IS NULL`,
+          [actor],
+        );
+        await c.query(
+          `INSERT INTO audit_log (actor, service, action, entity_type, after) VALUES ($1, 'home-groups', 'matching.rerun_all', 'matching', $2::jsonb)`,
+          [actor, JSON.stringify({ reset: res.rowCount ?? 0 })],
+        );
+      }
+      return { ok: true } as const;
+    });
+  }
+
   /** Группы, которые координатор уже отклонил для заявки: движок их не предлагает снова. */
   async rejectedGroups(): Promise<Map<number, number[]>> {
     const { rows } = await this.db.query<{ request_id: number; group_id: number }>(
@@ -268,11 +303,14 @@ export class PlacementRepo {
   }
 
   /** Действующие предложения: заявка → группа и кто предложил. Закрепляют выбор при следующем расчёте. */
-  async activeProposals(): Promise<Map<number, { groupId: number | null; source: 'script' | 'agent' | 'manual' }>> {
-    const { rows } = await this.db.query<{ request_id: number; group_id: number | null; source: 'script' | 'agent' | 'manual' }>(
-      `SELECT request_id, group_id, source FROM placement_proposals WHERE status = 'proposed'`,
+  async activeProposals(): Promise<Map<number, { groupId: number | null; source: 'script' | 'agent' | 'manual'; inputHash: string | null }>> {
+    const { rows } = await this.db.query<{ request_id: number; group_id: number | null; source: 'script' | 'agent' | 'manual'; input_hash: string | null }>(
+      `SELECT request_id, group_id, source, input_hash FROM placement_proposals WHERE status = 'proposed'`,
     );
-    return new Map(rows.map((r) => [Number(r.request_id), { groupId: r.group_id === null ? null : Number(r.group_id), source: r.source }]));
+    return new Map(rows.map((r) => [
+      Number(r.request_id),
+      { groupId: r.group_id === null ? null : Number(r.group_id), source: r.source, inputHash: r.input_hash },
+    ]));
   }
 
   /**
@@ -281,21 +319,22 @@ export class PlacementRepo {
    * не меняется само, пока остаётся доступным. Один запуск за раз (блокировка), иначе кнопка и
    * автоматический запуск, нажатые вместе, переписывали бы друг друга.
    */
-  async syncProposals(desired: readonly DesiredProposal[], actor: string): Promise<SyncResult> {
+  async syncProposals(desired: readonly DesiredProposal[], actor: string, scope?: ReadonlySet<number>): Promise<SyncResult> {
     return this.tx(async (c) => {
       await c.query(`SELECT pg_advisory_xact_lock(hashtext('hg_matching'))`);
-      const { rows } = await c.query<{ id: number; request_id: number; group_id: number }>(
-        `SELECT id, request_id, group_id FROM placement_proposals WHERE status = 'proposed' AND group_id IS NOT NULL`,
+      const { rows } = await c.query<{ id: number; request_id: number; group_id: number; input_hash: string | null }>(
+        `SELECT id, request_id, group_id, input_hash FROM placement_proposals WHERE status = 'proposed' AND group_id IS NOT NULL`,
       );
-      const current = new Map(rows.map((r) => [Number(r.request_id), r]));
+      // scope — «подобрать заново» для одной заявки: остальные закреплённые предложения не трогаем.
+      const current = new Map(rows.filter((r) => !scope || scope.has(Number(r.request_id))).map((r) => [Number(r.request_id), r]));
       const wanted = new Set(desired.map((d) => d.requestId));
       const result: SyncResult = { created: 0, replaced: 0, unchanged: 0 };
 
       const insert = (d: DesiredProposal) =>
         c.query(
-          `INSERT INTO placement_proposals (request_id, group_id, source, confidence, rationale)
-           VALUES ($1, $2, 'script', $3, $4::jsonb)`,
-          [d.requestId, d.groupId, d.confidence, JSON.stringify(d.rationale)],
+          `INSERT INTO placement_proposals (request_id, group_id, source, confidence, rationale, input_hash)
+           VALUES ($1, $2, 'script', $3, $4::jsonb, $5)`,
+          [d.requestId, d.groupId, d.confidence, JSON.stringify(d.rationale), d.inputHash ?? null],
         );
       const supersede = (id: number) =>
         c.query(
@@ -306,7 +345,14 @@ export class PlacementRepo {
       for (const d of desired) {
         const had = current.get(d.requestId);
         if (!had) { await insert(d); result.created += 1; continue; }
-        if (Number(had.group_id) === d.groupId) { result.unchanged += 1; continue; }
+        if (Number(had.group_id) === d.groupId) {
+          // Та же группа, но данные заявки другие: предложение подтверждено по новым данным — обновляем отпечаток.
+          if (d.inputHash && had.input_hash !== d.inputHash) {
+            await c.query('UPDATE placement_proposals SET input_hash = $2 WHERE id = $1', [Number(had.id), d.inputHash]);
+          }
+          result.unchanged += 1;
+          continue;
+        }
         await supersede(Number(had.id));
         await insert(d);
         result.replaced += 1;

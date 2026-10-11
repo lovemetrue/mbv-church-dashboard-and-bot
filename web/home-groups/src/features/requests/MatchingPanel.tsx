@@ -1,8 +1,8 @@
-import { useId } from 'react';
+import { useId, useState } from 'react';
 import type { MatchingStatus } from '@contracts';
 import { formatDateTime } from '../../entities/format';
 import { ru } from '../../shared/i18n/ru';
-import { Button } from '../../shared/ui';
+import { Button, Modal } from '../../shared/ui';
 import styles from './Requests.module.css';
 import { useMatching } from './useMatching';
 
@@ -14,8 +14,9 @@ const m = ru.requests.matching;
  * Предложение остаётся предложением: человек распределён только после «Утвердить»,
  * поэтому здесь ничего не утверждается.
  */
-export function MatchingPanel({ matching }: { matching: MatchingStatus }) {
+export function MatchingPanel({ matching, dataChanged = 0 }: { matching: MatchingStatus; dataChanged?: number }) {
   const act = useMatching();
+  const [confirming, setConfirming] = useState(false);
   const titleId = useId();
   const noteId = useId();
   const { lastRun } = matching;
@@ -29,11 +30,17 @@ export function MatchingPanel({ matching }: { matching: MatchingStatus }) {
       <div className={styles.matchingStats}>
         <p>{m.saved(matching.saved, matching.waiting)}</p>
         <p>{lastRun ? m.lastRun(formatDateTime(lastRun.at), lastRun.created, lastRun.replaced) : m.neverRun}</p>
+        {/* Заявки, чьи данные поправили после закрепления: их предложения устарели, но молча не меняются. */}
+        {dataChanged > 0 && <p className={styles.matchingWarn}>{m.dataChanged(dataChanged)}</p>}
       </div>
 
       <div className={styles.matchingControls}>
         <Button variant="primary" size="big" disabled={busy} onClick={() => void act.run()}>
           {act.pending === 'run' ? m.running : m.run}
+        </Button>
+        {/* Второго уровня: пересчёт трогает уже закреплённые предложения, поэтому он за подтверждением. */}
+        <Button disabled={busy} onClick={() => setConfirming(true)}>
+          {act.pending === 'rerun' ? m.rerunning : m.rerun}
         </Button>
         <div className={styles.switchBox}>
           <button
@@ -69,6 +76,25 @@ export function MatchingPanel({ matching }: { matching: MatchingStatus }) {
           </p>
         ))}
       <p className={styles.matchingHint}>{m.hint}</p>
+      {confirming && (
+        <Modal title={m.rerunTitle} onClose={() => setConfirming(false)}>
+          <p>{m.rerunQuestion}</p>
+          <div className={styles.dialogFoot}>
+            <Button onClick={() => setConfirming(false)}>{ru.requests.act.cancel}</Button>
+            <Button
+              variant="primary"
+              disabled={busy}
+              onClick={() => {
+                // Окно закрываем сразу: итог и ошибка видны в панели, а не под ним.
+                setConfirming(false);
+                void act.rerunAll();
+              }}
+            >
+              {m.rerunConfirm}
+            </Button>
+          </div>
+        </Modal>
+      )}
     </section>
   );
 }

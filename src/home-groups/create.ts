@@ -1,10 +1,11 @@
 import { parseGroupForm, parseRequestForm } from '../dashboard/forms.js';
 import { ALL_DISTRICTS, ALL_GROUP_STATUSES, COMPOSITIONS, FORMATS } from '../core/groups.js';
+import { allChurchOptions } from '../core/churches.js';
 import { AGE_GROUPS } from '../core/texts.js';
 import type { AuditRepo } from '../db/repos/audit.repo.js';
 import type { CoordinatorsRepo } from '../db/repos/coordinators.repo.js';
 import type { GroupsRepo } from '../db/repos/groups.repo.js';
-import { REQUEST_STATUSES, type RequestsRepo } from '../db/repos/requests.repo.js';
+import { REQUEST_STATUSES, type RequestsRepo, type RequestWithUser } from '../db/repos/requests.repo.js';
 import type { ActionError, FormMeta } from './contracts.js';
 
 /**
@@ -16,7 +17,7 @@ export type CreateOutcome = { ok: true; id: number } | { ok: false; error: Actio
 const bad = (message: string): CreateOutcome => ({ ok: false, error: 'bad_request', message });
 
 /** Тело запроса → поля формы: объект строк, не слишком большой. */
-function toForm(body: unknown): URLSearchParams | string {
+export function fieldsToForm(body: unknown): URLSearchParams | string {
   if (typeof body !== 'object' || body === null) return 'Нужны поля формы.';
   const fields = (body as Record<string, unknown>)['fields'];
   if (typeof fields !== 'object' || fields === null || Array.isArray(fields)) return 'Нужны поля формы.';
@@ -33,23 +34,28 @@ function toForm(body: unknown): URLSearchParams | string {
 }
 
 export function createRecordCreator(deps: {
-  requests: Pick<RequestsRepo, 'createFromDashboard'>;
+  requests: Pick<RequestsRepo, 'createFromDashboard' | 'findById'>;
   groups: Pick<GroupsRepo, 'create'>;
   audit: Pick<AuditRepo, 'write'>;
+  /** Уведомление служителю о новой заявке; не должно бросать (см. `notifierFromEnv`). */
+  notify?: (request: RequestWithUser) => Promise<void>;
 }) {
   return {
     async request(body: unknown, actor: string): Promise<CreateOutcome> {
-      const form = toForm(body);
+      const form = fieldsToForm(body);
       if (typeof form === 'string') return bad(form);
       const parsed = parseRequestForm(form);
       if (!parsed.ok) return bad(parsed.error);
       const id = await deps.requests.createFromDashboard(parsed.value);
       await deps.audit.write(actor, 'request.create', 'request', id, { type: parsed.value.type, status: parsed.value.status });
+      // Заявка, заведённая в интерфейсе, — тот же повод уведомить служителя, что и заявка из чата с ботом.
+      const created = deps.notify ? await deps.requests.findById(id) : null;
+      if (created) await deps.notify!(created);
       return { ok: true, id };
     },
 
     async group(body: unknown, actor: string): Promise<CreateOutcome> {
-      const form = toForm(body);
+      const form = fieldsToForm(body);
       if (typeof form === 'string') return bad(form);
       const parsed = parseGroupForm(form);
       if (!parsed.ok) return bad(parsed.error);
@@ -62,6 +68,15 @@ export function createRecordCreator(deps: {
 }
 
 export type RecordCreator = ReturnType<typeof createRecordCreator>;
+
+/** Ответ про малую группу в регистрации — подписи в третьем лице: форму заполняет служитель за человека. */
+const MDG_STATUSES: FormMeta['mdgStatuses'] = [
+  { value: 'open', label: 'готов открыть Малую группу' },
+  { value: 'home', label: 'готов предоставить свой дом для Малой группы' },
+  { value: 'join', label: 'хочет присоединиться к Малой группе' },
+  { value: 'member', label: 'уже состоит в Малой группе' },
+  { value: 'leader', label: 'ведёт Малую группу' },
+];
 
 const REQUEST_TYPES: FormMeta['requestTypes'] = [
   { value: 'join_group', label: 'Хочет в домашнюю группу' },
@@ -82,5 +97,7 @@ export function createFormMeta(coordinators: Pick<CoordinatorsRepo, 'listActive'
     requestTypes: REQUEST_TYPES,
     ageGroups: [...AGE_GROUPS],
     coordinators: (await coordinators.listActive()).map((c) => c.name),
+    churches: allChurchOptions(),
+    mdgStatuses: MDG_STATUSES,
   });
 }

@@ -168,6 +168,8 @@ export interface MatrixCell {
  */
 export interface MatrixRow {
   district: string;
+  /** Свободных мест в районе без двойного счёта: группа с двумя возрастами считается один раз (сумма по ячейкам её посчитала бы дважды). */
+  supplyTotal: number;
   cells: MatrixCell[];
 }
 

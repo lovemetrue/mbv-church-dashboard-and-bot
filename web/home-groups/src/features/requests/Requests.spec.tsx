@@ -40,9 +40,18 @@ describe('«Заявки»: экран', () => {
     renderAt(<App />, '/?tab=requests');
     const bar = await screen.findByRole('group', { name: 'Фильтр по состоянию заявки' });
     const names = within(bar).getAllByRole('button').map((b) => b.textContent);
-    expect(names).toEqual(['Все18', 'Готово к утверждению11', 'Перезвонить0', 'Нужна помощь в сопоставлении6', 'Утверждено1']);
+    // числа берём из тех же фикстур: список заявок в них дополняют, и литералы устаревали бы
+    const c = countBuckets(buildRequests().items);
+    expect(names).toEqual([
+      `Все${c.all}`,
+      `К обзвону${c.queue}`,
+      `Готово к утверждению${c.ready}`,
+      `Перезвонить${c.callback}`,
+      `Нужна помощь в сопоставлении${c.human}`,
+      `Утверждено${c.done}`,
+    ]);
     expect(within(bar).getByRole('button', { name: /^Все/ })).toHaveAttribute('aria-pressed', 'true');
-    expect(rowsOf()).toHaveLength(18);
+    expect(rowsOf()).toHaveLength(c.all);
     expect(screen.queryByText('Тимур Ахметов')).not.toBeInTheDocument();
   });
 
@@ -52,7 +61,7 @@ describe('«Заявки»: экран', () => {
     renderAt(<App />, '/?tab=requests');
     await screen.findByRole('list', { name: 'Список заявок' });
     await user.click(screen.getByRole('button', { name: /^Нужна помощь в сопоставлении/ }));
-    expect(rowsOf()).toHaveLength(6);
+    expect(rowsOf()).toHaveLength(countBuckets(buildRequests().items).human);
     expect(currentSearch().get('bucket')).toBe('human');
     await user.click(screen.getByRole('button', { name: /^Утверждено/ }));
     expect(rowsOf()).toHaveLength(1);

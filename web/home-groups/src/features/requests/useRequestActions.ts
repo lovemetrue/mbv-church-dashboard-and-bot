@@ -9,7 +9,9 @@ import { ru } from '../../shared/i18n/ru';
 export type ActionDialog =
   | { requestId: number; kind: 'pick' }
   | { requestId: number; kind: 'reject'; group: GroupBrief }
-  | { requestId: number; kind: 'full'; group: GroupBrief };
+  | { requestId: number; kind: 'full'; group: GroupBrief }
+  /** Подтверждение для запасного варианта: он не главный, и случайный клик по нему не должен распределять человека. */
+  | { requestId: number; kind: 'confirm'; group: GroupBrief };
 
 export interface ActionNotice {
   requestId: number;

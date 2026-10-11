@@ -114,12 +114,16 @@ describe('представления из живых репозиториев', 
 
   test('закрытый адрес группы, второй телефон ведущего и ответы анкеты нигде не появляются', async () => {
     await seed();
-    const json = JSON.stringify(await liveViews().get());
+    const views = await liveViews().get();
+    const json = JSON.stringify(views);
     expect(json).not.toContain(SECRET_ADDRESS);
     expect(json).not.toContain('Секретная');
     expect(json).not.toContain(SECRET_PHONE);
-    expect(json).not.toContain(SECRET_SURVEY_ADDRESS);
     expect(json).not.toContain('address');
+    // Улица из анкеты человека видна координатору в его заявке (чтобы сверить карточку), но больше нигде.
+    const { requests, ...rest } = views;
+    expect(JSON.stringify(rest)).not.toContain(SECRET_SURVEY_ADDRESS);
+    expect(JSON.stringify(requests)).toContain(SECRET_SURVEY_ADDRESS);
   });
 
   test('заявки: открытые и исполненные, отказ только в счётчике, убранные и чужие виды не видны', async () => {
@@ -243,7 +247,10 @@ describe('через HTTP на живой базе', () => {
       for (const name of ['today', 'requests', 'groups', 'people', 'coordinators']) {
         const r = await fetch(`${base}/api/v1/${name}`, { headers: { cookie } });
         expect(r.status, name).toBe(200);
-        all += await r.text();
+        const text = await r.text();
+        // Улица из анкеты — только в заявках (координатору нужно сверить карточку).
+        if (name === 'requests') expect(text).toContain(SECRET_SURVEY_ADDRESS);
+        else all += text;
       }
       expect(all).toContain('Мария Иванова');
       expect(all).toContain('Станислав Ким');

@@ -3,6 +3,7 @@ import { BUCKET_LABEL } from '../../entities/buckets';
 import { groupLabel, groupLine } from '../../entities/format';
 import { ru } from '../../shared/i18n/ru';
 import { AgeTag, ConfidenceDots, Pill } from '../../shared/ui';
+import { SavedTag } from './SavedTag';
 import styles from './Requests.module.css';
 
 function proposalText(r: RequestItem) {
@@ -58,6 +59,7 @@ export function RequestList({ items, selectedId, onSelect }: RequestListProps) {
                 <Pill tone={r.bucket === 'cancelled' ? 'plain' : r.bucket}>{BUCKET_LABEL[r.bucket]}</Pill>
                 <div className={styles.propText}>
                   {text ?? <span className={styles.note}>{r.noPlan?.reason ?? ''}</span>}
+                  {r.proposal && r.bucket !== 'done' && <SavedTag saved={r.proposal.saved} />}
                 </div>
               </div>
               <div className={`${styles.conf} num`}>

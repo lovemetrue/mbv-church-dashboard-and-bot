@@ -1,6 +1,8 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { openCount } from '../entities/buckets';
+import { buildRequests, buildToday } from '../fixtures/build';
 import { currentSearch, renderAt, stubFetchWithFixtures } from '../test/render';
 import { App } from './App';
 
@@ -8,8 +10,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
   document.documentElement.removeAttribute('data-theme');
 });
-
-const SOON = 'Появится на следующем этапе';
 
 describe('оболочка', () => {
   test('вкладки обычного входа — это tablist с выбранной «Сегодня», у «Заявок» стоит счётчик открытых, вкладок «Контроль» и «Настройки» нет', async () => {
@@ -22,15 +22,17 @@ describe('оболочка', () => {
     expect(names[2]).toBe('Справочник');
     expect(names).toHaveLength(3);
     expect(within(tabs).getByRole('tab', { name: 'Сегодня' })).toHaveAttribute('aria-selected', 'true');
-    // 11 готово + 0 перезвонить + 6 нужна помощь
-    expect(await within(tabs).findByRole('tab', { name: /Заявки\s*17/ })).toBeInTheDocument();
+    // Число открытых берём из тех же фикстур: оно растёт вместе с демо-заявками.
+    const open = openCount(buildRequests().counters);
+    expect(await within(tabs).findByRole('tab', { name: new RegExp(`Заявки\\s*${open}$`) })).toBeInTheDocument();
   });
 
   test('в шапке плашка «Распределено X из Y» берёт числа из данных «Сегодня»', async () => {
     stubFetchWithFixtures();
     renderAt(<App />);
     const pill = await screen.findByText(/Распределено/);
-    expect(pill.textContent).toMatch(/12\s*из\s*18/);
+    const { assigned, total } = buildToday();
+    expect(pill.textContent).toMatch(new RegExp(`${assigned}\\s*из\\s*${total}`));
   });
 
   test('стрелка вправо переключает вкладку и переносит на неё фокус, адрес запоминает вкладку', async () => {
@@ -46,16 +48,15 @@ describe('оболочка', () => {
     expect(currentSearch().get('tab')).toBe('requests');
   });
 
-  test('кнопки следующего этапа показаны, но отключены и объясняют почему', async () => {
+  test('кнопка «Создать» в шапке доступна и открывает меню, а не стоит заглушкой «следующего этапа»', async () => {
     stubFetchWithFixtures();
+    const user = userEvent.setup();
     renderAt(<App />);
     const create = screen.getByRole('button', { name: '+ Создать' });
-    expect(create).toBeDisabled();
-    expect(create).toHaveAttribute('title', SOON);
-    expect(create).toHaveAttribute('aria-description', SOON);
-    const start = await screen.findByRole('button', { name: /Начать обзвон \(11\)/ });
-    expect(start).toBeDisabled();
-    expect(start).toHaveAttribute('aria-description', SOON);
+    expect(create).toBeEnabled();
+    expect(create).not.toHaveAttribute('aria-description');
+    await user.click(create);
+    expect(screen.getByRole('menu', { name: 'Что создать' })).toBeInTheDocument();
   });
 
   test('выход — форма POST на /logout', () => {

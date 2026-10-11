@@ -229,6 +229,21 @@
   text-overflow: ellipsis;
   vertical-align: bottom;
 }
+/* ФИО ведущего: колонка не шире ~15 em, длинное имя обрезается многоточием (полное — в подсказке). */
+.leaderCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 15em;
+  vertical-align: bottom;
+}
+.leaderName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .openBtn {
   background: none;
   border: 0;

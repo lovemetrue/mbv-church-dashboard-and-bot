@@ -66,12 +66,21 @@ function buildMatrix(input: SummaryInput): MatrixRow[] {
     }
   }
 
+  // Места района без двойного счёта: каждая группа один раз.
+  const freeByDistrict = new Map<string, number>();
+  for (const g of input.groups) {
+    if (!isAccepting(g) || g.district === NO_DISTRICT) continue;
+    const free = g.capacity - (g.people ?? 0);
+    if (free > 0) freeByDistrict.set(g.district, (freeByDistrict.get(g.district) ?? 0) + free);
+  }
+
   const totalDemand = (district: string): number => [...(table.get(district)?.values() ?? [])].reduce((sum, c) => sum + c.demand, 0);
   const columns = [...AGE_COLUMNS, NO_AGE_COLUMN];
   return [...table.keys()]
     .sort((a, b) => totalDemand(b) - totalDemand(a) || a.localeCompare(b, 'ru'))
     .map((district): MatrixRow => ({
       district,
+      supplyTotal: freeByDistrict.get(district) ?? 0,
       cells: columns.map((age): MatrixCell => {
         const c = table.get(district)?.get(age) ?? { demand: 0, supply: 0, requestIds: [], groupIds: [] };
         return { age, demand: c.demand, supply: c.supply, net: c.supply - c.demand, level: levelOf(c.demand, c.supply), requestIds: c.requestIds, groupIds: c.groupIds };

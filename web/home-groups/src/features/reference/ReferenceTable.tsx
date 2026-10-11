@@ -1,7 +1,7 @@
 import type { Row, RowGroup, SortState } from '../../shared/filters';
 import { healthTone } from '../../entities/format';
 import { ru } from '../../shared/i18n/ru';
-import { EmptyState, TableScroll } from '../../shared/ui';
+import { EmptyState, NewGroupIcon, TableScroll } from '../../shared/ui';
 import { displayCell } from './config';
 import styles from './Reference.module.css';
 
@@ -18,6 +18,9 @@ interface ReferenceTableProps {
   onSelect: (key: string) => void;
 }
 
+/** С какой длины имя может не уместиться в ячейке (около 15 em) и нужна подсказка с полным именем. */
+const LEADER_TITLE_FROM = 20;
+
 function Cell({ column, value, row }: { column: string; value: Row[string]; row: Row }) {
   const text = displayCell(column, value ?? null);
   if (text === '') return <span className={styles.empty}>{ru.reference.emptyDash}</span>;
@@ -33,6 +36,25 @@ function Cell({ column, value, row }: { column: string; value: Row[string]; row:
           <span className="visually-hidden"> {label.replace(/^\+\d+ /, '')}</span>
         </span>
       </>
+    );
+  }
+  if (column === 'Ведущий' || column === 'Код') {
+    const isNew = Number(row['_isNew'] ?? 0) > 0;
+    if (column === 'Код') {
+      return (
+        <>
+          {isNew && <NewGroupIcon size={14} />} {text}
+        </>
+      );
+    }
+    // Ширина ограничена, чтобы длинное ФИО не раздвигало таблицу; полное имя доступно в подсказке.
+    return (
+      <span className={styles.leaderCell}>
+        {isNew && <NewGroupIcon size={14} />}
+        <span className={styles.leaderName} title={text.length > LEADER_TITLE_FROM ? text : undefined}>
+          {text}
+        </span>
+      </span>
     );
   }
   if (column === 'Здоровье') {

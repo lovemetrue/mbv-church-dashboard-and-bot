@@ -1,17 +1,20 @@
 import type { Candidate } from '@contracts';
 import { groupLabel } from '../../entities/format';
 import { ru } from '../../shared/i18n/ru';
-import { Meter, Reasons } from '../../shared/ui';
+import type { ReactNode } from 'react';
+import { Meter, NewGroupIcon, Reasons } from '../../shared/ui';
 import styles from './Requests.module.css';
 
 interface CandidateCardProps {
   candidate: Candidate;
   /** Главное предложение подсвечивается рамкой. Выбрать запасной вариант — через «Другая группа». */
   main?: boolean;
+  /** Кнопка (и пояснение к ней) под причинами: у запасных вариантов это «Утвердить эту группу». */
+  action?: ReactNode;
 }
 
 /** Группа-кандидат: шкала уверенности (или совпадения), плашки причин, места. */
-export function CandidateCard({ candidate, main = false }: CandidateCardProps) {
+export function CandidateCard({ candidate, main = false, action }: CandidateCardProps) {
   const { group, reasons } = candidate;
   const value = candidate.confidence ?? candidate.score;
   const caption = candidate.confidence != null ? ru.requests.confidence : ru.requests.match;
@@ -20,6 +23,7 @@ export function CandidateCard({ candidate, main = false }: CandidateCardProps) {
     <article className={`${styles.cand} ${main ? styles.candTop : ''}`}>
       <div className={styles.candHead}>
         <b>Группа {groupLabel(group)}</b>
+        {group.isNew && <NewGroupIcon />}
         <span className={styles.note}>{[group.leader, group.format].filter(Boolean).join(' · ')}</span>
         <span className={`${styles.candScore} num`}>
           {value}
@@ -33,6 +37,7 @@ export function CandidateCard({ candidate, main = false }: CandidateCardProps) {
           {where ? `${where} · ` : ''}мест: {group.free} из {group.capacity}
         </span>
       </div>
+      {action}
     </article>
   );
 }

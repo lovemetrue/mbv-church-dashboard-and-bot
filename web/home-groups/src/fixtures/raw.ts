@@ -29,6 +29,8 @@ export interface RawGroup {
   composition: string | null;
   coordinator: string | null;
   comment: string | null;
+  /** Новая группа (заведена под кампанию); в контракте — `GroupBrief.isNew`. */
+  isNew: boolean;
 }
 
 export interface RawRequest {
@@ -57,6 +59,9 @@ export const TODAY_ISO = '2026-10-09';
 export const GENERATED_AT = '2026-10-09T09:30:00+03:00';
 
 export const AGE_COLUMNS = ['18–25', '26–35', '36–45', '46+'];
+/** Особые подписи матрицы «Сегодня»: в контракте это строковые литералы, не константы. */
+export const UNKNOWN_DISTRICT = 'Район не определён';
+export const UNKNOWN_AGE = 'Возраст не указан';
 export const DISTRICTS = [
   'Приморский',
   'Выборгский',
@@ -95,6 +100,7 @@ const g = (x: Partial<RawGroup> & Pick<RawGroup, 'id' | 'leader' | 'district' | 
   composition: null,
   coordinator: null,
   comment: null,
+  isNew: false,
   ...x,
 });
 
@@ -103,14 +109,16 @@ export const RAW_GROUPS: RawGroup[] = [
   g({ id: 2, no: 27, leader: 'Андрей М.', coLeader: 'Наталья М.', phone: '79212004477', district: 'Приморский', metro: 'Беговая', street: 'ул. Шаврова', ages: ['26–35', '36–45'], day: 'Чт', slot: 'вечер', people: 11, capacity: 12, verifiedDaysAgo: 14, format: 'Семейная', composition: 'Семьи с детьми', coordinator: 'Петров Г.' }),
   g({ id: 3, no: 31, leader: 'Марина Л.', phone: '79052006612', district: 'Выборгский', metro: 'Озерки', street: 'пр. Просвещения', ages: ['36–45', '46+'], day: 'Пн', slot: 'день', people: 6, capacity: 14, verifiedDaysAgo: 41, format: 'Женская', composition: 'Женщины', coordinator: 'Трофимова С.', comment: 'Просила не присылать новых до конца месяца, но места есть.' }),
   g({ id: 4, no: 8, leader: 'Игорь Т.', phone: '79312003390', district: 'Центральный', metro: 'Лиговский пр.', street: 'Лиговский пр.', ages: ['18–25'], day: 'Ср', slot: 'вечер', people: 9, capacity: 10, verifiedDaysAgo: 3, format: 'Молодёжная', composition: 'Молодёжь', coordinator: 'Лебедева А.' }),
-  g({ id: 5, no: 15, leader: 'Светлана Р.', phone: '79112008851', district: 'Калининский', metro: 'Академическая', street: 'Гражданский пр.', ages: ['26–35', '36–45'], day: 'Сб', slot: 'утро', people: 5, capacity: 12, verifiedDaysAgo: 9, format: 'Смешанная', coordinator: 'Морозов Д.' }),
+  g({ id: 5, isNew: true, no: 15, leader: 'Светлана Р.', phone: '79112008851', district: 'Калининский', metro: 'Академическая', street: 'Гражданский пр.', ages: ['26–35', '36–45'], day: 'Сб', slot: 'утро', people: 5, capacity: 12, verifiedDaysAgo: 9, format: 'Смешанная', coordinator: 'Морозов Д.' }),
   g({ id: 6, no: 40, leader: 'Павел Д.', phone: '79992005502', district: 'Невский', metro: 'Ломоносовская', street: 'пр. Большевиков', ages: ['26–35'], day: 'Пт', slot: 'вечер', people: 12, capacity: 12, verifiedDaysAgo: 5, format: 'Мужская', composition: 'Мужчины', coordinator: 'Лебедева А.' }),
   g({ id: 7, no: 22, leader: 'Елена и Сергей Н.', phone: '79212007704', district: 'Красногвардейский', metro: 'Ладожская', street: 'Индустриальный пр.', ages: ['36–45', '46+'], people: 7, capacity: 12, verifiedDaysAgo: 63, format: 'Семейная', coordinator: 'Трофимова С.', comment: 'День и время уточнить: переносили встречи.' }),
-  g({ id: 8, no: 19, leader: 'Дмитрий В.', district: 'Приморский', metro: 'Старая Деревня', ages: ['18–25', '26–35'], people: 4, capacity: 12, verifiedDaysAgo: 28, format: 'Смешанная', coordinator: 'Петров Г.' }),
+  g({ id: 8, isNew: true, no: 19, leader: 'Дмитрий В.', district: 'Приморский', metro: 'Старая Деревня', ages: ['18–25', '26–35'], people: 4, capacity: 12, verifiedDaysAgo: 28, format: 'Смешанная', coordinator: 'Петров Г.' }),
   g({ id: 9, no: 35, leader: 'Анна С.', phone: '79052009930', district: 'Калининский', metro: 'Политехническая', ages: ['46+'], day: 'Вт', slot: 'день', people: 10, capacity: 14, verifiedDaysAgo: 11, format: 'Женская', coordinator: 'Лебедева А.' }),
   g({ id: 10, no: 3, leader: 'Виктор П.', phone: '79312001128', district: 'Выборгский', metro: 'Лесная', street: 'ул. Харченко', ages: ['26–35', '36–45'], day: 'Ср', slot: 'вечер', status: 'На паузе', acceptsNew: false, people: 5, capacity: 12, verifiedDaysAgo: 22, format: 'Смешанная', coordinator: 'Трофимова С.' }),
   g({ id: 11, no: 44, leader: 'Ксения Б.', phone: '79112006643', district: 'Центральный', metro: 'Владимирская', street: 'ул. Марата', ages: ['26–35'], day: 'Чт', slot: 'вечер', people: 6, capacity: 12, verifiedDaysAgo: 7, format: 'Смешанная', coordinator: 'Морозов Д.' }),
-  g({ id: 12, no: null, leader: 'Татьяна Ф.', phone: '79212005519', district: 'Невский', metro: 'Новочеркасская', street: 'ул. Седова', ages: ['36–45', '46+'], day: 'Пн', slot: 'вечер', people: null, capacity: null, verifiedDaysAgo: null, format: 'Женская', coordinator: 'Морозов Д.', doNotRefer: true, comment: 'Новая группа без номера в реестре; пока никого не направлять.' }),
+  g({ id: 12, isNew: true, no: null, leader: 'Татьяна Ф.', phone: '79212005519', district: 'Невский', metro: 'Новочеркасская', street: 'ул. Седова', ages: ['36–45', '46+'], day: 'Пн', slot: 'вечер', people: null, capacity: null, verifiedDaysAgo: null, format: 'Женская', coordinator: 'Морозов Д.', doNotRefer: true, comment: 'Новая группа без номера в реестре; пока никого не направлять.' }),
+  // Закрытая группа: по умолчанию в «Справочнике» скрыта, видна после снятия отбора. Длинное ФИО показывает обрезку.
+  g({ id: 13, no: 6, leader: 'Борис Олегович Ширяев-Коваленко', phone: '79215550134', district: 'Приморский', metro: 'Удельная', ages: ['46+'], status: 'Закрыта', acceptsNew: false, people: 0, capacity: 12, format: 'Смешанная', comment: 'Встречи закончились в сентябре, группа закрыта.' }),
 ];
 
 const r = (
@@ -157,7 +165,8 @@ export const RAW_REQUESTS: RawRequest[] = [
   r({ id: 12, fio: 'Георгий Шмелёв', phone: '79162274000', age: '26–35', district: 'Центральный', place: 'Маяковская', days: ['Чт'], slot: 'вечер', source: 'Таблица', waitingDays: 4, log: [created('Таблица', 4)] }),
   r({ id: 13, fio: 'Руслан Агеев', phone: '79521149000', age: '36–45', district: 'Приморский', place: 'Беговая', days: ['Чт'], slot: 'вечер', street: 'ул. Шаврова', source: 'Бот · Telegram', waitingDays: 0, log: [created('Бот · Telegram', 0)] }),
   r({ id: 14, fio: 'Лариса Кулик', phone: '79095503100', age: '36–45', district: 'Фрунзенский', place: 'Купчино', days: ['Пт'], source: 'Бот · Telegram', waitingDays: 2, log: [created('Бот · Telegram', 2)] }),
-  r({ id: 15, fio: 'Игорь Пестов', phone: '79650081200', age: '26–35', district: 'Фрунзенский', place: 'Бухарестская', days: ['Пт', 'Сб'], slot: 'вечер', source: 'Бот · MAX', waitingDays: 1, log: [created('Бот · MAX', 1)] }),
+  // Возраст не указан: попадает в особую колонку матрицы «Сегодня» (а заявка 8 без района — в особую строку); там только спрос.
+  r({ id: 15, fio: 'Игорь Пестов', phone: '79650081200', age: '', ageLabel: '', district: 'Фрунзенский', place: 'Бухарестская', days: ['Пт', 'Сб'], slot: 'вечер', source: 'Бот · MAX', waitingDays: 1, log: [created('Бот · MAX', 1)] }),
   // Эльвире место в №27 отдано Руслану (последнее), поэтому ей предложена №31: пример «вытесненного» варианта.
   r({ id: 17, fio: 'Эльвира Волкова', phone: '79215550117', age: '36–45', district: 'Выборгский', place: 'Лесная', days: ['Чт'], slot: 'вечер', street: 'ул. Харченко', source: 'Бот · Telegram', waitingDays: 1, log: [created('Бот · Telegram', 1)] }),
   // Единственная подходящая группа №8 забирает Кирилл Фомин: пример «места разобраны».

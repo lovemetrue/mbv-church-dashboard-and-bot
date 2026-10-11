@@ -11,6 +11,7 @@ describe('состояние экрана в адресе', () => {
     expect(parseEntity('people')).toBe('people');
     expect(parseBucket('cancelled')).toBe('all');
     expect(parseBucket('human')).toBe('human');
+    expect(parseBucket('queue')).toBe('queue');
     expect(parseId('12')).toBe(12);
     expect(parseId('12abc')).toBeNull();
     expect(parseId(null)).toBeNull();

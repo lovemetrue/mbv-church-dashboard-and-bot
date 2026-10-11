@@ -2,12 +2,19 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { App } from '../../app/App';
+import { buildGroups, buildPeople } from '../../fixtures/build';
 import { currentSearch, renderAt, stubFetchWithFixtures } from '../../test/render';
 import { coordinatorsConfig, groupsConfig, peopleConfig } from './config';
 
 afterEach(() => vi.unstubAllGlobals());
 
 const SOON = 'Появится на следующем этапе';
+/** Сколько людей в фикстурах: число растёт вместе с демо-заявками, поэтому берём его оттуда же. */
+const PEOPLE = buildPeople().items.length;
+/** Групп в фикстурах всего и сколько видно сразу: закрытая (Борис Ширяев-Коваленко) по умолчанию скрыта. */
+const GROUPS = buildGroups().items.length;
+const GROUPS_SHOWN = buildGroups().items.filter((g) => g.status !== 'Закрыта').length;
+const CLOSED_LEADER = 'Борис Олегович Ширяев-Коваленко';
 
 /** Строки данных (без шапки и заголовков групп). */
 const dataRows = () => within(screen.getByRole('table')).getAllByRole('row').filter((r) => r.querySelector('td'));
@@ -33,19 +40,19 @@ describe('«Справочник»: экран', () => {
     renderAt(<App />, '/?tab=reference');
     const sw = await screen.findByRole('group', { name: 'Что показывать' });
     await waitFor(() =>
-      expect(within(sw).getAllByRole('button').map((b) => b.textContent)).toEqual(['Группы12', 'Люди23', 'Координаторы4']),
+      expect(within(sw).getAllByRole('button').map((b) => b.textContent)).toEqual([`Группы${GROUPS}`, `Люди${PEOPLE}`, 'Координаторы4']),
     );
     expect(within(sw).getByRole('button', { name: /^Группы/ })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  test('таблица групп показывает восемь столбцов по умолчанию и «Показано 12 из 12»', async () => {
+  test('таблица групп показывает восемь столбцов по умолчанию и «Показано 12 из 13»: закрытая скрыта', async () => {
     stubFetchWithFixtures();
     renderAt(<App />, '/?tab=reference');
     const table = await screen.findByRole('table');
     const heads = within(table).getAllByRole('columnheader').map((h) => h.textContent?.replace(/[▲▼]/g, '').trim());
     expect(heads).toEqual(['№', 'Ведущий', 'Район', 'Возраст', 'Когда', 'Места', 'Статус', 'Здоровье']);
-    expect(screen.getByText('Показано 12 из 12')).toBeInTheDocument();
-    expect(dataRows()).toHaveLength(12);
+    expect(screen.getByText(`Показано ${GROUPS_SHOWN} из ${GROUPS}`)).toBeInTheDocument();
+    expect(dataRows()).toHaveLength(GROUPS_SHOWN);
   });
 
   test('быстрый отбор сужает таблицу, ставит чип с «×» и записывает отбор в адрес', async () => {
@@ -57,18 +64,20 @@ describe('«Справочник»: экран', () => {
     const dlg = screen.getByRole('dialog', { name: 'Фильтры' });
     await user.click(within(dlg).getByRole('button', { name: 'На паузе' }));
     expect(dataRows()).toHaveLength(1);
-    expect(screen.getByText('Показано 1 из 12')).toBeInTheDocument();
+    expect(screen.getByText(`Показано 1 из ${GROUPS}`)).toBeInTheDocument();
     expect(currentSearch().getAll('f')).toEqual(['Статус:eq:На паузе']);
     // чип можно убрать
     await user.keyboard('{Escape}');
     await user.click(screen.getByRole('button', { name: 'Убрать отбор: Статус = На паузе' }));
-    expect(dataRows()).toHaveLength(12);
+    // Отбор пуст: это явный выбор «показать всё», поэтому закрытая группа тоже видна.
+    expect(dataRows()).toHaveLength(GROUPS);
     expect(currentSearch().has('f')).toBe(false);
   });
 
   test('отбор из адреса применяется при загрузке страницы', async () => {
     stubFetchWithFixtures();
-    renderAt(<App />, '/?tab=reference&f=' + encodeURIComponent('Район:eq:Приморский'));
+    // Адрес — полное описание отбора: умолчание («Закрыта» скрыта) в нём указано явно, иначе его бы не было.
+    renderAt(<App />, '/?tab=reference&f=' + encodeURIComponent('Статус:ne:Закрыта') + '&f=' + encodeURIComponent('Район:eq:Приморский'));
     await screen.findByRole('table');
     expect(dataRows()).toHaveLength(3);
     expect(screen.getByRole('list', { name: 'Текущий отбор' })).toHaveTextContent('Район = Приморский');
@@ -87,7 +96,8 @@ describe('«Справочник»: экран', () => {
     await user.selectOptions(within(dlg).getByLabelText('Условие'), '≥');
     await user.type(within(dlg).getByLabelText('Значение'), '6');
     await user.click(within(dlg).getByRole('button', { name: 'Добавить' }));
-    expect(currentSearch().getAll('f')).toEqual(['Мест свободно:ge:6']);
+    // Отбор по умолчанию («Закрыта» скрыта) остаётся и записывается в адрес вместе с новым условием.
+    expect(currentSearch().getAll('f')).toEqual(['Статус:ne:Закрыта', 'Мест свободно:ge:6']);
     expect(dataRows().length).toBeGreaterThan(0);
     expect(dataRows().length).toBeLessThan(12);
   });
@@ -117,7 +127,7 @@ describe('«Справочник»: экран', () => {
     await user.click(within(dlg).getByRole('button', { name: 'Сохранить как вид' }));
     expect(JSON.parse(window.localStorage.getItem('hg.views.groups') ?? '[]')[0].name).toBe('Паузные');
     await user.click(within(dlg).getByRole('button', { name: 'Сбросить всё' }));
-    expect(dataRows()).toHaveLength(12);
+    expect(dataRows()).toHaveLength(GROUPS);
     await user.click(within(screen.getByRole('dialog', { name: 'Фильтры' })).getByRole('button', { name: 'Паузные' }));
     expect(dataRows()).toHaveLength(1);
   });
@@ -135,7 +145,7 @@ describe('«Справочник»: экран', () => {
     await user.selectOptions(within(dlg).getByLabelText('Группировать'), 'Район');
     const groupRows = within(screen.getByRole('table')).getAllByRole('rowheader');
     expect(groupRows.map((r) => r.textContent)).toContain('Приморский · 3');
-    expect(dataRows()).toHaveLength(12);
+    expect(dataRows()).toHaveLength(GROUPS_SHOWN);
     expect(currentSearch().get('gb')).toBe('Район');
   });
 
@@ -154,7 +164,8 @@ describe('«Справочник»: экран', () => {
     const user = userEvent.setup();
     renderAt(<App />, '/?tab=reference');
     const table = await screen.findByRole('table');
-    const firstCol = () => dataRows().map((r) => within(r).getAllByRole('cell')[1]!.textContent);
+    // Подпись значка «Новая группа» входит в текст ячейки (её читает скринридер), для сравнения имён её убираем.
+    const firstCol = () => dataRows().map((r) => within(r).getAllByRole('cell')[1]!.textContent?.replace('Новая группа', ''));
     await user.click(within(table).getByRole('button', { name: 'Сортировать по столбцу «Ведущий»' }));
     expect(firstCol()[0]).toBe('Андрей М.');
     expect(within(table).getByRole('columnheader', { name: /Ведущий/ })).toHaveAttribute('aria-sort', 'ascending');
@@ -172,7 +183,7 @@ describe('«Справочник»: экран', () => {
     await screen.findByRole('table');
     await user.type(screen.getByRole('searchbox', { name: 'Поиск по таблице' }), 'невск');
     expect(dataRows()).toHaveLength(2);
-    expect(await screen.findByText('Показано 2 из 12')).toBeInTheDocument();
+    expect(await screen.findByText(`Показано 2 из ${GROUPS}`)).toBeInTheDocument();
   });
 
   test('когда ничего не подошло, показывается подсказка убрать часть условий', async () => {
@@ -198,7 +209,7 @@ describe('«Справочник»: экран', () => {
     expect(within(card).getByRole('button', { name: 'Спросить ведущего в боте' })).toBeDisabled();
     expect(within(card).getByRole('button', { name: 'Спросить ведущего в боте' })).toHaveAttribute('aria-description', SOON);
     // таблица осталась на месте и со всеми строками
-    expect(dataRows()).toHaveLength(12);
+    expect(dataRows()).toHaveLength(GROUPS_SHOWN);
   });
 
   test('в карточке группы со слабым здоровьем непройденные проверки отмечены, а предупреждения «Не направлять» видны', async () => {
@@ -273,6 +284,133 @@ describe('«Справочник»: экран', () => {
     await user.click(screen.getByRole('button', { name: /^Люди/ }));
     expect(currentSearch().get('ent')).toBe('people');
     expect(currentSearch().has('f')).toBe(false);
-    await waitFor(() => expect(dataRows()).toHaveLength(23));
+    await waitFor(() => expect(dataRows()).toHaveLength(PEOPLE));
+  });
+});
+
+
+const CLOSED_CHIP = 'Статус: не «Закрыта»';
+const activeChips = () => within(screen.getByRole('list', { name: 'Текущий отбор' })).getAllByRole('listitem');
+
+describe('«Справочник»: закрытые группы по умолчанию скрыты', () => {
+  test('при первом открытии «Закрыта» скрыта, а в отборах виден чип «Статус: не «Закрыта»»', async () => {
+    stubFetchWithFixtures();
+    renderAt(<App />, '/?tab=reference');
+    await screen.findByRole('table');
+    expect(dataRows()).toHaveLength(GROUPS_SHOWN);
+    expect(screen.getByText(`Показано ${GROUPS_SHOWN} из ${GROUPS}`)).toBeInTheDocument();
+    expect(screen.queryByText(CLOSED_LEADER)).not.toBeInTheDocument();
+    expect(activeChips().map((li) => li.textContent?.replace('×', ''))).toEqual([CLOSED_CHIP]);
+    // Отбор по умолчанию в адрес не пишется: ссылка остаётся короткой.
+    expect(currentSearch().has('f')).toBe(false);
+  });
+
+  test('одно нажатие на «×» снимает отбор, и закрытые группы возвращаются', async () => {
+    stubFetchWithFixtures();
+    const user = userEvent.setup();
+    renderAt(<App />, '/?tab=reference');
+    await screen.findByRole('table');
+    await user.click(screen.getByRole('button', { name: `Убрать отбор: ${CLOSED_CHIP}` }));
+    expect(dataRows()).toHaveLength(GROUPS);
+    expect(screen.getByText(CLOSED_LEADER)).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Текущий отбор' })).not.toBeInTheDocument();
+  });
+
+  test('снятый отбор не возвращается сам при обновлении страницы по той же ссылке', async () => {
+    stubFetchWithFixtures();
+    const user = userEvent.setup();
+    const { unmount } = renderAt(<App />, '/?tab=reference');
+    await screen.findByRole('table');
+    await user.click(screen.getByRole('button', { name: `Убрать отбор: ${CLOSED_CHIP}` }));
+    const url = `/?${currentSearch().toString()}`;
+    unmount();
+    renderAt(<App />, url);
+    await screen.findByRole('table');
+    expect(dataRows()).toHaveLength(GROUPS);
+  });
+
+  test('«Сбросить всё» очищает и отбор по умолчанию', async () => {
+    stubFetchWithFixtures();
+    const user = userEvent.setup();
+    renderAt(<App />, '/?tab=reference');
+    await screen.findByRole('table');
+    await user.click(screen.getByRole('button', { name: /^Фильтры/ }));
+    await user.click(within(screen.getByRole('dialog', { name: 'Фильтры' })).getByRole('button', { name: 'Сбросить всё' }));
+    expect(dataRows()).toHaveLength(GROUPS);
+  });
+
+  test('поиск по таблице не теряет отбор по умолчанию', async () => {
+    stubFetchWithFixtures();
+    const user = userEvent.setup();
+    renderAt(<App />, '/?tab=reference');
+    await screen.findByRole('table');
+    // Закрытая группа тоже в Приморском районе; с отбором по умолчанию она не появляется.
+    await user.type(screen.getByRole('searchbox', { name: 'Поиск по таблице' }), 'Приморский');
+    expect(dataRows()).toHaveLength(3);
+    expect(screen.queryByText(CLOSED_LEADER)).not.toBeInTheDocument();
+    expect(activeChips().map((li) => li.textContent?.replace('×', ''))).toEqual([CLOSED_CHIP]);
+  });
+
+  test('явный отбор по статусу из адреса заменяет умолчание: по «Закрыта» остаётся только закрытая группа', async () => {
+    stubFetchWithFixtures();
+    renderAt(<App />, '/?tab=reference&f=' + encodeURIComponent('Статус:eq:Закрыта'));
+    await screen.findByRole('table');
+    expect(dataRows()).toHaveLength(1);
+    expect(screen.getByText(CLOSED_LEADER)).toBeInTheDocument();
+    expect(activeChips()).toHaveLength(1);
+  });
+
+  test('при повторном открытии справочника отбор по умолчанию применяется заново', async () => {
+    stubFetchWithFixtures();
+    const user = userEvent.setup();
+    renderAt(<App />, '/?tab=reference');
+    await screen.findByRole('table');
+    await user.click(screen.getByRole('button', { name: `Убрать отбор: ${CLOSED_CHIP}` }));
+    expect(dataRows()).toHaveLength(GROUPS);
+    await user.click(screen.getByRole('button', { name: /^Люди/ }));
+    await waitFor(() => expect(dataRows()).toHaveLength(PEOPLE));
+    await user.click(screen.getByRole('button', { name: /^Группы/ }));
+    await waitFor(() => expect(dataRows()).toHaveLength(GROUPS_SHOWN));
+    expect(activeChips()).toHaveLength(1);
+  });
+});
+
+describe('«Справочник»: ведущий и новые группы', () => {
+  test('длинное ФИО ведущего обрезается в ячейке, а полное лежит в подсказке', async () => {
+    stubFetchWithFixtures();
+    renderAt(<App />, '/?tab=reference&f=' + encodeURIComponent('Статус:eq:Закрыта'));
+    const table = await screen.findByRole('table');
+    const name = within(table).getByText(CLOSED_LEADER);
+    expect(name).toHaveAttribute('title', CLOSED_LEADER);
+    expect(name.className).toMatch(/leaderName/);
+  });
+
+  test('короткому имени подсказка не нужна', async () => {
+    stubFetchWithFixtures();
+    renderAt(<App />, '/?tab=reference');
+    const table = await screen.findByRole('table');
+    expect(within(table).getByText('Андрей М.')).not.toHaveAttribute('title');
+  });
+
+  test('у новой группы в таблице и в карточке есть значок «Новая группа», у обычной нет', async () => {
+    stubFetchWithFixtures();
+    const user = userEvent.setup();
+    renderAt(<App />, '/?tab=reference');
+    const table = await screen.findByRole('table');
+    const rowOf = (leader: string) => within(table).getByText(leader).closest('tr') as HTMLElement;
+    // В фикстурах новые: Светлана Р. (№15), Дмитрий В. (№19) и Татьяна Ф. (без номера).
+    expect(within(rowOf('Светлана Р.')).getByRole('img', { name: 'Новая группа' })).toBeInTheDocument();
+    expect(within(rowOf('Андрей М.')).queryByRole('img', { name: 'Новая группа' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Открыть карточку: Группа №15, Светлана Р.' }));
+    const card = await screen.findByRole('dialog', { name: 'Карточка группы №15' });
+    expect(within(within(card).getByRole('heading', { level: 2 })).getByRole('img', { name: 'Новая группа' })).toBeInTheDocument();
+  });
+
+  test('в карточке обычной группы значка нет', async () => {
+    stubFetchWithFixtures();
+    renderAt(<App />, '/?tab=reference&rec=2');
+    const card = await screen.findByRole('dialog', { name: 'Карточка группы №27' });
+    expect(within(card).queryByRole('img', { name: 'Новая группа' })).not.toBeInTheDocument();
   });
 });

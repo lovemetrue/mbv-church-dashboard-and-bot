@@ -1,0 +1,243 @@
+/*
+ * Меню «+ Создать», формы в окнах и подтверждение. Цвета только из токенов (var(--…)).
+ * Меню на телефоне — шторка снизу, как «Фильтры» в справочнике: у края экрана выпадающее окно
+ * вылезало бы за него.
+ */
+
+.root {
+  position: relative;
+}
+
+.scrim {
+  display: none;
+}
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 12;
+  min-width: 260px;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+.item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--ink);
+  font-weight: 500;
+  text-align: left;
+  text-decoration: none;
+}
+.item:hover,
+.item:focus-visible {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.item:focus-visible {
+  outline-offset: -2px;
+}
+.itemDisabled {
+  color: var(--muted);
+  cursor: default;
+}
+.itemDisabled:hover {
+  background: none;
+  color: var(--muted);
+}
+.itemHint {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+  white-space: normal;
+}
+
+@media (max-width: 700px) {
+  /* Стрелка у кнопки на телефоне лишняя: без неё плашка, «Создать» и выбор темы умещаются в одну строку. */
+  .caret {
+    display: none;
+  }
+  .scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 11;
+    background: var(--scrim);
+  }
+  .menu {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    z-index: 12;
+    max-width: none;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+  }
+  .item {
+    min-height: var(--tap);
+    font-size: 16px;
+  }
+}
+
+/* ── формы в окнах ───────────────────────────────────────────────────────── */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+.field,
+.fieldWide {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.fieldWide {
+  grid-column: 1 / -1;
+}
+.field label,
+.fieldWide label,
+.addressBlock legend {
+  font-size: 13px;
+  font-weight: 600;
+}
+/* Звёздочка рисуется стилем, а не текстом: имя поля для скринридера остаётся чистым («ФИО»),
+   об обязательности говорит aria-required. */
+.required::after {
+  content: ' *';
+  color: var(--crit);
+}
+.control {
+  display: block;
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+}
+textarea.control {
+  resize: vertical;
+  min-height: 72px;
+}
+.invalid {
+  border-color: var(--crit);
+}
+.fieldError {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--crit);
+}
+.hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.addressBlock {
+  margin: 16px 0 0;
+  padding: 10px 12px 12px;
+  min-width: 0;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.addressBlock legend {
+  padding: 0 6px;
+}
+.addressBlock .hint {
+  margin-top: 6px;
+}
+.formError {
+  margin: 10px 0 0;
+  padding: 9px 11px;
+  border-radius: var(--radius);
+  background: var(--crit-soft);
+  color: var(--crit);
+  font-size: 13px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+/* Кнопки остаются на виду, пока форма прокручивается: на телефоне она длиннее экрана. */
+.foot {
+  position: sticky;
+  bottom: -14px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 14px -18px -14px;
+  padding: 10px 18px;
+  background: var(--surface);
+  border-top: 1px solid var(--line-soft);
+  /* Окно скруглено, а нижняя полоса кнопок лежит в его углах и иначе торчала бы квадратом. */
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+.metaError {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.metaError .foot {
+  position: static;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+@media (max-width: 700px), (pointer: coarse) {
+  .control {
+    min-height: var(--tap);
+    font-size: 16px; /* меньше 16 px iOS приближает страницу при фокусе */
+  }
+  textarea.control {
+    min-height: 88px;
+  }
+  .foot {
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    border-radius: 0; /* на телефоне окно — шторка у нижнего края, углы внизу не скруглены */
+  }
+  .foot > button {
+    flex: 1 1 0;
+  }
+}
+
+/* ── подтверждение ───────────────────────────────────────────────────────── */
+
+.notice {
+  position: fixed;
+  z-index: 50;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 14px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--ok);
+  border-left-width: 4px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+.noticeText {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}

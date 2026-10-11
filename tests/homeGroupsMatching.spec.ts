@@ -106,10 +106,11 @@ describe('запуск подбора', () => {
     await request();
     const s = service();
     const before = (await s.views()).requests.matching;
-    expect(before).toEqual({ auto: false, lastRun: null, waiting: 1 });
+    expect(before).toEqual({ auto: false, lastRun: null, waiting: 1, saved: 0 });
     await s.matching.run('mbv_admin');
     const after = (await s.views()).requests.matching;
     expect(after.waiting).toBe(0);
+    expect(after.saved).toBe(1);
     expect(after.lastRun).toMatchObject({ created: 1, replaced: 0, actor: 'mbv_admin' });
   });
 

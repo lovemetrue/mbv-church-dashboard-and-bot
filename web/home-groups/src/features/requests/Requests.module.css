@@ -263,6 +263,21 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.choiceRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  border-top: 1px solid var(--line-soft);
+}
+.choiceRow .choice {
+  flex: 1;
+  min-width: 0;
+  border-top: 0;
+}
+.choiceRow > button {
+  flex: none;
+  min-height: var(--tap);
+}
 .choiceOff {
   opacity: 0.6;
   cursor: default;
@@ -380,7 +395,7 @@
 }
 .param {
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr);
+  grid-template-columns: 22px minmax(0, 1fr) auto;
   gap: 2px 8px;
   padding: 7px 0;
   border-top: 1px dashed var(--line-soft);
@@ -423,6 +438,175 @@
 }
 .log li {
   padding: 2px 0;
+}
+
+/* Метка предложения: «Закреплено» зелёным, свежий расчёт — приглушённо. */
+.savedTag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  vertical-align: 1px;
+}
+.savedOn {
+  border-color: transparent;
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.source .savedTag {
+  margin-left: 0;
+}
+
+/* Запасные варианты и кнопка «Утвердить эту группу» под каждым */
+.variants {
+  margin-top: 4px;
+}
+.variantAction {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 8px;
+}
+.variantAction button {
+  min-height: var(--tap);
+}
+.variantReason {
+  margin: 0;
+  flex: 1 1 180px;
+  font-size: 12px;
+  color: var(--warn);
+  font-weight: 500;
+}
+
+/* Правка параметров подбора */
+.paramBody {
+  min-width: 0;
+}
+.paramBody .hint {
+  overflow-wrap: anywhere;
+}
+.param > button {
+  align-self: start;
+  min-width: var(--tap);
+  min-height: var(--tap);
+  margin: -8px -8px 0 0;
+}
+.paramForm {
+  margin-top: 6px;
+}
+.paramInput {
+  display: block;
+  width: 100%;
+  min-height: var(--tap);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 8px 11px;
+  margin-bottom: 8px;
+}
+.paramFoot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.paramFoot button {
+  min-height: var(--tap);
+}
+.fold > .noticeOk,
+.fold > .noticeError {
+  margin-top: 8px;
+}
+
+/* Запись журнала «Заявка создана»: раскрывается */
+.logToggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: var(--tap);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.logToggle:hover {
+  color: var(--accent);
+}
+.chevron {
+  flex: none;
+  transition: transform 0.15s;
+}
+.chevronOpen {
+  transform: rotate(180deg);
+}
+.origin {
+  margin: 4px 0 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.originTitle {
+  margin: 0 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-weight: 600;
+}
+.originTitle:not(:first-child) {
+  margin-top: 12px;
+}
+.origin .note {
+  margin: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chevron {
+    transition: none;
+  }
+}
+
+/* Переход между заявками очереди */
+.neighbors {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 18px;
+}
+.neighbors button {
+  min-height: var(--tap);
+}
+.neighborsPos {
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+  white-space: nowrap;
+}
+@media (max-width: 700px) {
+  /* Подпись занимает всю строку, кнопка уходит под неё: рядом им на 400 px тесно. */
+  .choiceRow {
+    flex-wrap: wrap;
+  }
+  .choiceRow .choice {
+    flex-basis: 100%;
+  }
+  .choiceRow > button {
+    margin: 0 0 8px 34px;
+  }
 }
 
 /* Блок «Подбор для новых заявок» над списком */

@@ -48,12 +48,21 @@ const origin = `http://127.0.0.1:${server.address().port}`;
 // 11 — без плана (нет группы в районе), 19 — слабый план.
 const SCREENS = [
   { name: 'today', url: '/', ready: 'text=Спрос и предложение по районам' },
+  // «Пульт»: таблица, виджеты и панель клетки (click2 — второй клик, например по вкладке панели).
+  { name: 'today-pult', url: '/', ready: 'button[aria-label^="Приморский, 26–35:"]', full: true },
+  { name: 'today-drawer-requests', url: '/', ready: 'button[aria-label^="Приморский, 26–35:"]', click: 'button[aria-label^="Приморский, 26–35:"]', then: '[role=dialog][aria-label^="Клетка таблицы"] [role=tabpanel] button' },
+  { name: 'today-drawer-groups', url: '/', ready: 'button[aria-label^="Приморский, 26–35:"]', click: 'button[aria-label^="Приморский, 26–35:"]', click2: '[role=tab]:has-text("Группы")', then: '[role=dialog][aria-label^="Клетка таблицы"] [role=tabpanel] button[data-group]' },
   { name: 'requests', url: '/?tab=requests&req=1', ready: '[role=dialog][aria-label^="Карточка заявки"]' },
   { name: 'requests-displaced', url: '/?tab=requests&req=17', ready: '[role=dialog][aria-label^="Карточка заявки"]' },
   { name: 'requests-noplan', url: '/?tab=requests&bucket=human&req=11', ready: '[role=dialog][aria-label^="Карточка заявки"]' },
   { name: 'requests-weak', url: '/?tab=requests&bucket=human&req=19', ready: '[role=dialog][aria-label^="Карточка заявки"]' },
   // Окна действий координатора: выбор другой группы и причина отказа (кнопки в карточке заявки 1).
   { name: 'requests-pick', url: '/?tab=requests&req=1', ready: '[role=dialog][aria-label^="Карточка заявки"]', click: 'button[aria-label="Выбрать другую группу из списка"]' },
+  // Запасные варианты с кнопкой «Утвердить эту группу»; scroll — прокрутить панель к нужному месту.
+  { name: 'requests-alternatives', url: '/?tab=requests&req=7', ready: '[role=dialog][aria-label^="Карточка заявки"]', scroll: 'text=Другие варианты' },
+  { name: 'requests-params-edit', url: '/?tab=requests&req=4', ready: '[role=dialog][aria-label^="Карточка заявки"]', click: 'button[aria-label="Изменить удобные день и время"]', scroll: 'input[placeholder^="например: пн"]' },
+  { name: 'requests-original', url: '/?tab=requests&req=1', ready: '[role=dialog][aria-label^="Карточка заявки"]', click: '[role=dialog] button[aria-expanded="false"]', scroll: 'text=Как система это поняла' },
+  { name: 'requests-queue', url: '/?tab=requests&bucket=queue', ready: 'nav[aria-label="Переход между заявками"]' },
   { name: 'requests-reject', url: '/?tab=requests&req=1', ready: '[role=dialog][aria-label^="Карточка заявки"]', click: 'button[aria-label^="Отклонить группу"]' },
   { name: 'requests-list', url: '/?tab=requests', ready: 'ul[aria-label="Список заявок"]' },
   { name: 'reference-groups', url: '/?tab=reference&rec=1', ready: '[role=dialog][aria-label^="Карточка группы"]' },
@@ -72,11 +81,21 @@ const SCREENS = [
   // Окно «Добавить пользователя» и окно со ссылкой (в фикстурах почты нет, поэтому приглашение даёт ссылку).
   { name: 'settings-users-add', url: '/?tab=settings&sec=users', ready: 'text=Елена Смирнова', click: 'button:has-text("Добавить пользователя")', then: '[role=dialog]' },
   { name: 'settings-users-link', url: '/?tab=settings&sec=users', ready: 'text=Елена Смирнова', click: 'button:has-text("Прислать приглашение снова")', then: 'textarea[readonly]' },
+  // «+ Создать»: меню и две формы (в фикстурах списки формы приходят не сразу, поэтому ждём поле ввода).
+  { name: 'create-menu', url: '/?tab=reference', ready: 'table', click: 'button:has-text("+ Создать")', then: '[role=menu] [role=menuitem]:has-text("Участник")' },
+  { name: 'create-request', url: '/?tab=reference', ready: 'table', click: ['button:has-text("+ Создать")', '[role=menuitem]:has-text("Заявка")'], then: '[role=dialog] input[type=text]' },
+  { name: 'create-group', url: '/?tab=reference', ready: 'table', click: ['button:has-text("+ Создать")', '[role=menuitem]:has-text("Группа")'], then: '[role=dialog] fieldset' },
+  // Справочник групп сразу после открытия: закрытая скрыта, отбор по умолчанию виден чипом.
+  { name: 'reference-groups-default', url: '/?tab=reference', ready: 'table' },
+  // Закрытая группа с длинным ФИО: ведущий обрезан многоточием.
+  { name: 'reference-groups-closed', url: '/?tab=reference&f=Статус:eq:Закрыта', ready: 'table' },
   { name: 'reference-filtered', url: '/?tab=reference&f=Район:eq:Приморский&gb=Статус&col=№&col=Ведущий&col=Район&col=Статус&col=Здоровье', ready: 'table' },
 ];
 
 const SHOTS = [
   // [экран, ширина, тема]
+  ['reference-groups-closed', 1280, 'light'],
+  ...['create-menu', 'create-request', 'create-group', 'reference-groups-default'].flatMap((s) => [[s, 1280, 'light'], [s, 400, 'light']]),
   ...['settings-health', 'settings-errors', 'settings-audit', 'settings-prompts'].flatMap((s) => [[s, 1280, 'light'], [s, 400, 'light']]),
   ['settings-prompts-rollback', 400, 'light'],
   ...['settings-users', 'settings-users-add', 'settings-users-link'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
@@ -94,6 +113,7 @@ const SHOTS = [
   ['requests-pick', 1280, 'light'],
   ['requests-pick', 400, 'light'],
   ['requests-reject', 400, 'light'],
+  ...['requests-alternatives', 'requests-params-edit', 'requests-original', 'requests-queue'].flatMap((s) => [[s, 1280, 'light'], [s, 400, 'light']]),
   ['reference-groups-table', 1280, 'light'],
   ['reference-coordinators', 1280, 'light'],
   ['reference-filtered', 1280, 'light'],
@@ -103,6 +123,9 @@ const SHOTS = [
   ...['today', 'requests', 'requests-list', 'reference-groups', 'reference-groups-table', 'reference-people', 'reference-coordinators', 'reference-filtered', 'requests-noplan'].map((s) => [s, 400, 'light']),
   ['today', 400, 'dark'],
   ['today', 400, 'gray'],
+  ...['today-pult', 'today-drawer-requests', 'today-drawer-groups'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
+  ['today-pult', 1280, 'dark'],
+  ['today-pult', 1024, 'light'],
 ];
 
 const browser = await chromium.launch({ executablePath: chromePath, args: ['--no-sandbox'] });
@@ -130,6 +153,8 @@ const findOverflowing = () => {
 };
 
 for (const [screenName, width, theme] of SHOTS) {
+  // HG_ONLY=today-pult,today-drawer-groups — снять только перечисленное (полный прогон долгий).
+  if (process.env.HG_ONLY && !process.env.HG_ONLY.split(',').includes(screenName)) continue;
   const screen = SCREENS.find((s) => s.name === screenName);
   const mobile = width < 700;
   const ctx = await browser.newContext({
@@ -156,9 +181,12 @@ for (const [screenName, width, theme] of SHOTS) {
   await page.goto(origin + screen.url);
   await page.waitForSelector(screen.ready, { timeout: 15000 });
   await page.evaluate(() => document.fonts.ready);
-  if (screen.click) await page.click(screen.click);
+  // click — один селектор или цепочка (меню «Создать»: сначала кнопка, затем пункт).
+  for (const sel of [screen.click].flat().filter(Boolean)) await page.click(sel);
+  if (screen.click2) await page.click(screen.click2);
   // Результат клика приходит не сразу (ответ «сервера» фикстур): ждём появления нужного элемента.
   if (screen.then) await page.waitForSelector(screen.then, { timeout: 5000 });
+  if (screen.scroll) await page.locator(screen.scroll).first().scrollIntoViewIfNeeded();
   await page.waitForTimeout(150);
 
   if (mobile) {

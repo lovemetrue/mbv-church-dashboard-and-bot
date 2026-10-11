@@ -143,6 +143,20 @@ describe('матрица «район × возраст»', () => {
     expect(cell.groupIds).toEqual([open.id]);
   });
 
+  test('места района в итоге считаются без двойного счёта: группа с несколькими возрастами — один раз', () => {
+    const wide = group({ ageRange: [20, 40], people: 5, capacity: 10 });
+    const narrow = group({ ageRange: [26, 30], people: 8, capacity: 10 });
+    const s = summary([], [wide, narrow]);
+    // По ячейкам wide входит в три колонки, но в итоге района её 5 мест — один раз.
+    expect(s.matrix[0]!.supplyTotal).toBe(5 + 2);
+    expect(s.matrix[0]!.cells.reduce((sum, c) => sum + c.supply, 0)).toBeGreaterThan(7);
+  });
+
+  test('группа без свободных мест и не принимающая в итог мест не входит', () => {
+    const s = summary([], [group({ people: 10, capacity: 10 }), group({ status: 'Закрыта' }), group({ people: 5, capacity: 10 })]);
+    expect(s.matrix[0]!.supplyTotal).toBe(5);
+  });
+
   test('группа с диапазоном в несколько колонок перечисляется в каждой из них', () => {
     const wide = group({ ageRange: [20, 40], people: 5, capacity: 10 });
     const s = summary([], [wide]);

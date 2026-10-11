@@ -17,6 +17,8 @@ import { createViewsSource, type ViewsSource } from './api/snapshot.js';
 import { createSettings } from '../platform/settings/service.js';
 import { realHealthSources, collectHealth } from '../platform/settings/health.js';
 import { createFormMeta, createRecordCreator } from './create.js';
+import { createRegistrar } from './registration.js';
+import type { RequestWithUser } from '../db/repos/requests.repo.js';
 import { createLoader } from './loader.js';
 import { createMatching } from './matching/run.js';
 import type { PlanEngineApi } from './plan/types.js';
@@ -36,6 +38,8 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     mailer?: Mailer;
     /** Публичный адрес сервиса для ссылок в письмах (`HG_PUBLIC_URL`). */
     publicUrl?: string | null;
+    /** Уведомление служителю о новой заявке (необязательно: без него заявки заводятся молча). */
+    notify?: (request: RequestWithUser) => Promise<void>;
     /** Сбросить кэш входа после изменения людей и режима. */
     onStaffChange?: () => void;
   }) {
@@ -75,9 +79,11 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     reportError: (source, err, context) => { void errors.record(source, err instanceof Error ? err.message : String(err), context); },
   });
   const requestsRepo = new RequestsRepo(db);
-  const creator = createRecordCreator({ requests: requestsRepo, groups: new GroupsRepo(db), audit: new AuditRepo(db) });
+  const notify = opts.notify ?? (async () => undefined);
+  const creator = createRecordCreator({ requests: requestsRepo, groups: new GroupsRepo(db), audit: new AuditRepo(db), notify });
+  const registrar = createRegistrar({ users: new UsersRepo(db), requests: requestsRepo, audit: new AuditRepo(db), notify });
   const formMeta = createFormMeta(new CoordinatorsRepo(db));
-  return { views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, formMeta };
+  return { views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, formMeta };
 }
 
 export function composeViews(db: Pool, engine: PlanEngineApi, opts: ComposeOptions): ViewsSource {

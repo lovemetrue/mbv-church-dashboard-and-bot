@@ -15,6 +15,10 @@ export const REFRESH_MS = 60_000;
 const common = {
   refetchOnWindowFocus: true,
   refetchInterval: REFRESH_MS,
+  // Бот принимает заявки постоянно, поэтому опрос нужен, но в скрытой вкладке он лишь гоняет
+  // запросы впустую: по возвращении данные подтянет refetchOnWindowFocus. Значение по умолчанию
+  // совпадает, но здесь оно записано явно, чтобы случайная правка не включила опрос в фоне.
+  refetchIntervalInBackground: false,
   staleTime: 15_000,
   // Повторять имеет смысл только сбои сети и 5xx; 401/403/404 от повтора не изменятся.
   retry: (count: number, error: Error) =>

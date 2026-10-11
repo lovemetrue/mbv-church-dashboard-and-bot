@@ -250,6 +250,47 @@ describe('«Справочник»: экран', () => {
     expect(within(card).queryByRole('button', { name: 'Открыть заявку' })).not.toBeInTheDocument();
   });
 
+  test('у человека с номером регистрации в карточке есть ссылки на печатную карточку и QR в новой вкладке', async () => {
+    stubFetchWithFixtures();
+    renderAt(<App />, '/?tab=reference&ent=people&rec=u1');
+    const card = await screen.findByRole('dialog', { name: /Дарья Ефимова/ });
+    const cardLink = within(card).getByRole('link', { name: /Карточка регистрации/ });
+    expect(cardLink.getAttribute('href')).toMatch(/\/api\/v1\/people\/1\/card$/);
+    expect(cardLink).toHaveAttribute('target', '_blank');
+    expect(cardLink.getAttribute('rel')).toContain('noopener');
+    const qrLink = within(card).getByRole('link', { name: /QR/ });
+    expect(qrLink.getAttribute('href')).toMatch(/\/api\/v1\/people\/1\/qr$/);
+    expect(qrLink).toHaveAttribute('target', '_blank');
+    expect(within(card).getByText('Номер регистрации')).toBeInTheDocument();
+  });
+
+  test('у человека без номера регистрации ссылок на карточку и QR нет', async () => {
+    stubFetchWithFixtures();
+    // Софья Титова — участник бота без номера; Мария Соколова — заявка из таблицы без участника.
+    renderAt(<App />, '/?tab=reference&ent=people&rec=u3');
+    const card = await screen.findByRole('dialog', { name: /Софья Титова/ });
+    expect(within(card).queryByRole('link')).not.toBeInTheDocument();
+    expect(within(card).queryByText('Номер регистрации')).not.toBeInTheDocument();
+  });
+
+  test('у заявки из таблицы без участника ссылок на карточку регистрации тоже нет', async () => {
+    stubFetchWithFixtures();
+    renderAt(<App />, '/?tab=reference&ent=people&rec=r1');
+    const card = await screen.findByRole('dialog', { name: /Мария Соколова/ });
+    expect(within(card).queryByRole('link', { name: /Карточка регистрации/ })).not.toBeInTheDocument();
+  });
+
+  test('в таблице «Люди» есть столбец «№» с номером регистрации; у кого его нет, ячейка пустая', async () => {
+    stubFetchWithFixtures();
+    renderAt(<App />, '/?tab=reference&ent=people');
+    const table = await screen.findByRole('table');
+    expect(within(table).getByRole('columnheader', { name: /№/ })).toBeInTheDocument();
+    const rowOf = (name: string) => dataRows().find((r) => within(r).queryByText(name))!;
+    const lastCell = (row: HTMLElement) => Array.from(row.querySelectorAll('td')).at(-1)!;
+    expect(lastCell(rowOf('Дарья Ефимова')).textContent).toBe('1');
+    expect(lastCell(rowOf('Софья Титова')).textContent).toBe('—');
+  });
+
   test('координатор: карточка показывает его группы', async () => {
     stubFetchWithFixtures();
     renderAt(<App />, '/?tab=reference&ent=coordinators&rec=1');

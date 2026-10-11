@@ -50,6 +50,8 @@ const DEFAULT_CAPACITY = 10;
 const WEIGHTS = { district: 40, age: 25, time: 20, street: 15 };
 /** Порог уверенности, ниже которого заявка уходит в «Нужна помощь». */
 const CONFIDENCE_THRESHOLD = 60;
+/** Заявки, у которых данные изменились после закрепления подбора (для демо и тестов). */
+const DATA_CHANGED_REQUESTS: ReadonlySet<number> = new Set([2, 3]);
 
 const capOf = (g: RawGroup): number => g.capacity ?? DEFAULT_CAPACITY;
 const freeOf = (g: RawGroup): number => Math.max(0, capOf(g) - (g.people ?? 0));
@@ -242,6 +244,9 @@ export function buildPlan(requests: RawRequest[] = RAW_REQUESTS, groups: RawGrou
       proposal: {
         // Закреплены предложения для заявок, которые ждут давно: их подбор уже запускали.
         saved: (r.waitingDays ?? 0) >= 2,
+        // У пары закреплённых заявок после закрепления поправили данные: так в демо видна метка
+        // «Данные изменились». Свежий расчёт «изменившихся данных» не имеет, поэтому только saved.
+        dataChanged: (r.waitingDays ?? 0) >= 2 && DATA_CHANGED_REQUESTS.has(r.id),
         // В фикстурах предложения всегда считает сервис: языковой модели («agent») здесь нет.
         source: 'script',
         main: toCandidate(pick, confidence),
@@ -465,6 +470,9 @@ export function buildPeople(): PeopleView {
       ageLabel: raw.ageLabel || null,
       district: raw.district,
       from: raw.source,
+      // Заявка без участника (пришла из таблицы): карточки и QR регистрации у неё нет.
+      userId: null,
+      registrationNo: null,
       mdgLabel: raw.cancelled ? 'Отказался от групп' : item?.bucket === 'done' ? 'Уже в группе' : 'Хочет в группу',
       date: dateMinus(raw.waitingDays),
       requestId: raw.id,

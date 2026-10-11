@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { ApproveBody, GroupBrief, NeedCallBody, RejectBody, RejectReason, RequestItem } from '@contracts';
+import type { ApproveBody, GroupBrief, NeedCallBody, RejectBody, RejectReason, RequestItem, RequestsView } from '@contracts';
 import { ApiError, apiPost } from '../../shared/api/client';
 import { queryKeys } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
@@ -56,6 +56,8 @@ export function actionErrorText(error: unknown): string {
 export function useRequestActions(r: RequestItem) {
   const queryClient = useQueryClient();
   const [pending, setPending] = useState(false);
+  // Какое действие идёт: кнопка «Подобрать заново» меняет подпись только у себя.
+  const [pendingKind, setPendingKind] = useState<string | null>(null);
   const inFlight = useRef(false);
   const [notice, setNotice] = useState<ActionNotice | null>(null);
   const [dialog, setDialog] = useState<ActionDialog | null>(null);
@@ -67,17 +69,27 @@ export function useRequestActions(r: RequestItem) {
       queryClient.invalidateQueries({ queryKey: queryKeys.groups }),
     ]);
 
-  async function run(action: 'approve' | 'reject' | 'need-call', body: ApproveBody | RejectBody | NeedCallBody, okText: string): Promise<Outcome> {
+  /**
+   * `okText` — строка или функция: функция вызывается после перечитывания списка. Нужна для
+   * «Подобрать заново», где в подтверждении называется группа, которой ещё нет в старых данных.
+   */
+  async function run(
+    action: 'approve' | 'reject' | 'need-call' | 'rematch',
+    body: ApproveBody | RejectBody | NeedCallBody | Record<string, never>,
+    okText: string | (() => string),
+  ): Promise<Outcome> {
     if (inFlight.current) return { ok: false, code: null };
     inFlight.current = true;
     setPending(true);
+    setPendingKind(action);
     setNotice(null);
     try {
       await apiPost(`requests/${r.id}/${action}`, body);
-      setNotice({ requestId: r.id, kind: 'ok', text: okText });
+      if (typeof okText === 'string') setNotice({ requestId: r.id, kind: 'ok', text: okText });
       // Ждём перечитывания списка: пока карточка показывает старое состояние, повторное
       // действие по ней было бы действием вслепую.
       await refresh();
+      if (typeof okText === 'function') setNotice({ requestId: r.id, kind: 'ok', text: okText() });
       return { ok: true, code: null };
     } catch (e) {
       const code = e instanceof ApiError ? e.code : null;
@@ -89,6 +101,7 @@ export function useRequestActions(r: RequestItem) {
     } finally {
       inFlight.current = false;
       setPending(false);
+      setPendingKind(null);
     }
   }
 
@@ -117,8 +130,23 @@ export function useRequestActions(r: RequestItem) {
     await run('need-call', body, value ? ru.requests.act.callSet : ru.requests.act.callCleared);
   }
 
+  /** Какую группу предлагают заявке в перечитанных данных; null — предложения нет или данных нет. */
+  const proposedNow = (): string | null => {
+    const view = queryClient.getQueryData<RequestsView>(queryKeys.requests);
+    return view?.items.find((x) => x.id === r.id)?.proposal?.main.group.code ?? null;
+  };
+
+  /** Пересчитать группу по текущим данным заявки; прежнее закреплённое предложение сервер снимает сам. */
+  async function rematch() {
+    await run('rematch', {}, () => {
+      const code = proposedNow();
+      return code ? ru.requests.rematch.done(code) : ru.requests.rematch.doneGeneral;
+    });
+  }
+
   return {
     pending,
+    pendingKind,
     notice: notice?.requestId === r.id ? notice : null,
     dialog: dialog?.requestId === r.id ? dialog : null,
     open,
@@ -126,6 +154,7 @@ export function useRequestActions(r: RequestItem) {
     approve,
     reject,
     setNeedCall,
+    rematch,
   };
 }
 

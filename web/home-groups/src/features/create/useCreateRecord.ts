@@ -1,13 +1,14 @@
 import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { CreateRecordBody, CreateRecordOk } from '@contracts';
+import type { CreateRecordBody, CreateRecordOk, CreateRegistrationOk } from '@contracts';
 import { ApiError, apiPost } from '../../shared/api/client';
 import { queryKeys } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
 
-export type CreatePath = 'requests/create' | 'groups/create';
+export type CreatePath = 'requests/create' | 'groups/create' | 'people/create';
 
-export type CreateResult = { ok: true; id: number } | { ok: false; message: string };
+/** `registrationNo` приходит только от регистрации участника: у заявки и группы номера регистрации нет. */
+export type CreateResult = { ok: true; id: number; registrationNo?: number } | { ok: false; message: string };
 
 /**
  * Текст ошибки для человека. Отказ проверки (`bad_request`) сервер пишет по-русски и именно для
@@ -27,7 +28,8 @@ export function createErrorMessage(e: unknown): string {
  * отправку, пока первая не закончилась, отсекает флажок в ref: состояние `busy` обновляется после
  * отрисовки, и два быстрых события успели бы проскочить оба.
  * После успеха списки, в которые попадёт новая запись, перечитываются в фоне: окно закрывается
- * сразу, а не ждёт пять ответов.
+ * сразу, а не ждёт пять ответов. Регистрация участника тоже перечитывает заявки и «Сегодня»:
+ * ответ «хочет в группу» сервер превращает в заявку сам.
  */
 export function useCreateRecord(path: CreatePath) {
   const client = useQueryClient();
@@ -41,11 +43,11 @@ export function useCreateRecord(path: CreatePath) {
     setBusy(true);
     try {
       const body: CreateRecordBody = { fields };
-      const res = await apiPost<CreateRecordOk>(path, body);
+      const res = await apiPost<CreateRecordOk | CreateRegistrationOk>(path, body);
       for (const key of [queryKeys.requests, queryKeys.today, queryKeys.groups, queryKeys.people, queryKeys.coordinators]) {
         void client.invalidateQueries({ queryKey: key });
       }
-      return { ok: true, id: res.id };
+      return 'registrationNo' in res ? { ok: true, id: res.id, registrationNo: res.registrationNo } : { ok: true, id: res.id };
     } catch (e) {
       return { ok: false, message: createErrorMessage(e) };
     } finally {

@@ -136,6 +136,87 @@ describe('запуск подбора', () => {
   });
 });
 
+describe('«подобрать заново» и изменившиеся данные', () => {
+  const itemOf = async (s: ReturnType<typeof service>, id: number) => (await s.views()).requests.items.find((i) => i.id === id)!;
+
+  test('улицу или время поправили после закрепления: заявка помечена «данные изменились», запуск подбора обновляет её сам', async () => {
+    const g = await group();
+    const r = await request();
+    const s = service();
+    await s.matching.run('a');
+    expect((await itemOf(s, r)).proposal).toMatchObject({ saved: true, dataChanged: false });
+
+    await s.placement.setParams(r, { street: 'ул. Рылеева 32', schedule: 'пн, ср вечером' }, 'a');
+    s.views.invalidate();
+    expect((await itemOf(s, r)).proposal).toMatchObject({ saved: false, dataChanged: true });
+    expect((await s.views()).requests.matching).toMatchObject({ saved: 0, waiting: 1 });
+
+    expect(await s.matching.run('auto')).toMatchObject({ created: 0, replaced: 0, unchanged: 1 });
+    expect((await itemOf(s, r)).proposal).toMatchObject({ saved: true, dataChanged: false });
+    expect((await active())[0]).toMatchObject({ request_id: r, group_id: g });
+  });
+
+  test('изменённые данные могут сменить группу: после запуска предложение другое', async () => {
+    // Две группы в разных районах; заявка закреплена за первой, потом район в «месте» исправили.
+    const g1 = await group({ district: 'Приморский' });
+    const g2 = await group({ district: 'Невский' });
+    const r = await request({ place: 'Приморский' });
+    const s = service();
+    await s.matching.run('a');
+    expect((await active())[0]).toMatchObject({ group_id: g1 });
+    await db.query(`UPDATE requests SET place = 'Невский' WHERE id = $1`, [r]);
+    s.views.invalidate();
+    expect((await itemOf(s, r)).proposal).toMatchObject({ dataChanged: true });
+    await s.matching.run('a');
+    expect((await active())[0]).toMatchObject({ request_id: r, group_id: g2 });
+  });
+
+  test('«заново» одной заявки пересчитывает только её, чужие закреплённые остаются', async () => {
+    await group({ people: 2 });
+    const r1 = await request();
+    const r2 = await request();
+    const s = service();
+    await s.matching.run('a');
+    const before = await active();
+    // Появилась группа получше; общий запуск бы ничего не поменял (закреплено), а «заново» для r1 — меняет.
+    const better = await group({ people: 0 });
+    expect(await s.matching.rematch(r1, 'mbv_admin')).toEqual({ ok: true });
+    const after = await active();
+    expect(after.find((x) => x.request_id === r1)!.group_id).toBe(better);
+    expect(after.find((x) => x.request_id === r2)!.group_id).toBe(before.find((x) => x.request_id === r2)!.group_id);
+  });
+
+  test('«заново» закрытой заявки отклоняется', async () => {
+    await group();
+    const r = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, fio, place, age, origin) VALUES ('join_group', 'Исполнена', 'Старая', 'Приморский', '30', 'ui') RETURNING id`)).rows[0]!.id;
+    expect(await service().matching.rematch(r, 'a')).toMatchObject({ ok: false, error: 'already_closed' });
+  });
+
+  test('«пересчитать все» собирает закреплённое с нуля и учитывает появившуюся группу получше', async () => {
+    await group({ people: 5 });
+    const r1 = await request();
+    const s = service();
+    await s.matching.run('a');
+    const better = await group({ people: 0 });
+    expect((await s.matching.run('a')).unchanged).toBe(1);
+    expect((await active())[0]).not.toMatchObject({ group_id: better });
+    expect(await s.matching.rerunAll('a')).toMatchObject({ ok: true, created: 1 });
+    expect((await active())[0]).toMatchObject({ request_id: r1, group_id: better });
+  });
+
+  test('отклонённая группа не возвращается и после «пересчитать все»', async () => {
+    const g1 = await group({ people: 0 });
+    const g2 = await group({ people: 5 });
+    const r = await request();
+    const s = service();
+    await s.matching.run('a');
+    const first = (await active())[0]!.group_id as number;
+    await db.query(`INSERT INTO placement_proposals (request_id, group_id, source, status, reject_reason, decided_by, decided_at) VALUES ($1, $2, 'script', 'rejected', 'far', 'a', now())`, [r, first]);
+    await s.matching.rerunAll('a');
+    expect((await active())[0]).toMatchObject({ group_id: first === g1 ? g2 : g1 });
+  });
+});
+
 describe('автоматический запуск по таймеру', () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); });

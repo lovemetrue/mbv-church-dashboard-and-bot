@@ -302,13 +302,13 @@ const isAuxButton = (name: string): boolean =>
   NEIGHBOR_BUTTONS.includes(name) || /^Изменить /.test(name) || /Заявка (создана|перенесена)/.test(name);
 
 describe('«Заявки»: какие кнопки у какой заявки', () => {
-  test('у заявки без плана только «Другая группа» и «Нужен звонок»', async () => {
+  test('у заявки без плана «Другая группа», «Подобрать заново» и «Нужен звонок»', async () => {
     const card = await openCard(11, '&bucket=human');
     const names = within(card)
       .getAllByRole('button')
       .map((b) => b.getAttribute('aria-label') ?? b.textContent ?? '')
       .filter((n) => n !== 'Закрыть карточку' && !isAuxButton(n));
-    expect(names).toEqual(['Выбрать другую группу из списка', 'Нужен звонок: отметить заявку']);
+    expect(names).toEqual(['Выбрать другую группу из списка', 'Подобрать заново', 'Нужен звонок: отметить заявку']);
     expect(within(card).queryByText(/Пока вы не утвердили/)).not.toBeInTheDocument();
   });
 

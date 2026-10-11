@@ -13,6 +13,8 @@ export type ParamField = 'schedule' | 'street';
 export interface ParamsNotice {
   kind: 'ok' | 'error';
   text: string;
+  /** Что будет дальше с группой: пояснение к успеху, отдельной строкой. */
+  hint?: string;
 }
 
 /** Текст ошибки по коду контракта. Текст сервера не показываем: он для разработчика. */
@@ -65,7 +67,8 @@ export function useRequestParams(requestId: number) {
         field === 'schedule'
           ? value === null ? p.removedTime : p.savedTime
           : value === null ? p.removedStreet : p.savedStreet;
-      setNotice({ kind: 'ok', text });
+      // Сервер сам помечает заявку «данные изменились», но группу сам не пересчитывает: говорим, как это сделать.
+      setNotice({ kind: 'ok', text, hint: p.recalcHint });
       // Ждём перечитывания: пока список старый, «Понято как…» показало бы прежний разбор.
       await refresh();
       return true;

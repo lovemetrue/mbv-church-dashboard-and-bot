@@ -1,4 +1,4 @@
-import type { PlacementRepo } from '../../db/repos/placement.repo.js';
+import type { ActionOutcome, PlacementRepo } from '../../db/repos/placement.repo.js';
 import type { SettingsRepo } from '../../db/repos/settings.repo.js';
 import { buildViewsWithPlan, type ViewsInput, type ViewsOptions } from '../api/views.js';
 import type { MatchingRunOk, MatchingStatus } from '../contracts.js';
@@ -11,7 +11,7 @@ export interface MatchingDeps {
   /** Читает всё, что нужно расчёту, включая уже накопленные предложения (они закрепляют выбор). */
   load: () => Promise<ViewsInput>;
   engine: PlanEngineApi;
-  placement: Pick<PlacementRepo, 'syncProposals'>;
+  placement: Pick<PlacementRepo, 'syncProposals' | 'resetProposals'>;
   settings: Pick<SettingsRepo, 'get' | 'set'>;
   options?: ViewsOptions;
   now?: () => Date;
@@ -28,12 +28,14 @@ export function createMatching(deps: MatchingDeps) {
   const now = deps.now ?? (() => new Date());
 
   return {
-    async run(actor: string): Promise<MatchingRunOk> {
+    /** `scope` — только эти заявки («подобрать заново» одной): остальные закреплённые предложения не трогаются. */
+    async run(actor: string, scope?: ReadonlySet<number>): Promise<MatchingRunOk> {
       const input = await deps.load();
-      const { plan, openRequestIds } = buildViewsWithPlan(input, deps.engine, now(), deps.options);
+      const { plan, openRequestIds, signatures } = buildViewsWithPlan(input, deps.engine, now(), deps.options);
 
       const desired = [];
       for (const requestId of openRequestIds) {
+        if (scope && !scope.has(requestId)) continue;
         const entry = plan.entries.get(requestId);
         if (entry?.kind !== 'proposal') continue;
         desired.push({
@@ -41,16 +43,31 @@ export function createMatching(deps: MatchingDeps) {
           groupId: entry.main.groupId,
           confidence: entry.confidence,
           rationale: entry.main.reasons,
+          inputHash: signatures.get(requestId)!,
         });
       }
 
-      const result = await deps.placement.syncProposals(desired, actor);
+      const result = await deps.placement.syncProposals(desired, actor, scope);
       const lastRun: NonNullable<MatchingStatus['lastRun']> = {
         at: now().toISOString(), created: result.created, replaced: result.replaced, actor,
       };
       await deps.settings.set(SETTING_LAST_RUN, lastRun, actor);
       deps.invalidate();
       return { ok: true, ...result };
+    },
+
+    /** «Подобрать заново» одной заявки: прежнее закреплённое предложение снимается, группа считается по текущим данным. */
+    async rematch(requestId: number, actor: string): Promise<ActionOutcome> {
+      const reset = await deps.placement.resetProposals(requestId, actor);
+      if (!reset.ok) return reset;
+      await this.run(actor, new Set([requestId]));
+      return { ok: true };
+    },
+
+    /** Пересчитать все закреплённые предложения открытых заявок с нуля. Утверждённые не меняются. */
+    async rerunAll(actor: string): Promise<MatchingRunOk> {
+      await deps.placement.resetProposals(null, actor);
+      return this.run(actor);
     },
 
     async setAuto(enabled: boolean, actor: string): Promise<void> {

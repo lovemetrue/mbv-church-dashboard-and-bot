@@ -8,6 +8,9 @@ import { StaffRepo } from '../db/repos/staff.repo.js';
 import { PersonalAuth } from '../platform/auth/personalAuth.js';
 import { mailerFromEnv } from '../platform/mail/mailer.js';
 import { composeService, engine } from './composition.js';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { notifierFromEnv } from '../admin/notifierFromEnv.js';
 import { startAutoMatching } from './matching/scheduler.js';
 import { createHomeGroupsServer } from './server.js';
 
@@ -69,7 +72,15 @@ async function main(): Promise<void> {
   });
 
   // План считается не чаще раза в десять секунд на всех посетителей разом.
-  const { views, matching, placement, settings, errors, staff, creator, formMeta } = composeService(db, engine, {
+  // Расписание кампании нужно только тексту уведомления (номер дня), читается теми же переменными, что у бота.
+  const schedule = {
+    startDate: env('CAMPAIGN_START_DATE', '2026-11-01'),
+    broadcastTime: env('BROADCAST_TIME', '07:00'),
+    totalDays: Number(env('CAMPAIGN_DAYS', '40')),
+    timezone: env('TIMEZONE', 'Europe/Moscow'),
+  };
+  const { views, matching, placement, settings, errors, staff, creator, registrar, formMeta } = composeService(db, engine, {
+    notify: notifierFromEnv(db, process.env, schedule, 'домашние группы'),
     defaultCapacity, ttlMs: 10_000, timeZone: env('TIMEZONE', 'Europe/Moscow'),
     store,
     // Почта и публичный адрес необязательны: без них ссылки на пароль показываются администратору на экране.
@@ -87,10 +98,12 @@ async function main(): Promise<void> {
     auth,
     staff,
     creator,
+    registrar,
+    logo: async () => readFile(join(env('HG_ASSETS_DIR', '/app/dashboard/assets'), 'church-logo.png')).catch(() => null),
     formMeta,
     legacyUrl: legacyOrigin(),
     views,
-    actions: createActions(placement, { defaultCapacity }),
+    actions: createActions(placement, { defaultCapacity }, matching),
     matching,
     settings,
     reportError,

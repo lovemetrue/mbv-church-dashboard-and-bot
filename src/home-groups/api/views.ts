@@ -4,6 +4,7 @@ import type { DashboardRequest } from '../../db/repos/requests.repo.js';
 import type { RegisteredParticipant } from '../../db/repos/users.repo.js';
 import type { CoordinatorRow } from '../../db/repos/coordinators.repo.js';
 import { groupCode } from '../../core/groups.js';
+import { inputSignature } from '../plan/signature.js';
 import { formatPhone } from '../../core/phone.js';
 import type {
   Bucket, Candidate, Counters, CoordinatorItem, CoordinatorsView, GroupBrief, GroupItem, GroupsView,
@@ -28,7 +29,7 @@ export interface ViewsInput {
    * Накопленные предложения (заявка → группа и кто предложил). Они закрепляют выбор: движок
    * сохраняет группу, пока она остаётся доступной, и подбирает новые заявки вокруг неё.
    */
-  activeProposals?: ReadonlyMap<number, { groupId: number | null; source: 'script' | 'agent' | 'manual' }>;
+  activeProposals?: ReadonlyMap<number, { groupId: number | null; source: 'script' | 'agent' | 'manual'; inputHash?: string | null }>;
   /** Сколько человек утвердил сервис в группу после последней обратной связи ведущего. */
   placedNew?: ReadonlyMap<number, number>;
   /** Настройки подбора: автоматический ли он и когда запускали в последний раз. */
@@ -198,7 +199,7 @@ export function buildViews(input: ViewsInput, engine: PlanEngineApi, now: Date, 
 /** Представления и сам план: автоматический подбор берёт из плана то, что нужно сохранить. */
 export function buildViewsWithPlan(
   input: ViewsInput, engine: PlanEngineApi, now: Date, options: ViewsOptions = {},
-): { views: Views; plan: PlanOutput; openRequestIds: number[] } {
+): { views: Views; plan: PlanOutput; openRequestIds: number[]; signatures: Map<number, string> } {
   const defaultCapacity = options.defaultCapacity ?? DEFAULT_CAPACITY;
   const timeZone = options.timeZone ?? DEFAULT_TIME_ZONE;
   const today = localIsoDate(now, timeZone);
@@ -279,12 +280,25 @@ export function buildViewsWithPlan(
     rejectedGroupIds: [...(input.rejectedGroups?.get(r.id) ?? [])],
     avoidDays: [],
     avoidSlots: [],
-    pinnedGroupId: input.activeProposals?.get(r.id)?.groupId ?? null,
+    pinnedGroupId: null,
     waitingDays: daysSince(validIsoDate(r.date), today),
   });
 
   const joinById = new Map(joinRequests.map((r) => [r.id, r]));
-  const planRequests = new Map(joinRequests.map((r) => [r.id, planRequestOf(r)]));
+  // Отпечаток данных заявки и закрепление: предложение, полученное по другим данным, устарело —
+  // его группа не закрепляется, заявку пересчитает следующий «Закрепить подбор» или «Подобрать заново».
+  const signatures = new Map<number, string>();
+  const dataChanged = new Set<number>();
+  const planRequests = new Map<number, PlanRequest>();
+  for (const r of joinRequests) {
+    const base = planRequestOf(r);
+    const signature = inputSignature(base);
+    signatures.set(r.id, signature);
+    const stored = input.activeProposals?.get(r.id);
+    const changed = stored !== undefined && stored.groupId !== null && stored.inputHash != null && stored.inputHash !== signature;
+    if (changed) dataChanged.add(r.id);
+    planRequests.set(r.id, { ...base, pinnedGroupId: changed ? null : (stored?.groupId ?? null) });
+  }
   const openRequests = joinRequests.filter((r) => r.status !== DONE && r.status !== CANCELLED);
   const openPlanRequests = openRequests.map((r) => planRequests.get(r.id)!);
 
@@ -315,7 +329,8 @@ export function buildViewsWithPlan(
     const displacedGroup = e.displaced ? brief(e.displaced.groupId) : null;
     return {
       // Закреплено, если в «предварительно» уже лежит предложение именно на эту группу.
-      saved: input.activeProposals?.get(requestId)?.groupId === main.group.id,
+      saved: input.activeProposals?.get(requestId)?.groupId === main.group.id && !dataChanged.has(requestId),
+      dataChanged: dataChanged.has(requestId),
       // Источник — тот, кто предложил эту группу и сохранил предложение; иначе это свежий расчёт.
       source: sourceOfProposal(input.activeProposals?.get(requestId), main.group.id),
       main,
@@ -452,6 +467,8 @@ export function buildViewsWithPlan(
       district: engine.resolveDistrict(nonBlank(u.location), metroIndex),
       // Заведённый служителем вручную: платформа в записи условная, чата с ботом нет.
       from: !u.has_chat ? 'Форма регистрации' : u.platform === 'max' ? 'Бот · MAX' : 'Бот · Telegram',
+      userId: u.id,
+      registrationNo: u.registration_no ?? null,
       mdgLabel: (u.mdg_status && MDG_LABELS[u.mdg_status]) || MDG_NO_ANSWER,
       date: localIsoDate(new Date(u.registered_at), options.timeZone ?? DEFAULT_TIME_ZONE),
       requestId: joinRequestByUser.get(u.id) ?? null,
@@ -467,6 +484,8 @@ export function buildViewsWithPlan(
       ageLabel: nonBlank(r.age),
       district: pr.district,
       from: sourceLabel(r.origin, r.source),
+      userId: r.user_id,
+      registrationNo: null,
       mdgLabel: `Заявка: ${BUCKET_NAMES[bucketById.get(r.id)!]}`,
       date: validIsoDate(r.date),
       requestId: r.id,
@@ -495,7 +514,7 @@ export function buildViewsWithPlan(
   for (const r of openRequests) {
     const entry = plan.entries.get(r.id);
     if (entry?.kind !== 'proposal') continue;
-    if (input.activeProposals?.get(r.id)?.groupId === entry.main.groupId) saved += 1;
+    if (input.activeProposals?.get(r.id)?.groupId === entry.main.groupId && !dataChanged.has(r.id)) saved += 1;
     else waiting += 1;
   }
   // Утверждено сегодня: записи журнала с датой «сегодня» в поясе сервиса.
@@ -526,7 +545,7 @@ export function buildViewsWithPlan(
     people: { generatedAt, items: people },
     coordinators: { generatedAt, items: coordinatorItems },
   };
-  return { views, plan, openRequestIds: openRequests.map((r) => r.id) };
+  return { views, plan, openRequestIds: openRequests.map((r) => r.id), signatures };
 }
 
 /**

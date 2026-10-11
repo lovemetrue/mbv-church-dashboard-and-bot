@@ -4,7 +4,7 @@ import type { DashboardRequest } from '../src/db/repos/requests.repo.js';
 import type { RegisteredParticipant } from '../src/db/repos/users.repo.js';
 import type { CoordinatorRow } from '../src/db/repos/coordinators.repo.js';
 import type { PlanEntry } from '../src/home-groups/plan/types.js';
-import { buildViews, type ViewsInput } from '../src/home-groups/api/views.js';
+import { buildViews, buildViewsWithPlan, type ViewsInput } from '../src/home-groups/api/views.js';
 import { createFakeEngine, type FakeEngineOptions } from './helpers/fakePlanEngine.js';
 
 /**
@@ -54,8 +54,8 @@ const empty: ViewsInput = { groups: [], requests: [], participants: [], coordina
 
 function build(input: Partial<ViewsInput>, engineOptions: FakeEngineOptions = {}, options = {}) {
   const fake = createFakeEngine(engineOptions);
-  const views = buildViews({ ...empty, ...input }, fake.engine, NOW, options);
-  return { views, ...fake };
+  const { views, signatures } = buildViewsWithPlan({ ...empty, ...input }, fake.engine, NOW, options);
+  return { views, signatures, ...fake };
 }
 
 describe('какие заявки уходят в движок и на экран', () => {
@@ -616,7 +616,7 @@ describe('люди', () => {
     });
     expect(views.people.items).toEqual([{
       key: 'u12', fio: 'Дарья Ефимова', phone: '+7 911 123-45-67', ageLabel: '26-35', district: 'Невский',
-      from: 'Бот · MAX', mdgLabel: 'Хочет в группу', date: '2026-09-12', requestId: 40,
+      from: 'Бот · MAX', mdgLabel: 'Хочет в группу', date: '2026-09-12', requestId: 40, userId: 12, registrationNo: 12,
     }]);
   });
 
@@ -656,7 +656,7 @@ describe('люди', () => {
     const person = (key: string) => views.people.items.find((p) => p.key === key)!;
     expect(person('r7')).toEqual({
       key: 'r7', fio: 'Станислав Ким', phone: '+7 904 123-45-67', ageLabel: '26-35', district: 'Приморский',
-      from: 'Таблица', mdgLabel: 'Заявка: готово к утверждению', date: '2026-10-02', requestId: 7,
+      from: 'Таблица', mdgLabel: 'Заявка: готово к утверждению', date: '2026-10-02', requestId: 7, userId: null, registrationNo: null,
     });
     expect(person('r8')).toMatchObject({ from: 'Дашборд · Звонок', mdgLabel: 'Заявка: нужна помощь в сопоставлении', district: null });
     expect(person('r9').mdgLabel).toBe('Заявка: утверждено');
@@ -999,5 +999,55 @@ describe('закрепление и «утверждено сегодня»', ()
     });
     // «Сейчас» в тестах — 12:00 по Москве 10 октября; 09.10 в 23:59 по Москве — уже вчера.
     expect(views.today.approvedToday).toBe(2);
+  });
+});
+
+
+describe('закрепление и изменившиеся данные', () => {
+  test('данные заявки изменились после закрепления: предложение не закреплено, помечено «данные изменились», группа не удерживается', () => {
+    const { views, calls } = build({
+      groups: [group({ id: 1 }), group({ id: 2 })],
+      requests: [request({ id: 7, place: 'Приморский' })],
+      activeProposals: new Map([[7, { groupId: 2, source: 'script', inputHash: 'старый-отпечаток' }]]),
+    });
+    const item = views.requests.items[0]!;
+    expect(item.proposal).toMatchObject({ saved: false, dataChanged: true });
+    expect(calls.plan[0]!.requests[0]!.pinnedGroupId).toBeNull();
+    expect(views.requests.matching).toMatchObject({ saved: 0, waiting: 1 });
+  });
+
+  test('отпечаток совпал: предложение закреплено и удерживается, без пометки об изменении', () => {
+    const first = build({ groups: [group({ id: 1 })], requests: [request({ id: 7, place: 'Приморский' })] });
+    const signature = [...first.signatures.values()][0]!;
+    const { views, calls } = build({
+      groups: [group({ id: 1 }), group({ id: 2 })],
+      requests: [request({ id: 7, place: 'Приморский' })],
+      activeProposals: new Map([[7, { groupId: 1, source: 'script', inputHash: signature }]]),
+    });
+    expect(views.requests.items[0]!.proposal).toMatchObject({ saved: true, dataChanged: false });
+    expect(calls.plan[0]!.requests[0]!.pinnedGroupId).toBe(1);
+  });
+
+  test('у предложения без отпечатка (закреплено до этой версии) данные считаются неизменными', () => {
+    const { views } = build({
+      groups: [group({ id: 1 })],
+      requests: [request({ id: 7, place: 'Приморский' })],
+      activeProposals: new Map([[7, { groupId: 1, source: 'script', inputHash: null }]]),
+    });
+    expect(views.requests.items[0]!.proposal).toMatchObject({ saved: true, dataChanged: false });
+  });
+
+  test('заявка без закрепления: dataChanged = false', () => {
+    const { views } = build({ groups: [group({ id: 1 })], requests: [request({ id: 7, place: 'Приморский' })] });
+    expect(views.requests.items[0]!.proposal).toMatchObject({ saved: false, dataChanged: false });
+  });
+
+  test('участник отдаёт id и номер регистрации; строка из заявки — только id участника', () => {
+    const { views } = build({
+      participants: [participant({ id: 3, registration_no: 41 })],
+      requests: [request({ id: 9, user_id: null })],
+    });
+    expect(views.people.items.find((p) => p.key === 'u3')).toMatchObject({ userId: 3, registrationNo: 41 });
+    expect(views.people.items.find((p) => p.key === 'r9')).toMatchObject({ userId: null, registrationNo: null });
   });
 });

@@ -52,6 +52,12 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
   if (clean === 'matching/run') {
     return { ok: true, created: 0, replaced: 0, unchanged: buildRequests().matching.waiting };
   }
+  // Пересчёт всех предложений: в демо сервера нет, поэтому «заменено» нулевое, а изменившиеся данные считаем обновлёнными.
+  if (clean === 'matching/rerun-all') {
+    const open = buildRequests().items.filter((r) => r.proposal && r.bucket !== 'done');
+    const changed = open.filter((r) => r.proposal!.dataChanged).length;
+    return { ok: true, created: 0, replaced: changed, unchanged: open.length - changed };
+  }
   const input = (body ?? {}) as { fullName?: string; email?: string; id?: number };
   switch (clean) {
     // Номер новой записи в демо один и тот же: данные не меняются, важно лишь показать подтверждение.
@@ -59,6 +65,9 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
       return { ok: true, id: 101 };
     case 'groups/create':
       return { ok: true, id: 13 };
+    // Номера регистрации в фикстурах людей — 1, 2 и 4, поэтому новый в демо — 5 (id участника берём тем же).
+    case 'people/create':
+      return { ok: true, id: 5, registrationNo: 5 };
     case 'settings/staff/suggest':
       return { ok: true, login: fixtureSuggestLogin(input.fullName ?? '') };
     case 'settings/staff/create':

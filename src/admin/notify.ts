@@ -30,7 +30,7 @@ const PLATFORM_LABEL = { telegram: 'Telegram', max: 'MAX' } as const;
  * дашборд номер вообще не показывал, и служитель не мог найти «заявку №16» никак,
  * кроме поиска по имени. Ссылка ведёт сразу на неё.
  */
-export function formatRequest(r: RequestWithUser, dashboardUrl: string): string {
+export function formatRequest(r: RequestWithUser, dashboardUrl: string, requestLink?: string): string {
   const nick = r.username ? ` (@${esc(r.username)})` : '';
   // У заявки без участника в боте (заведена в дашборде кнопкой «Заявка», а не
   // через регистрацию) LEFT JOIN не находит пользователя, и r.platform — null,
@@ -63,7 +63,8 @@ export function formatRequest(r: RequestWithUser, dashboardUrl: string): string 
   // Переписки с участниками в боте нет: служитель звонит по телефону выше.
   // Закрывать заявку теперь в дашборде — в боте команды /close больше нет.
   lines.push('', `Свяжитесь с человеком по телефону, затем закройте заявку №${r.id} в дашборде.`);
-  lines.push(link(`${dashboardUrl}?request=${r.id}`, 'Открыть заявку в дашборде'));
+  // Ссылка на новый интерфейс, если он настроен (HG_PUBLIC_URL), иначе на старый дашборд.
+  lines.push(link(requestLink ?? `${dashboardUrl}?request=${r.id}`, 'Открыть заявку в дашборде'));
 
   return lines.join('\n');
 }
@@ -73,7 +74,7 @@ export class AdminNotifier {
   constructor(private readonly deps: Deps) {}
 
   async notifyRequest(request: RequestWithUser): Promise<void> {
-    await this.broadcast(formatRequest(request, this.deps.dashboardUrl));
+    await this.broadcast(formatRequest(request, this.deps.dashboardUrl, this.deps.requestUrl?.(request.id)));
   }
 
   async broadcast(text: string): Promise<void> {

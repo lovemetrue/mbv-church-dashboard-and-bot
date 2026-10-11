@@ -33,7 +33,7 @@ export function useMatching() {
   const queryClient = useQueryClient();
   const me = useMe();
   const inFlight = useRef(false);
-  const [pending, setPending] = useState<'run' | 'auto' | null>(null);
+  const [pending, setPending] = useState<'run' | 'auto' | 'rerun' | null>(null);
   const [notice, setNotice] = useState<MatchingNotice | null>(null);
 
   const refresh = () =>
@@ -43,7 +43,7 @@ export function useMatching() {
       queryClient.invalidateQueries({ queryKey: queryKeys.groups }),
     ]);
 
-  async function guarded(kind: 'run' | 'auto', work: () => Promise<void>) {
+  async function guarded(kind: 'run' | 'auto' | 'rerun', work: () => Promise<void>) {
     if (inFlight.current) return;
     inFlight.current = true;
     setPending(kind);
@@ -68,6 +68,19 @@ export function useMatching() {
       }
     });
 
+  /** Пересчитать закреплённые предложения всех открытых заявок. Окно подтверждения — в панели. */
+  const rerunAll = () =>
+    guarded('rerun', async () => {
+      try {
+        const out = await apiPost<MatchingRunOk>('matching/rerun-all', {});
+        setNotice({ kind: 'ok', text: m.rerunDone(out.created, out.replaced, out.unchanged) });
+        // Как и после обычного запуска: итог не должен опережать список, в котором предложения уже другие.
+        await refresh();
+      } catch (e) {
+        setNotice({ kind: 'error', text: errorText(e, m.errorRerun, ru.requests.act.errorForbidden) });
+      }
+    });
+
   const setAuto = (enabled: boolean) =>
     guarded('auto', async () => {
       try {
@@ -80,5 +93,5 @@ export function useMatching() {
       }
     });
 
-  return { pending, notice, canToggle: me.data?.role === 'super', run, setAuto };
+  return { pending, notice, canToggle: me.data?.role === 'super', run, rerunAll, setAuto };
 }

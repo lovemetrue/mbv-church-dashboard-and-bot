@@ -59,7 +59,7 @@ export function RequestList({ items, selectedId, onSelect }: RequestListProps) {
                 <Pill tone={r.bucket === 'cancelled' ? 'plain' : r.bucket}>{BUCKET_LABEL[r.bucket]}</Pill>
                 <div className={styles.propText}>
                   {text ?? <span className={styles.note}>{r.noPlan?.reason ?? ''}</span>}
-                  {r.proposal && r.bucket !== 'done' && <SavedTag saved={r.proposal.saved} />}
+                  {r.proposal && r.bucket !== 'done' && <SavedTag saved={r.proposal.saved} dataChanged={r.proposal.dataChanged} />}
                 </div>
               </div>
               <div className={`${styles.conf} num`}>

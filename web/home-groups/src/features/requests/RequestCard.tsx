@@ -29,11 +29,14 @@ function noPlanHint(code: NonNullable<RequestItem['noPlan']>['code']): string {
 /** Кто предложил группу и напоминание, что предложение ещё не решение. */
 function ProposalSource({ proposal }: { proposal: NonNullable<RequestItem['proposal']> }) {
   return (
-    <p className={styles.source}>
-      <b>{proposal.source === 'agent' ? ru.requests.act.sourceAgent : ru.requests.act.sourceScript}</b>
-      <SavedTag saved={proposal.saved} />
-      <span className={styles.note}>{ru.requests.act.notApproved}</span>
-    </p>
+    <>
+      <p className={styles.source}>
+        <b>{proposal.source === 'agent' ? ru.requests.act.sourceAgent : ru.requests.act.sourceScript}</b>
+        <SavedTag saved={proposal.saved} dataChanged={proposal.dataChanged} explained />
+        <span className={styles.note}>{ru.requests.act.notApproved}</span>
+      </p>
+      {proposal.dataChanged && <p className={styles.changedNote}>{ru.requests.rematch.changedHint}</p>}
+    </>
   );
 }
 
@@ -187,7 +190,8 @@ function Proposal({ r, act }: { r: RequestItem; act: RequestActionsState }) {
     );
   }
 
-  if (!p) return null;
+  // Предложения нет, но заявка открыта: «Подобрать заново» может его найти, когда данные пополнились.
+  if (!p) return <RequestActions r={r} act={act} />;
   return (
     <>
       <ProposalSource proposal={p} />
@@ -375,6 +379,7 @@ function Params({ r }: { r: RequestItem }) {
         ) : (
           <p className={styles.noticeOk} role="status">
             {edit.notice.text}
+            {edit.notice.hint && <span className={styles.noticeHint}>{edit.notice.hint}</span>}
           </p>
         ))}
     </details>

@@ -34,8 +34,16 @@ const MIME = {
   '.svg': 'image/svg+xml',
   '.json': 'application/json',
 };
+// QR регистрации в режиме фикстур отдаёт «сервер» — здесь его заменяет белый пиксель: до проверки вёрстки
+// картинка нужна лишь как место, и лишнего запроса на несуществующий файл (и ошибки в консоли) быть не должно.
+const QR_STUB = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4//8/AwAI/AL+XJ/P7wAAAABJRU5ErkJggg==', 'base64');
 const server = createServer((req, res) => {
   const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
+  if (/^\/api\/v1\/people\/\d+\/qr$/.test(path)) {
+    res.writeHead(200, { 'Content-Type': 'image/png' });
+    res.end(QR_STUB);
+    return;
+  }
   let file = join(dist, path);
   if (!file.startsWith(dist) || !existsSync(file) || statSync(file).isDirectory()) file = join(dist, 'index.html');
   res.writeHead(200, { 'Content-Type': MIME[extname(file)] ?? 'application/octet-stream' });
@@ -62,6 +70,9 @@ const SCREENS = [
   { name: 'requests-alternatives', url: '/?tab=requests&req=7', ready: '[role=dialog][aria-label^="Карточка заявки"]', scroll: 'text=Другие варианты' },
   { name: 'requests-params-edit', url: '/?tab=requests&req=4', ready: '[role=dialog][aria-label^="Карточка заявки"]', click: 'button[aria-label="Изменить удобные день и время"]', scroll: 'input[placeholder^="например: пн"]' },
   { name: 'requests-original', url: '/?tab=requests&req=1', ready: '[role=dialog][aria-label^="Карточка заявки"]', click: '[role=dialog] button[aria-expanded="false"]', scroll: 'text=Как система это поняла' },
+  // «Подобрать заново»: обычная заявка (кнопка и подсказка) и заявка, у которой данные изменились после закрепления.
+  { name: 'requests-rematch', url: '/?tab=requests&req=1', ready: '[role=dialog][aria-label^="Карточка заявки"]', scroll: 'button:has-text("Подобрать заново")' },
+  { name: 'requests-datachanged', url: '/?tab=requests&req=2', ready: '[role=dialog][aria-label^="Карточка заявки"]', scroll: 'text=Район, возраст, время или улица изменились' },
   { name: 'requests-queue', url: '/?tab=requests&bucket=queue', ready: 'nav[aria-label="Переход между заявками"]' },
   { name: 'requests-reject', url: '/?tab=requests&req=1', ready: '[role=dialog][aria-label^="Карточка заявки"]', click: 'button[aria-label^="Отклонить группу"]' },
   { name: 'requests-list', url: '/?tab=requests', ready: 'ul[aria-label="Список заявок"]' },
@@ -85,6 +96,31 @@ const SCREENS = [
   { name: 'create-menu', url: '/?tab=reference', ready: 'table', click: 'button:has-text("+ Создать")', then: '[role=menu] [role=menuitem]:has-text("Участник")' },
   { name: 'create-request', url: '/?tab=reference', ready: 'table', click: ['button:has-text("+ Создать")', '[role=menuitem]:has-text("Заявка")'], then: '[role=dialog] input[type=text]' },
   { name: 'create-group', url: '/?tab=reference', ready: 'table', click: ['button:has-text("+ Создать")', '[role=menuitem]:has-text("Группа")'], then: '[role=dialog] fieldset' },
+  // Регистрация участника: пустая форма, форма с ветвлением (ответ «хочет в группу») и результат после успеха.
+  // fill — пары [селектор, значение], select — пары [селектор, значение option]; выполняются после click.
+  { name: 'registration-form', url: '/?tab=reference', ready: 'table', click: ['button:has-text("+ Создать")', '[role=menuitem]:has-text("Участник")'], then: '[role=dialog] select' },
+  {
+    name: 'registration-form-join',
+    url: '/?tab=reference',
+    ready: 'table',
+    click: ['button:has-text("+ Создать")', '[role=menuitem]:has-text("Участник")'],
+    then: '[role=dialog] select',
+    fill: [['[role=dialog] input[type=text]', 'Анна Петрова']],
+    select: [['[role=dialog] select >> nth=1', 'join']],
+    after: '[role=dialog] select >> nth=2',
+  },
+  {
+    name: 'registration-done',
+    url: '/?tab=reference',
+    ready: 'table',
+    click: ['button:has-text("+ Создать")', '[role=menuitem]:has-text("Участник")'],
+    then: '[role=dialog] select',
+    fill: [['[role=dialog] input[type=text] >> nth=0', 'Анна Петрова'], ['[role=dialog] input[type=text] >> nth=1', '+7 911 000 11 22']],
+    submit: '[role=dialog] button[type=submit]',
+    after: '[role=dialog] img',
+  },
+  // Справочник «Люди»: карточка человека с номером регистрации и ссылками.
+  { name: 'reference-people-card', url: '/?tab=reference&ent=people&rec=u1', ready: '[role=dialog][aria-label^="Карточка человека"]' },
   // Справочник групп сразу после открытия: закрытая скрыта, отбор по умолчанию виден чипом.
   { name: 'reference-groups-default', url: '/?tab=reference', ready: 'table' },
   // Закрытая группа с длинным ФИО: ведущий обрезан многоточием.
@@ -96,6 +132,8 @@ const SHOTS = [
   // [экран, ширина, тема]
   ['reference-groups-closed', 1280, 'light'],
   ...['create-menu', 'create-request', 'create-group', 'reference-groups-default'].flatMap((s) => [[s, 1280, 'light'], [s, 400, 'light']]),
+  ...['registration-form', 'registration-form-join', 'registration-done', 'reference-people-card'].flatMap((s) => [[s, 1280, 'light'], [s, 400, 'light']]),
+  ['registration-done', 400, 'dark'],
   ...['settings-health', 'settings-errors', 'settings-audit', 'settings-prompts'].flatMap((s) => [[s, 1280, 'light'], [s, 400, 'light']]),
   ['settings-prompts-rollback', 400, 'light'],
   ...['settings-users', 'settings-users-add', 'settings-users-link'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
@@ -110,6 +148,7 @@ const SHOTS = [
   ['requests-displaced', 1280, 'light'],
   ['requests-noplan', 1280, 'light'],
   ['requests-weak', 1280, 'light'],
+  ...['requests-rematch', 'requests-datachanged'].flatMap((s) => [[s, 1280, 'light'], [s, 400, 'light']]),
   ['requests-pick', 1280, 'light'],
   ['requests-pick', 400, 'light'],
   ['requests-reject', 400, 'light'],
@@ -186,6 +225,10 @@ for (const [screenName, width, theme] of SHOTS) {
   if (screen.click2) await page.click(screen.click2);
   // Результат клика приходит не сразу (ответ «сервера» фикстур): ждём появления нужного элемента.
   if (screen.then) await page.waitForSelector(screen.then, { timeout: 5000 });
+  for (const [sel, text] of screen.fill ?? []) await page.fill(sel, text);
+  for (const [sel, value] of screen.select ?? []) await page.selectOption(sel, value);
+  if (screen.submit) await page.click(screen.submit);
+  if (screen.after) await page.waitForSelector(screen.after, { timeout: 5000 });
   if (screen.scroll) await page.locator(screen.scroll).first().scrollIntoViewIfNeeded();
   await page.waitForTimeout(150);
 

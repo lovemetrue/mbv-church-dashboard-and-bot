@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useId, useMemo, useRef } from 'react';
 import type { RequestsView } from '@contracts';
 import { BUCKET_LABEL, LIST_BUCKETS, type BucketFilter } from '../../entities/buckets';
 import { useRequests } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
-import { useAppNav } from '../../shared/nav';
+import { RESP_NOBODY, useAppNav } from '../../shared/nav';
+import { SavedViewsMenu } from '../../shared/savedViews';
 import { Button, Chip, EmptyState, ErrorState, LoadingState } from '../../shared/ui';
-import { countBuckets, filterByBucket, searchRequests } from './model';
+import { countBuckets, filterByBucket, filterByResponsible, responsibleNames, searchRequests } from './model';
 import { MatchingPanel } from './MatchingPanel';
 import { RequestCard, type RequestNeighbors } from './RequestCard';
 import { RequestList } from './RequestList';
@@ -21,7 +22,12 @@ export function RequestsScreen() {
 
 export function RequestsContent({ data }: { data: RequestsView }) {
   const nav = useAppNav();
-  const found = useMemo(() => searchRequests(data.items, nav.search), [data.items, nav.search]);
+  // Поиск и «В работе у» сужают список до чипов: счётчики, очередь обзвона и «Следующая заявка»
+  // считаются по одному и тому же найденному.
+  const found = useMemo(
+    () => filterByResponsible(searchRequests(data.items, nav.search), nav.responsible),
+    [data.items, nav.search, nav.responsible],
+  );
   const counts = useMemo(() => countBuckets(found), [found]);
   const visible = useMemo(() => filterByBucket(found, nav.bucket), [found, nav.bucket]);
   const selected = nav.requestId != null ? data.items.find((r) => r.id === nav.requestId) : undefined;
@@ -73,6 +79,10 @@ export function RequestsContent({ data }: { data: RequestsView }) {
             </Chip>
           ))}
         </div>
+        <div className={styles.tools} role="group" aria-label={ru.requests.toolsLabel}>
+          <ResponsibleSelect items={data.items} value={nav.responsible} onChange={nav.setResponsible} />
+          <SavedViewsMenu scope="requests" />
+        </div>
         {visible.length ? (
           <RequestList items={visible} selectedId={nav.requestId} onSelect={nav.selectRequest} />
         ) : (
@@ -96,6 +106,39 @@ export function RequestsContent({ data }: { data: RequestsView }) {
           <EmptyState hint={ru.requests.emptyPaneHint}>{ru.requests.emptyPane}</EmptyState>
         </aside>
       )}
+    </div>
+  );
+}
+
+/** Список «В работе у». Имена берём из всех заявок, а не из найденных: иначе выбор сам себя сужал бы. */
+function ResponsibleSelect({
+  items,
+  value,
+  onChange,
+}: {
+  items: RequestsView['items'];
+  value: string;
+  onChange: (who: string) => void;
+}) {
+  const id = useId();
+  const names = useMemo(() => responsibleNames(items), [items]);
+  // Имя из старой ссылки, которого в очереди уже нет, оставляем в списке: иначе выбор показывал бы
+  // «Все», а список при этом был бы пуст.
+  const extra = value && value !== RESP_NOBODY && !names.includes(value) ? value : null;
+  return (
+    <div className={styles.respBox}>
+      <label htmlFor={id} className={styles.respLabel}>
+        {ru.requests.respFilterLabel}
+      </label>
+      <select id={id} className={styles.respSelect} value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">{ru.requests.respFilterAll}</option>
+        <option value={RESP_NOBODY}>{ru.requests.respFilterNobody}</option>
+        {[...names, ...(extra ? [extra] : [])].map((n) => (
+          <option key={n} value={n}>
+            {n}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

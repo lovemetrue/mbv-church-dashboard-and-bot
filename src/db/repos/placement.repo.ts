@@ -1,6 +1,7 @@
 import type { Pool, PoolClient } from 'pg';
 import { groupCode } from '../../core/groups.js';
 import { PASSING_STATUSES } from '../../core/matching.js';
+import { normalizePhone } from '../../core/phone.js';
 
 /**
  * «Предварительно» и решения координатора.
@@ -13,6 +14,18 @@ import { PASSING_STATUSES } from '../../core/matching.js';
 
 export type RejectReason = 'time' | 'far' | 'age' | 'declined' | 'other';
 export const REJECT_REASONS: readonly RejectReason[] = ['time', 'far', 'age', 'declined', 'other'];
+
+/** Поля заявки, которые координатор правит вручную; `null` или пустая строка очищают поле (кроме ФИО). */
+export interface RequestEdit { fio?: string | null; phone?: string | null; age?: string | null; place?: string | null; note?: string | null }
+const EDIT_LIMITS: Record<keyof RequestEdit, number> = { fio: 200, phone: 40, age: 60, place: 200, note: 1000 };
+const EDIT_COLUMNS: Record<keyof RequestEdit, string> = { fio: 'fio', phone: 'phone', age: 'age', place: 'place', note: 'note' };
+
+/** Итог звонка человеку: что координатор записывает после разговора. */
+export type CallResult = 'reached' | 'no_answer' | 'later' | 'refused';
+/** Нужно ли после этого итога ещё звонить: «не дозвонился» и «просил позже» оставляют заявку в «Перезвонить». */
+export const CALL_RESULTS: Readonly<Record<CallResult, { callback: boolean }>> = {
+  reached: { callback: false }, refused: { callback: false }, no_answer: { callback: true }, later: { callback: true },
+};
 
 export type ActionFailure = 'bad_request' | 'not_found' | 'already_closed' | 'group_unavailable' | 'group_full';
 export type ActionOutcome = { ok: true } | { ok: false; error: ActionFailure; message: string };
@@ -220,6 +233,98 @@ export class PlacementRepo {
    * Улица и удобное время, поправленные координатором. Правка лежит рядом с ответом из анкеты и
    * имеет приоритет; пустое значение убирает правку. В журнал пишется факт, а не текст: адрес — личные данные.
    */
+  /**
+   * Правка полей заявки (ФИО, телефон, возраст, район, комментарий). Район и возраст влияют на подбор:
+   * закреплённое предложение само устареет, потому что отпечаток данных изменится (см. `inputSignature`).
+   * В журнал идут названия изменённых полей, значения — нет: там телефон и имя человека.
+   */
+  async editRequest(requestId: number, patch: RequestEdit, actor: string): Promise<ActionOutcome> {
+    const keys = (Object.keys(patch) as (keyof RequestEdit)[]).filter((k) => k in EDIT_LIMITS && patch[k] !== undefined);
+    if (keys.length === 0) return fail('bad_request', 'Нечего менять.');
+    const clean: Partial<Record<keyof RequestEdit, string | null>> = {};
+    for (const k of keys) {
+      const v = patch[k];
+      if (v !== null && typeof v !== 'string') return fail('bad_request', 'Значение должно быть текстом.');
+      const t = (v ?? '').trim();
+      if (t.length > EDIT_LIMITS[k]) return fail('bad_request', `Слишком длинный текст (до ${EDIT_LIMITS[k]} знаков).`);
+      if (k === 'fio' && t === '') return fail('bad_request', 'ФИО не может быть пустым.');
+      if (k === 'phone' && t !== '') {
+        const normalized = normalizePhone(t);
+        if (!normalized) return fail('bad_request', 'Не похоже на номер телефона. Пример: +7 911 123-45-67.');
+        clean[k] = normalized;
+        continue;
+      }
+      clean[k] = t === '' ? null : t;
+    }
+
+    return this.tx(async (c) => {
+      const state = await this.lockOpenRequest(c, requestId);
+      if (PlacementRepo.isFailure(state)) return state;
+      const { rows } = await c.query<Record<keyof RequestEdit, string | null>>(
+        'SELECT fio, phone, age, place, note FROM requests WHERE id = $1', [requestId],
+      );
+      const old = rows[0]!;
+      const changed = keys.filter((k) => (clean[k] ?? null) !== (old[k] ?? null));
+      if (changed.length === 0) return { ok: true } as const;
+      const sets = changed.map((k, i) => `${EDIT_COLUMNS[k]} = $${i + 2}`);
+      const values = changed.map((k) => clean[k] ?? null);
+      // Список для ссылки «позвонить» держим в согласии с телефоном.
+      if (changed.includes('phone')) {
+        sets.push(`phones = $${values.length + 2}::text[]`);
+        values.push((clean.phone ? [clean.phone] : []) as never);
+      }
+      await c.query(
+        `UPDATE requests SET ${sets.join(', ')},
+                origin = CASE WHEN origin = 'таблица' THEN 'ui' ELSE origin END
+          WHERE id = $1`,
+        [requestId, ...values],
+      );
+      await this.audit(c, actor, 'request.edit', requestId, {}, { fields: changed }, null);
+      return { ok: true } as const;
+    });
+  }
+
+  /** «В работе у»: кто из координаторов занимается заявкой. Имя служителя — не персональные данные заявителя, в журнал идёт. */
+  async assign(requestId: number, responsible: string | null, actor: string): Promise<ActionOutcome> {
+    const name = (responsible ?? '').trim() || null;
+    if ((name ?? '').length > 200) return fail('bad_request', 'Слишком длинное имя (до 200 знаков).');
+    return this.tx(async (c) => {
+      const state = await this.lockOpenRequest(c, requestId);
+      if (PlacementRepo.isFailure(state)) return state;
+      const { rows } = await c.query<{ responsible: string | null }>('SELECT responsible FROM requests WHERE id = $1', [requestId]);
+      const old = rows[0]!.responsible;
+      if (old === name) return { ok: true } as const;
+      await c.query(
+        `UPDATE requests SET responsible = $2,
+                origin = CASE WHEN origin = 'таблица' THEN 'ui' ELSE origin END
+          WHERE id = $1`,
+        [requestId, name],
+      );
+      await this.audit(c, actor, 'request.assign', requestId, { responsible: old }, { responsible: name }, null);
+      return { ok: true } as const;
+    });
+  }
+
+  /** Итог звонка: запись в ленту заявки и, когда ещё нужно звонить, отметка «Перезвонить». */
+  async recordCall(requestId: number, result: CallResult, comment: string | null, actor: string): Promise<ActionOutcome> {
+    if (!Object.hasOwn(CALL_RESULTS, result)) return fail('bad_request', 'Неизвестный итог звонка.');
+    const note = (comment ?? '').trim() || null;
+    if ((note ?? '').length > 500) return fail('bad_request', 'Комментарий слишком длинный (до 500 знаков).');
+    return this.tx(async (c) => {
+      const state = await this.lockOpenRequest(c, requestId);
+      if (PlacementRepo.isFailure(state)) return state;
+      const callback = CALL_RESULTS[result].callback;
+      await c.query(
+        `UPDATE requests SET callback = $2,
+                origin = CASE WHEN origin = 'таблица' THEN 'ui' ELSE origin END
+          WHERE id = $1`,
+        [requestId, callback],
+      );
+      await this.audit(c, actor, 'request.call', requestId, { callback: state.callback }, { result, callback }, note);
+      return { ok: true } as const;
+    });
+  }
+
   async setParams(
     requestId: number, patch: { street?: string | null; schedule?: string | null }, actor: string,
   ): Promise<ActionOutcome> {

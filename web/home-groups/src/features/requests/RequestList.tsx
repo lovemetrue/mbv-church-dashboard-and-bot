@@ -54,6 +54,7 @@ export function RequestList({ items, selectedId, onSelect }: RequestListProps) {
                 </button>
                 {r.ageLabel && <AgeTag>{r.ageLabel}</AgeTag>}
                 <span className={styles.place}>{r.place ?? ru.common.placeUnknown}</span>
+                {r.responsible && <span className={styles.inWork}>{ru.requests.inWorkBy(r.responsible)}</span>}
               </div>
               <div className={styles.prop}>
                 <Pill tone={r.bucket === 'cancelled' ? 'plain' : r.bucket}>{BUCKET_LABEL[r.bucket]}</Pill>

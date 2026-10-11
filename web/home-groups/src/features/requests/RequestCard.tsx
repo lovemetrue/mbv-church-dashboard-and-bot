@@ -12,6 +12,7 @@ import { ActionDialogs, ActionNoticeLine, isActionable, RequestActions } from '.
 import styles from './Requests.module.css';
 import { useRequestActions, type RequestActionsState } from './useRequestActions';
 import { useRequestParams, type ParamField } from './useRequestParams';
+import { WorkPlace } from './work/WorkPlace';
 
 const noValue = <span className={styles.note}>{ru.reference.notSpecified}</span>;
 
@@ -502,6 +503,7 @@ export function RequestCard({ r, onClose, neighbors }: { r: RequestItem; onClose
       <DrawerSection title={ru.requests.contacts}>
         <KeyValue rows={contacts} />
       </DrawerSection>
+      <WorkPlace key={r.id} r={r} />
       <DrawerSection>
         <Params key={r.id} r={r} />
       </DrawerSection>

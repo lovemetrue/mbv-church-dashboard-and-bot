@@ -58,6 +58,8 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
     const changed = open.filter((r) => r.proposal!.dataChanged).length;
     return { ok: true, created: 0, replaced: changed, unchanged: open.length - changed };
   }
+  // Рабочее место координатора: правка данных, «в работе у» и итог звонка. В демо данные не меняются, действие просто «получается».
+  if (/^requests\/\d+\/(edit|assign|call)$/.test(clean)) return { ok: true };
   const input = (body ?? {}) as { fullName?: string; email?: string; id?: number };
   switch (clean) {
     // Номер новой записи в демо один и тот же: данные не меняются, важно лишь показать подтверждение.

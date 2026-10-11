@@ -26,6 +26,29 @@ describe('«Заявки»: поиск и счётчики (чистые фун�
     expect(matchesSearch(r, '11')).toBe(false);
   });
 
+  test('поиск находит по ответственному и по комментарию без учёта регистра', () => {
+    const byWho = searchRequests(items, 'пётр г');
+    expect(byWho.length).toBeGreaterThan(1);
+    expect(byWho.every((r) => r.responsible === 'Пётр Г.')).toBe(true);
+    expect(searchRequests(items, 'ЗВОНИТЬ ПОСЛЕ').map((r) => r.fio)).toEqual(['Наталья Белова']);
+  });
+
+  test('поиск по комментарию и ответственному не ломает правило про телефон: цифры по-прежнему от трёх', () => {
+    const r = items.find((i) => i.fio === 'Наталья Белова')!;
+    // «18» есть в тексте комментария «после 18:00» — это совпадение по тексту, а не по телефону
+    expect(matchesSearch(r, '18:00')).toBe(true);
+    // у заявки без комментария короткая цифра никого не находит
+    const plain = items.find((i) => i.fio === 'Мария Соколова')!;
+    expect(matchesSearch(plain, '11')).toBe(false);
+    expect(matchesSearch(plain, '911 124')).toBe(true);
+  });
+
+  test('заявка без ответственного и комментария ищется как раньше и не падает на null', () => {
+    const r = { ...items.find((i) => i.fio === 'Мария Соколова')!, responsible: null, note: null };
+    expect(matchesSearch(r, 'соколова')).toBe(true);
+    expect(matchesSearch(r, 'null')).toBe(false);
+  });
+
   test('счётчики чипов считаются по найденному и без отказов', () => {
     const all = countBuckets(items);
     expect(all.all).toBe(items.length);

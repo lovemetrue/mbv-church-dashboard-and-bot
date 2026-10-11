@@ -1,4 +1,5 @@
 import type { DashboardGroup } from '../../db/repos/groups.repo.js';
+import type { MemberRow } from '../../db/repos/members.repo.js';
 import type { StoredHint } from '../../db/repos/hints.repo.js';
 import { baseHash, needsOf, anyNeed, type RawBrief } from '../assistant/brief.js';
 import type { ActivityRow, AuditRow } from '../../db/repos/audit.repo.js';
@@ -10,7 +11,7 @@ import { inputSignature } from '../plan/signature.js';
 import { formatPhone } from '../../core/phone.js';
 import type {
   Bucket, Candidate, Counters, CoordinatorItem, CoordinatorsView, GroupBrief, GroupItem, GroupsView,
-  HealthItem, LogEntry, MatchingStatus, NoPlan, OriginalField, ParamInfo, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, OtherItem, RequestsView, TeamView, TodayView,
+  HealthItem, LogEntry, MatchingStatus, NoPlan, OriginalField, ParamInfo, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, GroupMember, OtherItem, RequestsView, TeamView, TodayView,
 } from '../contracts.js';
 import type {
   Day, PlanEngineApi, PlanEntry, PlanEntryProposal, PlanGroup, PlanOutput, PlanRequest, ScoredGroup, Slot,
@@ -32,6 +33,8 @@ export interface ViewsInput {
   activity?: readonly ActivityRow[];
   /** Разбор помощника по заявкам (см. `request_hints`): подставляется там, где скрипт ничего не понял. */
   hints?: ReadonlyMap<number, StoredHint>;
+  /** Состав групп, внесённый вручную. */
+  members?: readonly MemberRow[];
   /** Подключён ли помощник (есть ключ) и включён ли он в настройках. */
   assistant?: { available: boolean; enabled: boolean };
   /**
@@ -551,6 +554,40 @@ export function buildViewsWithPlan(
     plannedByGroup.set(groupId, list);
   }
 
+  // Состав групп: направленные через сервис (заявка «Исполнена» с группой) и внесённые вручную.
+  const membersByGroup = new Map<number, GroupMember[]>();
+  const memberKey = (fio: string, phone: string | null): string => {
+    const digits = (phone ?? '').replace(/\D/g, '');
+    return digits.length >= 10 ? `t:${digits.slice(-10)}` : `n:${fio.trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ')}`;
+  };
+  const addMember = (groupId: number, m: GroupMember) => membersByGroup.set(groupId, [...(membersByGroup.get(groupId) ?? []), m]);
+  for (const r of joinRequests) {
+    if (r.status !== DONE || r.group_id === null) continue;
+    const approved = (auditByRequest.get(r.id) ?? []).filter((a) => a.action === 'request.approve').at(-1);
+    addMember(r.group_id, {
+      kind: 'placed', id: r.id, fio: nonBlank(r.fio) ?? 'Без имени', phone: displayPhone(r.phones, r.phone),
+      date: approved?.at ? localIsoDate(approved.at, timeZone) : null, note: null, alsoIn: [],
+    });
+  }
+  for (const m of input.members ?? []) {
+    addMember(m.group_id, {
+      kind: 'manual', id: m.id, fio: m.full_name, phone: nonBlank(formatPhone(nonBlank(m.phone))), date: validIsoDate(m.joined_on), note: nonBlank(m.note), alsoIn: [],
+    });
+  }
+  const groupsOfKey = new Map<string, Set<number>>();
+  for (const [groupId, list] of membersByGroup) {
+    for (const m of list) {
+      const key = memberKey(m.fio, m.phone);
+      groupsOfKey.set(key, (groupsOfKey.get(key) ?? new Set<number>()).add(groupId));
+    }
+  }
+  for (const [groupId, list] of membersByGroup) {
+    for (const m of list) {
+      m.alsoIn = [...(groupsOfKey.get(memberKey(m.fio, m.phone)) ?? [])].filter((id) => id !== groupId).sort((a, b) => a - b).map(groupCode);
+    }
+  }
+  const memberOrder = (m: GroupMember): number => (m.kind === 'placed' ? 0 : 1);
+
   const groupItems: GroupItem[] = input.groups.map((g) => {
     const p = planGroupById.get(g.id)!;
     const b = brief(g.id)!;
@@ -571,6 +608,7 @@ export function buildViewsWithPlan(
       health: groupHealth(g, p),
       placedNew: input.placedNew?.get(g.id) ?? 0,
       plannedRequests: plannedByGroup.get(g.id) ?? [],
+      members: [...(membersByGroup.get(g.id) ?? [])].sort((a, b) => memberOrder(a) - memberOrder(b)),
     };
   });
 

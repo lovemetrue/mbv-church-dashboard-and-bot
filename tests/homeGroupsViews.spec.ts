@@ -1187,3 +1187,47 @@ describe('разбор помощника в представлениях', () =
     expect(item.slot).toBe('вечер');
   });
 });
+
+describe('состав групп', () => {
+  const manual = (id: number, groupId: number, fio: string, phone: string | null = null, joined: string | null = null) =>
+    ({ id, group_id: groupId, full_name: fio, phone, joined_on: joined, note: null });
+
+  test('утверждённые в группу появляются в её составе сами, внесённые вручную идут следом', () => {
+    const at = new Date('2026-10-09T10:00:00Z');
+    const { views } = build({
+      groups: [group({ id: 1 })],
+      requests: [request({ id: 1, status: 'Исполнена', group_id: 1, fio: 'Анна Утверждённая', phone: '+79215550011' })],
+      audit: [{ entity_id: 1, at, actor: 'a', action: 'request.approve', after: { group_id: 1 }, note: null }],
+      members: [manual(7, 1, 'Борис Вручную', null, '2026-09-01')],
+    });
+    expect(views.groups.items[0]!.members).toEqual([
+      { kind: 'placed', id: 1, fio: 'Анна Утверждённая', phone: '+7 921 555-00-11', date: '2026-10-09', note: null, alsoIn: [] },
+      { kind: 'manual', id: 7, fio: 'Борис Вручную', phone: null, date: '2026-09-01', note: null, alsoIn: [] },
+    ]);
+  });
+
+  test('заявки не в статусе «Исполнена» и без группы в состав не попадают', () => {
+    const { views } = build({
+      groups: [group({ id: 1 })],
+      requests: [request({ id: 1, status: 'Новая', group_id: 1 }), request({ id: 2, status: 'Исполнена', group_id: null }), request({ id: 3, status: 'Аннулирована', group_id: 1 })],
+    });
+    expect(views.groups.items[0]!.members).toEqual([]);
+  });
+
+  test('человек в нескольких группах помечается: по телефону, а без телефона — по ФИО', () => {
+    const { views } = build({
+      groups: [group({ id: 1 }), group({ id: 2 }), group({ id: 3 })],
+      requests: [request({ id: 1, status: 'Исполнена', group_id: 1, fio: 'Анна Смирнова', phone: '+79215550011' })],
+      members: [
+        manual(1, 2, 'А. Смирнова', '8 921 555-00-11'),
+        manual(2, 3, 'анна  смирнова'),
+        manual(3, 2, 'Пётр Один'),
+        manual(4, 3, 'Петр  Один'),
+      ],
+    });
+    const byGroup = (id: number) => views.groups.items.find((g) => g.id === id)!.members.map((m) => [m.fio, m.alsoIn]);
+    expect(byGroup(1)).toEqual([['Анна Смирнова', ['ДГ-0002']]]);
+    expect(byGroup(2)).toEqual([['А. Смирнова', ['ДГ-0001']], ['Пётр Один', ['ДГ-0003']]]);
+    expect(byGroup(3)).toEqual([['анна  смирнова', []], ['Петр  Один', ['ДГ-0002']]]);
+  });
+});

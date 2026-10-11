@@ -102,6 +102,11 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
       deleteRequest: async (id: number, actor: string) => { actionCalls.push({ name: 'request.delete', id, body: undefined, actor }); return outcome; },
     } as never,
     campaign: async () => ({ day: { state: 'идёт', number: 3, total: 40, startDate: '2026-11-01' } }) as never,
+    members: {
+      add: async (id: number, body: unknown, actor: string) => { actionCalls.push({ name: 'member.add', id, body, actor }); return createOutcome; },
+      update: async (id: number, body: unknown, actor: string) => { actionCalls.push({ name: 'member.update', id, body, actor }); return outcome; },
+      remove: async (id: number, actor: string) => { actionCalls.push({ name: 'member.remove', id, body: undefined, actor }); return outcome; },
+    } as never,
     assistant: {
       run: async (actor: string) => { assistantCalls.push({ name: 'run', actor }); return assistantOutcome; },
       setEnabled: async (enabled: boolean, actor: string) => { assistantCalls.push({ name: 'enabled', actor, enabled }); },
@@ -1195,6 +1200,34 @@ describe('руководитель: массовые действия, прав�
     const r = await get(await signIn(REGULAR), 'team');
     expect(r.status).toBe(200);
     expect(await r.json()).toHaveProperty('totals');
+  });
+});
+
+describe('состав группы', () => {
+  const post = (cookie: string | null, path: string, body: unknown) => fetch(`${app.base}/api/v1/${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body),
+  });
+
+  test('без входа 401, любой вход добавляет человека, правит и убирает; снимок сбрасывается', async () => {
+    expect((await post(null, 'groups/5/members/create', { fields: { fio: 'Анна' } })).status).toBe(401);
+    const cookie = await signIn(REGULAR);
+    const inv = app.invalidations();
+    const add = await post(cookie, 'groups/5/members/create', { fields: { fio: 'Анна' } });
+    expect(add.status).toBe(200);
+    expect(await add.json()).toEqual({ ok: true, id: 77 });
+    expect(app.actionCalls.at(-1)).toEqual({ name: 'member.add', id: 5, body: { fields: { fio: 'Анна' } }, actor: REGULAR.login });
+    expect((await post(cookie, 'members/9/update', { fields: { note: 'x' } })).status).toBe(200);
+    expect(app.actionCalls.at(-1)).toMatchObject({ name: 'member.update', id: 9 });
+    expect((await post(cookie, 'members/9/delete', {})).status).toBe(200);
+    expect(app.actionCalls.at(-1)).toMatchObject({ name: 'member.remove', id: 9, actor: REGULAR.login });
+    expect(app.invalidations()).toBe(inv + 3);
+  });
+
+  test('чужие адреса состава — 404', async () => {
+    const cookie = await signIn(REGULAR);
+    for (const path of ['groups/abc/members/create', 'members/9/archive', 'members/create', 'groups/5/members']) {
+      expect((await post(cookie, path, {})).status, path).toBe(404);
+    }
   });
 });
 

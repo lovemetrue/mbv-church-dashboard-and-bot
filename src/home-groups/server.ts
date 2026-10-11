@@ -12,6 +12,7 @@ import type { Registrar } from './registration.js';
 import type { Manager } from './manage.js';
 import type { BotSettings } from './botSettings.js';
 import type { Assistant } from './assistant/service.js';
+import type { Members } from './members.js';
 import { registrationCardPage } from '../dashboard/registrationCard.js';
 import type { Settings } from '../platform/settings/service.js';
 import type { ActionError, ActionOk, MatchingRunOk, Me, Role } from './contracts.js';
@@ -57,6 +58,8 @@ export interface HomeGroupsDeps {
   creator: RecordCreator;
   /** Правка и удаление групп, координаторов, заявок. */
   manager: Manager;
+  /** Состав групп вручную. */
+  members: Members;
   /** Помощник по разбору заявок (языковая модель). */
   assistant: Assistant;
   /** Настройки бота из интерфейса (только полный вход). */
@@ -119,6 +122,9 @@ const CREATE_PATH = /^\/api\/v1\/(requests|groups|people|coordinators)\/create$/
 const MANAGE_PATH = /^\/api\/v1\/(groups|coordinators|people)\/(\d{1,15})\/(update|delete)$/;
 /** Страница для регистрации на месте (волонтёры у стойки): открывается тем же интерфейсом, но показывает только форму. */
 const REGISTRATION_PATH = '/registration';
+/** Состав группы: добавить человека (`POST /groups/5/members/create`) и править или убрать строку (`POST /members/9/update`). */
+const MEMBER_ADD_PATH = /^\/api\/v1\/groups\/(\d{1,15})\/members\/create$/;
+const MEMBER_PATH = /^\/api\/v1\/members\/(\d{1,15})\/(update|delete)$/;
 const BULK_PATH = '/api/v1/requests/bulk';
 const ASSISTANT_RUN_PATH = '/api/v1/assistant/run';
 const EXPORT_PATH = /^\/api\/v1\/export\/(requests|people)\.csv$/;
@@ -478,6 +484,22 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     sendJson(res, 200, { ok: true } satisfies ActionOk);
   }
 
+  /** Состав группы: любой вход (убрать человека из состава — обычная работа, запись только скрывается). */
+  async function handleMember(req: IncomingMessage, res: ServerResponse, what: 'add' | 'update' | 'remove', id: number, sid: string | undefined): Promise<void> {
+    const call = await readAuthedJson(req, res, sid);
+    if (!call) return;
+    const outcome = what === 'add' ? await deps.members.add(id, call.body, call.actor)
+      : what === 'update' ? await deps.members.update(id, call.body, call.actor)
+      : await deps.members.remove(id, call.actor);
+    if (!outcome.ok) {
+      sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
+      return;
+    }
+    deps.invalidateViews();
+    logger.info({ actor: call.actor, what, id }, 'домашние группы: изменение состава группы');
+    sendJson(res, 200, outcome);
+  }
+
   /** Разбор непонятных заявок помощником. Доступен обоим входам, пока помощник подключён и включён. */
   async function handleAssistantRun(req: IncomingMessage, res: ServerResponse, sid: string | undefined): Promise<void> {
     const call = await readAuthedJson(req, res, sid);
@@ -587,6 +609,10 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     if (settingsPost) { await handleSettingsPost(req, res, settingsPost[1]!, sid); return; }
     const create = req.method === 'POST' ? CREATE_PATH.exec(path) : null;
     if (create) { await handleCreate(req, res, create[1]!, sid); return; }
+    const memberAdd = req.method === 'POST' ? MEMBER_ADD_PATH.exec(path) : null;
+    if (memberAdd) { await handleMember(req, res, 'add', Number(memberAdd[1]), sid); return; }
+    const memberEdit = req.method === 'POST' ? MEMBER_PATH.exec(path) : null;
+    if (memberEdit) { await handleMember(req, res, memberEdit[2] === 'update' ? 'update' : 'remove', Number(memberEdit[1]), sid); return; }
     if (req.method === 'POST' && path === BULK_PATH) { await handleBulk(req, res, sid); return; }
     if (req.method === 'POST' && path === ASSISTANT_RUN_PATH) { await handleAssistantRun(req, res, sid); return; }
     const manage = req.method === 'POST' ? MANAGE_PATH.exec(path) : null;

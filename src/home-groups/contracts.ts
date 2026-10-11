@@ -37,6 +37,9 @@
  *   POST /api/v1/requests/:id/delete    (тело {})  → ActionOk | ActionError (только super)
  *   GET  /api/v1/export/requests.csv    → CSV (только super; в нём телефоны)
  *   GET  /api/v1/export/people.csv      → CSV (только super)
+ *   POST /api/v1/groups/:id/members/create CreateRecordBody → CreateRecordOk | ActionError (человек в составе группы: fio, phone, joinedOn, note)
+ *   POST /api/v1/members/:id/update     UpdateBody → ActionOk | ActionError
+ *   POST /api/v1/members/:id/delete     (тело {})  → ActionOk | ActionError (убрать из состава: запись скрывается)
  *   POST /api/v1/assistant/run          (тело {})       → AssistantRunOk | ActionError (помощник разбирает непонятные заявки)
  *   GET  /api/v1/settings/assistant     → SettingsAssistantView (только super)
  *   POST /api/v1/settings/assistant/enabled AssistantEnabledBody → ActionOk | ActionError (только super)
@@ -632,7 +635,26 @@ export interface HealthItem {
   points: number;
 }
 
+/**
+ * Человек в составе группы. Два источника: «направлен» — его утвердили в эту группу через сервис (появляется сам,
+ * правится заявкой), «вручную» — внесён служителем как уже ходящий в группу (правится и убирается здесь).
+ */
+export interface GroupMember {
+  kind: 'placed' | 'manual';
+  /** Для `placed` номер заявки, для `manual` номер строки состава. */
+  id: number;
+  fio: string;
+  phone: string | null;
+  /** Когда направлен (`placed`, если известно) или вступил (`manual`); ISO-дата. */
+  date: string | null;
+  note: string | null;
+  /** Коды других групп, где этот человек тоже есть (совпал телефон, а без телефона — ФИО): повод проверить. */
+  alsoIn: string[];
+}
+
 export interface GroupItem extends GroupBrief {
+  /** Состав: сначала направленные через сервис, потом внесённые вручную. */
+  members: GroupMember[];
   coLeader: string | null;
   phone: string | null;
   ageText: string | null;

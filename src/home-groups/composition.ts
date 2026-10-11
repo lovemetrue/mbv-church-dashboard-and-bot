@@ -20,6 +20,8 @@ import { createFormMeta, createRecordCreator } from './create.js';
 import { createRegistrar } from './registration.js';
 import { createManager } from './manage.js';
 import { createBotSettings } from './botSettings.js';
+import { createMembers } from './members.js';
+import { MembersRepo } from '../db/repos/members.repo.js';
 import { createAssistant } from './assistant/service.js';
 import { HintsRepo } from '../db/repos/hints.repo.js';
 import type { LlmClient } from '../platform/llm/deepseek.js';
@@ -72,6 +74,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     audit: new AuditRepo(db),
     settings: appSettings,
     hints: new HintsRepo(db),
+    members: new MembersRepo(db),
   }, { ...(opts.timeZone ? { timeZone: opts.timeZone } : {}), assistantAvailable: (opts.llm ?? null) !== null });
   const viewOptions = { defaultCapacity: opts.defaultCapacity, ...(opts.timeZone ? { timeZone: opts.timeZone } : {}) };
 
@@ -106,6 +109,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   const notify = opts.notify ?? (async () => undefined);
   const creator = createRecordCreator({ requests: requestsRepo, groups: new GroupsRepo(db), audit: new AuditRepo(db), notify });
   const registrar = createRegistrar({ users: new UsersRepo(db), requests: requestsRepo, audit: new AuditRepo(db), notify });
+  const members = createMembers({ members: new MembersRepo(db), audit: new AuditRepo(db) });
   const usersRepo = new UsersRepo(db);
   const manager = createManager({
     groups: new GroupsRepo(db), coordinators: new CoordinatorsRepo(db), requests: requestsRepo, users: usersRepo, audit: new AuditRepo(db),
@@ -122,7 +126,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   const auditRepo = new AuditRepo(db);
   const audit = (actor: string, action: string, after: unknown) => auditRepo.write(actor, action, 'export', null, after);
   const formMeta = createFormMeta(new CoordinatorsRepo(db));
-  return { views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, formMeta };
+  return { views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, members, formMeta };
 }
 
 export function composeViews(db: Pool, engine: PlanEngineApi, opts: ComposeOptions): ViewsSource {

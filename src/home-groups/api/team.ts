@@ -1,5 +1,5 @@
 import type { ActivityRow } from '../../db/repos/audit.repo.js';
-import type { RequestItem, TeamActivity, TeamView, TeamWorkload } from '../contracts.js';
+import type { OtherItem, RequestItem, TeamActivity, TeamView, TeamWorkload } from '../contracts.js';
 
 /** Заявка «застряла», если ждёт дольше недели: в этот срок координатор должен был хотя бы позвонить. */
 const STUCK_DAYS = 7;
@@ -19,7 +19,9 @@ const isOpen = (r: RequestItem): boolean => r.bucket !== 'done' && r.bucket !== 
  * Считается из уже готового списка заявок и журнала, ничего не читает из базы сама — поэтому проверяется
  * без базы. Персональных данных заявителей здесь только ФИО в списке «без движения» (чтобы найти заявку).
  */
-export function buildTeam(requests: readonly RequestItem[], activityRows: readonly ActivityRow[], generatedAt: string): TeamView {
+export function buildTeam(
+  requests: readonly RequestItem[], activityRows: readonly ActivityRow[], generatedAt: string, others: readonly OtherItem[] = [],
+): TeamView {
   const open = requests.filter(isOpen);
 
   const aging = AGING.map((a) => ({ label: a.label, count: open.filter((r) => r.waitingDays !== null && a.test(r.waitingDays)).length }));
@@ -69,6 +71,7 @@ export function buildTeam(requests: readonly RequestItem[], activityRows: readon
       callback: open.filter((r) => r.bucket === 'callback').length,
       over7: open.filter((r) => (r.waitingDays ?? 0) > STUCK_DAYS).length,
       approvedWeek: activity.reduce((sum, a) => sum + a.approved, 0),
+      otherOpen: others.filter((o) => o.state === 'open').length,
     },
     aging,
     workload,

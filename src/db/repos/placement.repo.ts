@@ -27,6 +27,16 @@ export const CALL_RESULTS: Readonly<Record<CallResult, { callback: boolean }>> =
   reached: { callback: false }, refused: { callback: false }, no_answer: { callback: true }, later: { callback: true },
 };
 
+/** Причины аннулирования заявки: ключ уходит в запрос, подпись пишется в заявку (так её видит и старая выгрузка). */
+export const CANCEL_REASONS = {
+  declined: 'Отказались',
+  no_answer: 'Не отвечают',
+  duplicate: 'Дубль заявки',
+  self_found: 'Нашли группу сами',
+  other: 'Другое',
+} as const;
+export type CancelReason = keyof typeof CANCEL_REASONS;
+
 export type ActionFailure = 'bad_request' | 'not_found' | 'already_closed' | 'group_unavailable' | 'group_full';
 export type ActionOutcome = { ok: true } | { ok: false; error: ActionFailure; message: string };
 
@@ -280,6 +290,70 @@ export class PlacementRepo {
         [requestId, ...values],
       );
       await this.audit(c, actor, 'request.edit', requestId, {}, { fields: changed }, null);
+      return { ok: true } as const;
+    });
+  }
+
+  /**
+   * Закрыть заявку без группы: «обработано» (например, вопрос или «готов открыть» разобрали по телефону)
+   * или «аннулировать» с причиной (отказались, не отвечают, дубль). Действующие предложения заменяются:
+   * человек в подбор больше не идёт.
+   */
+  async closeRequest(
+    requestId: number, outcome: 'done' | 'cancel', reason: CancelReason | null, comment: string | null, actor: string,
+  ): Promise<ActionOutcome> {
+    if (outcome !== 'done' && outcome !== 'cancel') return fail('bad_request', 'Неизвестный исход.');
+    const note = (comment ?? '').trim() || null;
+    if ((note ?? '').length > 500) return fail('bad_request', 'Комментарий слишком длинный (до 500 знаков).');
+    let cancelText: string | null = null;
+    if (outcome === 'cancel') {
+      if (reason === null || !Object.hasOwn(CANCEL_REASONS, reason)) return fail('bad_request', 'Выберите причину.');
+      if (reason === 'other' && !note) return fail('bad_request', 'Для причины «Другое» нужен комментарий.');
+      cancelText = reason === 'other' ? `${CANCEL_REASONS[reason]}: ${note}` : CANCEL_REASONS[reason];
+    }
+    const status = outcome === 'done' ? 'Исполнена' : 'Аннулирована';
+    return this.tx(async (c) => {
+      const state = await this.lockOpenRequest(c, requestId);
+      if (PlacementRepo.isFailure(state)) return state;
+      await c.query(
+        `UPDATE requests SET status = $2, cancel_reason = $3, callback = false, handled_by = $4, handled_at = now(),
+                origin = CASE WHEN origin = 'таблица' THEN 'ui' ELSE origin END
+          WHERE id = $1`,
+        [requestId, status, cancelText, actor],
+      );
+      await c.query(
+        `UPDATE placement_proposals SET status = 'superseded', decided_by = $2, decided_at = now()
+          WHERE request_id = $1 AND status = 'proposed'`,
+        [requestId, actor],
+      );
+      await this.audit(c, actor, 'request.close', requestId,
+        { status: state.status, callback: state.callback }, outcome === 'cancel' ? { outcome, status, reason } : { outcome, status }, note);
+      return { ok: true } as const;
+    });
+  }
+
+  /**
+   * Вернуть закрытую заявку в работу: ошибочное утверждение или аннулирование не должно быть тупиком.
+   * Группа и причина очищаются, число участников группы вернётся само (считается по действующим утверждениям).
+   */
+  async reopen(requestId: number, actor: string): Promise<ActionOutcome> {
+    return this.tx(async (c) => {
+      const { rows } = await c.query<RequestState & { cancel_reason: string | null }>(
+        `SELECT status, group_id, final_group, callback, cancel_reason FROM requests
+          WHERE id = $1 AND archived_at IS NULL FOR UPDATE`,
+        [requestId],
+      );
+      const row = rows[0];
+      if (!row) return fail('not_found', 'Заявка не найдена.');
+      if (!CLOSED.includes(row.status)) return fail('bad_request', 'Заявка и так в работе.');
+      await c.query(
+        `UPDATE requests SET status = 'В работе', group_id = NULL, final_group = NULL, cancel_reason = NULL,
+                origin = CASE WHEN origin = 'таблица' THEN 'ui' ELSE origin END
+          WHERE id = $1`,
+        [requestId],
+      );
+      await this.audit(c, actor, 'request.reopen', requestId,
+        { status: row.status, group_id: row.group_id, cancel_reason: row.cancel_reason }, { status: 'В работе' }, null);
       return { ok: true } as const;
     });
   }

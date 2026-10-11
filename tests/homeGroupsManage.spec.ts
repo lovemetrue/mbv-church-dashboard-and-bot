@@ -4,6 +4,7 @@ import { AuditRepo } from '../src/db/repos/audit.repo.js';
 import { CoordinatorsRepo } from '../src/db/repos/coordinators.repo.js';
 import { GroupsRepo } from '../src/db/repos/groups.repo.js';
 import { RequestsRepo } from '../src/db/repos/requests.repo.js';
+import { UsersRepo } from '../src/db/repos/users.repo.js';
 import { createManager } from '../src/home-groups/manage.js';
 import { setupTestDb, truncateAll } from './helpers/testDb.js';
 
@@ -13,7 +14,7 @@ afterAll(async () => { await db.end(); });
 beforeEach(async () => { await truncateAll(db); });
 
 const manager = () => createManager({
-  groups: new GroupsRepo(db), coordinators: new CoordinatorsRepo(db), requests: new RequestsRepo(db), audit: new AuditRepo(db),
+  groups: new GroupsRepo(db), coordinators: new CoordinatorsRepo(db), requests: new RequestsRepo(db), users: new UsersRepo(db), audit: new AuditRepo(db),
 });
 
 async function group(): Promise<number> {
@@ -47,6 +48,25 @@ describe('правка группы из нового интерфейса', () 
     expect((await g(id)).composition).toBeNull();
   });
 
+  test('новый телефон и адрес записываются, прочее остаётся; в журнале только названия полей', async () => {
+    const id = await group();
+    expect(await manager().updateGroup(id, { fields: { phone: '8 921 555-00-11', address: 'ул. Новая 5' } }, 'a')).toEqual({ ok: true });
+    expect(await g(id)).toMatchObject({
+      phone: '+79215550011', phones: ['+79215550011'], address: 'ул. Новая 5', co_leader_phone: '+79213334455', people: 5,
+    });
+    await manager().updateGroup(id, { fields: { coLeaderPhone: '+7 999 111-22-33' } }, 'a');
+    expect(await g(id)).toMatchObject({ co_leader_phone: '+79991112233', phone: '+79215550011', address: 'ул. Новая 5' });
+    const e = (await audits()).at(-1)!;
+    expect(JSON.parse(e.after)).toEqual({ fields: ['coLeaderPhone'] });
+    expect(JSON.stringify(await audits())).not.toMatch(/921|Новая/);
+  });
+
+  test('пустое значение стирает адрес', async () => {
+    const id = await group();
+    await manager().updateGroup(id, { fields: { address: '' } }, 'a');
+    expect((await g(id)).address).toBeNull();
+  });
+
   test('группа из таблицы после правки считается заведённой в интерфейсе', async () => {
     const id = await group();
     await manager().updateGroup(id, { fields: { comment: 'новое' } }, 'a');
@@ -71,7 +91,7 @@ describe('правка группы из нового интерфейса', () 
 
   test.each([
     [{ fields: { district: 'Луна' } }], [{ fields: { people: '500' } }], [{ fields: { status: 'чепуха' } }], [{ fields: { leader: '' } }],
-    [{ fields: { address: 'x' } }], [{ fields: { phone: '1' } }], [{ fields: {} }], [{}], [null],
+    [{ fields: { metro_station: 'x' } }], [{ fields: { id: '5' } }], [{ fields: {} }], [{}], [null],
   ])('неверное тело %j отклоняется, группа не меняется', async (body) => {
     const id = await group();
     expect(await manager().updateGroup(id, body, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
@@ -106,6 +126,20 @@ describe('удаление', () => {
     expect(await manager().deleteRequest(r, 'a')).toEqual({ ok: true });
     expect((await db.query('SELECT archived_at FROM requests WHERE id=$1', [r])).rows[0].archived_at).not.toBeNull();
     expect((await audits()).map((e) => e.action)).toEqual(['request.delete']);
+  });
+});
+
+describe('удаление регистрации', () => {
+  test('регистрация стирается вместе с заявками, в журнале только номер регистрации', async () => {
+    const u = await new UsersRepo(db).createManual({ fio: 'Иван Петров', phone: '+79110001122', platform: 'telegram', byAdminId: 'x' });
+    await db.query(`INSERT INTO requests (user_id, type, status, fio, origin) VALUES ($1, 'join_group', 'Новая', 'Иван Петров', 'ui')`, [u.id]);
+    expect(await manager().deletePerson(u.id, 'boss')).toEqual({ ok: true });
+    expect((await db.query('SELECT 1 FROM users')).rowCount).toBe(0);
+    expect((await db.query('SELECT 1 FROM requests')).rowCount).toBe(0);
+    const [e] = await audits();
+    expect(e).toMatchObject({ actor: 'boss', action: 'registration.delete', entity_type: 'user' });
+    expect(JSON.parse(e.after)).toEqual({ registrationNo: u.registration_no });
+    expect(await manager().deletePerson(u.id, 'boss')).toMatchObject({ ok: false, error: 'not_found' });
   });
 });
 

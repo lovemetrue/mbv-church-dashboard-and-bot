@@ -29,7 +29,7 @@
  *   POST /api/v1/requests/:id/call      CallBody        → ActionOk | ActionError (итог звонка)
  *   GET  /api/v1/team                   → TeamView (нагрузка, сроки ожидания, действия за неделю)
  *   POST /api/v1/requests/bulk          BulkBody → BulkOk | ActionError (передать или отметить «нужен звонок» сразу нескольким)
- *   POST /api/v1/groups/:id/update      UpdateBody → ActionOk | ActionError (правка части полей группы; адрес и телефоны не отдаются)
+ *   POST /api/v1/groups/:id/update      UpdateBody → ActionOk | ActionError (правка части полей группы; адрес и телефоны только записываются, обратно не отдаются)
  *   POST /api/v1/groups/:id/delete      (тело {})  → ActionOk | ActionError (только super; скрывает, а не стирает)
  *   POST /api/v1/coordinators/create    CreateRecordBody → CreateRecordOk | ActionError
  *   POST /api/v1/coordinators/:id/update UpdateBody → ActionOk | ActionError
@@ -37,6 +37,10 @@
  *   POST /api/v1/requests/:id/delete    (тело {})  → ActionOk | ActionError (только super)
  *   GET  /api/v1/export/requests.csv    → CSV (только super; в нём телефоны)
  *   GET  /api/v1/export/people.csv      → CSV (только super)
+ *   POST /api/v1/requests/:id/close     CloseBody       → ActionOk | ActionError (обработано или аннулировать с причиной)
+ *   POST /api/v1/requests/:id/reopen    (тело {})       → ActionOk | ActionError (вернуть закрытую заявку в работу)
+ *   POST /api/v1/people/:id/delete      (тело {})       → ActionOk | ActionError (только super; стирает регистрацию с заявками)
+ *   GET  /api/v1/campaign               → CampaignView  (кампания «40 дней», только чтение)
  *   POST /api/v1/requests/:id/rematch  (тело {})         → ActionOk | ActionError (подобрать заново одну заявку)
  *   POST /api/v1/matching/rerun-all    (тело {})         → MatchingRunOk | ActionError (пересчитать все закреплённые предложения)
  *   GET /api/v1/form-meta         → FormMeta            (справочники для форм «Создать»)
@@ -397,6 +401,8 @@ export interface TeamView {
     over7: number;
     /** Утверждено за последние 7 дней. */
     approvedWeek: number;
+    /** Открытые обращения, которые не идут в подбор (готов открыть, вопросы). */
+    otherOpen: number;
   };
   /** Сколько открытых заявок ждут: 0–2 дня, 3–7, 8–14, 15 и больше, дата неизвестна. */
   aging: { label: string; count: number }[];
@@ -407,12 +413,61 @@ export interface TeamView {
   activity: TeamActivity[];
 }
 
+/** Статистика кампании «40 дней» (только чтение). Форма совпадает с `CampaignStats` из `src/dashboard/campaignStats.ts`. */
+export interface CampaignView {
+  participants: { registered: number; complete: number; incomplete: number; kitsIssued: number; blocked: number; unfinished: number };
+  mdg: { open: number; home: number; join: number; member: number; leader: number };
+  byPlatform: { platform: 'telegram' | 'max'; registered: number; complete: number; incomplete: number; kitsIssued: number; blocked: number; unfinished: number }[];
+  newRequests: number;
+  days: { loaded: number; total: number; ranges: string; list: { day: number; loaded: boolean; length: number }[] };
+  day: { state: 'до старта' | 'идёт' | 'завершена'; number: number; total: number; startDate: string };
+  broadcasts: { key: string; createdAt: string; finished: boolean; sent: number; pending: number; failed: number; blocked: number }[];
+}
+
+export type CancelReason = 'declined' | 'no_answer' | 'duplicate' | 'self_found' | 'other';
+
+export interface CloseBody {
+  /** done — обработано (разобрались без группы); cancel — аннулировать с причиной. */
+  outcome: 'done' | 'cancel';
+  /** Нужна при cancel; для `other` обязателен комментарий. */
+  reason?: CancelReason;
+  comment?: string | null;
+}
+
+/**
+ * Обращение, которое не идёт в подбор группы: «готов открыть группу», «дам дом», вопрос служителю, «уже состою
+ * в группе» — и закрытые заявки «хочу в группу» (аннулированные), чтобы их можно было вернуть в работу.
+ * Работают с ним теми же действиями, что и с заявкой, кроме подбора и утверждения.
+ */
+export interface OtherItem {
+  id: number;
+  type: 'join_group' | 'lead_group' | 'question' | 'already_member' | 'already_leader';
+  /** «Готов открыть группу», «Вопрос служителю» и т. д. */
+  typeLabel: string;
+  state: 'open' | 'done' | 'cancelled';
+  fio: string;
+  phone: string | null;
+  ageLabel: string | null;
+  place: string | null;
+  status: string;
+  source: string;
+  waitingDays: number | null;
+  callback: boolean;
+  responsible: string | null;
+  note: string | null;
+  cancelReason: string | null;
+  original: OriginalField[];
+  log: LogEntry[];
+}
+
 export interface RequestsView {
   generatedAt: string;
   matching: MatchingStatus;
   /** Без отказов; порядок — как показывать: перезвонить, готово, нужна помощь, утверждено. */
   items: RequestItem[];
   counters: Counters;
+  /** Остальные обращения: открытые сверху (звонок, потом давно ждущие), закрытых не больше 200. */
+  others: OtherItem[];
 }
 
 // ── Действия координатора ───────────────────────────────────────────────────

@@ -6,7 +6,7 @@ import type { AuthPort } from '../platform/auth/personalAuth.js';
 import type { StaffService } from '../platform/auth/staffService.js';
 import { logger } from '../logger.js';
 import { ACTION_STATUS, type RequestActions } from './actions.js';
-import type { FormMeta } from './contracts.js';
+import type { CampaignView, FormMeta } from './contracts.js';
 import type { RecordCreator } from './create.js';
 import type { Registrar } from './registration.js';
 import type { Manager } from './manage.js';
@@ -55,6 +55,8 @@ export interface HomeGroupsDeps {
   creator: RecordCreator;
   /** Правка и удаление групп, координаторов, заявок. */
   manager: Manager;
+  /** Статистика кампании «40 дней»; null — расписание не задано. */
+  campaign: () => Promise<CampaignView | null>;
   /** Выгрузки в CSV (с телефонами): только полный вход. */
   exporter: { requests(): Promise<string>; people(): Promise<string> };
   /** Запись в журнал вне заявки (выгрузка): без содержимого. */
@@ -110,7 +112,9 @@ class BodyTooLarge extends Error {}
 const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode)$/;
 const CREATE_PATH = /^\/api\/v1\/(requests|groups|people|coordinators)\/create$/;
 /** `POST /api/v1/groups/5/update`: правка и удаление записей справочника. */
-const MANAGE_PATH = /^\/api\/v1\/(groups|coordinators)\/(\d{1,15})\/(update|delete)$/;
+const MANAGE_PATH = /^\/api\/v1\/(groups|coordinators|people)\/(\d{1,15})\/(update|delete)$/;
+/** Страница для регистрации на месте (волонтёры у стойки): открывается тем же интерфейсом, но показывает только форму. */
+const REGISTRATION_PATH = '/registration';
 const BULK_PATH = '/api/v1/requests/bulk';
 const EXPORT_PATH = /^\/api\/v1\/export\/(requests|people)\.csv$/;
 /** `GET /api/v1/people/12/card`: печатная карточка регистрации и её QR. */
@@ -119,7 +123,7 @@ const LOGO_PATH = '/api/v1/assets/church-logo.png';
 const MATCHING_PATH = /^\/api\/v1\/matching\/(run|auto|rerun-all)$/;
 
 /** `POST /api/v1/requests/12/approve`: номер заявки — цифры, длиннее пятнадцати не бывает (Number безопасен). */
-const ACTION_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/(approve|reject|need-call|params|rematch|edit|assign|call|delete)$/;
+const ACTION_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/(approve|reject|need-call|params|rematch|edit|assign|call|delete|close|reopen)$/;
 
 /** Адрес клиента: за nginx настоящий адрес приходит заголовком (как в старом дашборде). */
 function clientIp(req: IncomingMessage): string {
@@ -309,14 +313,16 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     const ip = clientIp(req);
     const result = await deps.auth.login(form.get('password') ?? '', ip, form.get('login') ?? undefined);
 
+    const next = form.get('next') === REGISTRATION_PATH ? REGISTRATION_PATH : undefined;
     if (!result.ok) {
       logger.warn({ ip, lockedOut: result.lockedOut === true }, 'домашние группы: неудачный вход');
-      if (result.lockedOut) sendHtml(res, 429, homeGroupsLoginPage('Слишком много попыток. Подождите 15 минут.'));
-      else sendHtml(res, 401, homeGroupsLoginPage('Неверный логин или пароль.'));
+      if (result.lockedOut) sendHtml(res, 429, homeGroupsLoginPage('Слишком много попыток. Подождите 15 минут.', undefined, next));
+      else sendHtml(res, 401, homeGroupsLoginPage('Неверный логин или пароль.', undefined, next));
       return;
     }
     logger.info({ ip, role: result.role }, 'домашние группы: вход выполнен');
-    redirect(res, '/', { 'set-cookie': cookie(result.sid!, deps.sessionTtlSeconds) });
+    // Вернуть можно только на страницу регистрации: произвольный адрес в `next` был бы открытым перенаправлением.
+    redirect(res, next ?? '/', { 'set-cookie': cookie(result.sid!, deps.sessionTtlSeconds) });
   }
 
   /**
@@ -379,6 +385,8 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       : action === 'assign' ? await deps.actions.assign(requestId, body, actor)
       : action === 'call' ? await deps.actions.call(requestId, body, actor)
       : action === 'delete' ? await deps.manager.deleteRequest(requestId, actor)
+      : action === 'close' ? await deps.actions.close(requestId, body, actor)
+      : action === 'reopen' ? await deps.actions.reopen(requestId, actor)
       : await deps.actions.setNeedCall(requestId, body, actor);
 
     if (!outcome.ok) {
@@ -450,7 +458,10 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       sendJson(res, 403, { error: 'forbidden', message: 'Удалять может только полный вход.' } satisfies ActionError);
       return;
     }
-    const outcome = what === 'groups'
+    if (what === 'people' && action === 'update') { sendJson(res, 404, { error: 'not_found' }); return; }
+    const outcome = what === 'people'
+      ? await deps.manager.deletePerson(id, call.actor)
+      : what === 'groups'
       ? (action === 'update' ? await deps.manager.updateGroup(id, call.body, call.actor) : await deps.manager.deleteGroup(id, call.actor))
       : (action === 'update' ? await deps.manager.updateCoordinator(id, call.body, call.actor) : await deps.manager.deleteCoordinator(id, call.actor));
     if (!outcome.ok) {
@@ -596,6 +607,12 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       res.end(png);
       return;
     }
+    if (path === '/api/v1/campaign') {
+      const view = await deps.campaign();
+      if (!view) { sendJson(res, 404, { error: 'not_found' }); return; }
+      sendJson(res, 200, view);
+      return;
+    }
     if (path === '/api/v1/form-meta') { sendJson(res, 200, await deps.formMeta()); return; }
 
     const pick: Record<string, (v: Views) => unknown> = {
@@ -654,7 +671,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       }
 
       if (path === '/login') {
-        if (method === 'GET') { sendHtml(res, 200, homeGroupsLoginPage(undefined, query.get('notice') ?? undefined)); return; }
+        if (method === 'GET') { sendHtml(res, 200, homeGroupsLoginPage(undefined, query.get('notice') ?? undefined, query.get('next') === REGISTRATION_PATH ? REGISTRATION_PATH : undefined)); return; }
         if (method === 'POST') { await handleLogin(req, res); return; }
         sendText(res, 404, 'Не найдено.');
         return;
@@ -685,7 +702,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       }
 
       // Адрес страницы интерфейса (маршруты рисует сам интерфейс): отдаём index.html, но только своим.
-      if (!(await deps.auth.verify(sid))) { redirect(res, '/login'); return; }
+      if (!(await deps.auth.verify(sid))) { redirect(res, path === REGISTRATION_PATH ? `/login?next=${REGISTRATION_PATH}` : '/login'); return; }
       const index = await readIfFile(resolve(deps.webDir, 'index.html'));
       if (!index) {
         sendText(res, 503, 'Интерфейс не собран.');

@@ -21,6 +21,11 @@ import { createRegistrar } from './registration.js';
 import { createManager } from './manage.js';
 import { requestsToCsv } from './export.js';
 import { usersToCsv } from '../core/csv.js';
+import { campaignStats } from '../dashboard/campaignStats.js';
+import { CampaignRepo } from '../db/repos/campaign.repo.js';
+import { DeliveriesRepo } from '../db/repos/deliveries.repo.js';
+import type { ScheduleOptions } from '../broadcast/schedule.js';
+import type { CampaignView } from './contracts.js';
 import type { RequestWithUser } from '../db/repos/requests.repo.js';
 import { createLoader } from './loader.js';
 import { createMatching } from './matching/run.js';
@@ -41,6 +46,8 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     mailer?: Mailer;
     /** Публичный адрес сервиса для ссылок в письмах (`HG_PUBLIC_URL`). */
     publicUrl?: string | null;
+    /** Расписание кампании «40 дней»: без него вкладка кампании недоступна. */
+    campaignSchedule?: ScheduleOptions;
     /** Уведомление служителю о новой заявке (необязательно: без него заявки заводятся молча). */
     notify?: (request: RequestWithUser) => Promise<void>;
     /** Сбросить кэш входа после изменения людей и режима. */
@@ -85,10 +92,14 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   const notify = opts.notify ?? (async () => undefined);
   const creator = createRecordCreator({ requests: requestsRepo, groups: new GroupsRepo(db), audit: new AuditRepo(db), notify });
   const registrar = createRegistrar({ users: new UsersRepo(db), requests: requestsRepo, audit: new AuditRepo(db), notify });
-  const manager = createManager({
-    groups: new GroupsRepo(db), coordinators: new CoordinatorsRepo(db), requests: requestsRepo, audit: new AuditRepo(db),
-  });
   const usersRepo = new UsersRepo(db);
+  const manager = createManager({
+    groups: new GroupsRepo(db), coordinators: new CoordinatorsRepo(db), requests: requestsRepo, users: usersRepo, audit: new AuditRepo(db),
+  });
+  // Кампания «40 дней» (только чтение): те же репозитории и тот же расчёт, что у бота и старого дашборда.
+  const campaign = async (): Promise<CampaignView | null> => opts.campaignSchedule
+    ? campaignStats({ users: usersRepo, requests: requestsRepo, campaign: new CampaignRepo(db), deliveries: new DeliveriesRepo(db) }, opts.campaignSchedule)
+    : null;
   const exporter = {
     requests: async () => requestsToCsv((await views()).requests.items),
     people: async () => usersToCsv(await usersRepo.exportRows()),
@@ -96,7 +107,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   const auditRepo = new AuditRepo(db);
   const audit = (actor: string, action: string, after: unknown) => auditRepo.write(actor, action, 'export', null, after);
   const formMeta = createFormMeta(new CoordinatorsRepo(db));
-  return { views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, formMeta };
+  return { views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, formMeta };
 }
 
 export function composeViews(db: Pool, engine: PlanEngineApi, opts: ComposeOptions): ViewsSource {

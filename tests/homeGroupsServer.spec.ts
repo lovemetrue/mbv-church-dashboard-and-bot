@@ -71,7 +71,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
   };
   let views: () => Promise<ReturnType<typeof sampleViews>> = async () => sampleViews();
   const server = createHomeGroupsServer({
-    actions: { approve: record('approve'), reject: record('reject'), setNeedCall: record('need-call'), setParams: record('params'), rematch: async (id: number, actor: string) => { actionCalls.push({ name: 'rematch', id, body: undefined, actor }); return outcome; }, edit: record('edit'), assign: record('assign'), call: record('call'), bulk: async (body: unknown, actor: string) => { actionCalls.push({ name: 'bulk', id: 0, body, actor }); return { ok: true as const, done: 2, skipped: 1 }; } },
+    actions: { approve: record('approve'), reject: record('reject'), setNeedCall: record('need-call'), setParams: record('params'), rematch: async (id: number, actor: string) => { actionCalls.push({ name: 'rematch', id, body: undefined, actor }); return outcome; }, edit: record('edit'), assign: record('assign'), call: record('call'), close: record('close'), reopen: async (id: number, actor: string) => { actionCalls.push({ name: 'reopen', id, body: undefined, actor }); return outcome; }, bulk: async (body: unknown, actor: string) => { actionCalls.push({ name: 'bulk', id: 0, body, actor }); return { ok: true as const, done: 2, skipped: 1 }; } },
     matching: {
       run: async (actor) => { matchingCalls.push({ name: 'run', actor }); return { ok: true, created: 2, replaced: 1, unchanged: 3 }; },
       rerunAll: async (actor) => { matchingCalls.push({ name: 'rerun-all', actor }); return { ok: true, created: 5, replaced: 0, unchanged: 0 }; },
@@ -95,8 +95,10 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
       createCoordinator: async (body: unknown, actor: string) => { createCalls.push({ what: 'coordinator', body, actor }); return createOutcome; },
       updateCoordinator: async (id: number, body: unknown, actor: string) => { actionCalls.push({ name: 'coordinator.update', id, body, actor }); return outcome; },
       deleteCoordinator: async (id: number, actor: string) => { actionCalls.push({ name: 'coordinator.delete', id, body: undefined, actor }); return outcome; },
+      deletePerson: async (id: number, actor: string) => { actionCalls.push({ name: 'person.delete', id, body: undefined, actor }); return outcome; },
       deleteRequest: async (id: number, actor: string) => { actionCalls.push({ name: 'request.delete', id, body: undefined, actor }); return outcome; },
     } as never,
+    campaign: async () => ({ day: { state: 'идёт', number: 3, total: 40, startDate: '2026-11-01' } }) as never,
     exporter: { requests: async () => '\uFEFF№;ФИО\r\n1;Мария\r\n', people: async () => '\uFEFFномер\r\n' },
     audit: async (actor: string, action: string, after: unknown) => { auditCalls.push({ actor, action, after }); },
     logo: async () => Buffer.from('\x89PNG-логотип'),
@@ -1182,6 +1184,65 @@ describe('руководитель: массовые действия, прав�
     const r = await get(await signIn(REGULAR), 'team');
     expect(r.status).toBe(200);
     expect(await r.json()).toHaveProperty('totals');
+  });
+});
+
+describe('закрытие заявки, возврат в работу, регистрация, кампания', () => {
+  const post = (cookie: string | null, path: string, body: unknown) => fetch(`${app.base}/api/v1/${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body),
+  });
+
+  test.each([['close', { outcome: 'cancel', reason: 'no_answer' }], ['reopen', {}]])('%s: доступно обычному входу, тело и автор передаются', async (action, body) => {
+    const inv = app.invalidations();
+    expect((await post(null, `requests/9/${action}`, body)).status).toBe(401);
+    const r = await post(await signIn(REGULAR), `requests/9/${action}`, body);
+    expect(r.status).toBe(200);
+    expect(app.actionCalls.at(-1)).toMatchObject({ name: action, id: 9, actor: REGULAR.login });
+    expect(app.invalidations()).toBe(inv + 1);
+  });
+
+  test('удаление регистрации: обычному входу 403, полному — выполняется; правка людей через этот путь не существует', async () => {
+    const before = app.actionCalls.length;
+    expect((await post(await signIn(REGULAR), 'people/5/delete', {})).status).toBe(403);
+    expect(app.actionCalls.length).toBe(before);
+    expect((await post(await signIn(SUPER), 'people/5/delete', {})).status).toBe(200);
+    expect(app.actionCalls.at(-1)).toMatchObject({ name: 'person.delete', id: 5, actor: SUPER.login });
+    expect((await post(await signIn(SUPER), 'people/5/update', { fields: {} })).status).toBe(404);
+  });
+
+  test('кампания «40 дней»: без входа 401, со входом — данные', async () => {
+    expect((await fetch(`${app.base}/api/v1/campaign`)).status).toBe(401);
+    const r = await fetch(`${app.base}/api/v1/campaign`, { headers: { cookie: await signIn(REGULAR) } });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toHaveProperty('day.number', 3);
+  });
+
+  test('страница регистрации без входа ведёт на вход с возвратом, после входа возвращает на неё', async () => {
+    const anon = await fetch(`${app.base}/registration`, { redirect: 'manual' });
+    expect(anon.status).toBe(302);
+    expect(anon.headers.get('location')).toBe('/login?next=/registration');
+    const page = await (await fetch(`${app.base}/login?next=/registration`)).text();
+    expect(page).toContain('name="next" value="/registration"');
+    const login = await fetch(`${app.base}/login`, {
+      method: 'POST', redirect: 'manual',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-real-ip': nextIp() },
+      body: new URLSearchParams({ login: REGULAR.login, password: REGULAR.password, next: '/registration' }),
+    });
+    expect(login.status).toBe(302);
+    expect(login.headers.get('location')).toBe('/registration');
+    const cookie = login.headers.get('set-cookie')!.split(';')[0]!;
+    const shown = await fetch(`${app.base}/registration`, { headers: { cookie } });
+    expect(shown.status).toBe(200);
+    expect(await shown.text()).toContain('id="root"');
+  });
+
+  test('возврат после входа только на страницу регистрации: чужой адрес в next игнорируется', async () => {
+    const login = await fetch(`${app.base}/login`, {
+      method: 'POST', redirect: 'manual',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-real-ip': nextIp() },
+      body: new URLSearchParams({ login: REGULAR.login, password: REGULAR.password, next: 'https://evil.example/' }),
+    });
+    expect(login.headers.get('location')).toBe('/');
   });
 });
 

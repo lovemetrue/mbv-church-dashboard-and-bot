@@ -70,7 +70,7 @@ describe('сводка для руководителя координаторо�
 
   test('пустые данные не ломают сводку', () => {
     const t = buildTeam([], [], AT);
-    expect(t.totals).toEqual({ open: 0, unassigned: 0, callback: 0, over7: 0, approvedWeek: 0 });
+    expect(t.totals).toEqual({ open: 0, unassigned: 0, callback: 0, over7: 0, approvedWeek: 0, otherOpen: 0 });
     expect(t.workload).toEqual([]);
     expect(t.stuck).toEqual([]);
   });

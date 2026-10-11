@@ -1,5 +1,5 @@
 import type { ActionError, ApproveBody, NeedCallBody, RejectBody, RejectReason } from './contracts.js';
-import { CALL_RESULTS, type CallResult } from '../db/repos/placement.repo.js';
+import { CALL_RESULTS, CANCEL_REASONS, type CallResult, type CancelReason } from '../db/repos/placement.repo.js';
 import type { ActionOutcome, PlacementRepo } from '../db/repos/placement.repo.js';
 
 /**
@@ -14,6 +14,8 @@ export interface RequestActions {
   setParams(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
   rematch(requestId: number, actor: string): Promise<ActionOutcome>;
   bulk(body: unknown, actor: string): Promise<BulkOutcome>;
+  close(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
+  reopen(requestId: number, actor: string): Promise<ActionOutcome>;
   edit(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
   assign(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
   call(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
@@ -97,6 +99,19 @@ export function createActions(
         else if (out.error === 'bad_request') return out;
       }
       return { ok: true, done, skipped: unique.length - done };
+    },
+
+    async close(requestId, body, actor) {
+      if (!isRecord(body) || (body['outcome'] !== 'done' && body['outcome'] !== 'cancel')) return bad('Нужно указать исход: обработано или аннулировать.');
+      const reason = body['reason'];
+      if (reason !== undefined && reason !== null && (typeof reason !== 'string' || !Object.hasOwn(CANCEL_REASONS, reason))) return bad('Неизвестная причина.');
+      const comment = body['comment'];
+      if (comment !== undefined && comment !== null && typeof comment !== 'string') return bad('Комментарий должен быть текстом.');
+      return placement.closeRequest(requestId, body['outcome'], (reason ?? null) as CancelReason | null, comment ?? null, actor);
+    },
+
+    async reopen(requestId, actor) {
+      return placement.reopen(requestId, actor);
     },
 
     async edit(requestId, body, actor) {

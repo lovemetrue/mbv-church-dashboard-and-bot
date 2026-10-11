@@ -65,6 +65,28 @@ describe('разбор тела запроса', () => {
   });
 });
 
+describe('закрытие заявки и возврат в работу: разбор тела', () => {
+  const calls: unknown[][] = [];
+  const stub = {
+    closeRequest: async (...a: unknown[]) => { calls.push(['close', ...a]); return { ok: true }; },
+    reopen: async (...a: unknown[]) => { calls.push(['reopen', ...a]); return { ok: true }; },
+  } as unknown as PlacementRepo;
+  const actions = createActions(stub, { defaultCapacity: 10 });
+  beforeEach(() => { calls.length = 0; });
+
+  test.each([null, 'текст', {}, { outcome: 'потом' }, { outcome: 'cancel', reason: 5 }, { outcome: 'cancel', reason: 'потому' }, { outcome: 'done', comment: 5 }])(
+    'тело %j отклоняется до обращения к базе', async (body) => {
+      expect(await actions.close(1, body, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
+      expect(calls).toHaveLength(0);
+    });
+
+  test('верное тело доходит до базы с автором', async () => {
+    await actions.close(1, { outcome: 'cancel', reason: 'duplicate', comment: 'дубль' }, 'a');
+    await actions.reopen(1, 'a');
+    expect(calls).toEqual([['close', 1, 'cancel', 'duplicate', 'дубль', 'a'], ['reopen', 1, 'a']]);
+  });
+});
+
 describe('массовые действия над заявками', () => {
   const mk = async (status = 'Новая') => (await db.query<{ id: number }>(
     `INSERT INTO requests (type, status, fio, origin) VALUES ('join_group', $1, 'М', 'ui') RETURNING id`, [status])).rows[0]!.id;

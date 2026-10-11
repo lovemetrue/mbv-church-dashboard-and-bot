@@ -8,7 +8,7 @@ import { inputSignature } from '../plan/signature.js';
 import { formatPhone } from '../../core/phone.js';
 import type {
   Bucket, Candidate, Counters, CoordinatorItem, CoordinatorsView, GroupBrief, GroupItem, GroupsView,
-  HealthItem, LogEntry, MatchingStatus, NoPlan, OriginalField, ParamInfo, PeopleView, PersonItem, Proposal, RequestItem, RequestsView, TeamView, TodayView,
+  HealthItem, LogEntry, MatchingStatus, NoPlan, OriginalField, ParamInfo, PeopleView, PersonItem, Proposal, RequestItem, OtherItem, RequestsView, TeamView, TodayView,
 } from '../contracts.js';
 import type {
   Day, PlanEngineApi, PlanEntry, PlanEntryProposal, PlanGroup, PlanOutput, PlanRequest, ScoredGroup, Slot,
@@ -97,6 +97,16 @@ const REJECT_REASON_TEXT: Record<string, string> = {
   other: 'другое',
 };
 
+const CANCEL_TEXT: Record<string, string> = {
+  declined: 'отказались', no_answer: 'не отвечают', duplicate: 'дубль заявки', self_found: 'нашли группу сами', other: 'другое',
+};
+
+const TYPE_LABEL: Record<OtherItem['type'], string> = {
+  join_group: 'Хочет в домашнюю группу', lead_group: 'Готов открыть группу или дать дом', question: 'Вопрос служителю',
+  already_member: 'Уже состоит в группе', already_leader: 'Уже ведёт группу',
+};
+const OTHER_CLOSED_LIMIT = 200;
+
 const CALL_RESULT_TEXT: Record<string, string> = {
   reached: 'Звонок: дозвонились', no_answer: 'Звонок: не дозвонились', later: 'Звонок: просили перезвонить позже', refused: 'Звонок: отказался',
 };
@@ -139,6 +149,15 @@ function auditText(a: AuditRow): string | null {
       const note = nonBlank(a.note);
       return `${text}${note ? ` («${note}»)` : ''} · ${a.actor}`;
     }
+    case 'request.close': {
+      const note = nonBlank(a.note);
+      const what = after['outcome'] === 'cancel'
+        ? `Аннулирована: ${CANCEL_TEXT[String(after['reason'])] ?? 'причина не указана'}`
+        : 'Отмечена обработанной';
+      return `${what}${note ? ` («${note}»)` : ''} · ${a.actor}`;
+    }
+    case 'request.reopen':
+      return `Возвращена в работу · ${a.actor}`;
     default:
       return null;
   }
@@ -430,6 +449,33 @@ export function buildViewsWithPlan(
       log: logOf(r, finalBrief),
     });
   }
+  // Остальные обращения: всё, что не идёт в подбор, и аннулированные «хочу в группу» (чтобы вернуть в работу).
+  const otherAll = input.requests.filter((r) => r.type !== 'join_group' || bucketById.get(r.id) === 'cancelled');
+  const otherState = (r: DashboardRequest): OtherItem['state'] => (r.status === DONE ? 'done' : r.status === CANCELLED ? 'cancelled' : 'open');
+  const otherItem = (r: DashboardRequest): OtherItem => ({
+    id: r.id,
+    type: r.type as OtherItem['type'],
+    typeLabel: TYPE_LABEL[r.type as OtherItem['type']] ?? 'Обращение',
+    state: otherState(r),
+    fio: nonBlank(r.fio) ?? 'Без имени',
+    phone: displayPhone(r.phones, r.phone),
+    ageLabel: nonBlank(r.age),
+    place: nonBlank(r.place),
+    status: r.status,
+    source: sourceLabel(r.origin, r.source),
+    waitingDays: daysSince(validIsoDate(r.date), today),
+    callback: r.callback,
+    responsible: nonBlank(r.responsible),
+    note: joinParts([r.note, r.extra], ' | '),
+    cancelReason: nonBlank(r.cancel_reason),
+    original: originalFields(r),
+    log: logOf(r, null),
+  });
+  const otherOpen = otherAll.filter((r) => otherState(r) === 'open').map(otherItem)
+    .sort((a, b) => Number(b.callback) - Number(a.callback) || (b.waitingDays ?? -1) - (a.waitingDays ?? -1) || a.id - b.id);
+  const otherClosed = otherAll.filter((r) => otherState(r) !== 'open').map(otherItem)
+    .sort((a, b) => b.id - a.id).slice(0, OTHER_CLOSED_LIMIT);
+
   requestItems.sort((a, b) =>
     (BUCKET_ORDER[a.bucket] ?? 99) - (BUCKET_ORDER[b.bucket] ?? 99)
     || (b.waitingDays ?? -1) - (a.waitingDays ?? -1)
@@ -545,7 +591,7 @@ export function buildViewsWithPlan(
   ).length;
 
   const views: Views = {
-    team: buildTeam(requestItems, [...(input.activity ?? [])], generatedAt),
+    team: buildTeam(requestItems, [...(input.activity ?? [])], generatedAt, [...otherOpen, ...otherClosed]),
     today: {
       generatedAt,
       counters,
@@ -563,6 +609,7 @@ export function buildViewsWithPlan(
       matching: { auto: input.matching?.auto ?? false, lastRun: input.matching?.lastRun ?? null, waiting, saved },
       items: requestItems,
       counters,
+      others: [...otherOpen, ...otherClosed],
     },
     groups: { generatedAt, items: groupItems },
     people: { generatedAt, items: people },

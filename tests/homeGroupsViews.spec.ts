@@ -1062,3 +1062,56 @@ describe('сводка команды в представлениях', () => {
     expect(views.team.activity).toEqual([{ actor: 'anna', calls: 2, approved: 0, rejected: 0, edits: 0, assigned: 0 }]);
   });
 });
+
+describe('остальные обращения', () => {
+  test('«готов открыть» и вопросы не идут в подбор, а попадают в отдельный список с подписью вида', () => {
+    const { views } = build({
+      requests: [
+        request({ id: 1 }),
+        request({ id: 2, type: 'lead_group', fio: 'Хочет открыть' }),
+        request({ id: 3, type: 'question', fio: 'С вопросом' }),
+      ],
+    });
+    expect(views.requests.items.map((i) => i.id)).toEqual([1]);
+    expect(views.requests.others.map((o) => [o.id, o.typeLabel, o.state])).toEqual([
+      [2, 'Готов открыть группу или дать дом', 'open'], [3, 'Вопрос служителю', 'open'],
+    ]);
+    expect(views.team.totals.otherOpen).toBe(2);
+  });
+
+  test('аннулированная заявка «хочу в группу» остаётся доступной в списке остальных, чтобы вернуть её в работу', () => {
+    const { views } = build({ requests: [request({ id: 1, status: 'Аннулирована', cancel_reason: 'Дубль заявки' })] });
+    expect(views.requests.items).toEqual([]);
+    expect(views.requests.others).toMatchObject([{ id: 1, state: 'cancelled', cancelReason: 'Дубль заявки' }]);
+  });
+
+  test('открытые идут первыми: сначала те, кому надо перезвонить, потом давно ждущие; закрытых не больше двухсот', () => {
+    const closed = Array.from({ length: 250 }, (_, i) => request({ id: 1000 + i, type: 'question', status: 'Исполнена' }));
+    const { views } = build({
+      requests: [
+        request({ id: 1, type: 'question', date: '2026-10-09' }),
+        request({ id: 2, type: 'question', date: '2026-09-01' }),
+        request({ id: 3, type: 'question', date: '2026-10-09', callback: true }),
+        ...closed,
+      ],
+    });
+    expect(views.requests.others.slice(0, 3).map((o) => o.id)).toEqual([3, 2, 1]);
+    expect(views.requests.others).toHaveLength(3 + 200);
+    expect(views.requests.others.at(3)!.id).toBe(1249);
+  });
+
+  test('закрытие и возврат в работу попадают в ленту текстом', () => {
+    const at = new Date('2026-10-09T10:00:00Z');
+    const { views } = build({
+      requests: [request({ id: 1 })],
+      audit: [
+        { entity_id: 1, at, actor: 'anna', action: 'request.close', after: { outcome: 'cancel', reason: 'no_answer' }, note: 'трубку не берут' },
+        { entity_id: 1, at, actor: 'anna', action: 'request.close', after: { outcome: 'done' }, note: null },
+        { entity_id: 1, at, actor: 'boris', action: 'request.reopen', after: { status: 'В работе' }, note: null },
+      ],
+    });
+    expect(views.requests.items[0]!.log.map((l) => l.text)).toEqual(expect.arrayContaining([
+      'Аннулирована: не отвечают («трубку не берут») · anna', 'Отмечена обработанной · anna', 'Возвращена в работу · boris',
+    ]));
+  });
+});

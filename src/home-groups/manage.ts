@@ -3,6 +3,7 @@ import type { AuditRepo } from '../db/repos/audit.repo.js';
 import type { CoordinatorsRepo } from '../db/repos/coordinators.repo.js';
 import type { GroupRow, GroupsRepo } from '../db/repos/groups.repo.js';
 import type { RequestsRepo } from '../db/repos/requests.repo.js';
+import type { UsersRepo } from '../db/repos/users.repo.js';
 import type { ActionOutcome } from '../db/repos/placement.repo.js';
 import { fieldsToForm } from './create.js';
 
@@ -16,10 +17,14 @@ import { fieldsToForm } from './create.js';
  */
 const fail = (error: 'bad_request' | 'not_found', message: string): ActionOutcome => ({ ok: false, error, message });
 
-/** Поля группы, которые можно менять отсюда. Адрес и телефоны сюда не входят: они закрыты. */
+/**
+ * Поля группы, которые можно менять отсюда. Адрес и телефоны ведущих сервер принимает, но обратно не отдаёт:
+ * интерфейс их не показывает, а заполняет поле тот, кому есть что записать (новый номер, новый адрес).
+ */
 const GROUP_EDITABLE = [
   'leader', 'district', 'format', 'status', 'people', 'day', 'time', 'composition', 'coordinator', 'coLeader',
   'feedbackAt', 'comment', 'age', 'metro', 'openToNew', 'training', 'no', 'checked', 'doNotRefer',
+  'phone', 'address', 'coLeaderPhone',
 ] as const;
 const GROUP_FLAGS = ['checked', 'doNotRefer'] as const;
 
@@ -44,6 +49,7 @@ export function createManager(deps: {
   groups: Pick<GroupsRepo, 'findActive' | 'update' | 'archive'>;
   coordinators: Pick<CoordinatorsRepo, 'create' | 'findActive' | 'rename' | 'archive'>;
   requests: Pick<RequestsRepo, 'archive'>;
+  users: Pick<UsersRepo, 'findById' | 'delete'>;
   audit: Pick<AuditRepo, 'write'>;
 }) {
   return {
@@ -68,7 +74,10 @@ export function createManager(deps: {
       // Закрытое остаётся как в базе: форма его не видела и затереть не должна.
       const input = {
         ...parsed.value,
-        phone: current.phone, phones: current.phones, address: current.address, coLeaderPhone: current.co_leader_phone,
+        // Телефон, адрес и телефон соведущего меняются только если их прислали; иначе остаются как в базе.
+        ...(given.has('phone') ? {} : { phone: current.phone, phones: current.phones }),
+        ...(given.has('address') ? {} : { address: current.address }),
+        ...(given.has('coLeaderPhone') ? {} : { coLeaderPhone: current.co_leader_phone }),
         campaignRegistered: current.campaign_registered,
         doNotRefer: given.has('doNotRefer') ? merged.has('doNotRefer') : current.do_not_refer,
       };
@@ -114,6 +123,18 @@ export function createManager(deps: {
     async deleteCoordinator(id: number, actor: string): Promise<ActionOutcome> {
       if (!(await deps.coordinators.archive(id))) return fail('not_found', 'Участник команды не найден.');
       await deps.audit.write(actor, 'coordinator.delete', 'coordinator', id, {});
+      return { ok: true };
+    },
+
+    /**
+     * Стереть регистрацию (заведена по ошибке, дубль, человек попросил). В отличие от остального удаление жёсткое,
+     * как в старом дашборде: вместе с регистрацией уходят её заявки и рассылки. В журнале только номер регистрации.
+     */
+    async deletePerson(id: number, actor: string): Promise<ActionOutcome> {
+      const user = await deps.users.findById(id);
+      if (!user) return fail('not_found', 'Регистрация не найдена.');
+      if (!(await deps.users.delete(id))) return fail('not_found', 'Регистрация не найдена.');
+      await deps.audit.write(actor, 'registration.delete', 'user', id, { registrationNo: user.registration_no });
       return { ok: true };
     },
 

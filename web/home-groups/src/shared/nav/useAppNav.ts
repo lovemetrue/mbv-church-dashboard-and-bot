@@ -7,6 +7,7 @@ import {
   parseId,
   parseTab,
   patchParams,
+  RESP_NOBODY,
   tabParams,
   type EntityId,
   type ParamPatch,
@@ -82,6 +83,11 @@ export function useAppNav() {
       return next;
     }),
     closeRequest: () => update({ req: null }),
+    /**
+     * «Заявки» с отбором «В работе у» (из «Команды»): who === null — заявки, которые никто не взял.
+     * Поиск шапки не переносим: он спрятал бы часть заявок, и число в строке «Нагрузки» разошлось бы со списком.
+     */
+    goResponsible: (who: string | null) => setParams(() => new URLSearchParams({ tab: 'requests', resp: who ?? RESP_NOBODY })),
     goBucket: (b: BucketFilter) => setParams((prev) => {
       const next = tabParams(prev, 'requests');
       if (b !== 'all') next.set('bucket', b);

@@ -39,9 +39,14 @@ describe('состояние экрана в адресе', () => {
 
 describe('вкладки по ролям', () => {
   test('«Настройки» видит только полный вход, а пока роль неизвестна вкладки нет', () => {
-    expect(visibleTabs('super')).toEqual(['today', 'requests', 'reference', 'settings']);
-    expect(visibleTabs('admin')).toEqual(['today', 'requests', 'reference']);
-    expect(visibleTabs(undefined)).toEqual(['today', 'requests', 'reference']);
+    expect(visibleTabs('super')).toEqual(['today', 'requests', 'team', 'reference', 'settings']);
+    expect(visibleTabs('admin')).toEqual(['today', 'requests', 'team', 'reference']);
+    expect(visibleTabs(undefined)).toEqual(['today', 'requests', 'team', 'reference']);
+  });
+
+  test('вкладка «Команда» разбирается из адреса и при уходе с неё сбрасывает свои параметры', () => {
+    expect(parseTab('team')).toBe('team');
+    expect(tabParams(p('tab=requests&resp=Анна&req=3&q=иван'), 'team').toString()).toBe('tab=team&q=%D0%B8%D0%B2%D0%B0%D0%BD');
   });
 
   test('адрес вкладки «Настройки» разбирается как есть: решение о доступе принимает оболочка', () => {

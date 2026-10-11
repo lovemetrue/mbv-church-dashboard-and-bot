@@ -86,7 +86,7 @@
 }
 .row {
   display: grid;
-  grid-template-columns: minmax(140px, 1.1fr) minmax(170px, 1.3fr) 56px 60px;
+  grid-template-columns: var(--tap) minmax(140px, 1.1fr) minmax(170px, 1.3fr) 56px 60px;
   gap: 12px;
   align-items: center;
   padding: 10px 12px;
@@ -107,6 +107,24 @@
   font-weight: 600;
   border-top: 0;
   background: var(--surface-2);
+}
+/* Флажок выбора для массовых действий: ячейка в 44 px, чтобы попасть пальцем. */
+.pick {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap);
+  margin: -10px 0;
+  cursor: pointer;
+}
+.pick input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+}
+/* Выбрана для массового действия: фон слабее, чем у открытой заявки; главное — сам отмеченный флажок. */
+.rows .picked {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
 }
 .selected,
 .rows .selected:hover {
@@ -165,11 +183,16 @@
     display: none;
   }
   .row {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: 'who dots' 'prop conf';
-    gap: 6px 12px;
-    padding: 12px;
+    grid-template-columns: var(--tap) minmax(0, 1fr) auto;
+    grid-template-areas: 'pick who dots' 'pick prop conf';
+    gap: 6px 8px;
+    padding: 12px 12px 12px 4px;
     min-height: var(--tap);
+  }
+  .pick {
+    grid-area: pick;
+    align-self: start;
+    margin: -6px 0 0;
   }
   .who {
     grid-area: who;

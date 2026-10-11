@@ -70,7 +70,7 @@ describe('регистрация участника: меню', () => {
     renderAt(<App />, REFERENCE);
     await user.click(screen.getByRole('button', { name: '+ Создать' }));
     const menu = screen.getByRole('menu', { name: 'Что создать' });
-    expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Заявка', 'Группа', 'Участник (регистрация)']);
+    expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Заявка', 'Группа', 'Координатор', 'Участник (регистрация)']);
   });
 });
 

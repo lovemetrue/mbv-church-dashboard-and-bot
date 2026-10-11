@@ -3,7 +3,7 @@ import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { stubFetchWithFixtures } from '../../test/render';
-import { queryKeys, REFRESH_MS, useRequests, useToday } from './queries';
+import { queryKeys, REFRESH_MS, useRequests, useTeam, useToday } from './queries';
 
 beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
 afterEach(() => {
@@ -63,5 +63,19 @@ describe('обновление данных', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     focusManager.setFocused(true);
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe('обновление «Команды»', () => {
+  test('сводка команды опрашивается раз в минуту и не в фоновой вкладке', async () => {
+    stubFetchWithFixtures();
+    const client = new QueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    renderHook(() => useTeam(), { wrapper });
+    await vi.waitFor(() => expect(client.getQueryCache().find({ queryKey: queryKeys.team })?.observers.length).toBe(1));
+    const options = client.getQueryCache().find({ queryKey: queryKeys.team })!.observers[0]!.options;
+    expect(options.refetchInterval).toBe(60_000);
+    expect(options.refetchIntervalInBackground).toBe(false);
+    expect(options.refetchOnWindowFocus).toBe(true);
   });
 });

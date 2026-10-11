@@ -1,13 +1,16 @@
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from '@tanstack/react-query';
 import type {
+  BulkBody,
+  BulkOk,
   CoordinatorsView,
   GroupsView,
   Me,
   PeopleView,
   RequestsView,
+  TeamView,
   TodayView,
 } from '@contracts';
-import { ApiError, apiGet } from './client';
+import { ApiError, apiGet, apiPost } from './client';
 
 /** Раз в минуту данные обновляются сами; плюс при возврате на вкладку браузера. */
 export const REFRESH_MS = 60_000;
@@ -32,6 +35,7 @@ export const queryKeys = {
   groups: ['groups'],
   people: ['people'],
   coordinators: ['coordinators'],
+  team: ['team'],
 } as const;
 
 export function useMe(): UseQueryResult<Me> {
@@ -58,5 +62,28 @@ export function useCoordinators(): UseQueryResult<CoordinatorsView> {
     queryKey: queryKeys.coordinators,
     queryFn: ({ signal }) => apiGet<CoordinatorsView>('coordinators', signal),
     ...common,
+  });
+}
+
+/** Сводка «Команды»: опрос раз в минуту, как у «Заявок», — руководитель держит вкладку открытой. */
+export function useTeam(): UseQueryResult<TeamView> {
+  return useQuery({ queryKey: queryKeys.team, queryFn: ({ signal }) => apiGet<TeamView>('team', signal), ...common });
+}
+
+/**
+ * Массовое действие над заявками. После успеха перечитываем всё, что считается из заявок
+ * (список, «Сегодня», «Команду») и ждём этого: пока экран показывает старые числа, итог «Готово» врал бы.
+ * Повторов нет: действие не идемпотентно с точки зрения человека (apiPost их и не делает).
+ */
+export function useBulkRequests(): UseMutationResult<BulkOk, Error, BulkBody> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: BulkBody) => apiPost<BulkOk>('requests/bulk', body),
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.requests }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.today }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.team }),
+      ]),
   });
 }

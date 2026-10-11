@@ -56,7 +56,7 @@ async function ready(dialog: HTMLElement) {
 }
 
 describe('«+ Создать»: меню', () => {
-  test('кнопка «Создать» открывает меню с тремя пунктами', async () => {
+  test('кнопка «Создать» открывает меню с четырьмя пунктами', async () => {
     stubFetchWithFixtures({ me: meOf('https://old.example.org') });
     const user = userEvent.setup();
     renderAt(<App />, REFERENCE);
@@ -71,6 +71,7 @@ describe('«+ Создать»: меню', () => {
     expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual([
       'Заявка',
       'Группа',
+      'Координатор',
       expect.stringContaining('Участник (регистрация)'),
     ]);
   });
@@ -91,10 +92,12 @@ describe('«+ Создать»: меню', () => {
     const user = userEvent.setup();
     renderAt(<App />, REFERENCE);
     const menu = await openMenu(user);
-    const [request, group, member] = within(menu).getAllByRole('menuitem');
+    const [request, group, coordinator, member] = within(menu).getAllByRole('menuitem');
     expect(request).toHaveFocus();
     await user.keyboard('{ArrowDown}');
     expect(group).toHaveFocus();
+    await user.keyboard('{ArrowDown}');
+    expect(coordinator).toHaveFocus();
     await user.keyboard('{ArrowDown}');
     expect(member).toHaveFocus();
     await user.keyboard('{ArrowDown}');

@@ -13,6 +13,7 @@ import styles from './Requests.module.css';
 import { useRequestActions, type RequestActionsState } from './useRequestActions';
 import { useRequestParams, type ParamField } from './useRequestParams';
 import { WorkPlace } from './work/WorkPlace';
+import { DeleteRequestSection } from '../manage';
 
 const noValue = <span className={styles.note}>{ru.reference.notSpecified}</span>;
 
@@ -522,6 +523,7 @@ export function RequestCard({ r, onClose, neighbors }: { r: RequestItem; onClose
           <p className={styles.note}>{ru.requests.logEmpty}</p>
         )}
       </DrawerSection>
+      <DeleteRequestSection id={r.id} fio={r.fio} onDeleted={onClose} />
     </Drawer>
   );
 }

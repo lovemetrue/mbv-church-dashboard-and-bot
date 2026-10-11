@@ -7,6 +7,8 @@ import { RESP_NOBODY, useAppNav } from '../../shared/nav';
 import { SavedViewsMenu } from '../../shared/savedViews';
 import { Button, Chip, EmptyState, ErrorState, LoadingState } from '../../shared/ui';
 import { countBuckets, filterByBucket, filterByResponsible, responsibleNames, searchRequests } from './model';
+import { BulkPanel } from './bulk/BulkPanel';
+import { useBulk } from './bulk/useBulk';
 import { MatchingPanel } from './MatchingPanel';
 import { RequestCard, type RequestNeighbors } from './RequestCard';
 import { RequestList } from './RequestList';
@@ -50,6 +52,8 @@ export function RequestsContent({ data }: { data: RequestsView }) {
   );
 
   const neighbors = useNeighbors(visible, selected?.id ?? null, nav.selectRequest);
+  // Выбор для массовых действий принадлежит текущему списку: сменился чип, поиск или «В работе у» — выбор сброшен.
+  const bulk = useBulk(visible, `${nav.bucket}\u0000${nav.search}\u0000${nav.responsible}`);
 
   return (
     <div className={styles.work}>
@@ -83,8 +87,14 @@ export function RequestsContent({ data }: { data: RequestsView }) {
           <ResponsibleSelect items={data.items} value={nav.responsible} onChange={nav.setResponsible} />
           <SavedViewsMenu scope="requests" />
         </div>
+        <BulkPanel bulk={bulk} visibleCount={visible.length} />
         {visible.length ? (
-          <RequestList items={visible} selectedId={nav.requestId} onSelect={nav.selectRequest} />
+          <RequestList
+            items={visible}
+            selectedId={nav.requestId}
+            onSelect={nav.selectRequest}
+            selection={{ isPicked: bulk.isPicked, toggle: bulk.toggle, limitReached: bulk.limitReached }}
+          />
         ) : (
           <div className={styles.listbox}>
             <EmptyState>{ru.states.nothingFound}</EmptyState>

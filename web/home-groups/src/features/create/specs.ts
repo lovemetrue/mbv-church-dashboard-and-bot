@@ -98,6 +98,18 @@ export function groupSpec(meta: FormMeta): FormSpec {
   };
 }
 
+/** Координатор: ФИО и роль, справочники сервера не нужны. */
+export function coordinatorSpec(): FormSpec {
+  const t = ru.create.coordinatorFields;
+  return {
+    fields: [
+      { name: 'name', label: t.name, kind: 'text', required: true, wide: true, autoComplete: 'off' },
+      { name: 'role', label: t.role, kind: 'text', required: true, wide: true, placeholder: ru.create.coordinatorRolePlaceholder, autoComplete: 'off' },
+    ],
+    initial: {},
+  };
+}
+
 /**
  * Ответы про Малую группу, после которых анкета бота задаёт следующий вопрос: «уже состоит» —
  * кто ведущий, «готов открыть / дать дом / хочет присоединиться» — район и возраст. «Ведёт» и пустой

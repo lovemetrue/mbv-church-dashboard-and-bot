@@ -4,8 +4,9 @@ import type { CreateRecordBody, CreateRecordOk, CreateRegistrationOk } from '@co
 import { ApiError, apiPost } from '../../shared/api/client';
 import { queryKeys } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
+import { FORM_META_KEY } from './useFormMeta';
 
-export type CreatePath = 'requests/create' | 'groups/create' | 'people/create';
+export type CreatePath = 'requests/create' | 'groups/create' | 'people/create' | 'coordinators/create';
 
 /** `registrationNo` приходит только от регистрации участника: у заявки и группы номера регистрации нет. */
 export type CreateResult = { ok: true; id: number; registrationNo?: number } | { ok: false; message: string };
@@ -44,7 +45,8 @@ export function useCreateRecord(path: CreatePath) {
     try {
       const body: CreateRecordBody = { fields };
       const res = await apiPost<CreateRecordOk | CreateRegistrationOk>(path, body);
-      for (const key of [queryKeys.requests, queryKeys.today, queryKeys.groups, queryKeys.people, queryKeys.coordinators]) {
+      // Справочники форм тоже: в них имена координаторов, и новый должен появиться в выборе при следующем открытии формы.
+      for (const key of [queryKeys.requests, queryKeys.today, queryKeys.groups, queryKeys.people, queryKeys.coordinators, FORM_META_KEY]) {
         void client.invalidateQueries({ queryKey: key });
       }
       return 'registrationNo' in res ? { ok: true, id: res.id, registrationNo: res.registrationNo } : { ok: true, id: res.id };

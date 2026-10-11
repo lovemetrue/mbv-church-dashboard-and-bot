@@ -6,6 +6,7 @@ import { LoadingState } from '../shared/ui';
 import { RequestsScreen } from '../features/requests/RequestsScreen';
 import { ReferenceScreen } from '../features/reference/ReferenceScreen';
 import { SettingsScreen } from '../features/settings/SettingsScreen';
+import { TeamScreen } from '../features/team/TeamScreen';
 import { TodayScreen } from '../features/today/TodayScreen';
 import styles from './App.module.css';
 import { Header } from './Header';
@@ -43,6 +44,7 @@ export function App() {
       <main id={PANEL_ID} role="tabpanel" aria-labelledby={tabDomId(nav.tab)} tabIndex={-1} className={styles.main}>
         {nav.tab === 'today' && <TodayScreen />}
         {nav.tab === 'requests' && <RequestsScreen />}
+        {nav.tab === 'team' && <TeamScreen />}
         {nav.tab === 'reference' && <ReferenceScreen />}
         {nav.tab === 'settings' && <SettingsRoute />}
       </main>

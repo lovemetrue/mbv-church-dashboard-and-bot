@@ -79,6 +79,11 @@ const SCREENS = [
   { name: 'requests-queue', url: '/?tab=requests&bucket=queue', ready: 'nav[aria-label="Переход между заявками"]' },
   { name: 'requests-reject', url: '/?tab=requests&req=1', ready: '[role=dialog][aria-label^="Карточка заявки"]', click: 'button[aria-label^="Отклонить группу"]' },
   { name: 'requests-list', url: '/?tab=requests', ready: 'ul[aria-label="Список заявок"]' },
+  // «Команда»: сводка руководителя (в фикстурах вход полный, поэтому виден и блок «Выгрузка»).
+  { name: 'team', url: '/?tab=team', ready: 'table[aria-label="Нагрузка по координаторам"]', full: true },
+  // Массовые действия: выбраны две заявки; затем выбран координатор и открыто окно подтверждения.
+  { name: 'requests-bulk', url: '/?tab=requests', ready: 'ul[aria-label="Список заявок"]', click: ['input[aria-label="Выбрать заявку Алексей Орлов"]', 'input[aria-label="Выбрать заявку Мария Соколова"]'], then: 'section[aria-label="Массовые действия"]' },
+  { name: 'requests-bulk-confirm', url: '/?tab=requests', ready: 'ul[aria-label="Список заявок"]', click: ['input[aria-label="Выбрать заявку Алексей Орлов"]', 'input[aria-label="Выбрать заявку Мария Соколова"]'], then: 'section[aria-label="Массовые действия"]', select: [['section[aria-label="Массовые действия"] select', 'Петров Г.']], submit: 'section[aria-label="Массовые действия"] button:text-is("Передать")', after: '[role=dialog]' },
   // Отбор «В работе у» и «Мои виды»: выбран ответственный; окно видов со сохранённым видом.
   { name: 'requests-resp', url: '/?tab=requests', ready: 'ul[aria-label="Список заявок"]', select: [['[role=group][aria-label="Отбор списка заявок"] select', 'Пётр Г.']], after: 'ul[aria-label="Список заявок"] li' },
   { name: 'requests-views', url: '/?tab=requests&bucket=ready', ready: 'ul[aria-label="Список заявок"]', click: '[role=group][aria-label="Отбор списка заявок"] button:has-text("Мои виды")', then: '[role=dialog][aria-label="Мои виды"]', fill: [['[role=dialog][aria-label="Мои виды"] input[type=text]', 'Готовые к утверждению']], submit: '[role=dialog][aria-label="Мои виды"] button[type=submit]', after: '[role=dialog][aria-label="Мои виды"] ul' },
@@ -88,6 +93,13 @@ const SCREENS = [
   { name: 'reference-people', url: '/?tab=reference&ent=people', ready: 'table' },
   { name: 'reference-coordinators', url: '/?tab=reference&ent=coordinators&rec=1', ready: '[role=dialog][aria-label^="Карточка координатора"]' },
   { name: 'reference-filters-open', url: '/?tab=reference', ready: 'table', click: 'button:has-text("Фильтры")' },
+  // Правка и удаление записей справочника (в фикстурах вход полный, поэтому «Удалить» видна). Окна — Modal с aria-modal.
+  { name: 'manage-group-card', url: '/?tab=reference&rec=2', ready: '[role=dialog][aria-label^="Карточка группы"]', scroll: 'button[aria-label^="Править группу"]' },
+  { name: 'manage-group-edit', url: '/?tab=reference&rec=2', ready: '[role=dialog][aria-label^="Карточка группы"]', click: 'button[aria-label^="Править группу"]', then: '[role=dialog][aria-modal=true] select >> nth=3' },
+  { name: 'manage-coordinator-edit', url: '/?tab=reference&ent=coordinators&rec=1', ready: '[role=dialog][aria-label^="Карточка координатора"]', click: 'button[aria-label^="Править координатора"]', then: '[role=dialog][aria-modal=true] input' },
+  { name: 'manage-group-delete', url: '/?tab=reference&rec=2', ready: '[role=dialog][aria-label^="Карточка группы"]', click: 'button[aria-label^="Удалить группу"]', then: '[role=dialog][aria-modal=true] button:has-text("Удалить")' },
+  { name: 'manage-request-delete', url: '/?tab=requests&req=1', ready: '[role=dialog][aria-label^="Карточка заявки"]', scroll: 'button[aria-label^="Удалить заявку"]' },
+  { name: 'manage-create-coordinator', url: '/?tab=reference&ent=coordinators', ready: 'table', click: ['button:has-text("+ Создать")', '[role=menuitem]:has-text("Координатор")'], then: '[role=dialog][aria-modal=true] input' },
   { name: 'reference-view-open', url: '/?tab=reference', ready: 'table', click: 'button:has-text("Вид таблицы")' },
   // «Настройки» (в фикстурах вход полный). full — снимок всей страницы: разделы длиннее экрана.
   { name: 'settings-health', url: '/?tab=settings', ready: 'ul[aria-label="Метрики сервера"]', full: true },
@@ -139,6 +151,9 @@ const SHOTS = [
   ...['requests-work', 'requests-work-edit'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light'], [s, 400, 'dark'], [s, 400, 'gray']]),
   // [экран, ширина, тема]
   ['reference-groups-closed', 1280, 'light'],
+  ...['manage-group-card', 'manage-group-edit', 'manage-coordinator-edit', 'manage-group-delete', 'manage-request-delete', 'manage-create-coordinator'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
+  ['manage-group-edit', 400, 'dark'],
+  ['manage-group-delete', 400, 'gray'],
   ...['create-menu', 'create-request', 'create-group', 'reference-groups-default'].flatMap((s) => [[s, 1280, 'light'], [s, 400, 'light']]),
   ...['registration-form', 'registration-form-join', 'registration-done', 'reference-people-card'].flatMap((s) => [[s, 1280, 'light'], [s, 400, 'light']]),
   ['registration-done', 400, 'dark'],
@@ -174,6 +189,9 @@ const SHOTS = [
   ['today-pult', 1280, 'dark'],
   ['today-pult', 1024, 'light'],
   ...['requests-resp', 'requests-views', 'reference-views'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
+  ...['team', 'requests-bulk', 'requests-bulk-confirm'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
+  ['team', 400, 'dark'],
+  ['team', 1280, 'gray'],
 ];
 
 const browser = await chromium.launch({ executablePath: chromePath, args: ['--no-sandbox'] });

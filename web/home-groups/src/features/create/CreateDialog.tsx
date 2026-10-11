@@ -1,13 +1,14 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import type { FormMeta } from '@contracts';
 import { ru } from '../../shared/i18n/ru';
+import { Modal } from '../../shared/ui';
 import { FormMetaGate } from './FormMetaGate';
 import { RecordForm } from './RecordForm';
 import { RegistrationDialog } from './RegistrationDialog';
-import { groupSpec, requestSpec } from './specs';
+import { coordinatorSpec, groupSpec, requestSpec } from './specs';
 
-/** Что создаёт окно с записью: заявку или группу. Подтверждение «создана» показывает меню. */
-export type CreateKind = 'request' | 'group';
+/** Что создаёт окно с записью: заявку, группу или координатора. Подтверждение «создана» показывает меню. */
+export type CreateKind = 'request' | 'group' | 'coordinator';
 /** Окно меню «Создать»: к записям добавляется регистрация участника, у неё свой результат внутри окна. */
 export type DialogKind = CreateKind | 'member';
 
@@ -22,6 +23,7 @@ export function CreateDialog({
   onCreated: (kind: CreateKind, id: number) => void;
 }) {
   if (kind === 'member') return <RegistrationDialog onClose={onClose} />;
+  if (kind === 'coordinator') return <CoordinatorDialog onClose={onClose} onCreated={(id) => onCreated(kind, id)} />;
   return <RecordDialog kind={kind} onClose={onClose} onCreated={(id) => onCreated(kind, id)} />;
 }
 
@@ -55,5 +57,26 @@ function RecordDialogForm({
       onClose={onClose}
       onCreated={(c) => onCreated(c.id)}
     />
+  );
+}
+
+/** «Новый координатор»: две строки, поэтому справочники сервера не загружаем и окно открывается сразу. */
+function CoordinatorDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (id: number) => void }) {
+  const spec = useMemo(() => coordinatorSpec(), []);
+  // Пока идёт отправка, окно не закрывается: запись всё равно создастся, а человек не узнал бы, чем кончилось.
+  const busy = useRef(false);
+  return (
+    <Modal title={ru.create.coordinatorTitle} onClose={() => !busy.current && onClose()}>
+      <RecordForm
+        spec={spec}
+        path="coordinators/create"
+        submitLabel={ru.create.submitCoordinator}
+        onClose={onClose}
+        onCreated={(c) => onCreated(c.id)}
+        onBusyChange={(b) => {
+          busy.current = b;
+        }}
+      />
+    </Modal>
   );
 }

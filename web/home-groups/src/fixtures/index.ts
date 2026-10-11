@@ -9,6 +9,7 @@ import {
 } from './settings';
 import { buildFormMeta } from './formMeta';
 import { buildCoordinators, buildGroups, buildPeople, buildRequests, buildToday } from './build';
+import { buildTeam } from './team';
 
 /** Ответ «сервера» в режиме фикстур. Путь — как в apiGet: «today», «requests»… */
 export function fixtureResponse(path: string): unknown {
@@ -28,6 +29,8 @@ export function fixtureResponse(path: string): unknown {
       return buildPeople();
     case 'coordinators':
       return buildCoordinators();
+    case 'team':
+      return buildTeam();
     case 'settings/health':
       return buildSettingsHealth();
     case 'settings/errors':
@@ -60,6 +63,10 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
   }
   // Рабочее место координатора: правка данных, «в работе у» и итог звонка. В демо данные не меняются, действие просто «получается».
   if (/^requests\/\d+\/(edit|assign|call)$/.test(clean)) return { ok: true };
+  // Правка и удаление записей справочника и заявок: в демо данные не меняются, действие просто «получается».
+  if (/^(groups|coordinators|requests)\/\d+\/(update|delete)$/.test(clean)) return { ok: true };
+  // Массовое действие: в демо все выбранные «обработаны», ничего не пропущено.
+  if (clean === 'requests/bulk') return { ok: true, done: ((body ?? {}) as { ids?: number[] }).ids?.length ?? 0, skipped: 0 };
   const input = (body ?? {}) as { fullName?: string; email?: string; id?: number };
   switch (clean) {
     // Номер новой записи в демо один и тот же: данные не меняются, важно лишь показать подтверждение.
@@ -67,6 +74,9 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
       return { ok: true, id: 101 };
     case 'groups/create':
       return { ok: true, id: 13 };
+    // В фикстурах четыре координатора, поэтому новый в демо — пятый.
+    case 'coordinators/create':
+      return { ok: true, id: 5 };
     // Номера регистрации в фикстурах людей — 1, 2 и 4, поэтому новый в демо — 5 (id участника берём тем же).
     case 'people/create':
       return { ok: true, id: 5, registrationNo: 5 };

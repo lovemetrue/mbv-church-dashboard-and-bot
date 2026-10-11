@@ -23,12 +23,15 @@ const GROUP_EDITABLE = [
 ] as const;
 const GROUP_FLAGS = ['checked', 'doNotRefer'] as const;
 
+/** Состав хранится строкой «Смешанная, Семейная», а форма ждёт отдельные значения: иначе правка любого поля обнулила бы состав. */
+const splitComposition = (v: string | null | undefined): string[] => (v ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+
 /** Группа → поля формы, чтобы непосланные поля прошли ту же проверку, что и посланные. */
 function groupToFields(g: GroupRow): URLSearchParams {
   const f = new URLSearchParams();
   const put = (k: string, v: string | number | null | undefined) => { if (v !== null && v !== undefined && String(v) !== '') f.set(k, String(v)); };
   put('leader', g.leader); put('district', g.district); put('format', g.format); put('status', g.status);
-  put('people', g.people); put('day', g.day); put('time', g.time); put('composition', g.composition);
+  put('people', g.people); put('day', g.day); put('time', g.time); for (const c of splitComposition(g.composition)) f.append('composition', c);
   put('coordinator', g.coordinator); put('coLeader', g.co_leader); put('feedbackAt', g.feedback_at);
   put('comment', g.comment); put('age', g.age); put('metro', g.metro); put('openToNew', g.open_to_new);
   put('training', g.training); put('no', g.no);
@@ -56,6 +59,7 @@ export function createManager(deps: {
 
       const merged = groupToFields(current);
       for (const [k, v] of given) {
+        if (k === 'composition') { merged.delete(k); for (const c of splitComposition(v)) merged.append(k, c); continue; }
         if ((GROUP_FLAGS as readonly string[]).includes(k)) { if (v === '1' || v === 'true') merged.set(k, '1'); else merged.delete(k); continue; }
         if (v.trim() === '') merged.delete(k); else merged.set(k, v);
       }

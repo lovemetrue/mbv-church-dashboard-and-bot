@@ -1,4 +1,5 @@
 import {
+  buildSettingsAssistant,
   buildSettingsAudit,
   buildSettingsBot,
   buildSettingsErrors,
@@ -37,6 +38,8 @@ export function fixtureResponse(path: string): unknown {
       return buildCampaign();
     case 'settings/bot':
       return buildSettingsBot();
+    case 'settings/assistant':
+      return buildSettingsAssistant();
     case 'settings/health':
       return buildSettingsHealth();
     case 'settings/errors':
@@ -61,6 +64,8 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
   if (clean === 'matching/run') {
     return { ok: true, created: 0, replaced: 0, unchanged: buildRequests().matching.waiting };
   }
+  // Помощник: в демо он «разобрал» все три заявки, которые ждали разбора; данные при этом не меняются.
+  if (clean === 'assistant/run') return { ok: true, asked: 3, filled: 2, withQuestions: 2, proposals: 1 };
   // Пересчёт всех предложений: в демо сервера нет, поэтому «заменено» нулевое, а изменившиеся данные считаем обновлёнными.
   if (clean === 'matching/rerun-all') {
     const open = buildRequests().items.filter((r) => r.proposal && r.bucket !== 'done');
@@ -73,6 +78,8 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
   if (/^(groups|coordinators|requests)\/\d+\/(update|delete)$/.test(clean)) return { ok: true };
   // Удаление регистрации и настройка бота: в демо ничего не меняется, действие просто «получается».
   if (/^people\/\d+\/delete$/.test(clean) || clean === 'settings/bot/extra-questions') return { ok: true };
+  // Переключатель помощника: в демо ничего не меняется, действие просто «получается».
+  if (clean === 'settings/assistant/enabled') return { ok: true };
   // Массовое действие: в демо все выбранные «обработаны», ничего не пропущено.
   if (clean === 'requests/bulk') return { ok: true, done: ((body ?? {}) as { ids?: number[] }).ids?.length ?? 0, skipped: 0 };
   const input = (body ?? {}) as { fullName?: string; email?: string; id?: number };

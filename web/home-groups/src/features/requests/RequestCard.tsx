@@ -15,6 +15,7 @@ import { useRequestParams, type ParamField } from './useRequestParams';
 import { subjectOfRequest } from './work/subject';
 import { WorkPlace } from './work/WorkPlace';
 import { DeleteRequestSection } from '../manage';
+import { AssistantNoteBlock } from './assistant/AssistantNoteBlock';
 
 const noValue = <span className={styles.note}>{ru.reference.notSpecified}</span>;
 
@@ -516,6 +517,7 @@ export function RequestCard({
       <DrawerSection title={ru.requests.contacts}>
         <KeyValue rows={contacts} />
       </DrawerSection>
+      <AssistantNoteBlock key={r.id} note={r.assistant} />
       <WorkPlace key={r.id} subject={subjectOfRequest(r)} onClosed={onClosed} />
       <DrawerSection>
         <Params key={r.id} r={r} />

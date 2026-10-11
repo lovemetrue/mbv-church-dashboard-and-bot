@@ -6,6 +6,7 @@
  * считает иначе, правда — на сервере.
  */
 import type {
+  AssistantStatus,
   Bucket,
   Candidate,
   CellLevel,
@@ -331,7 +332,9 @@ export function buildRequests(): RequestsView {
     waiting: items.filter((x) => x.bucket !== 'done' && x.proposal && !x.proposal.saved).length,
     saved: items.filter((x) => x.bucket !== 'done' && x.proposal?.saved).length,
   };
-  return { generatedAt: GENERATED_AT, matching, items, counters, others: buildOthers() };
+  // В демо помощник подключён и включён; три заявки ещё ждут его разбора.
+  const assistant: AssistantStatus = { available: true, enabled: true, pending: 3 };
+  return { generatedAt: GENERATED_AT, matching, assistant, items, counters, others: buildOthers() };
 }
 
 export function buildToday(): TodayView {

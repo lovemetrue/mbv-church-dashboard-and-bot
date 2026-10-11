@@ -16,7 +16,7 @@ export class ApiError extends Error {
   }
 }
 
-const ACTION_CODES: readonly string[] = ['bad_request', 'not_found', 'already_closed', 'group_unavailable', 'group_full', 'forbidden', 'conflict'];
+const ACTION_CODES: readonly string[] = ['bad_request', 'not_found', 'already_closed', 'group_unavailable', 'group_full', 'forbidden', 'conflict', 'unavailable'];
 
 type RedirectFn = (url: string) => void;
 

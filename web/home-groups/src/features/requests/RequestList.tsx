@@ -4,6 +4,7 @@ import { groupLabel, groupLine } from '../../entities/format';
 import { ru } from '../../shared/i18n/ru';
 import { AgeTag, ConfidenceDots, Pill } from '../../shared/ui';
 import { SavedTag } from './SavedTag';
+import { AssistantTag } from './assistant/AssistantTag';
 import styles from './Requests.module.css';
 
 function proposalText(r: RequestItem) {
@@ -75,6 +76,7 @@ export function RequestList({ items, selectedId, onSelect, selection }: RequestL
                 </button>
                 {r.ageLabel && <AgeTag>{r.ageLabel}</AgeTag>}
                 <span className={styles.place}>{r.place ?? ru.common.placeUnknown}</span>
+                <AssistantTag note={r.assistant} />
                 {r.responsible && <span className={styles.inWork}>{ru.requests.inWorkBy(r.responsible)}</span>}
               </div>
               <div className={styles.prop}>

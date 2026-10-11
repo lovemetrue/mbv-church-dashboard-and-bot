@@ -4,6 +4,7 @@
  */
 import type {
   DeliveryOk,
+  SettingsAssistantView,
   SettingsAuditView,
   SettingsBotView,
   SettingsErrorsView,
@@ -376,5 +377,16 @@ export function buildSettingsBot(): SettingsBotView {
   return {
     generatedAt: GENERATED_AT,
     extraQuestions: { mode: 'off', ids: '', source: 'env', envValue: 'off' },
+  };
+}
+
+/** Помощник в демо: ключ «задан», включён, один запуск в прошлом. Самого ключа в данных нет и быть не может. */
+export function buildSettingsAssistant(): SettingsAssistantView {
+  return {
+    generatedAt: GENERATED_AT,
+    available: true,
+    enabled: true,
+    model: 'deepseek-chat',
+    lastRun: { at: '2026-10-09T09:30:00+03:00', actor: 'Трофимова С.', asked: 6, filled: 4, withQuestions: 3, proposals: 2 },
   };
 }

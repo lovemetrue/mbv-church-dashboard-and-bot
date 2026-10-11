@@ -116,6 +116,8 @@ export function useAppNav() {
       if (firstId !== undefined) next.set('req', String(firstId));
       return next;
     }),
+    /** «Настройки» сразу на нужном разделе (из подсказки «Включить: Настройки → Помощник»). */
+    goSettingsSection: (sec: string) => setParams(() => new URLSearchParams({ tab: 'settings', sec })),
     setEntity: (e: EntityId) =>
       setParams((prev) => {
         const next = tabParams(prev, 'reference');

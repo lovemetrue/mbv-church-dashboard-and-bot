@@ -173,6 +173,13 @@ const SCREENS = [
   },
   { name: 'settings-bot', url: '/?tab=settings&sec=bot', ready: 'input[type=radio]', full: true },
   { name: 'settings-bot-list', url: '/?tab=settings&sec=bot', ready: 'input[type=radio]', click: 'label:has-text("Только этим людям")', then: 'input[type=text]', fill: [['input[type=text]', '111111111, max:222222222']], full: true },
+  // Помощник: блок подбора с кнопкой, окно подтверждения, карточки с блоком «Помощник» (4 — с определёнными полями, 8 — только вопросы), метка в списке и «Настройки → Помощник».
+  { name: 'assistant-panel', url: '/?tab=requests', ready: 'button:has-text("Попросить помощника")' },
+  { name: 'assistant-confirm', url: '/?tab=requests', ready: 'button:has-text("Попросить помощника")', click: 'button:has-text("Попросить помощника")', then: '[role=dialog][aria-modal=true]' },
+  { name: 'assistant-done', url: '/?tab=requests', ready: 'button:has-text("Попросить помощника")', click: ['button:has-text("Попросить помощника")', 'button:has-text("Да, разобрать")'], then: '[role=status]:has-text("Готово: отправлено")' },
+  { name: 'assistant-card', url: '/?tab=requests&req=4', ready: '[role=dialog][aria-label^="Карточка заявки"]', scroll: 'button:has-text("Скопировать вопросы")' },
+  { name: 'assistant-card-questions', url: '/?tab=requests&bucket=human&req=8', ready: '[role=dialog][aria-label^="Карточка заявки"]', scroll: 'button:has-text("Скопировать вопросы")' },
+  { name: 'assistant-settings', url: '/?tab=settings&sec=assistant', ready: '[role=switch]', full: true },
   { name: 'manage-group-edit-write', url: '/?tab=reference&rec=2', ready: '[role=dialog][aria-label^="Карточка группы"]', click: 'button[aria-label^="Править группу"]', then: '[role=dialog][aria-modal=true] select >> nth=3', scroll: 'text=Новый адрес' },
   { name: 'reference-people-card-delete', url: '/?tab=reference&ent=people&rec=u1', ready: '[role=dialog][aria-label^="Карточка человека"]', click: 'button[aria-label^="Удалить регистрацию"]', then: '[role=dialog][aria-modal=true] button:has-text("Удалить")' },
   // Справочник групп сразу после открытия: закрытая скрыта, отбор по умолчанию виден чипом.
@@ -200,6 +207,9 @@ const SHOTS = [
   ...['today', 'requests', 'reference-groups', 'reference-people'].map((s) => [s, 1280, 'light']),
   // Кампания, страница регистрации, настройка бота, новые поля правки группы, удаление регистрации.
   ...['team-campaign', 'registration-page', 'registration-page-join', 'registration-page-done', 'settings-bot', 'settings-bot-list', 'manage-group-edit-write', 'reference-people-card-delete'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
+  ...['assistant-panel', 'assistant-confirm', 'assistant-done', 'assistant-card', 'assistant-card-questions', 'assistant-settings'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
+  ['assistant-card', 400, 'dark'],
+  ['assistant-settings', 400, 'gray'],
   ['team-campaign', 400, 'dark'],
   ['registration-page', 400, 'gray'],
   ['settings-bot', 400, 'dark'],

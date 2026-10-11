@@ -17,7 +17,11 @@ const REF = /(?:Участник|Заявитель|Человек)-\d+|(?:Ве�
 export function buildPseudonyms(pairs: readonly { ref: string; name: string }[]): Pseudonyms {
   const byRef = new Map<string, string>();
   const byName = new Map<string, string>();
-  for (const { ref, name } of pairs) {
+  // Порядок строк из базы не гарантирован, а одному номеру могут принадлежать разные написания
+  // («Иван Петров» и «иван  петров»): без сортировки победитель зависел от порядка в куче таблицы.
+  // По кодам символов заглавная буква идёт раньше строчной, так что выигрывает аккуратное написание.
+  const ordered = [...pairs].sort((x, y) => (x.name < y.name ? -1 : x.name > y.name ? 1 : 0));
+  for (const { ref, name } of ordered) {
     const clean = name.trim().replace(/\s+/g, ' ');
     if (clean === '') continue;
     if (!byRef.has(ref)) byRef.set(ref, clean);

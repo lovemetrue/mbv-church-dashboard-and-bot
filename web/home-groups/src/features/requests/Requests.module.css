@@ -36,6 +36,43 @@
   }
 }
 
+/* Отбор «В работе у» и «Мои виды»: отдельная строка под чипами, на телефоне переносится, а не ползёт вбок. */
+.tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.respBox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+.respLabel {
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.respSelect {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: var(--radius);
+  padding: 5px 8px;
+  min-height: 34px;
+  min-width: 0;
+  max-width: 100%;
+}
+@media (max-width: 700px), (pointer: coarse) {
+  .respSelect {
+    min-height: var(--tap);
+    font-size: 16px; /* меньше 16 px iOS приближает страницу при фокусе */
+  }
+}
+
 .listbox {
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -99,6 +136,14 @@
   flex-basis: 100%;
   color: var(--muted);
   font-size: 12px;
+  overflow-wrap: anywhere;
+}
+/* У кого заявка в работе: короткая метка под местом, цветом не кодируется — всё сказано текстом. */
+.inWork {
+  flex-basis: 100%;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--accent);
   overflow-wrap: anywhere;
 }
 .propText {

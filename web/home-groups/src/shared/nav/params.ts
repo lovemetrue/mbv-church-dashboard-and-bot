@@ -8,6 +8,7 @@ import { isBucketFilter, type BucketFilter } from '../../entities/buckets';
  *   tab     today (по умолчанию) | requests | reference | settings (только полный вход)
  *   q       поиск по заявкам (общий для шапки)
  *   bucket  all (по умолчанию) | queue (к обзвону: ready + callback) | ready | callback | human | done
+ *   resp    «В работе у»: имя ответственного, RESP_NOBODY («-») — заявки, которые никто не взял; без параметра — все
  *   req     открытая заявка
  *   ent     groups (по умолчанию) | people | coordinators
  *   rec     открытая запись справочника
@@ -28,6 +29,9 @@ const SUPER_ONLY_TABS: readonly TabId[] = ['settings'];
 export function visibleTabs(role: Role | undefined): readonly TabId[] {
   return role === 'super' ? TAB_IDS : TAB_IDS.filter((t) => !SUPER_ONLY_TABS.includes(t));
 }
+
+/** Значение `resp` для заявок без ответственного: имя координатора так не называется. */
+export const RESP_NOBODY = '-';
 
 export type EntityId = 'groups' | 'people' | 'coordinators';
 export const ENTITY_IDS: readonly EntityId[] = ['groups', 'people', 'coordinators'];

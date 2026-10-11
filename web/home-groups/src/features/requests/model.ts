@@ -1,22 +1,44 @@
 import type { GroupBrief, GroupItem, RequestItem } from '@contracts';
 import type { BucketFilter } from '../../entities/buckets';
 import { phoneDigits } from '../../entities/format';
+import { RESP_NOBODY } from '../../shared/nav/params';
 
 /**
- * Поиск по заявкам: ФИО и место ищем как подстроку без учёта регистра; телефон — по цифрам,
- * чтобы «9114» находил «+7 (911) 4…» в любой записи номера. Цифры сравниваем, только если в
- * запросе их хотя бы три: иначе «1» нашёл бы половину очереди.
+ * Поиск по заявкам: ФИО, место, ответственного и комментарий ищем как подстроку без учёта
+ * регистра; телефон — по цифрам, чтобы «9114» находил «+7 (911) 4…» в любой записи номера.
+ * Цифры сравниваем, только если в запросе их хотя бы три: иначе «1» нашёл бы половину очереди.
+ * ФИО с местом склеены (как было: «Орлов Беговая» находит), а ответственный и комментарий
+ * проверяются отдельно: запрос из нескольких слов не должен находить заявку «на стыке» чужих полей.
  */
 export function matchesSearch(r: RequestItem, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
   if (`${r.fio} ${r.place ?? ''}`.toLowerCase().includes(q)) return true;
+  if ((r.responsible ?? '').toLowerCase().includes(q) || (r.note ?? '').toLowerCase().includes(q)) return true;
   const digits = phoneDigits(q);
   return digits.length >= 3 && phoneDigits(r.phone).includes(digits);
 }
 
 export function searchRequests(items: readonly RequestItem[], query: string): RequestItem[] {
   return items.filter((r) => matchesSearch(r, query));
+}
+
+/**
+ * Отбор «В работе у»: '' — все, RESP_NOBODY — заявки без ответственного, иначе имя целиком.
+ * Применяется вместе с поиском до счётчиков чипов, поэтому числа на чипах и очередь обзвона
+ * (с соседними заявками в карточке) видят один и тот же список.
+ */
+export function filterByResponsible(items: readonly RequestItem[], who: string): RequestItem[] {
+  if (!who) return [...items];
+  if (who === RESP_NOBODY) return items.filter((r) => !r.responsible);
+  return items.filter((r) => r.responsible === who);
+}
+
+/** Имена для списка «В работе у»: без пустых и повторов, по алфавиту. */
+export function responsibleNames(items: readonly Pick<RequestItem, 'responsible'>[]): string[] {
+  const names = new Set<string>();
+  for (const r of items) if (r.responsible) names.add(r.responsible);
+  return [...names].sort((a, b) => a.localeCompare(b, 'ru'));
 }
 
 export interface BucketCounts {

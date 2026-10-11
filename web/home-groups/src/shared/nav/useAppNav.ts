@@ -42,6 +42,8 @@ export function useAppNav() {
       tab: parseTab(params.get('tab')),
       search: params.get('q') ?? '',
       bucket: parseBucket(params.get('bucket')),
+      /** «В работе у»: '' — все, RESP_NOBODY — никто не взял, иначе имя. */
+      responsible: params.get('resp') ?? '',
       requestId: parseId(params.get('req')),
       entity: parseEntity(params.get('ent')),
       recordKey: params.get('rec'),
@@ -71,6 +73,8 @@ export function useAppNav() {
       }
     },
     selectRequest: (id: number) => update({ req: String(id) }),
+    // Сменился список — открытая заявка могла из него выпасть, поэтому req сбрасываем, как у чипов.
+    setResponsible: (who: string) => update({ resp: who || null, req: null }),
     setBucket: (b: BucketFilter) => update({ bucket: b === 'all' ? null : b, req: null }),
     openRequest: (id: number) => setParams((prev) => {
       const next = tabParams(prev, 'requests');

@@ -44,4 +44,12 @@ export class AuditRepo {
     );
     return rows;
   }
+
+  /** Запись действия вне транзакции с данными (создание записей через интерфейс). */
+  async write(actor: string, action: string, entityType: string, entityId: number | null, after: unknown): Promise<void> {
+    await this.db.query(
+      `INSERT INTO audit_log (actor, service, action, entity_type, entity_id, after) VALUES ($1, 'home-groups', $2, $3, $4, $5::jsonb)`,
+      [actor, action, entityType, entityId, JSON.stringify(after)],
+    );
+  }
 }

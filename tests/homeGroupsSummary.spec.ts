@@ -62,7 +62,7 @@ const cellOf = (s: ReturnType<typeof summary>, district: string, age: string) =>
 describe('матрица «район × возраст»', () => {
   test('колонки возраста — те же, что в разборе возраста, и в каждой строке есть ячейка каждой', () => {
     const s = summary([request()], [group()]);
-    expect(s.ageColumns).toEqual(['до 18', '18–25', '26–35', '36–45', '46+']);
+    expect(s.ageColumns).toEqual(['до 18', '18–25', '26–35', '36–45', '46+', 'Возраст не указан']);
     expect(s.matrix[0]!.cells.map((c) => c.age)).toEqual(s.ageColumns);
   });
 
@@ -70,7 +70,7 @@ describe('матрица «район × возраст»', () => {
     const groups = [group({ people: 6, capacity: 10 }), group({ people: 8, capacity: 10 })];
     const requests = [request(), request(), request({ ageRange: [45, 55] })];
     const s = summary(requests, groups);
-    expect(cellOf(s, 'Приморский', '26–35')).toEqual({ age: '26–35', demand: 2, supply: 6, net: 4, level: 'ok' });
+    expect(cellOf(s, 'Приморский', '26–35')).toMatchObject({ age: '26–35', demand: 2, supply: 6, net: 4, level: 'ok' });
     expect(cellOf(s, 'Приморский', '46+')).toMatchObject({ demand: 1, supply: 0 });
   });
 
@@ -84,7 +84,8 @@ describe('матрица «район × возраст»', () => {
 
   test('группа с неизвестным возрастом считается во всех колонках', () => {
     const s = summary([], [group({ ageRange: null, people: 7, capacity: 10 })]);
-    for (const age of s.ageColumns) expect(cellOf(s, 'Приморский', age)!.supply, age).toBe(3);
+    // Все возрастные колонки; особая «Возраст не указан» — только для спроса.
+    for (const age of s.ageColumns.filter((a) => a !== 'Возраст не указан')) expect(cellOf(s, 'Приморский', age)!.supply, age).toBe(3);
   });
 
   test('места в группах, которые не принимают, в предложение не входят', () => {
@@ -109,10 +110,58 @@ describe('матрица «район × возраст»', () => {
     expect(s.matrix).toEqual([]);
   });
 
-  test('заявки без района или без возраста в матрицу не попадают: их некуда поставить', () => {
-    const s = summary([request({ district: null }), request({ ageRange: null })], [group({ district: 'Невский' })]);
-    expect(s.matrix.map((row) => row.district)).toEqual(['Невский']);
-    expect(s.matrix[0]!.cells.every((c) => c.demand === 0)).toBe(true);
+  test('заявки без района собираются в особую строку, без возраста — в особую колонку: проблему видно, а не прячут', () => {
+    const noDistrict = request({ district: null });
+    const noAge = request({ ageRange: null, district: 'Невский' });
+    const s = summary([noDistrict, noAge], [group({ district: 'Невский', people: 10 })]);
+    expect(s.matrix.map((row) => row.district).sort()).toEqual(['Невский', 'Район не определён']);
+    expect(cellOf(s, 'Район не определён', '26–35')).toMatchObject({ demand: 1, supply: 0, requestIds: [noDistrict.id] });
+    expect(cellOf(s, 'Невский', 'Возраст не указан')).toMatchObject({ demand: 1, requestIds: [noAge.id], groupIds: [] });
+  });
+
+  test('заявка без района и без возраста попадает в их пересечение', () => {
+    const r = request({ district: null, ageRange: null });
+    const s = summary([r], []);
+    expect(cellOf(s, 'Район не определён', 'Возраст не указан')).toMatchObject({ demand: 1, requestIds: [r.id] });
+  });
+
+  test('места в особые колонку и строку не засчитываются: группа без возраста идёт в обычные колонки', () => {
+    const s = summary([], [group({ ageRange: null, district: 'Невский' })]);
+    expect(cellOf(s, 'Невский', 'Возраст не указан')).toMatchObject({ supply: 0, groupIds: [] });
+    expect(cellOf(s, 'Невский', '26–35')!.supply).toBeGreaterThan(0);
+  });
+
+  test('в ячейке перечислены заявки и группы, которые дают спрос и места; группы без свободных мест не перечисляются', () => {
+    const r1 = request();
+    const r2 = request();
+    const open = group({ people: 6, capacity: 10 });
+    const full = group({ people: 10, capacity: 10 });
+    const closed = group({ status: 'Закрыта' });
+    const s = summary([r1, r2], [open, full, closed]);
+    const cell = cellOf(s, 'Приморский', '26–35')!;
+    expect(cell.requestIds).toEqual([r1.id, r2.id]);
+    expect(cell.groupIds).toEqual([open.id]);
+  });
+
+  test('места района в итоге считаются без двойного счёта: группа с несколькими возрастами — один раз', () => {
+    const wide = group({ ageRange: [20, 40], people: 5, capacity: 10 });
+    const narrow = group({ ageRange: [26, 30], people: 8, capacity: 10 });
+    const s = summary([], [wide, narrow]);
+    // По ячейкам wide входит в три колонки, но в итоге района её 5 мест — один раз.
+    expect(s.matrix[0]!.supplyTotal).toBe(5 + 2);
+    expect(s.matrix[0]!.cells.reduce((sum, c) => sum + c.supply, 0)).toBeGreaterThan(7);
+  });
+
+  test('группа без свободных мест и не принимающая в итог мест не входит', () => {
+    const s = summary([], [group({ people: 10, capacity: 10 }), group({ status: 'Закрыта' }), group({ people: 5, capacity: 10 })]);
+    expect(s.matrix[0]!.supplyTotal).toBe(5);
+  });
+
+  test('группа с диапазоном в несколько колонок перечисляется в каждой из них', () => {
+    const wide = group({ ageRange: [20, 40], people: 5, capacity: 10 });
+    const s = summary([], [wide]);
+    for (const age of ['18–25', '26–35', '36–45']) expect(cellOf(s, 'Приморский', age)!.groupIds).toEqual([wide.id]);
+    expect(cellOf(s, 'Приморский', '46+')!.groupIds).toEqual([]);
   });
 
   test('показываются только районы, где есть спрос или места', () => {

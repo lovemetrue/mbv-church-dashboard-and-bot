@@ -11,3 +11,4 @@ export { Drawer, DrawerSection } from './Drawer';
 export { Popover } from './Popover';
 export { AgeTag } from './AgeTag';
 export { Modal } from './Modal';
+export { NewGroupIcon } from './NewGroupIcon';

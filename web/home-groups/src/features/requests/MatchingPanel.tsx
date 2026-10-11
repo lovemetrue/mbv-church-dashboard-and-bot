@@ -9,7 +9,8 @@ import { useMatching } from './useMatching';
 const m = ru.requests.matching;
 
 /**
- * «Подбор для новых заявок»: сводка, кнопка запуска и переключатель автоподбора.
+ * «Подбор для новых заявок»: сводка, кнопка закрепления и переключатель автоподбора.
+ * Расчёт показывается и без кнопки; кнопка лишь закрепляет его, чтобы выбранные группы не менялись сами.
  * Предложение остаётся предложением: человек распределён только после «Утвердить»,
  * поэтому здесь ничего не утверждается.
  */
@@ -26,7 +27,7 @@ export function MatchingPanel({ matching }: { matching: MatchingStatus }) {
         {m.title}
       </h3>
       <div className={styles.matchingStats}>
-        <p>{m.waiting(matching.waiting)}</p>
+        <p>{m.saved(matching.saved, matching.waiting)}</p>
         <p>{lastRun ? m.lastRun(formatDateTime(lastRun.at), lastRun.created, lastRun.replaced) : m.neverRun}</p>
       </div>
 

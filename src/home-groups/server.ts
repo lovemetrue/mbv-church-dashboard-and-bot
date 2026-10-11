@@ -6,6 +6,8 @@ import type { AuthPort } from '../platform/auth/personalAuth.js';
 import type { StaffService } from '../platform/auth/staffService.js';
 import { logger } from '../logger.js';
 import { ACTION_STATUS, type RequestActions } from './actions.js';
+import type { FormMeta } from './contracts.js';
+import type { RecordCreator } from './create.js';
 import type { Settings } from '../platform/settings/service.js';
 import type { ActionError, ActionOk, MatchingRunOk, Me, Role } from './contracts.js';
 import type { Views } from './api/views.js';
@@ -46,6 +48,12 @@ export interface HomeGroupsDeps {
   views: () => Promise<Views>;
   /** Действия координатора (утвердить, отклонить, «нужен звонок»). */
   actions: RequestActions;
+  /** Создание заявки и группы из «+ Создать». */
+  creator: RecordCreator;
+  /** Справочники для форм создания. */
+  formMeta: () => Promise<FormMeta>;
+  /** Адрес старого дашборда (источник — `DASHBOARD_URL`): для того, что пока живёт только там. */
+  legacyUrl?: string | null;
   /** Подбор для новых заявок: запуск и переключатель автоматического режима. */
   matching: {
     run(actor: string): Promise<MatchingRunOk>;
@@ -86,10 +94,11 @@ const CONTENT_TYPES: Record<string, string> = {
 class BodyTooLarge extends Error {}
 
 const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode)$/;
+const CREATE_PATH = /^\/api\/v1\/(requests|groups)\/create$/;
 const MATCHING_PATH = /^\/api\/v1\/matching\/(run|auto)$/;
 
 /** `POST /api/v1/requests/12/approve`: номер заявки — цифры, длиннее пятнадцати не бывает (Number безопасен). */
-const ACTION_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/(approve|reject|need-call)$/;
+const ACTION_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/(approve|reject|need-call|params)$/;
 
 /** Адрес клиента: за nginx настоящий адрес приходит заголовком (как в старом дашборде). */
 function clientIp(req: IncomingMessage): string {
@@ -339,6 +348,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     const { actor, body } = call;
     const outcome = action === 'approve' ? await deps.actions.approve(requestId, body, actor)
       : action === 'reject' ? await deps.actions.reject(requestId, body, actor)
+      : action === 'params' ? await deps.actions.setParams(requestId, body, actor)
       : await deps.actions.setNeedCall(requestId, body, actor);
 
     if (!outcome.ok) {
@@ -379,6 +389,20 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     sendJson(res, 200, { ok: true } satisfies ActionOk);
   }
 
+  /** Создание записи: заявка или группа. Проверяет сервер (те же правила, что у форм старого дашборда). */
+  async function handleCreate(req: IncomingMessage, res: ServerResponse, what: string, sid: string | undefined): Promise<void> {
+    const call = await readAuthedJson(req, res, sid);
+    if (!call) return;
+    const outcome = what === 'requests' ? await deps.creator.request(call.body, call.actor) : await deps.creator.group(call.body, call.actor);
+    if (!outcome.ok) {
+      sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
+      return;
+    }
+    deps.invalidateViews();
+    logger.info({ actor: call.actor, what, id: outcome.id }, 'домашние группы: запись создана');
+    sendJson(res, 200, outcome);
+  }
+
   /** Правка инструкций агентов: только полный вход, как и весь раздел «Настройки». */
   async function handleSettingsPost(
     req: IncomingMessage, res: ServerResponse, action: string, sid: string | undefined,
@@ -414,6 +438,8 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     if (act) { await handleAction(req, res, Number(act[1]), act[2]!, sid); return; }
     const settingsPost = req.method === 'POST' ? SETTINGS_POST_PATH.exec(path) : null;
     if (settingsPost) { await handleSettingsPost(req, res, settingsPost[1]!, sid); return; }
+    const create = req.method === 'POST' ? CREATE_PATH.exec(path) : null;
+    if (create) { await handleCreate(req, res, create[1]!, sid); return; }
     const match = req.method === 'POST' ? MATCHING_PATH.exec(path) : null;
     if (match) { await handleMatching(req, res, match[1]!, sid); return; }
     // Всё остальное — только чтение. Любой другой не-GET отвечает 404, как изменяющие маршруты
@@ -424,7 +450,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     if (path === '/api/v1/me') {
       const role = await deps.auth.roleOf(sid);
       if (!role) { sendJson(res, 401, { error: 'unauthorized' }); return; }
-      const me: Me = { role };
+      const me: Me = { role, legacyUrl: deps.legacyUrl ?? null };
       sendJson(res, 200, me);
       return;
     }
@@ -447,6 +473,8 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       sendJson(res, 200, await settingsRoute());
       return;
     }
+
+    if (path === '/api/v1/form-meta') { sendJson(res, 200, await deps.formMeta()); return; }
 
     const pick: Record<string, (v: Views) => unknown> = {
       '/api/v1/today': (v) => v.today,

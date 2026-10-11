@@ -12,6 +12,9 @@ const ACCEPTING_STATUSES = new Set(['Функционирует', 'Кампан�
 const DAY_ORDER: readonly Day[] = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 /** Группа без района — не строка матрицы: непонятно, кому из районов её места засчитывать. */
 const NO_DISTRICT = 'Не указан';
+/** Особая строка и колонка матрицы для заявок без района и без возраста (названия видит человек). */
+export const NO_DISTRICT_ROW = 'Район не определён';
+export const NO_AGE_COLUMN = 'Возраст не указан';
 /** Меньше двух человек — уже не «не хватает группы», а одиночный случай. */
 const CLUSTER_MIN = 2;
 
@@ -35,35 +38,52 @@ function levelOf(demand: number, supply: number): CellLevel {
  * Район показывается, только если в нём есть спрос или места: пустые строки экран засоряют.
  */
 function buildMatrix(input: SummaryInput): MatrixRow[] {
-  const demand = new Map<string, Map<string, number>>();
-  const supply = new Map<string, Map<string, number>>();
-  const bump = (table: Map<string, Map<string, number>>, district: string, column: string, by: number): void => {
-    const row = table.get(district) ?? new Map<string, number>();
-    row.set(column, (row.get(column) ?? 0) + by);
+  type Slot = { demand: number; supply: number; requestIds: number[]; groupIds: number[] };
+  const table = new Map<string, Map<string, Slot>>();
+  const slot = (district: string, column: string): Slot => {
+    const row = table.get(district) ?? new Map<string, Slot>();
+    const cell = row.get(column) ?? { demand: 0, supply: 0, requestIds: [], groupIds: [] };
+    row.set(column, cell);
     table.set(district, row);
+    return cell;
   };
 
+  // Спрос — все открытые заявки: без района они идут в особую строку, без возраста — в особую колонку.
+  // Прятать их нельзя: именно это «пульт» и должен показывать как проблему.
   for (const r of input.requests) {
-    const column = ageColumnOf(r.ageRange);
-    if (r.district !== null && column !== null) bump(demand, r.district, column, 1);
+    const cell = slot(r.district ?? NO_DISTRICT_ROW, ageColumnOf(r.ageRange) ?? NO_AGE_COLUMN);
+    cell.demand += 1;
+    cell.requestIds.push(r.id);
   }
   for (const g of input.groups) {
     if (!isAccepting(g) || g.district === NO_DISTRICT) continue;
     const free = g.capacity - (g.people ?? 0);
     if (free <= 0) continue;
-    for (const column of ageColumnsOverlapping(g.ageRange)) bump(supply, g.district, column, free);
+    for (const column of ageColumnsOverlapping(g.ageRange)) {
+      const cell = slot(g.district, column);
+      cell.supply += free;
+      cell.groupIds.push(g.id);
+    }
   }
 
-  const totalDemand = (district: string): number => [...(demand.get(district)?.values() ?? [])].reduce((a, b) => a + b, 0);
-  const districts = new Set([...demand.keys(), ...supply.keys()]);
-  return [...districts]
+  // Места района без двойного счёта: каждая группа один раз.
+  const freeByDistrict = new Map<string, number>();
+  for (const g of input.groups) {
+    if (!isAccepting(g) || g.district === NO_DISTRICT) continue;
+    const free = g.capacity - (g.people ?? 0);
+    if (free > 0) freeByDistrict.set(g.district, (freeByDistrict.get(g.district) ?? 0) + free);
+  }
+
+  const totalDemand = (district: string): number => [...(table.get(district)?.values() ?? [])].reduce((sum, c) => sum + c.demand, 0);
+  const columns = [...AGE_COLUMNS, NO_AGE_COLUMN];
+  return [...table.keys()]
     .sort((a, b) => totalDemand(b) - totalDemand(a) || a.localeCompare(b, 'ru'))
     .map((district): MatrixRow => ({
       district,
-      cells: AGE_COLUMNS.map((age): MatrixCell => {
-        const d = demand.get(district)?.get(age) ?? 0;
-        const s = supply.get(district)?.get(age) ?? 0;
-        return { age, demand: d, supply: s, net: s - d, level: levelOf(d, s) };
+      supplyTotal: freeByDistrict.get(district) ?? 0,
+      cells: columns.map((age): MatrixCell => {
+        const c = table.get(district)?.get(age) ?? { demand: 0, supply: 0, requestIds: [], groupIds: [] };
+        return { age, demand: c.demand, supply: c.supply, net: c.supply - c.demand, level: levelOf(c.demand, c.supply), requestIds: c.requestIds, groupIds: c.groupIds };
       }),
     }));
 }
@@ -129,7 +149,7 @@ export function buildTodaySummary(input: SummaryInput): TodaySummary {
   const clusters = buildClusters(input);
   const clustered = new Set(clusters.flatMap((c) => c.requestIds));
   return {
-    ageColumns: [...AGE_COLUMNS],
+    ageColumns: [...AGE_COLUMNS, NO_AGE_COLUMN],
     matrix: buildMatrix(input),
     clusters,
     singles: buildSingles(input, clustered),

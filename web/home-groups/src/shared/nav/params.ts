@@ -7,7 +7,7 @@ import { isBucketFilter, type BucketFilter } from '../../entities/buckets';
  *
  *   tab     today (по умолчанию) | requests | reference | settings (только полный вход)
  *   q       поиск по заявкам (общий для шапки)
- *   bucket  all (по умолчанию) | ready | callback | human | done
+ *   bucket  all (по умолчанию) | queue (к обзвону: ready + callback) | ready | callback | human | done
  *   req     открытая заявка
  *   ent     groups (по умолчанию) | people | coordinators
  *   rec     открытая запись справочника

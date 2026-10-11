@@ -10,6 +10,7 @@ import {
   saveView,
   searchRows,
   sortRows,
+  type Filter,
   type Row,
   type SavedView,
   type TableState,
@@ -30,6 +31,10 @@ const LABELS: Record<EntityId, string> = {
   people: ru.reference.people,
   coordinators: ru.reference.coordinators,
 };
+
+/** Подпись чипа отбора. «≠» читается как «не», потому что «Статус ≠ Закрыта» человеку труднее, чем «Статус: не «Закрыта»». */
+const chipLabel = (fl: Filter): string =>
+  fl.op === 'ne' ? ru.reference.notEqualChip(fl.field, fl.value) : filterLabel(fl, OP_SYMBOL);
 
 export function ReferenceScreen() {
   const nav = useAppNav();
@@ -161,10 +166,10 @@ function EntityView<T>({ config, query, items, renderCard }: EntityViewProps<T>)
         <ul className={styles.fchips} aria-label={ru.reference.currentFilter}>
           {state.filters.map((fl, i) => (
             <li key={`${fl.field}-${fl.op}-${fl.value}-${i}`} className={styles.fchip}>
-              {filterLabel(fl, OP_SYMBOL)}
+              {chipLabel(fl)}
               <button
                 type="button"
-                aria-label={`${ru.reference.removeFilter}: ${filterLabel(fl, OP_SYMBOL)}`}
+                aria-label={`${ru.reference.removeFilter}: ${chipLabel(fl)}`}
                 onClick={() => setState({ ...state, filters: state.filters.filter((_, j) => j !== i) })}
               >
                 ×

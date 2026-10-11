@@ -106,7 +106,7 @@ describe('личные входы целиком', () => {
 
       const polina = await app.login('p_ivanova', PASSWORD);
       expect(polina.status).toBe(302);
-      expect(await (await app.api(polina.cookie!, 'me')).json()).toEqual({ role: 'admin' });
+      expect(await (await app.api(polina.cookie!, 'me')).json()).toMatchObject({ role: 'admin' });
       // Обычный сотрудник раздел «Настройки» не видит.
       expect((await app.api(polina.cookie!, 'settings/staff')).status).toBe(403);
       expect((await app.api(polina.cookie!, 'requests')).status).toBe(200);
@@ -198,7 +198,7 @@ describe('личные входы целиком', () => {
     try {
       const regular = await app.login('mbv_admin', SHARED.regular);
       expect(regular.status).toBe(302);
-      expect(await (await app.api(regular.cookie!, 'me')).json()).toEqual({ role: 'admin' });
+      expect(await (await app.api(regular.cookie!, 'me')).json()).toMatchObject({ role: 'admin' });
     } finally { app.server.close(); }
   });
 });

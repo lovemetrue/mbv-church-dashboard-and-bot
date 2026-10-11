@@ -99,6 +99,21 @@ export function ActionDialogs({ r, act }: { r: RequestItem; act: RequestActionsS
       </Modal>
     );
   }
+  if (dialog.kind === 'confirm') {
+    const { group } = dialog;
+    return (
+      <Modal title={ru.requests.alt.confirmTitle} onClose={act.close}>
+        <p>{ru.requests.alt.confirmQuestion(r.fio, group.code, group.leader)}</p>
+        {notice}
+        <div className={styles.dialogFoot}>
+          <Button onClick={act.close}>{a.cancel}</Button>
+          <Button variant="primary" disabled={act.pending} onClick={() => void act.approve(group)}>
+            {ru.requests.alt.confirmYes}
+          </Button>
+        </div>
+      </Modal>
+    );
+  }
   return (
     <Modal title={a.fullTitle} onClose={act.close}>
       <p>{a.fullQuestion}</p>

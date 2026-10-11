@@ -3,7 +3,7 @@ import { formatDateFull, formatPhone, groupLabel, healthTone } from '../../entit
 import { useGroups } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
 import { useAppNav } from '../../shared/nav';
-import { Button, Drawer, DrawerSection, KeyValue, LoadingState, Meter, Pill, type KvRow } from '../../shared/ui';
+import { Button, Drawer, DrawerSection, KeyValue, LoadingState, Meter, NewGroupIcon, Pill, type KvRow } from '../../shared/ui';
 import styles from './Reference.module.css';
 
 const noValue = <span className={styles.note}>{ru.reference.notSpecified}</span>;
@@ -55,7 +55,17 @@ export function GroupCard({ g, onClose }: { g: GroupItem; onClose: () => void })
   return (
     <Drawer
       label={`Карточка группы ${groupLabel(g)}`}
-      title={`Группа ${groupLabel(g)}`}
+      title={
+        <>
+          {`Группа ${groupLabel(g)}`}
+          {g.isNew && (
+            <>
+              {' '}
+              <NewGroupIcon />
+            </>
+          )}
+        </>
+      }
       subtitle={[g.leader, g.district, g.metro].filter(Boolean).join(' · ')}
       onClose={onClose}
     >

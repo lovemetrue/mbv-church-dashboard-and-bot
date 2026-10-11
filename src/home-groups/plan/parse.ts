@@ -113,3 +113,76 @@ export function formatWhen(day: Day | null, slot: Slot | null): string | null {
   if (day && slot) return `${day}, ${slot}`;
   return day ?? slot ?? null;
 }
+
+// ── удобное время человека, свободным текстом ───────────────────────────────
+
+const WEEK: readonly Day[] = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+const dayIndex = (day: Day): number => WEEK.indexOf(day);
+
+/** Основа слова → день, для диапазонов «пн-пт» и «с понедельника по среду». */
+function dayOfWord(word: string): Day | null {
+  const hit = DAY_STEMS.find(([pattern]) => pattern.test(` ${word}`));
+  return hit ? hit[1] : null;
+}
+
+/** Дни от `from` до `to` включительно, через воскресенье («пт-пн» — Пт, Сб, Вс, Пн). */
+function dayRange(from: Day, to: Day): Day[] {
+  const out: Day[] = [];
+  for (let i = dayIndex(from); ; i = (i + 1) % 7) {
+    out.push(WEEK[i]!);
+    if (i === dayIndex(to)) break;
+  }
+  return out;
+}
+
+const SLOT_FOR_HOUR = (hour: number): Slot => (hour < 12 ? 'утро' : hour < 17 ? 'день' : 'вечер');
+
+/**
+ * Дни и время суток из того, что человек написал: «пн, ср — с 17 до 22 часов», «по вечерам»,
+ * «выходные», «пн-пт после 18». Отвечает честно «не знаю»: нет дней — пустой список, неясное время
+ * (утром или вечером) — null. Диапазон часов относим к времени суток по середине («с 10 до 18» — день),
+ * одиночный час — по нему самому («после 18» — вечер).
+ */
+export function parseHumanSchedule(raw: string | null | undefined): { days: Day[]; slot: Slot | null } {
+  // «Любой день», «каждый день» — не ограничение: слово «день» не должно читаться как время суток.
+  const text = clean(raw).replace(/(?:любой|любое|каждый)\s+день/g, ' ').trim();
+  if (!text) return { days: [], slot: null };
+
+  const days = new Set<Day>();
+  // Диапазоны: «пн-пт», «с понедельника по среду».
+  const word = '[а-я]{2,}';
+  for (const m of text.matchAll(new RegExp(`(?:с\\s+)?(${word})\\s*(?:-|–|—|по)\\s*(${word})`, 'g'))) {
+    const from = dayOfWord(m[1]!);
+    const to = dayOfWord(m[2]!);
+    if (from && to) for (const d of dayRange(from, to)) days.add(d);
+  }
+  for (const [pattern, day] of DAY_STEMS) if (pattern.test(text)) days.add(day);
+  if (/будн/.test(text)) for (const d of WEEK.slice(0, 5)) days.add(d);
+  if (/выходн/.test(text)) { days.add('Сб'); days.add('Вс'); }
+  const ordered = WEEK.filter((d) => days.has(d));
+
+  // Слова: утро / день / вечер. Несколько разных — время неясно.
+  const words = new Set<Slot>();
+  if (/утр/.test(text)) words.add('утро');
+  // «ё» уже заменена на «е», поэтому «днём» приходит как «днем».
+  if (/(?:^|[^а-я])(?:днем|день)(?![а-я])|днев/.test(text)) words.add('день');
+  if (/вечер/.test(text)) words.add('вечер');
+  if (words.size > 1) return { days: ordered, slot: null };
+  if (words.size === 1) return { days: ordered, slot: [...words][0]! };
+
+  // Часы: «с 17 до 22», «17:00-22:00», «после 18», «в 19:30». Считаем только числа, похожие на часы,
+  // и только рядом с «с», «до», «после», «в», «к» или двоеточием/дефисом: «дом 99» часом не считается.
+  const hours: number[] = [];
+  for (const m of text.matchAll(/(?:^|[^0-9а-я])(?:(?:с|до|после|в|к|около)\s+)?(\d{1,2})(?:[:.](\d{2}))?(?=\s*(?:-|–|—|до|час|ч\b|:|$|[^0-9а-я]))/g)) {
+    const prefixed = /(?:с|до|после|в|к|около)\s+$/.test(m[0].slice(0, m[0].search(/\d/)));
+    const timeLike = m[2] !== undefined || prefixed || /[-–—]/.test(m[0]) || /час|ч\b/.test(text);
+    const h = Number(m[1]);
+    if (timeLike && h >= 0 && h <= 23) hours.push(h);
+  }
+  if (hours.length >= 2) return { days: ordered, slot: SLOT_FOR_HOUR(Math.floor((hours[0]! + hours[1]!) / 2)) };
+  if (hours.length === 1) {
+    const endOnly = /до\s+\d{1,2}(?:[:.]\d{2})?\s*(?:час|ч\b)?\s*$/.test(text) && !/с\s+\d/.test(text);
+    return { days: ordered, slot: SLOT_FOR_HOUR(endOnly ? Math.max(0, hours[0]! - 1) : hours[0]!) };
+  }
+  return { days: ordered, slot: null };
+}

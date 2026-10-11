@@ -1,0 +1,359 @@
+import { act, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { App } from '../../app/App';
+import { renderAt, stubFetchWithFixtures, currentSearch } from '../../test/render';
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+const meOf = (legacyUrl: string | null, role: 'admin' | 'super' = 'admin') => () => json({ role, legacyUrl });
+
+type FetchMock = ReturnType<typeof stubFetchWithFixtures>;
+const callsOf = (fetchMock: FetchMock) =>
+  (fetchMock.mock.calls as unknown as [RequestInfo | URL, RequestInit | undefined][]).map(([url, init]) => ({
+    path: String(url).replace(/^.*\/api\/v1\//, ''),
+    init,
+  }));
+const posts = (fetchMock: FetchMock) =>
+  callsOf(fetchMock)
+    .filter((c) => c.init?.method === 'POST')
+    .map((c) => ({ path: c.path, body: JSON.parse(String(c.init!.body)) as { fields: Record<string, string> } }));
+const getsOf = (fetchMock: FetchMock, path: string) =>
+  callsOf(fetchMock).filter((c) => c.path === path && !c.init?.method).length;
+
+/**
+ * Меню живёт в шапке и работает на любой вкладке. Тесты открывают «Справочник»: там одновременно
+ * подписаны на данные «группы», «люди» и «координаторы», а вместе с шапкой и вкладками — на «Сегодня» и «Заявки»,
+ * поэтому видно, что после создания перечитываются все списки.
+ */
+const REFERENCE = '/?tab=reference';
+
+const createButton = () => screen.getByRole('button', { name: '+ Создать' });
+
+/** Открывает меню «Создать» и ждёт, пока в нём появится пункт «Участник»: значит, /me уже ответил. */
+async function openMenu(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(createButton());
+  const menu = screen.getByRole('menu', { name: 'Что создать' });
+  await within(menu).findByRole('menuitem', { name: /Участник/ });
+  return menu;
+}
+
+async function openForm(user: ReturnType<typeof userEvent.setup>, item: 'Заявка' | 'Группа') {
+  const menu = await openMenu(user);
+  await user.click(within(menu).getByRole('menuitem', { name: item }));
+  return screen.findByRole('dialog', { name: item === 'Заявка' ? 'Новая заявка' : 'Новая группа' });
+}
+
+/** Окно открыто и списки формы уже загружены. */
+async function ready(dialog: HTMLElement) {
+  await within(dialog).findByRole('textbox', { name: /^(ФИО|ФИО ведущего)$/ });
+  return dialog;
+}
+
+describe('«+ Создать»: меню', () => {
+  test('кнопка «Создать» открывает меню с тремя пунктами', async () => {
+    stubFetchWithFixtures({ me: meOf('https://old.example.org') });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const button = createButton();
+    expect(button).toBeEnabled();
+    expect(button).toHaveAttribute('aria-haspopup', 'menu');
+    expect(button).toHaveAttribute('aria-expanded', 'false');
+    await user.click(button);
+    expect(button).toHaveAttribute('aria-expanded', 'true');
+    const menu = screen.getByRole('menu', { name: 'Что создать' });
+    await within(menu).findByRole('menuitem', { name: /Участник/ });
+    expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual([
+      'Заявка',
+      'Группа',
+      expect.stringContaining('Участник (регистрация)'),
+    ]);
+  });
+
+  test('пока ответ /me не пришёл, в меню нет пункта «Участник»', async () => {
+    stubFetchWithFixtures({ me: () => new Promise<Response>(() => {}) });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    await user.click(createButton());
+    const menu = screen.getByRole('menu', { name: 'Что создать' });
+    expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Заявка', 'Группа']);
+  });
+
+  test('«Участник (регистрация)» ведёт на legacyUrl/registration в новой вкладке', async () => {
+    stubFetchWithFixtures({ me: meOf('https://old.example.org') });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const menu = await openMenu(user);
+    const link = within(menu).getByRole('menuitem', { name: /Участник/ });
+    expect(link).toHaveAttribute('href', 'https://old.example.org/registration');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link.getAttribute('rel')).toContain('noopener');
+  });
+
+  test('без адреса старого дашборда «Участник» отключён и объясняет почему', async () => {
+    stubFetchWithFixtures({ me: meOf(null) });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const menu = await openMenu(user);
+    const item = within(menu).getByRole('menuitem', { name: /Участник/ });
+    expect(item).toHaveAttribute('aria-disabled', 'true');
+    expect(item).not.toHaveAttribute('href');
+    expect(item).toHaveAccessibleDescription('Регистрация участников пока в старом дашборде, адрес не настроен');
+  });
+
+  test('Esc закрывает меню и возвращает фокус на кнопку', async () => {
+    stubFetchWithFixtures({ me: meOf(null) });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    await openMenu(user);
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(createButton()).toHaveFocus();
+    expect(createButton()).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  test('стрелки переходят по пунктам по кругу, а клик вне меню его закрывает', async () => {
+    stubFetchWithFixtures({ me: meOf('https://old.example.org') });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const menu = await openMenu(user);
+    const [request, group, member] = within(menu).getAllByRole('menuitem');
+    expect(request).toHaveFocus();
+    await user.keyboard('{ArrowDown}');
+    expect(group).toHaveFocus();
+    await user.keyboard('{ArrowDown}');
+    expect(member).toHaveFocus();
+    await user.keyboard('{ArrowDown}');
+    expect(request).toHaveFocus();
+    await user.keyboard('{ArrowUp}');
+    expect(member).toHaveFocus();
+    await user.click(document.body);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+});
+
+describe('«+ Создать»: заявка', () => {
+  test('форма заявки не отправляется без ФИО и говорит об этом', async () => {
+    const fetchMock = stubFetchWithFixtures({ me: meOf(null) });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const dialog = await ready(await openForm(user, 'Заявка'));
+    await user.click(within(dialog).getByRole('button', { name: 'Создать заявку' }));
+    const field = within(dialog).getByRole('textbox', { name: 'ФИО' });
+    expect(field).toHaveAttribute('aria-invalid', 'true');
+    expect(within(dialog).getByText('Заполните поле «ФИО».')).toBeInTheDocument();
+    expect(field).toHaveFocus();
+    expect(posts(fetchMock)).toHaveLength(0);
+  });
+
+  test('отправка шлёт только заполненные поля: пустые не уходят, значения по умолчанию на месте', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-09T12:00:00'));
+    const fetchMock = stubFetchWithFixtures({
+      me: meOf(null),
+      'requests/create': () => json({ ok: true, id: 101 }),
+    });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const dialog = await ready(await openForm(user, 'Заявка'));
+    await user.type(within(dialog).getByRole('textbox', { name: 'ФИО' }), '  Мария Соколова ');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Телефон' }), '+7 911 124 20 15');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Возраст' }), '25-40');
+    await user.click(within(dialog).getByRole('button', { name: 'Создать заявку' }));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect(posts(fetchMock)[0]).toEqual({
+      path: 'requests/create',
+      body: {
+        fields: {
+          fio: 'Мария Соколова',
+          type: 'join_group',
+          status: 'Новая',
+          phone: '+7 911 124 20 15',
+          age: '25-40',
+          requestedAt: '2026-10-09',
+          source: 'Дашборд',
+        },
+      },
+    });
+  });
+
+  test('успех закрывает окно, перечитывает данные и показывает «Заявка №N создана» с кнопкой «Открыть»', async () => {
+    const fetchMock = stubFetchWithFixtures({
+      me: meOf(null),
+      'requests/create': () => json({ ok: true, id: 101 }),
+    });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    await screen.findByText(/Распределено/);
+    const before = {
+      requests: getsOf(fetchMock, 'requests'),
+      today: getsOf(fetchMock, 'today'),
+      groups: getsOf(fetchMock, 'groups'),
+      people: getsOf(fetchMock, 'people'),
+    };
+    const dialog = await ready(await openForm(user, 'Заявка'));
+    await user.type(within(dialog).getByRole('textbox', { name: 'ФИО' }), 'Мария Соколова');
+    await user.click(within(dialog).getByRole('button', { name: 'Создать заявку' }));
+
+    const notice = await screen.findByRole('status', { name: 'Заявка №101 создана' });
+    expect(screen.queryByRole('dialog', { name: 'Новая заявка' })).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(getsOf(fetchMock, 'requests')).toBeGreaterThan(before.requests);
+      expect(getsOf(fetchMock, 'today')).toBeGreaterThan(before.today);
+      expect(getsOf(fetchMock, 'groups')).toBeGreaterThan(before.groups);
+      expect(getsOf(fetchMock, 'people')).toBeGreaterThan(before.people);
+    });
+
+    await user.click(within(notice).getByRole('button', { name: 'Открыть' }));
+    expect(currentSearch().get('tab')).toBe('requests');
+    expect(currentSearch().get('req')).toBe('101');
+    expect(screen.queryByRole('status', { name: 'Заявка №101 создана' })).not.toBeInTheDocument();
+  });
+
+  test('отказ сервера показывается его текстом, окно и введённое остаются', async () => {
+    stubFetchWithFixtures({
+      me: meOf(null),
+      'requests/create': () =>
+        json({ error: 'bad_request', message: 'Дата заявки — в виде 2026-08-27.' }, 400),
+    });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const dialog = await ready(await openForm(user, 'Заявка'));
+    await user.type(within(dialog).getByRole('textbox', { name: 'ФИО' }), 'Мария Соколова');
+    await user.click(within(dialog).getByRole('button', { name: 'Создать заявку' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Дата заявки — в виде 2026-08-27.');
+    expect(within(dialog).getByRole('textbox', { name: 'ФИО' })).toHaveValue('Мария Соколова');
+    expect(within(dialog).getByRole('button', { name: 'Создать заявку' })).toBeEnabled();
+  });
+
+  test('нет прав и обрыв связи объясняются своими словами', async () => {
+    let mode: 'forbidden' | 'network' = 'forbidden';
+    stubFetchWithFixtures({
+      me: meOf(null),
+      'requests/create': () => {
+        if (mode === 'network') throw new TypeError('Failed to fetch');
+        return json({ error: 'forbidden', message: 'служебный текст' }, 403);
+      },
+    });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const dialog = await ready(await openForm(user, 'Заявка'));
+    await user.type(within(dialog).getByRole('textbox', { name: 'ФИО' }), 'Мария Соколова');
+    await user.click(within(dialog).getByRole('button', { name: 'Создать заявку' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Нет прав создавать записи с этого входа.');
+    mode = 'network';
+    await user.click(within(dialog).getByRole('button', { name: 'Создать заявку' }));
+    await waitFor(() => expect(within(dialog).getByRole('alert')).toHaveTextContent('Нет связи с сервером'));
+  });
+
+  test('двойное нажатие шлёт один запрос, а кнопки на время запроса заблокированы', async () => {
+    let release: () => void = () => {};
+    const fetchMock = stubFetchWithFixtures({
+      me: meOf(null),
+      'requests/create': () =>
+        new Promise<Response>((resolve) => {
+          release = () => resolve(json({ ok: true, id: 7 }));
+        }),
+    });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const dialog = await ready(await openForm(user, 'Заявка'));
+    await user.type(within(dialog).getByRole('textbox', { name: 'ФИО' }), 'Мария Соколова');
+    const submit = within(dialog).getByRole('button', { name: 'Создать заявку' });
+    await user.dblClick(submit);
+    await user.keyboard('{Enter}');
+    expect(posts(fetchMock)).toHaveLength(1);
+    expect(within(dialog).getByRole('button', { name: 'Создаём…' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Отмена' })).toBeDisabled();
+    await act(async () => release());
+    expect(await screen.findByRole('status', { name: 'Заявка №7 создана' })).toBeInTheDocument();
+    expect(posts(fetchMock)).toHaveLength(1);
+  });
+
+  test('если списки формы не загрузились, есть кнопка «Повторить» и форма появляется после неё', async () => {
+    let fail = true;
+    const { fixtureResponse } = await import('../../fixtures');
+    stubFetchWithFixtures({
+      me: meOf(null),
+      'form-meta': () => (fail ? new Response('{}', { status: 500 }) : json(fixtureResponse('form-meta'))),
+    });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const menu = await openMenu(user);
+    await user.click(within(menu).getByRole('menuitem', { name: 'Заявка' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Новая заявка' });
+    expect(await within(dialog).findByText('Не удалось загрузить списки для формы.')).toBeInTheDocument();
+    fail = false;
+    await user.click(within(dialog).getByRole('button', { name: 'Повторить' }));
+    expect(await within(dialog).findByRole('textbox', { name: 'ФИО' })).toBeInTheDocument();
+  });
+});
+
+describe('«+ Создать»: группа', () => {
+  test('форма группы шлёт нужные имена полей, а адрес лежит в отдельном блоке внизу', async () => {
+    const fetchMock = stubFetchWithFixtures({
+      me: meOf(null),
+      'groups/create': () => json({ ok: true, id: 13 }),
+    });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const dialog = await ready(await openForm(user, 'Группа'));
+
+    const addressBlock = within(dialog).getByRole('group', { name: 'Адрес (виден только здесь)' });
+    const address = within(addressBlock).getByRole('textbox', { name: 'Адрес' });
+    expect(within(dialog).getAllByRole('textbox', { name: 'Адрес' })).toHaveLength(1);
+    // Блок адреса идёт после всех остальных полей, прямо перед кнопками.
+    const comment = within(dialog).getByRole('textbox', { name: 'Комментарий' });
+    expect(comment.compareDocumentPosition(addressBlock) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await user.type(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' }), 'Ольга Крылова');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Район' }), 'Приморский');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Формат группы' }), 'Молодежная');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'День' }), 'Вт');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Время' }), '19:00');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Сколько человек' }), '8');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Координатор' }), 'Петров Г.');
+    await user.type(address, 'Комендантский пр., 12');
+    await user.click(within(dialog).getByRole('button', { name: 'Создать группу' }));
+
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect(posts(fetchMock)[0]).toEqual({
+      path: 'groups/create',
+      body: {
+        fields: {
+          leader: 'Ольга Крылова',
+          district: 'Приморский',
+          format: 'Молодежная',
+          status: 'Функционирует',
+          day: 'Вт',
+          time: '19:00',
+          people: '8',
+          coordinator: 'Петров Г.',
+          address: 'Комендантский пр., 12',
+        },
+      },
+    });
+
+    const notice = await screen.findByRole('status', { name: 'Группа ДГ-0013 создана' });
+    await user.click(within(notice).getByRole('button', { name: 'Открыть' }));
+    expect(currentSearch().get('tab')).toBe('reference');
+    expect(currentSearch().get('rec')).toBe('13');
+  });
+
+  test('группа не отправляется, пока не выбраны район и формат', async () => {
+    const fetchMock = stubFetchWithFixtures({ me: meOf(null) });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const dialog = await ready(await openForm(user, 'Группа'));
+    await user.type(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' }), 'Ольга Крылова');
+    await user.click(within(dialog).getByRole('button', { name: 'Создать группу' }));
+    expect(within(dialog).getByText('Выберите значение в поле «Район».')).toBeInTheDocument();
+    expect(within(dialog).getByRole('combobox', { name: 'Район' })).toHaveFocus();
+    expect(posts(fetchMock)).toHaveLength(0);
+  });
+});

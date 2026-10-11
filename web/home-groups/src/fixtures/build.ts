@@ -39,9 +39,12 @@ import {
   RAW_GROUPS,
   RAW_REQUESTS,
   SERVANTS,
+  UNKNOWN_AGE,
+  UNKNOWN_DISTRICT,
   type RawGroup,
   type RawRequest,
 } from './raw';
+import { requestExtras } from './requestExtras';
 
 const DEFAULT_CAPACITY = 10;
 const WEIGHTS = { district: 40, age: 25, time: 20, street: 15 };
@@ -65,6 +68,7 @@ export function groupBrief(g: RawGroup): GroupBrief {
     capacity: capOf(g),
     free: freeOf(g),
     format: g.format,
+    isNew: g.isNew,
   };
 }
 
@@ -236,6 +240,8 @@ export function buildPlan(requests: RawRequest[] = RAW_REQUESTS, groups: RawGrou
     const confidence = Math.round(pick.score * (0.55 + 0.45 * (kn / 4)));
     byRequest.set(r.id, {
       proposal: {
+        // Закреплены предложения для заявок, которые ждут давно: их подбор уже запускали.
+        saved: (r.waitingDays ?? 0) >= 2,
         // В фикстурах предложения всегда считает сервис: языковой модели («agent») здесь нет.
         source: 'script',
         main: toCandidate(pick, confidence),
@@ -286,7 +292,7 @@ export function buildRequests(): RequestsView {
       id: r.id,
       fio: r.fio,
       phone: r.phone,
-      ageLabel: r.ageLabel,
+      ageLabel: r.ageLabel || null,
       place: r.place,
       district: r.district,
       days: r.days,
@@ -300,6 +306,7 @@ export function buildRequests(): RequestsView {
       dataFill: [!!r.district, !!r.age, r.days.length > 0 || !!r.slot, !!r.street],
       proposal: entry?.proposal ?? null,
       noPlan: entry?.noPlan ?? null,
+      ...requestExtras(r),
       finalGroup: fin ? groupBrief(fin) : null,
       finalGroupText: r.finalGroupText,
       responsible: entry?.responsible || null,
@@ -315,7 +322,8 @@ export function buildRequests(): RequestsView {
   const matching: MatchingStatus = {
     auto: false,
     lastRun: null,
-    waiting: items.filter((x) => x.bucket !== 'done' && x.proposal).length,
+    waiting: items.filter((x) => x.bucket !== 'done' && x.proposal && !x.proposal.saved).length,
+    saved: items.filter((x) => x.bucket !== 'done' && x.proposal?.saved).length,
   };
   return { generatedAt: GENERATED_AT, matching, items, counters };
 }
@@ -324,18 +332,27 @@ export function buildToday(): TodayView {
   const { items, counters } = buildRequests();
   const open = items.filter((i) => i.bucket !== 'done');
 
-  const matrix: MatrixRow[] = DISTRICTS.map((district) => ({
+  // Особая строка и особая колонка: заявки без района / без возраста. Групп для них не подбирают,
+  // поэтому в таких клетках только спрос (см. контракт, MatrixRow).
+  const ageColumns = [...AGE_COLUMNS, UNKNOWN_AGE];
+  const matrix: MatrixRow[] = [...DISTRICTS, UNKNOWN_DISTRICT].map((district) => ({
     district,
-    cells: AGE_COLUMNS.map((age) => {
-      const demand = open.filter((r) => r.district === district && ageKey(r.ageLabel) === age).length;
-      const supply = RAW_GROUPS.filter((g) => g.district === district && accepting(g) && g.ages.includes(age)).reduce(
-        (s, g) => s + freeOf(g),
-        0,
-      );
+    // Места района без двойного счёта: каждая принимающая группа один раз.
+    supplyTotal: RAW_GROUPS.filter((g) => g.district === district && accepting(g) && freeOf(g) > 0).reduce((s, g) => s + freeOf(g), 0),
+    cells: ageColumns.map((age) => {
+      const requestIds = open
+        .filter((r) => (r.district ?? UNKNOWN_DISTRICT) === district && (ageKey(r.ageLabel) ?? UNKNOWN_AGE) === age)
+        .map((r) => r.id);
+      const known = district !== UNKNOWN_DISTRICT && age !== UNKNOWN_AGE;
+      const groups = known
+        ? RAW_GROUPS.filter((g) => g.district === district && accepting(g) && freeOf(g) > 0 && g.ages.includes(age))
+        : [];
+      const demand = requestIds.length;
+      const supply = groups.reduce((s, g) => s + freeOf(g), 0);
       const net = supply - demand;
       const level: CellLevel =
         demand > 0 && supply === 0 ? 'crit' : net < 0 ? 'warn' : supply === 0 && demand === 0 ? 'zero' : 'ok';
-      return { age, demand, supply, net, level };
+      return { age, demand, supply, net, level, requestIds, groupIds: groups.map((g) => g.id) };
     }),
   }));
 
@@ -353,7 +370,7 @@ export function buildToday(): TodayView {
       district,
       requestIds: list.map((r) => r.id),
       firstNames: list.map((r) => r.fio.split(' ')[0] ?? r.fio),
-      ages: [...new Set(list.map((r) => ageKey(r.ageLabel) ?? r.ageLabel ?? ''))].sort(),
+      ages: [...new Set(list.map((r) => ageKey(r.ageLabel) ?? r.ageLabel ?? ''))].filter(Boolean).sort(),
       days: [...dayCount.entries()].sort((a, b) => b[1] - a[1]).map((e) => e[0]).slice(0, 2),
     });
   }
@@ -371,7 +388,8 @@ export function buildToday(): TodayView {
     counters,
     assigned: counters.ready + counters.callback + counters.done,
     total: items.length,
-    ageColumns: AGE_COLUMNS,
+    approvedToday: 2,
+    ageColumns,
     matrix,
     clusters,
     singles,
@@ -444,7 +462,7 @@ export function buildPeople(): PeopleView {
       key: `r${raw.id}`,
       fio: raw.fio,
       phone: raw.phone,
-      ageLabel: raw.ageLabel,
+      ageLabel: raw.ageLabel || null,
       district: raw.district,
       from: raw.source,
       mdgLabel: raw.cancelled ? 'Отказался от групп' : item?.bucket === 'done' ? 'Уже в группе' : 'Хочет в группу',

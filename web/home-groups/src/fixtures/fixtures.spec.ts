@@ -56,4 +56,33 @@ describe('фикстуры', () => {
         if (c.demand > 0 && c.supply === 0) expect(c.level).toBe('crit');
       }
   });
+
+  test('матрица содержит особую строку «Район не определён» и колонку «Возраст не указан», только со спросом', () => {
+    const t = buildToday();
+    expect(t.ageColumns.at(-1)).toBe('Возраст не указан');
+    const unknownRow = t.matrix.find((r) => r.district === 'Район не определён')!;
+    expect(unknownRow.cells.some((c) => c.demand > 0)).toBe(true);
+    const unknownAge = t.matrix.flatMap((r) => r.cells).filter((c) => c.age === 'Возраст не указан');
+    expect(unknownAge.some((c) => c.demand > 0)).toBe(true);
+    for (const c of [...unknownRow.cells, ...unknownAge]) {
+      expect(c.supply).toBe(0);
+      expect(c.groupIds).toEqual([]);
+    }
+  });
+
+  test('requestIds и groupIds клетки сходятся с её спросом и местами', () => {
+    const t = buildToday();
+    const groups = new Map(buildGroups().items.map((g) => [g.id, g]));
+    for (const row of t.matrix)
+      for (const c of row.cells) {
+        expect(c.requestIds).toHaveLength(c.demand);
+        expect(c.groupIds.reduce((s, id) => s + groups.get(id)!.free, 0)).toBe(c.supply);
+      }
+  });
+
+  test('часть групп новые, часть обычные', () => {
+    const items = buildGroups().items;
+    expect(items.some((g) => g.isNew)).toBe(true);
+    expect(items.some((g) => !g.isNew)).toBe(true);
+  });
 });

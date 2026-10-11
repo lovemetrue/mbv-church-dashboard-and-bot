@@ -10,6 +10,7 @@ export interface RequestActions {
   approve(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
   reject(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
   setNeedCall(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
+  setParams(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
 }
 
 const bad = (message: string): ActionOutcome => ({ ok: false, error: 'bad_request', message });
@@ -39,6 +40,18 @@ export function createActions(placement: PlacementRepo, opts: { defaultCapacity:
       if (typeof comment === 'string' && comment.length > 500) return bad('Комментарий слишком длинный (до 500 знаков).');
       const input: RejectBody = { groupId: body['groupId'], reason: reason as RejectReason, ...(typeof comment === 'string' ? { comment } : {}) };
       return placement.reject(requestId, input.groupId, input.reason, input.comment ?? null, actor);
+    },
+
+    async setParams(requestId, body, actor) {
+      if (!isRecord(body)) return bad('Нужно указать, что менять.');
+      const out: { street?: string | null; schedule?: string | null } = {};
+      for (const key of ['street', 'schedule'] as const) {
+        const v = body[key];
+        if (v === undefined) continue;
+        if (v !== null && typeof v !== 'string') return bad('Значение должно быть текстом или null.');
+        out[key] = v;
+      }
+      return placement.setParams(requestId, out, actor);
     },
 
     async setNeedCall(requestId, body, actor) {

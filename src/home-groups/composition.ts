@@ -16,6 +16,7 @@ import { UsersRepo } from '../db/repos/users.repo.js';
 import { createViewsSource, type ViewsSource } from './api/snapshot.js';
 import { createSettings } from '../platform/settings/service.js';
 import { realHealthSources, collectHealth } from '../platform/settings/health.js';
+import { createFormMeta, createRecordCreator } from './create.js';
 import { createLoader } from './loader.js';
 import { createMatching } from './matching/run.js';
 import type { PlanEngineApi } from './plan/types.js';
@@ -73,7 +74,10 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     ...(opts.onStaffChange ? { onChange: opts.onStaffChange } : {}),
     reportError: (source, err, context) => { void errors.record(source, err instanceof Error ? err.message : String(err), context); },
   });
-  return { views, matching, placement, settings, errors, staff, staffRepo, appSettings };
+  const requestsRepo = new RequestsRepo(db);
+  const creator = createRecordCreator({ requests: requestsRepo, groups: new GroupsRepo(db), audit: new AuditRepo(db) });
+  const formMeta = createFormMeta(new CoordinatorsRepo(db));
+  return { views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, formMeta };
 }
 
 export function composeViews(db: Pool, engine: PlanEngineApi, opts: ComposeOptions): ViewsSource {

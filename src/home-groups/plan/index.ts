@@ -1,6 +1,6 @@
 import { bucketOf, buildPlan } from './engine.js';
 import { buildMetroIndex, resolveDistrict } from './geo.js';
-import { ageColumnOf, formatWhen, parseAgeRange, parseGroupWhen } from './parse.js';
+import { ageColumnOf, formatWhen, parseAgeRange, parseGroupWhen, parseHumanSchedule } from './parse.js';
 import { DEFAULT_SETTINGS } from './settings.js';
 import { buildTodaySummary } from './summary.js';
 import type { PlanEngineApi } from './types.js';
@@ -16,6 +16,7 @@ export {
   formatWhen,
   parseAgeRange,
   parseGroupWhen,
+  parseHumanSchedule,
 } from './parse.js';
 export { DEFAULT_SETTINGS } from './settings.js';
 export { buildTodaySummary } from './summary.js';
@@ -34,6 +35,7 @@ export const engine = {
   buildMetroIndex,
   parseAgeRange,
   parseGroupWhen,
+  parseHumanSchedule,
   formatWhen,
   ageColumnOf,
 } satisfies PlanEngineApi;

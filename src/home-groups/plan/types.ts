@@ -167,6 +167,8 @@ export interface PlanEngineApi {
   parseAgeRange(text: string | null | undefined): AgeRange;
   /** День и время из колонок группы: «Четверг» + «19:00», «Среда, Четверг» + null, «Плавающий», «День»… */
   parseGroupWhen(day: string | null, time: string | null): { day: Day | null; slot: Slot | null };
+  /** «пн, ср — с 17 до 22 часов» → дни и время суток; неясное остаётся пустым / null. */
+  parseHumanSchedule(text: string | null | undefined): { days: Day[]; slot: Slot | null };
   /** «Вт, вечер» / «Вт» / «вечер» / null. */
   formatWhen(day: Day | null, slot: Slot | null): string | null;
   /** Колонка возраста для матрицы «район × возраст» (по середине диапазона); null — возраст неизвестен. */

@@ -295,20 +295,29 @@ describe('«Заявки»: «нужен звонок»', () => {
   });
 });
 
+/** Кнопки перехода между заявками списка: к действиям над заявкой они не относятся. */
+const NEIGHBOR_BUTTONS = ['← Предыдущая', 'Следующая →', 'Следующая заявка →'];
+/** Остальные кнопки карточки: карандаши параметров и раскрытие записи журнала. */
+const isAuxButton = (name: string): boolean =>
+  NEIGHBOR_BUTTONS.includes(name) || /^Изменить /.test(name) || /Заявка (создана|перенесена)/.test(name);
+
 describe('«Заявки»: какие кнопки у какой заявки', () => {
   test('у заявки без плана только «Другая группа» и «Нужен звонок»', async () => {
     const card = await openCard(11, '&bucket=human');
     const names = within(card)
       .getAllByRole('button')
-      .map((b) => b.getAttribute('aria-label') ?? b.textContent)
-      .filter((n) => n !== 'Закрыть карточку');
+      .map((b) => b.getAttribute('aria-label') ?? b.textContent ?? '')
+      .filter((n) => n !== 'Закрыть карточку' && !isAuxButton(n));
     expect(names).toEqual(['Выбрать другую группу из списка', 'Нужен звонок: отметить заявку']);
     expect(within(card).queryByText(/Пока вы не утвердили/)).not.toBeInTheDocument();
   });
 
   test('у уже утверждённой заявки кнопок действий нет', async () => {
     const card = await openCard(10);
-    const names = within(card).getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent);
+    const names = within(card)
+      .getAllByRole('button')
+      .map((b) => b.getAttribute('aria-label') ?? b.textContent ?? '')
+      .filter((n) => !isAuxButton(n));
     expect(names).toEqual(['Закрыть карточку']);
     expect(within(card).queryByText(/Пока вы не утвердили/)).not.toBeInTheDocument();
   });

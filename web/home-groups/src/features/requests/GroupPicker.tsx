@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import type { GroupBrief, GroupItem, RequestItem } from '@contracts';
 import { useGroups } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
-import { Button, ErrorState, LoadingState } from '../../shared/ui';
+import { Button, ErrorState, LoadingState, NewGroupIcon } from '../../shared/ui';
 import styles from './Requests.module.css';
 
 const a = ru.requests.act;
@@ -50,21 +50,37 @@ export function buildOptions(r: RequestItem, groups: readonly GroupItem[]): { al
 const matches = (g: GroupBrief, q: string): boolean =>
   !q || [g.code, g.leader, g.district, g.metro ?? '', g.whenText ?? ''].join(' ').toLowerCase().includes(q);
 
-function OptionRow({ o, selected, onPick }: { o: Option; selected: boolean; onPick: () => void }) {
+function OptionRow({
+  o,
+  selected,
+  pending,
+  onPick,
+  onChoose,
+}: {
+  o: Option;
+  selected: boolean;
+  pending: boolean;
+  onPick: () => void;
+  onChoose: () => void;
+}) {
   const { group: g } = o;
   const where = [g.district, g.metro, g.whenText].filter(Boolean).join(' · ');
   return (
-    <li>
+    // Кнопка стоит рядом с подписью, а не внутри неё: нажатие по подписи только отмечает строку.
+    <li className={styles.choiceRow}>
       <label className={`${styles.choice} ${o.blocked ? styles.choiceOff : ''}`}>
         <input type="radio" name="other-group" checked={selected} disabled={o.blocked !== null} onChange={onPick} />
         <span className={styles.choiceBody}>
-          <b>{g.code}</b> <span>{g.leader}</span>{' '}
+          <b>{g.code}</b> {g.isNew && <NewGroupIcon />} <span>{g.leader}</span>{' '}
           <span className={styles.note}>{where}</span>{' '}
           <span className={g.free > 0 ? styles.note : styles.noSeats}>
             {o.blocked ?? (g.free > 0 ? a.pickSeats(g.free, g.capacity) : a.pickNoSeats)}
           </span>
         </span>
       </label>
+      <Button size="sm" disabled={o.blocked !== null || pending} aria-label={a.pickChooseAria(g.code)} onClick={onChoose}>
+        {a.pickChoose}
+      </Button>
     </li>
   );
 }
@@ -103,7 +119,14 @@ export function GroupPicker({ r, pending, notice, onSubmit, onCancel }: GroupPic
         <h3 className={styles.h4}>{title}</h3>
         <ul className={styles.choices}>
           {list.map((o) => (
-            <OptionRow key={o.group.id} o={o} selected={selectedId === o.group.id} onPick={() => setSelectedId(o.group.id)} />
+            <OptionRow
+              key={o.group.id}
+              o={o}
+              selected={selectedId === o.group.id}
+              pending={pending}
+              onPick={() => setSelectedId(o.group.id)}
+              onChoose={() => onSubmit(o.group)}
+            />
           ))}
         </ul>
       </>

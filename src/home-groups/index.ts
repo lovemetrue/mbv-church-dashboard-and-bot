@@ -25,6 +25,17 @@ const env = (name: string, fallback?: string): string => {
  * базу только действиями координатора над заявками (`actions.ts`), каждое — с записью в журнал. Пароли и Redis те же — один вход на оба сервиса, но с разными куками.
  * Новых обязательных переменных нет: всё, чего не задано, берётся из значений по умолчанию.
  */
+/** Адрес старого дашборда без пути: `DASHBOARD_URL` у бота вида `http://host:8090/groups`. Нет или непонятен — null. */
+function legacyOrigin(): string | null {
+  const raw = process.env['DASHBOARD_URL']?.trim();
+  if (!raw) return null;
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return null;
+  }
+}
+
 async function main(): Promise<void> {
   const password = env('DASHBOARD_PASSWORD');
   if (password.length < 8) throw new Error('DASHBOARD_PASSWORD короче восьми символов');
@@ -58,7 +69,7 @@ async function main(): Promise<void> {
   });
 
   // План считается не чаще раза в десять секунд на всех посетителей разом.
-  const { views, matching, placement, settings, errors, staff } = composeService(db, engine, {
+  const { views, matching, placement, settings, errors, staff, creator, formMeta } = composeService(db, engine, {
     defaultCapacity, ttlMs: 10_000, timeZone: env('TIMEZONE', 'Europe/Moscow'),
     store,
     // Почта и публичный адрес необязательны: без них ссылки на пароль показываются администратору на экране.
@@ -75,6 +86,9 @@ async function main(): Promise<void> {
   const server = createHomeGroupsServer({
     auth,
     staff,
+    creator,
+    formMeta,
+    legacyUrl: legacyOrigin(),
     views,
     actions: createActions(placement, { defaultCapacity }),
     matching,

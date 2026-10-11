@@ -59,9 +59,9 @@ async function enabledSwitch(block: HTMLElement) {
 
 describe('«Заявки»: подбор для новых заявок', () => {
   test('блок показывает, сколько заявок ждут подбора, и когда подбор запускали в последний раз', async () => {
-    const { block } = await openRequests({ requests: () => json(requestsWith({ waiting: 5, lastRun: LAST_RUN })) });
-    expect(within(block).getByText('Ждут подбора: 5')).toBeInTheDocument();
-    expect(within(block).getByText(/^Последний запуск: .*\d{2}:\d{2}, предложено 4, заменено 2$/)).toBeInTheDocument();
+    const { block } = await openRequests({ requests: () => json(requestsWith({ waiting: 5, saved: 9, lastRun: LAST_RUN })) });
+    expect(within(block).getByText('Закреплено предложений: 9 · ещё не закреплено: 5')).toBeInTheDocument();
+    expect(within(block).getByText(/^Последний запуск: .*\d{2}:\d{2}, закреплено 4, заменено 2$/)).toBeInTheDocument();
     expect(within(block).queryByText('Подбор ещё не запускали')).not.toBeInTheDocument();
   });
 
@@ -77,13 +77,17 @@ describe('«Заявки»: подбор для новых заявок', () => 
     expect(within(block).getByText(/человек распределён после «Утвердить»/)).toBeInTheDocument();
   });
 
-  test('«Подобрать для новых заявок» шлёт POST, пишет итог и перечитывает заявки, «Сегодня» и группы', async () => {
+  test('«Закрепить подбор для новых заявок» шлёт POST, пишет итог и перечитывает заявки, «Сегодня» и группы', async () => {
     const { fetchMock, block } = await openRequests({ 'matching/run': runOk });
     const invalidate = vi.spyOn(client, 'invalidateQueries');
     const user = userEvent.setup();
-    await user.click(within(block).getByRole('button', { name: 'Подобрать для новых заявок' }));
+    await user.click(within(block).getByRole('button', { name: 'Закрепить подбор для новых заявок' }));
 
-    expect(await within(block).findByText('Готово: предложено 3, заменено 1, без изменений 7')).toBeInTheDocument();
+    expect(
+      await within(block).findByText(
+        'Готово: закреплено 3 новых предложений, заменено 1, без изменений 7. Заявки по-прежнему ждут вашего «Утвердить» — теперь выбранные группы не меняются сами.',
+      ),
+    ).toBeInTheDocument();
     expect(posts(fetchMock)).toEqual([{ path: 'matching/run', body: {} }]);
     await waitFor(() => expect(getsOf(fetchMock, 'requests')).toBe(2));
     // «Группы» на этой вкладке не открыты и сразу не перечитываются, но их надо пометить устаревшими:
@@ -92,7 +96,7 @@ describe('«Заявки»: подбор для новых заявок', () => 
     expect(keys).toEqual(expect.arrayContaining([['requests'], ['today'], ['groups']]));
   });
 
-  test('двойное нажатие «Подобрать» отправляет один запрос, пока первый не завершён', async () => {
+  test('двойное нажатие «Закрепить подбор» отправляет один запрос, пока первый не завершён', async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
     const { fetchMock, block } = await openRequests({
@@ -102,7 +106,7 @@ describe('«Заявки»: подбор для новых заявок', () => 
       },
     });
     const user = userEvent.setup();
-    const btn = within(block).getByRole('button', { name: 'Подобрать для новых заявок' });
+    const btn = within(block).getByRole('button', { name: 'Закрепить подбор для новых заявок' });
     await user.dblClick(btn);
     expect(posts(fetchMock)).toHaveLength(1);
     expect(btn).toBeDisabled();
@@ -111,9 +115,9 @@ describe('«Заявки»: подбор для новых заявок', () => 
     expect(posts(fetchMock)).toHaveLength(1);
   });
 
-  test('два нажатия «Подобрать» до перерисовки тоже дают один запрос: кнопка ещё не успела отключиться', async () => {
+  test('два нажатия «Закрепить подбор» до перерисовки тоже дают один запрос: кнопка ещё не успела отключиться', async () => {
     const { fetchMock, block } = await openRequests({ 'matching/run': runOk });
-    const btn = within(block).getByRole('button', { name: 'Подобрать для новых заявок' });
+    const btn = within(block).getByRole('button', { name: 'Закрепить подбор для новых заявок' });
     act(() => {
       btn.click();
       btn.click();
@@ -125,7 +129,7 @@ describe('«Заявки»: подбор для новых заявок', () => 
   test('после завершения запрос можно повторить', async () => {
     const { fetchMock, block } = await openRequests({ 'matching/run': runOk });
     const user = userEvent.setup();
-    const btn = within(block).getByRole('button', { name: 'Подобрать для новых заявок' });
+    const btn = within(block).getByRole('button', { name: 'Закрепить подбор для новых заявок' });
     await user.click(btn);
     await within(block).findByText(/^Готово: /);
     await waitFor(() => expect(btn).toBeEnabled());
@@ -138,11 +142,11 @@ describe('«Заявки»: подбор для новых заявок', () => 
       'matching/run': () => json({ error: 'bad_request', message: 'служебный текст сервера' }, 400),
     });
     const user = userEvent.setup();
-    await user.click(within(block).getByRole('button', { name: 'Подобрать для новых заявок' }));
+    await user.click(within(block).getByRole('button', { name: 'Закрепить подбор для новых заявок' }));
     const alert = await within(block).findByRole('alert');
     expect(alert).toHaveTextContent('Не получилось запустить подбор');
     expect(alert).not.toHaveTextContent('служебный текст сервера');
-    expect(within(block).getByRole('button', { name: 'Подобрать для новых заявок' })).toBeEnabled();
+    expect(within(block).getByRole('button', { name: 'Закрепить подбор для новых заявок' })).toBeEnabled();
   });
 
   test('переключатель отражает состояние matching.auto', async () => {

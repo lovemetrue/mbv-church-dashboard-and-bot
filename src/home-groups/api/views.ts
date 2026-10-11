@@ -7,10 +7,10 @@ import { groupCode } from '../../core/groups.js';
 import { formatPhone } from '../../core/phone.js';
 import type {
   Bucket, Candidate, Counters, CoordinatorItem, CoordinatorsView, GroupBrief, GroupItem, GroupsView,
-  HealthItem, LogEntry, MatchingStatus, NoPlan, PeopleView, PersonItem, Proposal, RequestItem, RequestsView, TodayView,
+  HealthItem, LogEntry, MatchingStatus, NoPlan, OriginalField, ParamInfo, PeopleView, PersonItem, Proposal, RequestItem, RequestsView, TodayView,
 } from '../contracts.js';
 import type {
-  PlanEngineApi, PlanEntry, PlanEntryProposal, PlanGroup, PlanOutput, PlanRequest, ScoredGroup,
+  Day, PlanEngineApi, PlanEntry, PlanEntryProposal, PlanGroup, PlanOutput, PlanRequest, ScoredGroup, Slot,
 } from '../plan/types.js';
 import { daysSince, localIsoDate, validIsoDate } from './dates.js';
 
@@ -108,6 +108,14 @@ function auditText(a: AuditRow): string | null {
       return `Отмечено «нужен звонок» · ${a.actor}`;
     case 'request.need_call_off':
       return `Отметка «нужен звонок» снята · ${a.actor}`;
+    case 'request.params': {
+      const parts: string[] = [];
+      if (after['street'] === true) parts.push('улица');
+      if (after['street'] === false) parts.push('правка улицы снята');
+      if (after['schedule'] === true) parts.push('удобное время');
+      if (after['schedule'] === false) parts.push('правка времени снята');
+      return `Уточнено вручную: ${parts.join(', ') || 'параметры подбора'} · ${a.actor}`;
+    }
     default:
       return null;
   }
@@ -116,6 +124,34 @@ function auditText(a: AuditRow): string | null {
 /** Число участников с учётом утверждённых после обратной связи; неизвестное остаётся неизвестным, пока никого не утвердили. */
 const effectivePeople = (people: number | null, placed: number): number | null =>
   placed > 0 ? (people ?? 0) + placed : people;
+
+/** Откуда значение: правка координатора важнее ответа из анкеты. */
+function paramInfo(manual: string | null | undefined, anketa: string | null | undefined): ParamInfo {
+  const m = nonBlank(manual);
+  if (m) return { text: m, source: 'manual' };
+  const a = nonBlank(anketa);
+  return a ? { text: a, source: 'anketa' } : { text: null, source: null };
+}
+
+/**
+ * Заявка «как пришла»: то, что человек заполнил сам (в боте или в форме), без пометок служителей.
+ * Нужна, чтобы координатор мог сверить, правильно ли система поняла карточку. Пустое не показываем.
+ */
+function originalFields(r: DashboardRequest): OriginalField[] {
+  const rows: [string, string | null][] = [
+    ['ФИО', nonBlank(r.fio)],
+    ['Телефон', displayPhone(r.phones, r.phone)],
+    ['Возраст', nonBlank(r.age)],
+    ['Район и метро (как написал)', nonBlank(r.place)],
+    ['Церковь', nonBlank(r.church)],
+    ['Ответ про малую группу', r.mdg_status ? (MDG_LABELS[r.mdg_status] ?? null) : null],
+    ['Кто ведущий', nonBlank(r.leader_name)],
+    ['Удобные дни и время', nonBlank(r.schedule)],
+    ['Улица и дом', nonBlank(r.address)],
+    ['Вопрос или сообщение', nonBlank(r.text)],
+  ];
+  return rows.filter((row): row is [string, string] => row[1] !== null).map(([label, value]) => ({ label, value }));
+}
 
 function sourceOfProposal(
   stored: { groupId: number | null; source: 'script' | 'agent' | 'manual' } | undefined, shownGroupId: number,
@@ -212,6 +248,7 @@ export function buildViewsWithPlan(
       capacity: p.capacity,
       free: Math.max(0, p.capacity - (p.people ?? 0)),
       format: nonBlank(g.format),
+      isNew: g.status === 'Кампания',
     };
   };
 
@@ -220,16 +257,25 @@ export function buildViewsWithPlan(
   // ── заявки ────────────────────────────────────────────────────────────────
   const joinRequests = input.requests.filter((r) => r.type === 'join_group');
 
+  const humanWhen = (text: string | null): { days: Day[]; slot: Slot | null } => {
+    const w = engine.parseHumanSchedule(text);
+    return { days: w.days, slot: w.slot };
+  };
+
+  /** Удобное время и улица: правка координатора важнее ответа из анкеты. */
+  const scheduleOf = (r: DashboardRequest): ParamInfo => paramInfo(r.manual_schedule, r.schedule);
+  const streetOf = (r: DashboardRequest): ParamInfo => paramInfo(r.manual_street, r.address);
+
   const planRequestOf = (r: DashboardRequest): PlanRequest => ({
     id: r.id,
     fio: nonBlank(r.fio) ?? 'Без имени',
     ageRange: engine.parseAgeRange(r.age),
     district: engine.resolveDistrict(nonBlank(r.place), metroIndex),
     place: nonBlank(r.place),
-    // Удобные дни, время и улица пока лежат в свободном тексте анкеты; разбирать его — этап B.
-    days: [],
-    slot: null,
-    street: null,
+    // Удобные дни и время — свободный текст человека или правка координатора; разбираем его честно:
+    // что неясно, остаётся пустым.
+    ...humanWhen(scheduleOf(r).text),
+    street: streetOf(r).text,
     rejectedGroupIds: [...(input.rejectedGroups?.get(r.id) ?? [])],
     avoidDays: [],
     avoidSlots: [],
@@ -268,6 +314,8 @@ export function buildViewsWithPlan(
     if (!main) return null;
     const displacedGroup = e.displaced ? brief(e.displaced.groupId) : null;
     return {
+      // Закреплено, если в «предварительно» уже лежит предложение именно на эту группу.
+      saved: input.activeProposals?.get(requestId)?.groupId === main.group.id,
       // Источник — тот, кто предложил эту группу и сохранил предложение; иначе это свежий расчёт.
       source: sourceOfProposal(input.activeProposals?.get(requestId), main.group.id),
       main,
@@ -326,6 +374,9 @@ export function buildViewsWithPlan(
       district: pr.district,
       days: pr.days,
       slot: pr.slot,
+      scheduleInfo: scheduleOf(r),
+      streetInfo: streetOf(r),
+      original: originalFields(r),
       street: pr.street,
       source: sourceLabel(r.origin, r.source),
       status: r.status,
@@ -440,15 +491,23 @@ export function buildViewsWithPlan(
   // Ждут подбора: у открытой заявки есть что предложить, но предложение ещё не сохранено
   // (новая заявка или прежнее стало недоступно). Их и подбирает кнопка или автоматический запуск.
   let waiting = 0;
+  let saved = 0;
   for (const r of openRequests) {
     const entry = plan.entries.get(r.id);
-    if (entry?.kind === 'proposal' && input.activeProposals?.get(r.id)?.groupId !== entry.main.groupId) waiting += 1;
+    if (entry?.kind !== 'proposal') continue;
+    if (input.activeProposals?.get(r.id)?.groupId === entry.main.groupId) saved += 1;
+    else waiting += 1;
   }
+  // Утверждено сегодня: записи журнала с датой «сегодня» в поясе сервиса.
+  const approvedToday = (input.audit ?? []).filter(
+    (a) => a.action === 'request.approve' && localIsoDate(a.at, timeZone) === today,
+  ).length;
 
   const views: Views = {
     today: {
       generatedAt,
       counters,
+      approvedToday,
       // «Распределено X из Y»: отказ из знаменателя убираем — человек ушёл, распределять его не надо.
       assigned: counters.ready + counters.callback + counters.done,
       total: joinRequests.length - counters.cancelled,
@@ -459,7 +518,7 @@ export function buildViewsWithPlan(
     },
     requests: {
       generatedAt,
-      matching: { auto: input.matching?.auto ?? false, lastRun: input.matching?.lastRun ?? null, waiting },
+      matching: { auto: input.matching?.auto ?? false, lastRun: input.matching?.lastRun ?? null, waiting, saved },
       items: requestItems,
       counters,
     },

@@ -7,6 +7,7 @@ import {
   fixtureStaffDelivery,
   fixtureSuggestLogin,
 } from './settings';
+import { buildFormMeta } from './formMeta';
 import { buildCoordinators, buildGroups, buildPeople, buildRequests, buildToday } from './build';
 
 /** Ответ «сервера» в режиме фикстур. Путь — как в apiGet: «today», «requests»… */
@@ -14,7 +15,9 @@ export function fixtureResponse(path: string): unknown {
   switch (path.replace(/^\/+/, '').replace(/\/+$/, '')) {
     case 'me':
       // В демо вход полный, иначе вкладки «Настройки» не видно.
-      return { role: 'super' };
+      return { role: 'super', legacyUrl: 'https://church.example.org' };
+    case 'form-meta':
+      return buildFormMeta();
     case 'today':
       return buildToday();
     case 'requests':
@@ -51,6 +54,11 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
   }
   const input = (body ?? {}) as { fullName?: string; email?: string; id?: number };
   switch (clean) {
+    // Номер новой записи в демо один и тот же: данные не меняются, важно лишь показать подтверждение.
+    case 'requests/create':
+      return { ok: true, id: 101 };
+    case 'groups/create':
+      return { ok: true, id: 13 };
     case 'settings/staff/suggest':
       return { ok: true, login: fixtureSuggestLogin(input.fullName ?? '') };
     case 'settings/staff/create':

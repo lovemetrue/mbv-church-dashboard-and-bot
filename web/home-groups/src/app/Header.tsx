@@ -1,5 +1,6 @@
 import { useId } from 'react';
 import { FIXTURES_MODE, LOGOUT_URL } from '../shared/api/base';
+import { CreateMenu } from '../features/create';
 import { useToday } from '../shared/api/queries';
 import { ru } from '../shared/i18n/ru';
 import { useAppNav } from '../shared/nav';
@@ -51,11 +52,7 @@ export function Header() {
         </span>
       )}
 
-      <div className={styles.create}>
-        <Button variant="primary" soon>
-          {ru.header.create}
-        </Button>
-      </div>
+      <CreateMenu />
 
       <div className={styles.themeBox}>
         <label htmlFor={themeId} className={styles.themeLabel}>

@@ -83,6 +83,16 @@ export function useAppNav() {
       if (b !== 'all') next.set('bucket', b);
       return next;
     }),
+    /**
+     * «Начать обзвон»: вкладка «Заявки» с отбором «К обзвону». firstId — первая заявка очереди,
+     * если вызывающий её знает: она сразу открывается в боковой панели.
+     */
+    goQueue: (firstId?: number) => setParams((prev) => {
+      const next = tabParams(prev, 'requests');
+      next.set('bucket', 'queue');
+      if (firstId !== undefined) next.set('req', String(firstId));
+      return next;
+    }),
     setEntity: (e: EntityId) =>
       setParams((prev) => {
         const next = tabParams(prev, 'reference');

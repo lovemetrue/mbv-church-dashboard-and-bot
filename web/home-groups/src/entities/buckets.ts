@@ -13,10 +13,14 @@ export const BUCKET_LABEL: Record<Bucket, string> = {
 export const LIST_BUCKETS = ['ready', 'callback', 'human', 'done'] as const satisfies readonly Bucket[];
 export type ListBucket = (typeof LIST_BUCKETS)[number];
 
-export type BucketFilter = 'all' | ListBucket;
+/**
+ * 'queue' — «К обзвону»: корзины ready и callback вместе, сначала callback. Это не корзина заявки
+ * (у заявки её нет), а отбор для кнопки «Начать обзвон», поэтому в LIST_BUCKETS его нет.
+ */
+export type BucketFilter = 'all' | 'queue' | ListBucket;
 
 export function isBucketFilter(v: string | null | undefined): v is BucketFilter {
-  return v === 'all' || (LIST_BUCKETS as readonly string[]).includes(v ?? '');
+  return v === 'all' || v === 'queue' || (LIST_BUCKETS as readonly string[]).includes(v ?? '');
 }
 
 /** «Открытые» — те, с которыми ещё есть что делать: счётчик на вкладке «Заявки». */

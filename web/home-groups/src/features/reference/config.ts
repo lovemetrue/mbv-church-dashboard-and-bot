@@ -1,6 +1,6 @@
 import type { CoordinatorItem, GroupItem, PersonItem } from '@contracts';
 import { formatDateFull, formatPhone } from '../../entities/format';
-import type { FieldDef, Preset, Row } from '../../shared/filters';
+import type { FieldDef, Filter, Preset, Row } from '../../shared/filters';
 import type { EntityId } from '../../shared/nav';
 import { ru } from '../../shared/i18n/ru';
 
@@ -13,6 +13,12 @@ export interface EntityConfig<T> {
   columns: string[];
   defaultColumns: string[];
   presets: Preset[];
+  /**
+   * Отбор, который стоит, пока человек сам не выбрал другой («Закрыта» у групп скрыта). В адрес он
+   * не пишется: пустой адрес и значит «по умолчанию». Снять его можно, но при следующем открытии
+   * справочника он применится снова (см. useTableState).
+   */
+  defaultFilters?: Filter[];
   /** Служебный ключ записи `_key` кладётся в строку: по нему открывается карточка. */
   toRow: (item: T) => Row;
   keyOf: (item: T) => string;
@@ -58,6 +64,8 @@ export const groupsConfig: EntityConfig<GroupItem> = {
     'Принимает новых', 'Не направлять', 'Формат', 'Состав', 'Координатор', 'Проверена, дн.', 'Комментарий',
   ],
   defaultColumns: ['№', 'Ведущий', 'Район', 'Возраст', 'Когда', 'Места', 'Статус', 'Здоровье'],
+  // Закрытые группы нужны редко и только мешают в общем списке; находятся, если снять отбор.
+  defaultFilters: [{ field: 'Статус', op: 'ne', value: 'Закрыта' }],
   presets: [
     {
       name: 'Принимают новых',
@@ -90,6 +98,7 @@ export const groupsConfig: EntityConfig<GroupItem> = {
     Места: `${g.people ?? '?'}/${g.capacity}`,
     // Служебное, как `_key`: в столбцы и фильтры не попадает, нужно только таблице для пометки.
     _placedNew: g.placedNew,
+    _isNew: g.isNew ? 1 : 0,
     'Мест свободно': g.free,
     Вместимость: g.capacity,
     Статус: g.status,

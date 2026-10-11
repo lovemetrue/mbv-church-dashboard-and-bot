@@ -1,3 +1,4 @@
+import { parseHumanSchedule } from '../../src/home-groups/plan/parse.js';
 import type {
   AgeRange, Day, PlanEngineApi, PlanEntry, PlanGroup, PlanInput, PlanOutput, PlanSettings, Slot, SummaryInput,
 } from '../../src/home-groups/plan/types.js';
@@ -115,6 +116,10 @@ export function createFakeEngine(options: FakeEngineOptions = {}): { engine: Pla
     parseAgeRange(text): AgeRange {
       const m = text?.match(/(\d+)\D+(\d+)/);
       return m ? [Number(m[1]), Number(m[2])] : null;
+    },
+
+    parseHumanSchedule(text) {
+      return parseHumanSchedule(text);
     },
 
     parseGroupWhen(day, time) {

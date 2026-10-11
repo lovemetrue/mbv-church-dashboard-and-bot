@@ -367,6 +367,52 @@ describe('создание и параметры подбора через HTTP 
     } finally { app.server.close(); }
   });
 
+  test('правка заявки, «в работе у» и итог звонка видны в ленте и меняют заявку; журнал без значений', async () => {
+    const r = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, fio, phone, place, origin) VALUES ('join_group', 'Новая', 'Мария', '+79110001122', 'Приморский', 'ui') RETURNING id`)).rows[0]!.id;
+    const app = await startAdmin();
+    try {
+      expect((await app.post(`requests/${r}/edit`, { phone: '8 921 555-00-11', age: '36-45' })).status).toBe(200);
+      expect((await app.post(`requests/${r}/assign`, { responsible: 'Анна Смирнова' })).status).toBe(200);
+      expect((await app.post(`requests/${r}/call`, { result: 'no_answer', comment: 'занято' })).status).toBe(200);
+      const item = (await app.get('requests')).items.find((i: { id: number }) => i.id === r);
+      expect(item).toMatchObject({ phone: '+7 921 555-00-11', ageLabel: '36-45', responsible: 'Анна Смирнова', callback: true });
+      const texts = item.log.map((l: { text: string }) => l.text);
+      expect(texts).toContain('Исправлено вручную: телефон, возраст · mbv_admin');
+      expect(texts).toContain('В работе у: Анна Смирнова · mbv_admin');
+      expect(texts).toContain('Звонок: не дозвонились («занято») · mbv_admin');
+      expect(JSON.stringify(item.log)).not.toContain('921');
+    } finally { app.server.close(); }
+  });
+
+  test('плохие тела edit/assign/call отвечают 400 и ничего не меняют', async () => {
+    const r = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, fio, origin) VALUES ('join_group', 'Новая', 'Мария', 'ui') RETURNING id`)).rows[0]!.id;
+    const app = await startAdmin();
+    try {
+      for (const [path, body] of [
+        ['edit', {}], ['edit', { phone: 5 }], ['edit', { phone: 'позвонить маме' }], ['assign', {}], ['assign', { responsible: 7 }],
+        ['call', {}], ['call', { result: 'потом' }], ['call', { result: 'reached', comment: 5 }],
+      ] as const) {
+        expect((await app.post(`requests/${r}/${path}`, body)).status, `${path} ${JSON.stringify(body)}`).toBe(400);
+      }
+      expect((await db.query('SELECT count(*)::int AS n FROM audit_log')).rows[0].n).toBe(0);
+    } finally { app.server.close(); }
+  });
+
+  test('после правки района закреплённое предложение помечается «данные изменились»', async () => {
+    await db.query(`INSERT INTO groups (leader, district, format, status, people, source) VALUES ('Иван', 'Приморский', 'Основная церковь', 'Функционирует', 3, 'ui')`);
+    const r = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, fio, place, age, origin) VALUES ('join_group', 'Новая', 'Мария', 'Приморский', '30', 'ui') RETURNING id`)).rows[0]!.id;
+    const app = await startAdmin();
+    try {
+      await app.post('matching/run', {});
+      const pinned = (await app.get('requests')).items.find((i: { id: number }) => i.id === r);
+      expect(pinned.proposal).toMatchObject({ saved: true, dataChanged: false });
+      await app.post(`requests/${r}/edit`, { place: 'Выборгский' });
+      const after = (await app.get('requests')).items.find((i: { id: number }) => i.id === r);
+      expect(after.proposal?.saved ?? false).toBe(false);
+      expect(after.proposal?.dataChanged ?? true).toBe(true);
+    } finally { app.server.close(); }
+  });
+
   test('«закреплено»: после запуска подбора предложение помечено закреплённым, счётчики сходятся', async () => {
     await db.query(`INSERT INTO groups (leader, district, format, status, people, source) VALUES ('Иван', 'Приморский', 'Основная церковь', 'Функционирует', 3, 'ui')`);
     await db.query(`INSERT INTO requests (type, status, fio, place, age, origin) VALUES ('join_group', 'Новая', 'Мария', 'Приморский', '30', 'ui')`);

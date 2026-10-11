@@ -1,4 +1,5 @@
 import type { ActionError, ApproveBody, NeedCallBody, RejectBody, RejectReason } from './contracts.js';
+import { CALL_RESULTS, type CallResult } from '../db/repos/placement.repo.js';
 import type { ActionOutcome, PlacementRepo } from '../db/repos/placement.repo.js';
 
 /**
@@ -12,6 +13,9 @@ export interface RequestActions {
   setNeedCall(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
   setParams(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
   rematch(requestId: number, actor: string): Promise<ActionOutcome>;
+  edit(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
+  assign(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
+  call(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
 }
 
 const bad = (message: string): ActionOutcome => ({ ok: false, error: 'bad_request', message });
@@ -57,6 +61,34 @@ export function createActions(
         out[key] = v;
       }
       return placement.setParams(requestId, out, actor);
+    },
+
+    async edit(requestId, body, actor) {
+      if (!isRecord(body)) return bad('Нужно указать, что менять.');
+      const out: Record<string, string | null> = {};
+      for (const key of ['fio', 'phone', 'age', 'place', 'note'] as const) {
+        const v = body[key];
+        if (v === undefined) continue;
+        if (v !== null && typeof v !== 'string') return bad('Значение должно быть текстом или null.');
+        out[key] = v;
+      }
+      return placement.editRequest(requestId, out, actor);
+    },
+
+    async assign(requestId, body, actor) {
+      if (!isRecord(body) || !('responsible' in body)) return bad('Нужно указать, кому передать заявку.');
+      const v = body['responsible'];
+      if (v !== null && typeof v !== 'string') return bad('Имя должно быть текстом или null.');
+      return placement.assign(requestId, v, actor);
+    },
+
+    async call(requestId, body, actor) {
+      if (!isRecord(body) || typeof body['result'] !== 'string' || !Object.hasOwn(CALL_RESULTS, body['result'])) {
+        return bad('Нужно указать итог звонка.');
+      }
+      const comment = body['comment'];
+      if (comment !== undefined && comment !== null && typeof comment !== 'string') return bad('Комментарий должен быть текстом.');
+      return placement.recordCall(requestId, body['result'] as CallResult, comment ?? null, actor);
     },
 
     async rematch(requestId, actor) {

@@ -70,7 +70,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
   };
   let views: () => Promise<ReturnType<typeof sampleViews>> = async () => sampleViews();
   const server = createHomeGroupsServer({
-    actions: { approve: record('approve'), reject: record('reject'), setNeedCall: record('need-call'), setParams: record('params'), rematch: async (id: number, actor: string) => { actionCalls.push({ name: 'rematch', id, body: undefined, actor }); return outcome; } },
+    actions: { approve: record('approve'), reject: record('reject'), setNeedCall: record('need-call'), setParams: record('params'), rematch: async (id: number, actor: string) => { actionCalls.push({ name: 'rematch', id, body: undefined, actor }); return outcome; }, edit: record('edit'), assign: record('assign'), call: record('call') },
     matching: {
       run: async (actor) => { matchingCalls.push({ name: 'run', actor }); return { ok: true, created: 2, replaced: 1, unchanged: 3 }; },
       rerunAll: async (actor) => { matchingCalls.push({ name: 'rerun-all', actor }); return { ok: true, created: 5, replaced: 0, unchanged: 0 }; },
@@ -1080,6 +1080,28 @@ describe('создание записей и справочники форм', (
   });
 });
 
+
+describe('рабочие действия координатора: правка, «в работе у», итог звонка', () => {
+  const post = (cookie: string | null, path: string, body: unknown) => fetch(`${app.base}/api/v1/requests/${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body),
+  });
+
+  test.each(['edit', 'assign', 'call'])('%s без сессии — 401 и ничего не вызвано', async (action) => {
+    const before = app.actionCalls.length;
+    expect((await post(null, `12/${action}`, {})).status).toBe(401);
+    expect(app.actionCalls.length).toBe(before);
+  });
+
+  test.each([
+    ['edit', { phone: '+7 921 555-00-11' }], ['assign', { responsible: 'Анна Смирнова' }], ['call', { result: 'reached', comment: 'ок' }],
+  ])('%s: тело и автор передаются, снимок сбрасывается', async (action, body) => {
+    const inv = app.invalidations();
+    const r = await post(await signIn(REGULAR), `12/${action}`, body);
+    expect(r.status).toBe(200);
+    expect(app.actionCalls.at(-1)).toEqual({ name: action, id: 12, body, actor: REGULAR.login });
+    expect(app.invalidations()).toBe(inv + 1);
+  });
+});
 
 describe('«подобрать заново»', () => {
   const post = (cookie: string | null, path: string, body: unknown = {}) =>

@@ -108,7 +108,7 @@ const LOGO_PATH = '/api/v1/assets/church-logo.png';
 const MATCHING_PATH = /^\/api\/v1\/matching\/(run|auto|rerun-all)$/;
 
 /** `POST /api/v1/requests/12/approve`: номер заявки — цифры, длиннее пятнадцати не бывает (Number безопасен). */
-const ACTION_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/(approve|reject|need-call|params|rematch)$/;
+const ACTION_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/(approve|reject|need-call|params|rematch|edit|assign|call)$/;
 
 /** Адрес клиента: за nginx настоящий адрес приходит заголовком (как в старом дашборде). */
 function clientIp(req: IncomingMessage): string {
@@ -360,6 +360,9 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       : action === 'reject' ? await deps.actions.reject(requestId, body, actor)
       : action === 'params' ? await deps.actions.setParams(requestId, body, actor)
       : action === 'rematch' ? await deps.actions.rematch(requestId, actor)
+      : action === 'edit' ? await deps.actions.edit(requestId, body, actor)
+      : action === 'assign' ? await deps.actions.assign(requestId, body, actor)
+      : action === 'call' ? await deps.actions.call(requestId, body, actor)
       : await deps.actions.setNeedCall(requestId, body, actor);
 
     if (!outcome.ok) {

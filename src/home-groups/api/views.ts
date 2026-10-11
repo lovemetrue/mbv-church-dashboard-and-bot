@@ -93,6 +93,10 @@ const REJECT_REASON_TEXT: Record<string, string> = {
   other: 'другое',
 };
 
+const CALL_RESULT_TEXT: Record<string, string> = {
+  reached: 'Звонок: дозвонились', no_answer: 'Звонок: не дозвонились', later: 'Звонок: просили перезвонить позже', refused: 'Звонок: отказался',
+};
+
 /** Строка ленты по записи журнала; null — запись для ленты не предназначена. Личных данных в журнале нет. */
 function auditText(a: AuditRow): string | null {
   const after = a.after ?? {};
@@ -116,6 +120,20 @@ function auditText(a: AuditRow): string | null {
       if (after['schedule'] === true) parts.push('удобное время');
       if (after['schedule'] === false) parts.push('правка времени снята');
       return `Уточнено вручную: ${parts.join(', ') || 'параметры подбора'} · ${a.actor}`;
+    }
+    case 'request.edit': {
+      const names: Record<string, string> = { fio: 'ФИО', phone: 'телефон', age: 'возраст', place: 'район', note: 'комментарий' };
+      const fields = Array.isArray(after['fields']) ? (after['fields'] as unknown[]).map((f) => names[String(f)] ?? String(f)) : [];
+      return `Исправлено вручную: ${fields.join(', ') || 'данные заявки'} · ${a.actor}`;
+    }
+    case 'request.assign': {
+      const who = nonBlank(typeof after['responsible'] === 'string' ? after['responsible'] : null);
+      return who ? `В работе у: ${who} · ${a.actor}` : `Снята ответственность за заявку · ${a.actor}`;
+    }
+    case 'request.call': {
+      const text = CALL_RESULT_TEXT[String(after['result'])] ?? 'Звонок';
+      const note = nonBlank(a.note);
+      return `${text}${note ? ` («${note}»)` : ''} · ${a.actor}`;
     }
     default:
       return null;

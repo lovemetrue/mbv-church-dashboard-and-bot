@@ -24,6 +24,9 @@
  *   POST /api/v1/people/create         CreateRecordBody  → CreateRegistrationOk | ActionError (регистрация участника)
  *   GET  /api/v1/people/:id/card       → HTML-страница печатной карточки с QR (открывается в новой вкладке)
  *   GET  /api/v1/people/:id/qr         → PNG с QR регистрации
+ *   POST /api/v1/requests/:id/edit     RequestEditBody → ActionOk | ActionError (ФИО, телефон, возраст, район, комментарий)
+ *   POST /api/v1/requests/:id/assign    AssignBody      → ActionOk | ActionError («в работе у»)
+ *   POST /api/v1/requests/:id/call      CallBody        → ActionOk | ActionError (итог звонка)
  *   POST /api/v1/requests/:id/rematch  (тело {})         → ActionOk | ActionError (подобрать заново одну заявку)
  *   POST /api/v1/matching/rerun-all    (тело {})         → MatchingRunOk | ActionError (пересчитать все закреплённые предложения)
  *   GET /api/v1/form-meta         → FormMeta            (справочники для форм «Создать»)
@@ -303,6 +306,31 @@ export interface RequestParamsBody {
   street?: string | null;
   /** Удобные дни и время свободным текстом («пн, ср вечером»); правила те же. */
   schedule?: string | null;
+}
+
+/** Правка полей заявки. Присланное меняется, `null` или пустая строка очищают поле (кроме ФИО), `undefined` — не менять. */
+export interface RequestEditBody {
+  fio?: string;
+  /** Номер телефона; сервер приводит к виду +7XXXXXXXXXX и отклоняет то, что не похоже на номер. */
+  phone?: string | null;
+  /** Возраст как в анкете: «26-35», «36-45 лет». */
+  age?: string | null;
+  /** Район и метро свободным текстом, как их пишет человек; район для подбора определяется по нему. */
+  place?: string | null;
+  note?: string | null;
+}
+
+export interface AssignBody {
+  /** Имя координатора («в работе у»); null или пустая строка — снять. */
+  responsible: string | null;
+}
+
+export type CallResult = 'reached' | 'no_answer' | 'later' | 'refused';
+
+export interface CallBody {
+  /** Дозвонился · не дозвонился · просил перезвонить позже · отказался. «Не дозвонился» и «позже» оставляют заявку в «Перезвонить», «дозвонился» и «отказался» снимают отметку. */
+  result: CallResult;
+  comment?: string | null;
 }
 
 export interface RequestsView {

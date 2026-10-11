@@ -1,5 +1,5 @@
 import type { DashboardGroup } from '../../db/repos/groups.repo.js';
-import type { MemberRow } from '../../db/repos/members.repo.js';
+import type { MemberRow, PersonRow } from '../../db/repos/members.repo.js';
 import type { StoredHint } from '../../db/repos/hints.repo.js';
 import { baseHash, needsOf, anyNeed, type RawBrief } from '../assistant/brief.js';
 import type { ActivityRow, AuditRow } from '../../db/repos/audit.repo.js';
@@ -35,6 +35,8 @@ export interface ViewsInput {
   hints?: ReadonlyMap<number, StoredHint>;
   /** Состав групп, внесённый вручную. */
   members?: readonly MemberRow[];
+  /** Карточки людей, внесённые вручную. */
+  persons?: readonly PersonRow[];
   /** Подключён ли помощник (есть ключ) и включён ли он в настройках. */
   assistant?: { available: boolean; enabled: boolean };
   /**
@@ -554,39 +556,49 @@ export function buildViewsWithPlan(
     plannedByGroup.set(groupId, list);
   }
 
-  // Состав групп: направленные через сервис (заявка «Исполнена» с группой) и внесённые вручную.
+  // Состав групп: направленные через сервис (заявка «Исполнена» с группой) и внесённые вручную (ссылки на справочник людей).
   const membersByGroup = new Map<number, GroupMember[]>();
-  const memberKey = (fio: string, phone: string | null): string => {
-    const digits = (phone ?? '').replace(/\D/g, '');
-    return digits.length >= 10 ? `t:${digits.slice(-10)}` : `n:${fio.trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ')}`;
-  };
   const addMember = (groupId: number, m: GroupMember) => membersByGroup.set(groupId, [...(membersByGroup.get(groupId) ?? []), m]);
+  // Человек из справочника один и тот же независимо от того, как он в состав попал: ключ u/r/p.
+  const manualKeys = new Map<number, Set<string>>();
+  for (const m of input.members ?? []) {
+    manualKeys.set(m.group_id, (manualKeys.get(m.group_id) ?? new Set<string>()).add(m.personKey));
+    addMember(m.group_id, {
+      kind: 'manual', id: m.id, personKey: m.personKey, fio: nonBlank(m.full_name) ?? 'Без имени',
+      phone: nonBlank(formatPhone(nonBlank(m.phone))), date: validIsoDate(m.joined_on), note: nonBlank(m.note), alsoIn: [],
+    });
+  }
   for (const r of joinRequests) {
     if (r.status !== DONE || r.group_id === null) continue;
+    const key = r.user_id !== null ? `u${r.user_id}` : `r${r.id}`;
+    // Внесён и вручную, и утверждён: показываем одну строку, ручная точнее (в ней дата вступления).
+    if (manualKeys.get(r.group_id)?.has(key)) continue;
     const approved = (auditByRequest.get(r.id) ?? []).filter((a) => a.action === 'request.approve').at(-1);
     addMember(r.group_id, {
-      kind: 'placed', id: r.id, fio: nonBlank(r.fio) ?? 'Без имени', phone: displayPhone(r.phones, r.phone),
+      kind: 'placed', id: r.id, personKey: key, fio: nonBlank(r.fio) ?? 'Без имени', phone: displayPhone(r.phones, r.phone),
       date: approved?.at ? localIsoDate(approved.at, timeZone) : null, note: null, alsoIn: [],
     });
   }
-  for (const m of input.members ?? []) {
-    addMember(m.group_id, {
-      kind: 'manual', id: m.id, fio: m.full_name, phone: nonBlank(formatPhone(nonBlank(m.phone))), date: validIsoDate(m.joined_on), note: nonBlank(m.note), alsoIn: [],
-    });
-  }
-  const groupsOfKey = new Map<string, Set<number>>();
+  // «Есть и в другой группе»: тот же человек по телефону, а без телефона — по ключу справочника.
+  const identOf = (m: GroupMember): string => {
+    const digits = (m.phone ?? '').replace(/\D/g, '');
+    return digits.length >= 10 ? `t:${digits.slice(-10)}` : `k:${m.personKey}`;
+  };
+  const groupsOfIdent = new Map<string, Set<number>>();
+  const groupsOfPerson = new Map<string, Set<number>>();
   for (const [groupId, list] of membersByGroup) {
     for (const m of list) {
-      const key = memberKey(m.fio, m.phone);
-      groupsOfKey.set(key, (groupsOfKey.get(key) ?? new Set<number>()).add(groupId));
+      groupsOfIdent.set(identOf(m), (groupsOfIdent.get(identOf(m)) ?? new Set<number>()).add(groupId));
+      groupsOfPerson.set(m.personKey, (groupsOfPerson.get(m.personKey) ?? new Set<number>()).add(groupId));
     }
   }
   for (const [groupId, list] of membersByGroup) {
     for (const m of list) {
-      m.alsoIn = [...(groupsOfKey.get(memberKey(m.fio, m.phone)) ?? [])].filter((id) => id !== groupId).sort((a, b) => a - b).map(groupCode);
+      m.alsoIn = [...(groupsOfIdent.get(identOf(m)) ?? [])].filter((id) => id !== groupId).sort((x, y) => x - y).map(groupCode);
     }
   }
   const memberOrder = (m: GroupMember): number => (m.kind === 'placed' ? 0 : 1);
+  const groupCodesOf = (key: string): string[] => [...(groupsOfPerson.get(key) ?? [])].sort((x, y) => x - y).map(groupCode);
 
   const groupItems: GroupItem[] = input.groups.map((g) => {
     const p = planGroupById.get(g.id)!;
@@ -623,6 +635,8 @@ export function buildViewsWithPlan(
   for (const u of input.participants) {
     people.push({
       key: `u${u.id}`,
+      personId: null,
+      groups: groupCodesOf(`u${u.id}`),
       fio: nonBlank(u.full_name) ?? 'Без имени',
       phone: nonBlank(formatPhone(nonBlank(u.phone))),
       ageLabel: nonBlank(u.age),
@@ -641,6 +655,8 @@ export function buildViewsWithPlan(
     const pr = planRequests.get(r.id)!;
     people.push({
       key: `r${r.id}`,
+      personId: null,
+      groups: groupCodesOf(`r${r.id}`),
       fio: pr.fio,
       phone: displayPhone(r.phones, r.phone),
       ageLabel: nonBlank(r.age),
@@ -651,6 +667,24 @@ export function buildViewsWithPlan(
       mdgLabel: `Заявка: ${BUCKET_NAMES[bucketById.get(r.id)!]}`,
       date: validIsoDate(r.date),
       requestId: r.id,
+    });
+  }
+  // Карточки, внесённые вручную (кого нет ни среди зарегистрированных, ни среди заявок).
+  for (const p of input.persons ?? []) {
+    people.push({
+      key: `p${p.id}`,
+      personId: p.id,
+      groups: groupCodesOf(`p${p.id}`),
+      fio: nonBlank(p.full_name) ?? 'Без имени',
+      phone: nonBlank(formatPhone(nonBlank(p.phone))),
+      ageLabel: nonBlank(p.age),
+      district: engine.resolveDistrict(nonBlank(p.place), metroIndex),
+      from: 'Внесён вручную',
+      userId: null,
+      registrationNo: null,
+      mdgLabel: 'Не спрошено',
+      date: localIsoDate(new Date(p.created_at), options.timeZone ?? DEFAULT_TIME_ZONE),
+      requestId: null,
     });
   }
   people.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || a.key.localeCompare(b.key));

@@ -615,7 +615,7 @@ describe('люди', () => {
       requests: [request({ id: 40, user_id: 12, place: 'Ломоносовская' })],
     });
     expect(views.people.items).toEqual([{
-      key: 'u12', fio: 'Дарья Ефимова', phone: '+7 911 123-45-67', ageLabel: '26-35', district: 'Невский',
+      key: 'u12', personId: null, groups: [], fio: 'Дарья Ефимова', phone: '+7 911 123-45-67', ageLabel: '26-35', district: 'Невский',
       from: 'Бот · MAX', mdgLabel: 'Хочет в группу', date: '2026-09-12', requestId: 40, userId: 12, registrationNo: 12,
     }]);
   });
@@ -655,7 +655,7 @@ describe('люди', () => {
     });
     const person = (key: string) => views.people.items.find((p) => p.key === key)!;
     expect(person('r7')).toEqual({
-      key: 'r7', fio: 'Станислав Ким', phone: '+7 904 123-45-67', ageLabel: '26-35', district: 'Приморский',
+      key: 'r7', personId: null, groups: [], fio: 'Станислав Ким', phone: '+7 904 123-45-67', ageLabel: '26-35', district: 'Приморский',
       from: 'Таблица', mdgLabel: 'Заявка: готово к утверждению', date: '2026-10-02', requestId: 7, userId: null, registrationNo: null,
     });
     expect(person('r8')).toMatchObject({ from: 'Дашборд · Звонок', mdgLabel: 'Заявка: нужна помощь в сопоставлении', district: null });
@@ -1189,8 +1189,8 @@ describe('разбор помощника в представлениях', () =
 });
 
 describe('состав групп', () => {
-  const manual = (id: number, groupId: number, fio: string, phone: string | null = null, joined: string | null = null) =>
-    ({ id, group_id: groupId, full_name: fio, phone, joined_on: joined, note: null });
+  const manual = (id: number, groupId: number, personKey: string, fio: string, phone: string | null = null, joined: string | null = null) =>
+    ({ id, group_id: groupId, personKey, full_name: fio, phone, joined_on: joined, note: null });
 
   test('утверждённые в группу появляются в её составе сами, внесённые вручную идут следом', () => {
     const at = new Date('2026-10-09T10:00:00Z');
@@ -1198,11 +1198,11 @@ describe('состав групп', () => {
       groups: [group({ id: 1 })],
       requests: [request({ id: 1, status: 'Исполнена', group_id: 1, fio: 'Анна Утверждённая', phone: '+79215550011' })],
       audit: [{ entity_id: 1, at, actor: 'a', action: 'request.approve', after: { group_id: 1 }, note: null }],
-      members: [manual(7, 1, 'Борис Вручную', null, '2026-09-01')],
+      members: [manual(7, 1, 'u5', 'Борис Вручную', null, '2026-09-01')],
     });
     expect(views.groups.items[0]!.members).toEqual([
-      { kind: 'placed', id: 1, fio: 'Анна Утверждённая', phone: '+7 921 555-00-11', date: '2026-10-09', note: null, alsoIn: [] },
-      { kind: 'manual', id: 7, fio: 'Борис Вручную', phone: null, date: '2026-09-01', note: null, alsoIn: [] },
+      { kind: 'placed', id: 1, personKey: 'r1', fio: 'Анна Утверждённая', phone: '+7 921 555-00-11', date: '2026-10-09', note: null, alsoIn: [] },
+      { kind: 'manual', id: 7, personKey: 'u5', fio: 'Борис Вручную', phone: null, date: '2026-09-01', note: null, alsoIn: [] },
     ]);
   });
 
@@ -1214,20 +1214,40 @@ describe('состав групп', () => {
     expect(views.groups.items[0]!.members).toEqual([]);
   });
 
-  test('человек в нескольких группах помечается: по телефону, а без телефона — по ФИО', () => {
+  test('человек и утверждён, и внесён вручную в одну группу — в составе одна строка, ручная', () => {
+    const { views } = build({
+      groups: [group({ id: 1 })],
+      requests: [request({ id: 1, user_id: 5, status: 'Исполнена', group_id: 1, fio: 'Мария' })],
+      members: [manual(7, 1, 'u5', 'Мария', null, '2026-09-01')],
+    });
+    expect(views.groups.items[0]!.members.map((m) => m.kind)).toEqual(['manual']);
+  });
+
+  test('человек в нескольких группах помечается: по телефону, а без телефона — по ключу справочника', () => {
     const { views } = build({
       groups: [group({ id: 1 }), group({ id: 2 }), group({ id: 3 })],
       requests: [request({ id: 1, status: 'Исполнена', group_id: 1, fio: 'Анна Смирнова', phone: '+79215550011' })],
       members: [
-        manual(1, 2, 'А. Смирнова', '8 921 555-00-11'),
-        manual(2, 3, 'анна  смирнова'),
-        manual(3, 2, 'Пётр Один'),
-        manual(4, 3, 'Петр  Один'),
+        manual(1, 2, 'p1', 'А. Смирнова', '8 921 555-00-11'),
+        manual(2, 3, 'u9', 'Другая Анна'),
+        manual(3, 2, 'u7', 'Пётр Один'),
+        manual(4, 3, 'u7', 'Пётр Один'),
       ],
     });
     const byGroup = (id: number) => views.groups.items.find((g) => g.id === id)!.members.map((m) => [m.fio, m.alsoIn]);
     expect(byGroup(1)).toEqual([['Анна Смирнова', ['ДГ-0002']]]);
     expect(byGroup(2)).toEqual([['А. Смирнова', ['ДГ-0001']], ['Пётр Один', ['ДГ-0003']]]);
-    expect(byGroup(3)).toEqual([['анна  смирнова', []], ['Петр  Один', ['ДГ-0002']]]);
+    expect(byGroup(3)).toEqual([['Другая Анна', []], ['Пётр Один', ['ДГ-0002']]]);
+  });
+
+  test('карточки людей, внесённые вручную, попадают в справочник «Люди» с группами, где они состоят', () => {
+    const { views } = build({
+      groups: [group({ id: 1 })],
+      members: [manual(1, 1, 'p3', 'Анна Новая', '+79215550011')],
+      persons: [{ id: 3, full_name: 'Анна Новая', phone: '+79215550011', age: '35', place: 'Приморский', note: null, created_at: new Date('2026-10-01T10:00:00Z') }],
+    });
+    expect(views.people.items.find((p) => p.key === 'p3')).toMatchObject({
+      personId: 3, fio: 'Анна Новая', phone: '+7 921 555-00-11', ageLabel: '35', district: 'Приморский', from: 'Внесён вручную', groups: ['ДГ-0001'],
+    });
   });
 });

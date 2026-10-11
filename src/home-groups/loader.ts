@@ -18,7 +18,7 @@ export interface LoaderRepos {
   settings: Pick<SettingsRepo, 'get'>;
   audit: Pick<AuditRepo, 'requestEntries' | 'activitySince'>;
   hints: Pick<HintsRepo, 'all'>;
-  members: Pick<MembersRepo, 'all'>;
+  members: Pick<MembersRepo, 'all' | 'allPersons'>;
 }
 
 /**
@@ -27,7 +27,7 @@ export interface LoaderRepos {
  */
 export function createLoader(repos: LoaderRepos, opts: { timeZone?: string; assistantAvailable?: boolean } = {}): () => Promise<ViewsInput> {
   return async () => {
-    const [groups, requests, participants, coordinators, rejectedGroups, audit, activity, activeProposals, placedNew, auto, lastRun, hints, assistantEnabled, members] = await Promise.all([
+    const [groups, requests, participants, coordinators, rejectedGroups, audit, activity, activeProposals, placedNew, auto, lastRun, hints, assistantEnabled, members, persons] = await Promise.all([
       repos.groups.forDashboard(),
       repos.requests.forDashboard(),
       repos.users.listRegistered(),
@@ -42,12 +42,14 @@ export function createLoader(repos: LoaderRepos, opts: { timeZone?: string; assi
       repos.hints.all(),
       repos.settings.get<boolean>('assistant.enabled'),
       repos.members.all(),
+      repos.members.allPersons(),
     ]);
     return {
       groups, requests, participants, coordinators, rejectedGroups, audit, activity, activeProposals, placedNew,
       matching: { auto: auto === true, lastRun: lastRun ?? null },
       hints,
       members,
+      persons,
       assistant: { available: opts.assistantAvailable === true, enabled: assistantEnabled === true },
     };
   };

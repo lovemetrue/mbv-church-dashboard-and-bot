@@ -103,9 +103,11 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
     } as never,
     campaign: async () => ({ day: { state: 'идёт', number: 3, total: 40, startDate: '2026-11-01' } }) as never,
     members: {
-      add: async (id: number, body: unknown, actor: string) => { actionCalls.push({ name: 'member.add', id, body, actor }); return createOutcome; },
+      add: async (id: number, body: unknown, actor: string) => { actionCalls.push({ name: 'member.add', id, body, actor }); return createOutcome.ok ? { ok: true as const, id: createOutcome.id, personKey: 'u1' } : createOutcome; },
       update: async (id: number, body: unknown, actor: string) => { actionCalls.push({ name: 'member.update', id, body, actor }); return outcome; },
       remove: async (id: number, actor: string) => { actionCalls.push({ name: 'member.remove', id, body: undefined, actor }); return outcome; },
+      updatePerson: async (id: number, body: unknown, actor: string) => { actionCalls.push({ name: 'person.update', id, body, actor }); return outcome; },
+      deletePerson: async (id: number, actor: string) => { actionCalls.push({ name: 'person.delete', id, body: undefined, actor }); return outcome; },
     } as never,
     assistant: {
       run: async (actor: string) => { assistantCalls.push({ name: 'run', actor }); return assistantOutcome; },
@@ -1203,19 +1205,19 @@ describe('руководитель: массовые действия, прав�
   });
 });
 
-describe('состав группы', () => {
+describe('состав группы и карточки людей', () => {
   const post = (cookie: string | null, path: string, body: unknown) => fetch(`${app.base}/api/v1/${path}`, {
     method: 'POST', headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body),
   });
 
   test('без входа 401, любой вход добавляет человека, правит и убирает; снимок сбрасывается', async () => {
-    expect((await post(null, 'groups/5/members/create', { fields: { fio: 'Анна' } })).status).toBe(401);
+    expect((await post(null, 'groups/5/members/create', { personKey: 'u1' })).status).toBe(401);
     const cookie = await signIn(REGULAR);
     const inv = app.invalidations();
-    const add = await post(cookie, 'groups/5/members/create', { fields: { fio: 'Анна' } });
+    const add = await post(cookie, 'groups/5/members/create', { personKey: 'u1' });
     expect(add.status).toBe(200);
-    expect(await add.json()).toEqual({ ok: true, id: 77 });
-    expect(app.actionCalls.at(-1)).toEqual({ name: 'member.add', id: 5, body: { fields: { fio: 'Анна' } }, actor: REGULAR.login });
+    expect(await add.json()).toEqual({ ok: true, id: 77, personKey: 'u1' });
+    expect(app.actionCalls.at(-1)).toEqual({ name: 'member.add', id: 5, body: { personKey: 'u1' }, actor: REGULAR.login });
     expect((await post(cookie, 'members/9/update', { fields: { note: 'x' } })).status).toBe(200);
     expect(app.actionCalls.at(-1)).toMatchObject({ name: 'member.update', id: 9 });
     expect((await post(cookie, 'members/9/delete', {})).status).toBe(200);
@@ -1223,9 +1225,20 @@ describe('состав группы', () => {
     expect(app.invalidations()).toBe(inv + 3);
   });
 
-  test('чужие адреса состава — 404', async () => {
+  test('карточка человека: правит любой вход, удаляет только полный', async () => {
+    const reg = await signIn(REGULAR);
+    expect((await post(reg, 'persons/3/update', { fields: { fio: 'Анна' } })).status).toBe(200);
+    expect(app.actionCalls.at(-1)).toMatchObject({ name: 'person.update', id: 3 });
+    const before = app.actionCalls.length;
+    expect((await post(reg, 'persons/3/delete', {})).status).toBe(403);
+    expect(app.actionCalls.length).toBe(before);
+    expect((await post(await signIn(SUPER), 'persons/3/delete', {})).status).toBe(200);
+    expect(app.actionCalls.at(-1)).toMatchObject({ name: 'person.delete', id: 3, actor: SUPER.login });
+  });
+
+  test('чужие адреса — 404', async () => {
     const cookie = await signIn(REGULAR);
-    for (const path of ['groups/abc/members/create', 'members/9/archive', 'members/create', 'groups/5/members']) {
+    for (const path of ['groups/abc/members/create', 'members/9/archive', 'members/create', 'groups/5/members', 'persons/x/update']) {
       expect((await post(cookie, path, {})).status, path).toBe(404);
     }
   });

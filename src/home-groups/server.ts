@@ -125,6 +125,8 @@ const REGISTRATION_PATH = '/registration';
 /** Состав группы: добавить человека (`POST /groups/5/members/create`) и править или убрать строку (`POST /members/9/update`). */
 const MEMBER_ADD_PATH = /^\/api\/v1\/groups\/(\d{1,15})\/members\/create$/;
 const MEMBER_PATH = /^\/api\/v1\/members\/(\d{1,15})\/(update|delete)$/;
+/** Карточка человека, внесённая вручную: правка любым входом, удаление только полным. */
+const PERSON_EDIT_PATH = /^\/api\/v1\/persons\/(\d{1,15})\/(update|delete)$/;
 const BULK_PATH = '/api/v1/requests/bulk';
 const ASSISTANT_RUN_PATH = '/api/v1/assistant/run';
 const EXPORT_PATH = /^\/api\/v1\/export\/(requests|people)\.csv$/;
@@ -500,6 +502,24 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     sendJson(res, 200, outcome);
   }
 
+  /** Карточка человека, внесённая вручную. Удалять может только полный вход, как и остальные справочники. */
+  async function handlePersonCard(req: IncomingMessage, res: ServerResponse, id: number, action: string, sid: string | undefined): Promise<void> {
+    const call = await readAuthedJson(req, res, sid);
+    if (!call) return;
+    if (action === 'delete' && call.role !== 'super') {
+      sendJson(res, 403, { error: 'forbidden', message: 'Удалять может только полный вход.' } satisfies ActionError);
+      return;
+    }
+    const outcome = action === 'update' ? await deps.members.updatePerson(id, call.body, call.actor) : await deps.members.deletePerson(id, call.actor);
+    if (!outcome.ok) {
+      sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
+      return;
+    }
+    deps.invalidateViews();
+    logger.info({ actor: call.actor, id, action }, 'домашние группы: изменение карточки человека');
+    sendJson(res, 200, outcome);
+  }
+
   /** Разбор непонятных заявок помощником. Доступен обоим входам, пока помощник подключён и включён. */
   async function handleAssistantRun(req: IncomingMessage, res: ServerResponse, sid: string | undefined): Promise<void> {
     const call = await readAuthedJson(req, res, sid);
@@ -613,6 +633,8 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     if (memberAdd) { await handleMember(req, res, 'add', Number(memberAdd[1]), sid); return; }
     const memberEdit = req.method === 'POST' ? MEMBER_PATH.exec(path) : null;
     if (memberEdit) { await handleMember(req, res, memberEdit[2] === 'update' ? 'update' : 'remove', Number(memberEdit[1]), sid); return; }
+    const personEdit = req.method === 'POST' ? PERSON_EDIT_PATH.exec(path) : null;
+    if (personEdit) { await handlePersonCard(req, res, Number(personEdit[1]), personEdit[2]!, sid); return; }
     if (req.method === 'POST' && path === BULK_PATH) { await handleBulk(req, res, sid); return; }
     if (req.method === 'POST' && path === ASSISTANT_RUN_PATH) { await handleAssistantRun(req, res, sid); return; }
     const manage = req.method === 'POST' ? MANAGE_PATH.exec(path) : null;

@@ -37,9 +37,11 @@
  *   POST /api/v1/requests/:id/delete    (тело {})  → ActionOk | ActionError (только super)
  *   GET  /api/v1/export/requests.csv    → CSV (только super; в нём телефоны)
  *   GET  /api/v1/export/people.csv      → CSV (только super)
- *   POST /api/v1/groups/:id/members/create CreateRecordBody → CreateRecordOk | ActionError (человек в составе группы: fio, phone, joinedOn, note)
- *   POST /api/v1/members/:id/update     UpdateBody → ActionOk | ActionError
+ *   POST /api/v1/groups/:id/members/create MemberAddBody → MemberAddOk | ActionError (добавить человека из справочника или внести нового «по плюсу»)
+ *   POST /api/v1/members/:id/update     UpdateBody → ActionOk | ActionError (только joinedOn и note; имя и телефон правятся в карточке человека)
  *   POST /api/v1/members/:id/delete     (тело {})  → ActionOk | ActionError (убрать из состава: запись скрывается)
+ *   POST /api/v1/persons/:id/update     UpdateBody → ActionOk | ActionError (правка карточки, внесённой вручную: ключ p<id>)
+ *   POST /api/v1/persons/:id/delete     (тело {})  → ActionOk | ActionError (только super; карточка скрывается)
  *   POST /api/v1/assistant/run          (тело {})       → AssistantRunOk | ActionError (помощник разбирает непонятные заявки)
  *   GET  /api/v1/settings/assistant     → SettingsAssistantView (только super)
  *   POST /api/v1/settings/assistant/enabled AssistantEnabledBody → ActionOk | ActionError (только super)
@@ -641,6 +643,8 @@ export interface HealthItem {
  */
 export interface GroupMember {
   kind: 'placed' | 'manual';
+  /** Ключ человека в справочнике («Люди»): u12, r345 или p7. Имя и телефон в составе читаются оттуда, а не копируются. */
+  personKey: string;
   /** Для `placed` номер заявки, для `manual` номер строки состава. */
   id: number;
   fio: string;
@@ -650,6 +654,23 @@ export interface GroupMember {
   note: string | null;
   /** Коды других групп, где этот человек тоже есть (совпал телефон, а без телефона — ФИО): повод проверить. */
   alsoIn: string[];
+}
+
+/** Добавить человека в состав: выбрать из справочника (`personKey`) ИЛИ внести нового (`newPerson`) — карточка появится в «Людях». */
+export interface MemberAddBody {
+  personKey?: string;
+  newPerson?: { fio: string; phone?: string | null; age?: string | null; place?: string | null; note?: string | null };
+  /** Дата вступления, 2026-09-01, не из будущего. */
+  joinedOn?: string | null;
+  note?: string | null;
+}
+
+export interface MemberAddOk {
+  ok: true;
+  /** Номер строки состава. */
+  id: number;
+  /** Ключ человека в справочнике (у нового — p<id>). */
+  personKey: string;
 }
 
 export interface GroupItem extends GroupBrief {
@@ -686,8 +707,12 @@ export interface GroupsView {
 }
 
 export interface PersonItem {
-  /** Устойчивый ключ строки: «u12» (участник) или «r345» (заявка без участника). */
+  /** Устойчивый ключ строки: «u12» (участник), «r345» (заявка без участника) или «p7» (карточка, внесённая вручную). */
   key: string;
+  /** Номер карточки для ключа p<id> (правка и удаление через `/persons/:id/…`); у остальных null. */
+  personId: number | null;
+  /** Коды групп, в составе которых человек есть: направленный через сервис или внесённый вручную. */
+  groups: string[];
   fio: string;
   phone: string | null;
   ageLabel: string | null;

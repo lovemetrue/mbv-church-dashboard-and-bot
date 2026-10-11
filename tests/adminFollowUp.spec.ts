@@ -131,7 +131,7 @@ describe('кнопка и команда служителя', () => {
   });
 });
 
-describe('настройка EXTRA_QUESTIONS решает, кому писать', () => {
+describe('настройка «новые вопросы анкеты» решает, кому писать', () => {
   beforeEach(async () => {
     await seedUser(db, { id: '1', mdgStatus: 'join' });
     await seedUser(db, { id: '2', mdgStatus: 'join' });
@@ -140,8 +140,15 @@ describe('настройка EXTRA_QUESTIONS решает, кому писать
   test('«off» — никому: бот прямо говорит почему', async () => {
     build('off');
     await router.handle(text('/extra'));
-    expect(toAdmin()).toContain('EXTRA_QUESTIONS');
+    expect(toAdmin()).toContain('Настройки → «Бот: новые вопросы анкеты»');
     expect(toAdmin()).toContain('Некому');
+  });
+
+  test('значение из настроек интерфейса важнее .env, и менять его можно без перезапуска бота', async () => {
+    build('off');
+    await db.query(`INSERT INTO app_settings (key, value, updated_by) VALUES ('bot.extra_questions', '"all"'::jsonb, 'тест')`);
+    await router.handle(text('/extra'));
+    expect(toAdmin()).toContain('2 человека');
   });
 
   test('список id — только перечисленным, остальные остаются на потом', async () => {

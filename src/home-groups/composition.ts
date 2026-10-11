@@ -19,6 +19,7 @@ import { realHealthSources, collectHealth } from '../platform/settings/health.js
 import { createFormMeta, createRecordCreator } from './create.js';
 import { createRegistrar } from './registration.js';
 import { createManager } from './manage.js';
+import { createBotSettings } from './botSettings.js';
 import { requestsToCsv } from './export.js';
 import { usersToCsv } from '../core/csv.js';
 import { campaignStats } from '../dashboard/campaignStats.js';
@@ -46,6 +47,8 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     mailer?: Mailer;
     /** Публичный адрес сервиса для ссылок в письмах (`HG_PUBLIC_URL`). */
     publicUrl?: string | null;
+    /** Значение `EXTRA_QUESTIONS` из `.env`: показывается в настройках как «по умолчанию». */
+    extraQuestionsEnv?: string;
     /** Расписание кампании «40 дней»: без него вкладка кампании недоступна. */
     campaignSchedule?: ScheduleOptions;
     /** Уведомление служителю о новой заявке (необязательно: без него заявки заводятся молча). */
@@ -104,10 +107,11 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     requests: async () => requestsToCsv((await views()).requests.items),
     people: async () => usersToCsv(await usersRepo.exportRows()),
   };
+  const botSettings = createBotSettings({ settings: appSettings, audit: new AuditRepo(db), envValue: opts.extraQuestionsEnv ?? 'off' });
   const auditRepo = new AuditRepo(db);
   const audit = (actor: string, action: string, after: unknown) => auditRepo.write(actor, action, 'export', null, after);
   const formMeta = createFormMeta(new CoordinatorsRepo(db));
-  return { views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, formMeta };
+  return { views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, formMeta };
 }
 
 export function composeViews(db: Pool, engine: PlanEngineApi, opts: ComposeOptions): ViewsSource {

@@ -29,3 +29,32 @@ export function extraQuestionsEnabled(
     return id === platformUserId.trim().toLowerCase() && (entryPlatform === undefined || entryPlatform === platform);
   });
 }
+
+/** Ключ в `app_settings`: значение того же вида, что и `EXTRA_QUESTIONS` в `.env` (all · off · список id). */
+export const EXTRA_QUESTIONS_KEY = 'bot.extra_questions';
+
+/**
+ * Откуда бот берёт «кому задавать новые вопросы»: сохранённое в настройках (его меняют в интерфейсе, без доступа к серверу)
+ * важнее `.env`; пока ничего не сохраняли, действует `.env`. Читается раз в `ttlMs`, а не на каждое сообщение людей,
+ * и при сбое базы бот не падает, а остаётся на `.env`: лучше не показать вопросы, чем остановить анкету.
+ */
+export function createExtraQuestionsSource(
+  settings: { get<T>(key: string): Promise<T | null> },
+  envValue: string,
+  ttlMs = 15_000,
+): () => Promise<string> {
+  let cached: { value: string; at: number } | null = null;
+  return async () => {
+    const now = Date.now();
+    if (cached && now - cached.at < ttlMs) return cached.value;
+    let value = envValue;
+    try {
+      const stored = await settings.get<unknown>(EXTRA_QUESTIONS_KEY);
+      if (typeof stored === 'string') value = stored;
+    } catch {
+      /* остаёмся на значении из .env */
+    }
+    cached = { value, at: now };
+    return value;
+  };
+}

@@ -7,6 +7,8 @@ import { DeliveriesRepo } from './db/repos/deliveries.repo.js';
 import { GroupsRepo } from './db/repos/groups.repo.js';
 import { RequestsRepo } from './db/repos/requests.repo.js';
 import { SessionsRepo } from './db/repos/sessions.repo.js';
+import { SettingsRepo } from './db/repos/settings.repo.js';
+import { createExtraQuestionsSource } from './core/rollout.js';
 import { UsersRepo } from './db/repos/users.repo.js';
 import { BroadcastSender } from './broadcast/sender.js';
 import { RateLimiter } from './broadcast/throttle.js';
@@ -51,7 +53,10 @@ export interface Deps {
   requestsRetentionDays: number;
   dashboardUrl: string;
   requestUrl?: (requestId: number) => string;
+  /** Значение из `.env`; действующее смотрите через `extraQuestionsNow`. */
   extraQuestions: string;
+  /** Кому сейчас задавать новые вопросы: настройка из интерфейса, а без неё `.env`. */
+  extraQuestionsNow: () => Promise<string>;
   logger: Logger;
   /** Исходные параметры: нужны, чтобы пересобрать зависимости (например, в тестах). */
   raw: DepsInput;
@@ -92,6 +97,7 @@ export function createDeps(input: DepsInput): Deps {
     dashboardUrl: input.dashboardUrl ?? 'http://5.23.48.25:8090/groups',
     ...(input.requestUrl ? { requestUrl: input.requestUrl } : {}),
     extraQuestions: input.extraQuestions ?? 'all',
+    extraQuestionsNow: createExtraQuestionsSource(new SettingsRepo(db), input.extraQuestions ?? 'all'),
     logger,
     raw: input,
   };

@@ -1,4 +1,4 @@
-import { requestLinkBuilder } from './admin/links.js';
+import { dashboardLink, requestLinkBuilder } from './admin/links.js';
 import { MaxAdapter } from './adapters/max.adapter.js';
 import { TelegramAdapter } from './adapters/telegram.adapter.js';
 import { CampaignScheduler } from './broadcast/scheduler.js';
@@ -64,7 +64,7 @@ async function main(): Promise<void> {
     broadcastRate: cfg.BROADCAST_RATE,
     allowDbReset: cfg.ALLOW_DB_RESET,
     requestsRetentionDays: cfg.REQUESTS_RETENTION_DAYS,
-    dashboardUrl: cfg.DASHBOARD_URL,
+    dashboardUrl: dashboardLink(cfg.HG_PUBLIC_URL, cfg.DASHBOARD_URL),
     ...(requestLinkBuilder(cfg.HG_PUBLIC_URL) ? { requestUrl: requestLinkBuilder(cfg.HG_PUBLIC_URL)! } : {}),
     extraQuestions: cfg.EXTRA_QUESTIONS,
     logger,

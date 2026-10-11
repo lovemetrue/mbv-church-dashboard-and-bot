@@ -99,6 +99,10 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
       deleteRequest: async (id: number, actor: string) => { actionCalls.push({ name: 'request.delete', id, body: undefined, actor }); return outcome; },
     } as never,
     campaign: async () => ({ day: { state: 'идёт', number: 3, total: 40, startDate: '2026-11-01' } }) as never,
+    botSettings: {
+      view: async () => { settingsCalls.push({ name: 'bot.view' }); return { generatedAt: 'g', extraQuestions: { mode: 'off', ids: '', source: 'env', envValue: 'off' } }; },
+      setExtraQuestions: async (body: unknown, actor: string) => { settingsCalls.push({ name: 'bot.save', actor, body }); return settingsOutcome; },
+    } as never,
     exporter: { requests: async () => '\uFEFF№;ФИО\r\n1;Мария\r\n', people: async () => '\uFEFFномер\r\n' },
     audit: async (actor: string, action: string, after: unknown) => { auditCalls.push({ actor, action, after }); },
     logo: async () => Buffer.from('\x89PNG-логотип'),
@@ -1184,6 +1188,27 @@ describe('руководитель: массовые действия, прав�
     const r = await get(await signIn(REGULAR), 'team');
     expect(r.status).toBe(200);
     expect(await r.json()).toHaveProperty('totals');
+  });
+});
+
+describe('настройка бота «новые вопросы анкеты»', () => {
+  test('только полный вход: обычному 403 на чтение и запись, полному — данные и сохранение с автором', async () => {
+    const reg = await signIn(REGULAR);
+    expect((await fetch(`${app.base}/api/v1/settings/bot`, { headers: { cookie: reg } })).status).toBe(403);
+    const deniedPost = await fetch(`${app.base}/api/v1/settings/bot/extra-questions`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: reg }, body: JSON.stringify({ mode: 'all' }),
+    });
+    expect(deniedPost.status).toBe(403);
+    const sup = await signIn(SUPER);
+    const view = await fetch(`${app.base}/api/v1/settings/bot`, { headers: { cookie: sup } });
+    expect(view.status).toBe(200);
+    expect(await view.json()).toHaveProperty('extraQuestions.mode', 'off');
+    const before = app.settingsCalls.length;
+    const saved = await fetch(`${app.base}/api/v1/settings/bot/extra-questions`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: sup }, body: JSON.stringify({ mode: 'all' }),
+    });
+    expect(saved.status).toBe(200);
+    expect(app.settingsCalls.slice(before)).toEqual([{ name: 'bot.save', actor: SUPER.login, body: { mode: 'all' } }]);
   });
 });
 

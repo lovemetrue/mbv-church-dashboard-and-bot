@@ -583,8 +583,9 @@ export class AdminFlow {
    */
   private async extraRecipients(): Promise<{ join: number[]; lead: number[] }> {
     const found = await this.deps.users.followUpCandidates([...this.deps.platforms.keys()]);
+    const setting = await this.deps.extraQuestionsNow();
     const allowed = found.filter((c) =>
-      extraQuestionsEnabled(this.deps.extraQuestions, c.platform, c.platform_user_id));
+      extraQuestionsEnabled(setting, c.platform, c.platform_user_id));
     return {
       join: allowed.filter((c) => c.mdg_status === 'join').map((c) => c.id),
       lead: allowed.filter((c) => c.mdg_status !== 'join').map((c) => c.id),
@@ -594,15 +595,16 @@ export class AdminFlow {
   private async prepareExtra(ctx: UpdateCtx, userId: number): Promise<void> {
     const { join, lead } = await this.extraRecipients();
     const total = join.length + lead.length;
+    const setting = await this.deps.extraQuestionsNow();
 
     if (total === 0) {
-      const off = ['', 'off'].includes(this.deps.extraQuestions.trim().toLowerCase());
+      const off = ['', 'off'].includes((await this.deps.extraQuestionsNow()).trim().toLowerCase());
       await this.reply(
         ctx,
         off
-          ? `Некому отправлять: новые вопросы выключены настройкой ${code('EXTRA_QUESTIONS')} в .env.`
+          ? 'Некому отправлять: новые вопросы выключены. Включить их можно в интерфейсе: Настройки → «Бот: новые вопросы анкеты».'
           : 'Некому отправлять: все, кому можно написать, уже получили приглашение или ответили ' +
-              `(учитывается настройка ${code('EXTRA_QUESTIONS')}).`,
+              '(учитывается настройка «Бот: новые вопросы анкеты»).',
       );
       return;
     }
@@ -622,7 +624,7 @@ export class AdminFlow {
         b('Приглашение готовым открыть'),
         esc(T.followUpInviteLead),
         '',
-        `Кому писать, задаёт ${code('EXTRA_QUESTIONS')}: сейчас ${code(this.deps.extraQuestions)}.`,
+        `Кому писать, задаёт настройка «новые вопросы анкеты» в интерфейсе: сейчас ${code(setting)}.`,
         'Каждый получит приглашение один раз.',
       ].join('\n'),
       CONFIRM_BUTTONS,

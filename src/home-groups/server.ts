@@ -10,6 +10,7 @@ import type { CampaignView, FormMeta } from './contracts.js';
 import type { RecordCreator } from './create.js';
 import type { Registrar } from './registration.js';
 import type { Manager } from './manage.js';
+import type { BotSettings } from './botSettings.js';
 import { registrationCardPage } from '../dashboard/registrationCard.js';
 import type { Settings } from '../platform/settings/service.js';
 import type { ActionError, ActionOk, MatchingRunOk, Me, Role } from './contracts.js';
@@ -55,6 +56,8 @@ export interface HomeGroupsDeps {
   creator: RecordCreator;
   /** Правка и удаление групп, координаторов, заявок. */
   manager: Manager;
+  /** Настройки бота из интерфейса (только полный вход). */
+  botSettings: BotSettings;
   /** Статистика кампании «40 дней»; null — расписание не задано. */
   campaign: () => Promise<CampaignView | null>;
   /** Выгрузки в CSV (с телефонами): только полный вход. */
@@ -109,7 +112,7 @@ const CONTENT_TYPES: Record<string, string> = {
 
 class BodyTooLarge extends Error {}
 
-const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode)$/;
+const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode|bot\/extra-questions)$/;
 const CREATE_PATH = /^\/api\/v1\/(requests|groups|people|coordinators)\/create$/;
 /** `POST /api/v1/groups/5/update`: правка и удаление записей справочника. */
 const MANAGE_PATH = /^\/api\/v1\/(groups|coordinators|people)\/(\d{1,15})\/(update|delete)$/;
@@ -541,6 +544,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       'staff/invite': () => deps.staff.invite(call.body, call.actor),
       'staff/reset': () => deps.staff.reset(call.body, call.actor),
       'staff/personal-mode': () => deps.staff.setPersonalMode(call.body, call.actor),
+      'bot/extra-questions': () => deps.botSettings.setExtraQuestions(call.body, call.actor),
     };
     const outcome = await handlers[action]!();
     if (!outcome.ok) {
@@ -585,6 +589,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       '/api/v1/settings/audit': () => deps.settings.audit(),
       '/api/v1/settings/prompts': () => deps.settings.prompts(),
       '/api/v1/settings/staff': () => deps.staff.view(),
+      '/api/v1/settings/bot': () => deps.botSettings.view(),
     };
     const settingsRoute = Object.hasOwn(settingsRead, path) ? settingsRead[path] : undefined;
     if (settingsRoute) {

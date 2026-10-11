@@ -133,7 +133,7 @@ describe('сообщение служителю о заявке', () => {
   });
 });
 
-import { requestLinkBuilder } from '../src/admin/links.js';
+import { dashboardLink, requestLinkBuilder } from '../src/admin/links.js';
 
 describe('ссылка на заявку в сообщении служителю', () => {
   test('без нового интерфейса ссылка ведёт в старый дашборд, как раньше', () => {
@@ -156,5 +156,23 @@ describe('ссылка на заявку в сообщении служител�
 
   test.each([undefined, '', '   ', 'не адрес', 'ftp://x.example'])('«%s» не годится — остаётся старая ссылка', (base) => {
     expect(requestLinkBuilder(base)).toBeUndefined();
+  });
+});
+
+describe('куда бот ведёт служителя «в дашборд»', () => {
+  const legacy = 'http://5.23.48.25:8090/groups';
+  test('пока адрес нового интерфейса не задан, ссылка прежняя', () => {
+    expect(dashboardLink(undefined, legacy)).toBe(legacy);
+    expect(dashboardLink('', legacy)).toBe(legacy);
+    expect(dashboardLink('  ', legacy)).toBe(legacy);
+  });
+  test('задан HG_PUBLIC_URL — ссылка на новый интерфейс, с косой чертой на конце', () => {
+    expect(dashboardLink('http://5.23.48.25:8092', legacy)).toBe('http://5.23.48.25:8092/');
+    expect(dashboardLink('https://groups.example.org/', legacy)).toBe('https://groups.example.org/');
+    expect(dashboardLink('https://example.org/hg', legacy)).toBe('https://example.org/hg/');
+  });
+  test('непонятный или небезопасный адрес не используется', () => {
+    expect(dashboardLink('не адрес', legacy)).toBe(legacy);
+    expect(dashboardLink('javascript:alert(1)', legacy)).toBe(legacy);
   });
 });

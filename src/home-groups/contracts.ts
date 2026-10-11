@@ -37,6 +37,8 @@
  *   POST /api/v1/requests/:id/delete    (тело {})  → ActionOk | ActionError (только super)
  *   GET  /api/v1/export/requests.csv    → CSV (только super; в нём телефоны)
  *   GET  /api/v1/export/people.csv      → CSV (только super)
+ *   GET  /api/v1/settings/bot           → SettingsBotView (только super)
+ *   POST /api/v1/settings/bot/extra-questions ExtraQuestionsBody → ActionOk | ActionError (только super)
  *   POST /api/v1/requests/:id/close     CloseBody       → ActionOk | ActionError (обработано или аннулировать с причиной)
  *   POST /api/v1/requests/:id/reopen    (тело {})       → ActionOk | ActionError (вернуть закрытую заявку в работу)
  *   POST /api/v1/people/:id/delete      (тело {})       → ActionOk | ActionError (только super; стирает регистрацию с заявками)
@@ -422,6 +424,27 @@ export interface CampaignView {
   days: { loaded: number; total: number; ranges: string; list: { day: number; loaded: boolean; length: number }[] };
   day: { state: 'до старта' | 'идёт' | 'завершена'; number: number; total: number; startDate: string };
   broadcasts: { key: string; createdAt: string; finished: boolean; sent: number; pending: number; failed: number; blocked: number }[];
+}
+
+/** Настройка бота «новые вопросы анкеты» (удобное время и адрес): кому их задавать. */
+export interface SettingsBotView {
+  generatedAt: string;
+  extraQuestions: {
+    /** off — никому; all — всем; list — только людям из списка `ids`. */
+    mode: 'off' | 'all' | 'list';
+    /** Список через запятую: «111111111» или «max:111111111». Для остальных режимов пустая строка. */
+    ids: string;
+    /** Откуда действует значение: из этой настройки или из файла `.env` сервера (пока настройку не меняли). */
+    source: 'settings' | 'env';
+    /** Значение из `.env`: показывается как «было по умолчанию». */
+    envValue: string;
+  };
+}
+
+export interface ExtraQuestionsBody {
+  mode: 'off' | 'all' | 'list';
+  /** Для `list`: id через запятую, обязательно хотя бы один. */
+  ids?: string;
 }
 
 export type CancelReason = 'declined' | 'no_answer' | 'duplicate' | 'self_found' | 'other';

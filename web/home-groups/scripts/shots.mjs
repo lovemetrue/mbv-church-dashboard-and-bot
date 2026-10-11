@@ -187,6 +187,60 @@ const SCREENS = [
   // Закрытая группа с длинным ФИО: ведущий обрезан многоточием.
   { name: 'reference-groups-closed', url: '/?tab=reference&f=Статус:eq:Закрыта', ready: 'table' },
   { name: 'reference-filtered', url: '/?tab=reference&f=Район:eq:Приморский&gb=Статус&col=№&col=Ведущий&col=Район&col=Статус&col=Здоровье', ready: 'table' },
+  // Состав группы: карточка с направленными и внесёнными вручную (метка «Есть и в…»), окно «Добавить человека» (поиск, выбор, «Уже в составе»
+  // и режим «Новый человек») и карточки людей: со списком групп и внесённая вручную с правкой.
+  { name: 'members-group-card', url: '/?tab=reference&rec=1', ready: '[role=dialog][aria-label^="Карточка группы"]', scroll: 'ul[aria-label="Состоят в группе"]' },
+  { name: 'members-group-empty', url: '/?tab=reference&rec=3', ready: '[role=dialog][aria-label^="Карточка группы"]', scroll: 'button[aria-label="Добавить человека"]' },
+  {
+    name: 'members-add-search',
+    url: '/?tab=reference&rec=4',
+    ready: '[role=dialog][aria-label^="Карточка группы"]',
+    click: 'button[aria-label="Добавить человека"]',
+    then: '[role=dialog][aria-modal=true] ul[aria-label="Люди из справочника"]',
+    fill: [['[role=dialog][aria-modal=true] input[type=search]', 'ор']],
+    clickAfter: '[role=dialog][aria-modal=true] ul[aria-label="Люди из справочника"] button:not([disabled]) >> nth=0',
+  },
+  {
+    name: 'members-add-new',
+    url: '/?tab=reference&rec=4',
+    ready: '[role=dialog][aria-label^="Карточка группы"]',
+    click: ['button[aria-label="Добавить человека"]', '[role=dialog][aria-modal=true] [role=tab]:has-text("Новый человек")'],
+    then: '[role=dialog][aria-modal=true] input[type=text]',
+    fill: [
+      ['[role=dialog][aria-modal=true] input[type=text] >> nth=0', 'Анна Лебедева'],
+      ['[role=dialog][aria-modal=true] input[type=text] >> nth=1', '+7 911 111 22 33'],
+      ['[role=dialog][aria-modal=true] input[type=text] >> nth=3', 'Купчино'],
+    ],
+  },
+  { name: 'members-person-card', url: '/?tab=reference&ent=people&rec=u1', ready: '[role=dialog][aria-label^="Карточка человека"]', then: 'button[aria-label="Открыть группу ДГ-0012"]' },
+  { name: 'members-person-manual', url: '/?tab=reference&ent=people&rec=p1', ready: '[role=dialog][aria-label^="Карточка человека"]', then: 'button[aria-label^="Править карточку"]' },
+  { name: 'members-people-groups-col', url: '/?tab=reference&ent=people&col=ФИО&col=Район&col=Группы', ready: 'table' },
+  { name: 'members-groups-col', url: '/?tab=reference&col=№&col=Ведущий&col=Места&col=В составе&sort=В составе:desc', ready: 'table' },
+  // Плавающая кнопка «✦ Помощник» (на «Сегодня»), открытое окно с подсказками, ответ с таблицей и раскрытым «Как посмотрел», ошибка сервиса.
+  { name: 'chat-fab', url: '/', ready: 'button:has-text("✦ Помощник")' },
+  { name: 'chat-open', url: '/', ready: 'button:has-text("✦ Помощник")', click: 'button:has-text("✦ Помощник")', then: '[role=dialog][aria-label="Помощник"] [role=group]' },
+  {
+    name: 'chat-answer',
+    url: '/',
+    ready: 'button:has-text("✦ Помощник")',
+    click: 'button:has-text("✦ Помощник")',
+    then: '[role=dialog][aria-label="Помощник"] [role=group]',
+    fill: [['[role=dialog][aria-label="Помощник"] textarea', 'В каком районе перебор групп?']],
+    submit: '[role=dialog][aria-label="Помощник"] button[aria-label="Отправить"]',
+    after: '[role=dialog][aria-label="Помощник"] table',
+    afterClick: '[role=dialog][aria-label="Помощник"] summary',
+    scroll: '[role=dialog][aria-label="Помощник"] button:has-text("Скопировать ответ")',
+  },
+  {
+    name: 'chat-error',
+    url: '/',
+    ready: 'button:has-text("✦ Помощник")',
+    click: 'button:has-text("✦ Помощник")',
+    then: '[role=dialog][aria-label="Помощник"] [role=group]',
+    fill: [['[role=dialog][aria-label="Помощник"] textarea', 'Покажи, что за ошибка']],
+    submit: '[role=dialog][aria-label="Помощник"] button[aria-label="Отправить"]',
+    after: '[role=dialog][aria-label="Помощник"] button:has-text("Повторить")',
+  },
 ];
 
 const SHOTS = [
@@ -246,6 +300,13 @@ const SHOTS = [
   ['others-card-work', 400, 'gray'],
   ['team', 400, 'dark'],
   ['team', 1280, 'gray'],
+  ...['members-group-card', 'members-group-empty', 'members-add-search', 'members-add-new', 'members-person-card', 'members-person-manual', 'members-people-groups-col', 'members-groups-col'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
+  ['members-group-card', 400, 'dark'],
+  ['members-add-search', 400, 'gray'],
+  ...['chat-fab', 'chat-open', 'chat-answer', 'chat-error'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
+  ['chat-answer', 400, 'dark'],
+  ['chat-open', 400, 'gray'],
+  ['chat-fab', 1280, 'dark'],
 ];
 
 const browser = await chromium.launch({ executablePath: chromePath, args: ['--no-sandbox'] });
@@ -308,8 +369,12 @@ for (const [screenName, width, theme] of SHOTS) {
   if (screen.then) await page.waitForSelector(screen.then, { timeout: 5000 });
   for (const [sel, text] of screen.fill ?? []) await page.fill(sel, text);
   for (const [sel, value] of screen.select ?? []) await page.selectOption(sel, value);
+  // clickAfter — клик уже после ввода (например, выбрать человека из отфильтрованного списка).
+  for (const sel of [screen.clickAfter].flat().filter(Boolean)) await page.click(sel);
   if (screen.submit) await page.click(screen.submit);
   if (screen.after) await page.waitForSelector(screen.after, { timeout: 5000 });
+  // afterClick — клик уже после ответа «сервера» (например, раскрыть блок «Как посмотрел» под ответом).
+  for (const sel of [screen.afterClick].flat().filter(Boolean)) await page.click(sel);
   if (screen.scroll) await page.locator(screen.scroll).first().scrollIntoViewIfNeeded();
   await page.waitForTimeout(150);
 

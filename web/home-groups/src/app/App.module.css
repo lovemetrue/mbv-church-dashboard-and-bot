@@ -3,7 +3,8 @@
   margin-inline: auto;
   padding-block: 12px 48px;
   padding-top: max(12px, env(safe-area-inset-top, 0px));
-  padding-bottom: max(48px, env(safe-area-inset-bottom, 0px));
+  /* Запас снизу: плавающая кнопка «Помощник» (44 px + отступ) не должна закрывать последние строки и кнопки. */
+  padding-bottom: max(88px, env(safe-area-inset-bottom, 0px));
 }
 .skip {
   position: absolute;

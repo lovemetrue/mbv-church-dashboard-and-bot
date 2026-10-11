@@ -16,6 +16,8 @@ export interface EditField {
   hint?: string;
   placeholder?: string;
   inputMode?: 'numeric' | 'tel';
+  /** Для date: самая поздняя допустимая дата («2026-10-11»), например «не из будущего». */
+  max?: string;
   /** На всю ширину окна, а не в половину. */
   wide?: boolean;
 }

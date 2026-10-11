@@ -11,7 +11,7 @@ import { coordinatorEditSpec, groupEditSpec } from './editSpec';
  * Окно закрывается кнопкой, Esc или щелчком по фону. Пока идёт отправка, закрывать его нельзя:
  * правка всё равно дойдёт до сервера, а человек не узнал бы, чем кончилось.
  */
-function useGuardedClose(onClose: () => void) {
+export function useGuardedClose(onClose: () => void) {
   const busy = useRef(false);
   return {
     close: () => {

@@ -190,6 +190,8 @@ export interface RawPerson {
   date: string | null;
   userId: number | null;
   registrationNo: number | null;
+  /** Номер карточки, внесённой вручную (ключ p<id>); у остальных его нет. */
+  personId?: number;
 }
 
 /**
@@ -201,6 +203,8 @@ export const RAW_EXTRA_PEOPLE: RawPerson[] = [
   { key: 'u2', fio: 'Михаил Громов', phone: '79210001755', ageLabel: '36–45', district: 'Калининский', from: 'Бот · MAX', mdgLabel: 'Ведёт группу', date: '2026-09-03', userId: 2, registrationNo: 2 },
   { key: 'u3', fio: 'Софья Титова', phone: '79310002280', ageLabel: '18–25', district: 'Центральный', from: 'Бот · Telegram', mdgLabel: 'Не интересно', date: '2026-09-28', userId: 3, registrationNo: null },
   { key: 'u4', fio: 'Юлия Орлова', phone: '79990003047', ageLabel: '26–35', district: 'Выборгский', from: 'Бот · Telegram', mdgLabel: 'Откроет свою группу', date: '2026-10-05', userId: 4, registrationNo: 4 },
+  // Карточка, внесённая вручную («по плюсу» в составе группы): без регистрации и заявки, её можно править.
+  { key: 'p1', fio: 'Нина Воронцова', phone: '79110005511', ageLabel: '46+', district: 'Приморский', from: 'Внесён вручную', mdgLabel: 'Уже в группе', date: '2026-08-18', userId: null, registrationNo: null, personId: 1 },
 ];
 
 export const COORDINATOR_ROLES: Record<string, string> = {

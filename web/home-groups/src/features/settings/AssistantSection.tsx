@@ -130,6 +130,7 @@ export function AssistantSection() {
                 {t.sentTitle}
               </h3>
               <p>{t.sentText}</p>
+              <p className={styles.stackTop}>{t.sentChat}</p>
             </div>
             <p className={`${styles.muted} ${styles.hintBelow}`}>{t.promptsHint}</p>
           </div>

@@ -4,6 +4,7 @@ import { useMe } from '../shared/api/queries';
 import { ru } from '../shared/i18n/ru';
 import { useAppNav } from '../shared/nav';
 import { LoadingState } from '../shared/ui';
+import { AssistantChat } from '../features/assistant-chat';
 import { isRegistrationPath, RegistrationPage } from '../features/create/RegistrationPage';
 import { RequestsScreen } from '../features/requests/RequestsScreen';
 import { ReferenceScreen } from '../features/reference/ReferenceScreen';
@@ -60,6 +61,7 @@ function Shell() {
         {nav.tab === 'reference' && <ReferenceScreen />}
         {nav.tab === 'settings' && <SettingsRoute />}
       </main>
+      <AssistantChat />
     </div>
   );
 }

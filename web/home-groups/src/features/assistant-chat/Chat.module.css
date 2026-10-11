@@ -1,0 +1,318 @@
+/* Плавающая кнопка: ниже карточки заявки (25) и окон (40), чтобы не закрывать их кнопки. */
+.fab {
+  position: fixed;
+  z-index: 20;
+  right: var(--gutter);
+  bottom: calc(var(--gutter) + env(safe-area-inset-bottom, 0px));
+  min-height: var(--tap);
+  padding: 0 20px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+  box-shadow: var(--shadow);
+}
+.fab:hover {
+  filter: brightness(1.08);
+}
+
+/* Окно разговора: выше карточки (25), ниже модальных окон (40). Справа внизу, на телефоне — почти на весь экран. */
+.panel {
+  position: fixed;
+  z-index: 30;
+  right: var(--gutter);
+  bottom: calc(var(--gutter) + env(safe-area-inset-bottom, 0px));
+  width: min(380px, calc(100vw - 2 * var(--gutter)));
+  height: min(560px, calc(100vh - 2 * var(--gutter)));
+  height: min(560px, calc(100dvh - 2 * var(--gutter)));
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+@media (max-width: 700px) {
+  .panel {
+    left: 8px;
+    right: 8px;
+    top: max(8px, env(safe-area-inset-top, 0px));
+    bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    width: auto;
+    height: auto;
+  }
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 8px 8px 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.titles {
+  min-width: 0;
+}
+.title {
+  font-size: 16px;
+  letter-spacing: -0.01em;
+}
+.subtitle {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.log {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bubble {
+  position: relative;
+  max-width: 92%;
+  min-width: 0;
+  padding: 9px 12px;
+  border-radius: var(--radius-lg);
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.bot {
+  align-self: flex-start;
+  background: var(--surface-2);
+  border: 1px solid var(--line-soft);
+  border-bottom-left-radius: var(--radius-sm);
+}
+.me {
+  align-self: flex-end;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-bottom-right-radius: var(--radius-sm);
+}
+.text {
+  white-space: pre-wrap;
+}
+.failure {
+  background: var(--warn-soft);
+  border-color: var(--warn);
+}
+.errorMark {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--warn);
+}
+.hint {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  text-decoration: underline;
+  font-size: inherit;
+  min-height: 24px;
+}
+.thinkingBox {
+  min-height: 0;
+}
+.thinking {
+  color: var(--muted);
+}
+
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.chips {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 10px;
+}
+.chip {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: var(--radius-pill);
+  padding: 6px 12px;
+  min-height: var(--tap);
+  font-size: 13px;
+  text-align: left;
+}
+.chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Таблица внутри ответа прокручивается своим блоком: ширина окна от неё не растёт. */
+.tableBox {
+  margin-top: 8px;
+  max-width: 100%;
+}
+.table {
+  border-collapse: collapse;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.table th,
+.table td {
+  padding: 5px 9px;
+  text-align: left;
+  border-bottom: 1px solid var(--line-soft);
+}
+.table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-weight: 600;
+}
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.empty {
+  color: var(--muted);
+}
+.note {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.how {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.how summary {
+  cursor: pointer;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+}
+/* Свой значок вместо стандартного: у flex-заголовка браузер его не рисует. */
+.how summary::-webkit-details-marker {
+  display: none;
+}
+.how summary::before {
+  content: '▸';
+  font-size: 11px;
+}
+.how[open] summary::before {
+  content: '▾';
+}
+.queries {
+  margin: 4px 0 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.query {
+  min-width: 0;
+}
+.sql {
+  display: block;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.queryResult {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.queryFailed .queryResult {
+  color: var(--warn);
+}
+.answerActions {
+  margin-top: 6px;
+  display: flex;
+  gap: 8px;
+}
+
+.form {
+  border-top: 1px solid var(--line-soft);
+  padding: 10px 12px 8px;
+}
+.inputRow {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.input {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  min-height: var(--tap);
+  max-height: 120px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.4;
+}
+.input:disabled {
+  opacity: 0.6;
+}
+.inputRow > button {
+  align-self: flex-end;
+  min-width: var(--tap);
+  min-height: var(--tap);
+}
+.formFoot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 28px;
+  margin-top: 2px;
+}
+.counter {
+  font-size: 12px;
+  font-family: var(--mono);
+  color: var(--muted);
+}
+
+/* Меньше 16 px iOS приближает страницу при фокусе в поле. */
+@media (max-width: 700px) {
+  .input {
+    font-size: 16px;
+  }
+}

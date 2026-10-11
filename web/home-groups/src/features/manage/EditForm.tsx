@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import type { QueryClient } from '@tanstack/react-query';
 import { ru } from '../../shared/i18n/ru';
 import { Button } from '../../shared/ui';
 import { blankRequired, changedFields, type EditField, type EditSpec } from './editSpec';
@@ -14,6 +15,8 @@ interface EditFormProps {
   onSaved: () => void;
   /** Идёт ли отправка: окно с формой по этому признаку не даёт себя закрыть, не дождавшись ответа. */
   onBusyChange?: (busy: boolean) => void;
+  /** Что перечитать после успеха; по умолчанию всё, что задевает правка записи справочника (см. `useManageAction`). */
+  refresh?: (client: QueryClient) => Promise<unknown>;
 }
 
 /**
@@ -22,12 +25,12 @@ interface EditFormProps {
  * «Сохранить» включается, когда есть что сохранять и ни одно обязательное поле не опустошено;
  * остальное проверяет сервер, и его отказ показывается над кнопками, не стирая набранного.
  */
-export function EditForm({ spec: given, path, onClose, onSaved, onBusyChange }: EditFormProps) {
+export function EditForm({ spec: given, path, onClose, onSaved, onBusyChange, refresh }: EditFormProps) {
   const uid = useId();
   // Описание берём один раз при открытии: карточка под окном перечитывается раз в минуту, и новые
   // «исходные» значения посреди правки превратили бы набранное в «не изменённое» или наоборот.
   const [spec] = useState(given);
-  const { run, busy } = useManageAction();
+  const { run, busy } = useManageAction(refresh);
   const [values, setValues] = useState<Record<string, string>>(spec.initial);
   const [error, setError] = useState<string | null>(null);
 
@@ -115,6 +118,7 @@ export function EditForm({ spec: given, path, onClose, onSaved, onBusyChange }: 
           <input
             {...common}
             type={f.kind === 'date' ? 'date' : 'text'}
+            max={f.kind === 'date' ? f.max : undefined}
             inputMode={f.inputMode}
             placeholder={f.placeholder}
             autoComplete="off"

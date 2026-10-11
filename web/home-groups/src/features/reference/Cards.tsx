@@ -6,7 +6,7 @@ import { ru } from '../../shared/i18n/ru';
 import { useAppNav } from '../../shared/nav';
 import { Button, Drawer, DrawerSection, KeyValue, LoadingState, Meter, NewGroupIcon, Pill, type KvRow } from '../../shared/ui';
 import { LinkButton } from '../create';
-import { CoordinatorActions, DeletePersonSection, GroupActions } from '../manage';
+import { CoordinatorActions, DeletePersonSection, GroupActions, MembersSection, PersonActions, PersonGroups } from '../manage';
 import styles from './Reference.module.css';
 
 const noValue = <span className={styles.note}>{ru.reference.notSpecified}</span>;
@@ -103,6 +103,7 @@ export function GroupCard({ g, onClose }: { g: GroupItem; onClose: () => void })
         <KeyValue rows={rows} />
         <GroupActions key={g.id} g={g} onDeleted={onClose} />
       </DrawerSection>
+      <MembersSection key={g.id} g={g} />
       <DrawerSection title={ru.reference.plannedTitle}>
         {g.plannedRequests.length ? (
           <ul className={styles.planned}>
@@ -147,7 +148,9 @@ export function PersonCard({ p, onClose }: { p: PersonItem; onClose: () => void 
     <Drawer label={`Карточка человека: ${p.fio}`} title={p.fio} onClose={onClose}>
       <DrawerSection>
         <KeyValue rows={rows} />
+        <PersonActions key={p.key} p={p} onDeleted={onClose} />
       </DrawerSection>
+      <PersonGroups p={p} />
       {registrationLinks && (
         <DrawerSection>
           <div className={styles.cardActions}>

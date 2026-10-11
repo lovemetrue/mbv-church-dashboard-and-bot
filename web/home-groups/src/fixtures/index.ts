@@ -12,6 +12,7 @@ import {
 import { buildFormMeta } from './formMeta';
 import { buildCoordinators, buildGroups, buildPeople, buildRequests, buildToday } from './build';
 import { buildCampaign } from './campaign';
+import { fixtureChatReply } from './chat';
 import { buildTeam } from './team';
 
 /** Ответ «сервера» в режиме фикстур. Путь — как в apiGet: «today», «requests»… */
@@ -19,7 +20,8 @@ export function fixtureResponse(path: string): unknown {
   switch (path.replace(/^\/+/, '').replace(/\/+$/, '')) {
     case 'me':
       // В демо вход полный, иначе вкладки «Настройки» не видно.
-      return { role: 'super' };
+      // Кнопка «Помощник» в демо видна: ключ задан, помощник включён, база готова.
+      return { role: 'super', assistant: { available: true, enabled: true, chat: true } };
     case 'form-meta':
       return buildFormMeta();
     case 'today':
@@ -64,6 +66,8 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
   if (clean === 'matching/run') {
     return { ok: true, created: 0, replaced: 0, unchanged: buildRequests().matching.waiting };
   }
+  // Чат «Помощник»: ответ зависит от последнего вопроса (fixtures/chat.ts), сами данные не меняются.
+  if (clean === 'assistant/chat') return fixtureChatReply(body);
   // Помощник: в демо он «разобрал» все три заявки, которые ждали разбора; данные при этом не меняются.
   if (clean === 'assistant/run') return { ok: true, asked: 3, filled: 2, withQuestions: 2, proposals: 1 };
   // Пересчёт всех предложений: в демо сервера нет, поэтому «заменено» нулевое, а изменившиеся данные считаем обновлёнными.
@@ -76,6 +80,12 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
   if (/^requests\/\d+\/(edit|assign|call|close|reopen)$/.test(clean)) return { ok: true };
   // Правка и удаление записей справочника и заявок: в демо данные не меняются, действие просто «получается».
   if (/^(groups|coordinators|requests)\/\d+\/(update|delete)$/.test(clean)) return { ok: true };
+  // Состав группы: «Добавить человека» отвечает номером строки и ключом (у нового человека это карточка p…), остальное «получается».
+  if (/^groups\/\d+\/members\/create$/.test(clean)) {
+    const input = (body ?? {}) as { personKey?: string };
+    return { ok: true, id: 101, personKey: input.personKey ?? 'p2' };
+  }
+  if (/^(members|persons)\/\d+\/(update|delete)$/.test(clean)) return { ok: true };
   // Удаление регистрации и настройка бота: в демо ничего не меняется, действие просто «получается».
   if (/^people\/\d+\/delete$/.test(clean) || clean === 'settings/bot/extra-questions') return { ok: true };
   // Переключатель помощника: в демо ничего не меняется, действие просто «получается».

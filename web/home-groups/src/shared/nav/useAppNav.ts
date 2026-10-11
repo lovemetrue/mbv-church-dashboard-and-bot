@@ -125,6 +125,24 @@ export function useAppNav() {
         return next;
       }),
     openRecord: (key: string) => update({ rec: key }),
+    /**
+     * Карточка человека в «Справочнике → Люди» из любого места (состав группы). Адрес собираем одним
+     * вызовом: два подряд («сущность», потом «запись») в react-router 6 затёрли бы друг друга.
+     */
+    openPerson: (key: string) =>
+      setParams((prev) => {
+        const next = tabParams(prev, 'reference');
+        next.set('ent', 'people');
+        next.set('rec', key);
+        return next;
+      }),
+    /** Карточка группы в «Справочнике → Группы» (из карточки человека). */
+    openGroup: (id: number) =>
+      setParams((prev) => {
+        const next = tabParams(prev, 'reference');
+        next.set('rec', String(id));
+        return next;
+      }),
     closeRecord: () => update({ rec: null }),
   };
 }

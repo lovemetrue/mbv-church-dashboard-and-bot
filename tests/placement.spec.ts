@@ -341,3 +341,57 @@ describe('счётчик участников: утверждённые посл
     expect((await repo.placedSinceFeedback()).size).toBe(0);
   });
 });
+
+describe('улица и удобное время, поправленные координатором', () => {
+  const manual = async (id: number) => (await db.query('SELECT manual_street, manual_schedule, origin FROM requests WHERE id = $1', [id])).rows[0];
+
+  test('правка сохраняется, пустое значение убирает её, а непереданное поле не трогается', async () => {
+    const r = await request();
+    expect(await repo.setParams(r, { street: '  ул. Рылеева 32 ', schedule: 'пн, ср вечером' }, 'a')).toEqual({ ok: true });
+    expect(await manual(r)).toMatchObject({ manual_street: 'ул. Рылеева 32', manual_schedule: 'пн, ср вечером' });
+    await repo.setParams(r, { street: '' }, 'a');
+    expect(await manual(r)).toMatchObject({ manual_street: null, manual_schedule: 'пн, ср вечером' });
+    await repo.setParams(r, { schedule: null }, 'a');
+    expect(await manual(r)).toMatchObject({ manual_street: null, manual_schedule: null });
+  });
+
+  test('в журнал идёт факт правки без текста: адрес — личные данные', async () => {
+    const r = await request();
+    await repo.setParams(r, { street: 'ул. Секретная 7', schedule: 'вечером' }, 'mbv_admin');
+    const entry = (await audits()).find((a) => a.action === 'request.params')!;
+    expect(entry).toMatchObject({ actor: 'mbv_admin', after: { street: true, schedule: true } });
+    expect(JSON.stringify(entry)).not.toContain('Секретная');
+    await repo.setParams(r, { street: null }, 'mbv_admin');
+    expect((await audits()).filter((a) => a.action === 'request.params').at(-1)!.after).toEqual({ street: false });
+  });
+
+  test('повтор того же значения ничего не меняет и в журнал не пишет', async () => {
+    const r = await request();
+    await repo.setParams(r, { street: 'ул. А 1' }, 'a');
+    await repo.setParams(r, { street: 'ул. А 1' }, 'a');
+    expect((await audits()).filter((a) => a.action === 'request.params')).toHaveLength(1);
+  });
+
+  test('заявка из таблицы после правки переходит под управление интерфейса', async () => {
+    const r = await request({ origin: 'таблица' });
+    await repo.setParams(r, { street: 'ул. Б 2' }, 'a');
+    expect((await manual(r)).origin).toBe('ui');
+  });
+
+  test.each([
+    [{}, 'Нечего'],
+    [{ street: 'я'.repeat(201) }, 'длинный'],
+    [{ schedule: 'я'.repeat(201) }, 'длинный'],
+  ])('%j отклоняется', async (patch, fragment) => {
+    const r = await request();
+    const res = await repo.setParams(r, patch, 'a');
+    expect(res).toMatchObject({ ok: false, error: 'bad_request' });
+    expect((res as { message: string }).message).toContain(fragment);
+  });
+
+  test('закрытой и несуществующей заявке править нельзя', async () => {
+    const closed = await request({ status: 'Исполнена' });
+    expect(await repo.setParams(closed, { street: 'х' }, 'a')).toMatchObject({ ok: false, error: 'already_closed' });
+    expect(await repo.setParams(99999, { street: 'х' }, 'a')).toMatchObject({ ok: false, error: 'not_found' });
+  });
+});

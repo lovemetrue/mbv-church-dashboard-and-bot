@@ -214,6 +214,49 @@ export class PlacementRepo {
     });
   }
 
+  /**
+   * Улица и удобное время, поправленные координатором. Правка лежит рядом с ответом из анкеты и
+   * имеет приоритет; пустое значение убирает правку. В журнал пишется факт, а не текст: адрес — личные данные.
+   */
+  async setParams(
+    requestId: number, patch: { street?: string | null; schedule?: string | null }, actor: string,
+  ): Promise<ActionOutcome> {
+    const clean = (v: string | null | undefined): string | null | undefined => {
+      if (v === undefined) return undefined;
+      const t = (v ?? '').trim();
+      return t === '' ? null : t;
+    };
+    const street = clean(patch.street);
+    const schedule = clean(patch.schedule);
+    if (street === undefined && schedule === undefined) return fail('bad_request', 'Нечего менять.');
+    if ((street ?? '').length > 200 || (schedule ?? '').length > 200) return fail('bad_request', 'Слишком длинный текст (до 200 знаков).');
+
+    return this.tx(async (c) => {
+      const state = await this.lockOpenRequest(c, requestId);
+      if (PlacementRepo.isFailure(state)) return state;
+      const { rows } = await c.query<{ manual_street: string | null; manual_schedule: string | null }>(
+        'SELECT manual_street, manual_schedule FROM requests WHERE id = $1', [requestId],
+      );
+      const old = rows[0]!;
+      const changedStreet = street !== undefined && street !== old.manual_street;
+      const changedSchedule = schedule !== undefined && schedule !== old.manual_schedule;
+      if (!changedStreet && !changedSchedule) return { ok: true } as const;
+      await c.query(
+        `UPDATE requests
+            SET manual_street = CASE WHEN $2 THEN $3 ELSE manual_street END,
+                manual_schedule = CASE WHEN $4 THEN $5 ELSE manual_schedule END,
+                origin = CASE WHEN origin = 'таблица' THEN 'ui' ELSE origin END
+          WHERE id = $1`,
+        [requestId, changedStreet, street ?? null, changedSchedule, schedule ?? null],
+      );
+      await this.audit(c, actor, 'request.params', requestId,
+        { street: old.manual_street !== null, schedule: old.manual_schedule !== null },
+        { street: changedStreet ? street !== null : undefined, schedule: changedSchedule ? schedule !== null : undefined },
+        null);
+      return { ok: true } as const;
+    });
+  }
+
   /** Группы, которые координатор уже отклонил для заявки: движок их не предлагает снова. */
   async rejectedGroups(): Promise<Map<number, number[]>> {
     const { rows } = await this.db.query<{ request_id: number; group_id: number }>(

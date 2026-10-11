@@ -21,6 +21,11 @@
  *   POST /api/v1/requests/:id/reject    RejectBody    → ActionOk | ActionError
  *   POST /api/v1/requests/:id/need-call NeedCallBody  → ActionOk | ActionError
  *
+ *   GET /api/v1/form-meta         → FormMeta            (справочники для форм «Создать»)
+ *   POST /api/v1/requests/:id/params   RequestParamsBody → ActionOk | ActionError (улица и удобное время вручную)
+ *   POST /api/v1/requests/create       CreateRecordBody  → CreateRecordOk | ActionError
+ *   POST /api/v1/groups/create         CreateRecordBody  → CreateRecordOk | ActionError
+ *
  *   GET /api/v1/settings/health   → SettingsHealthView   (раздел «Настройки»: только super, иначе 403)
  *   GET /api/v1/settings/errors   → SettingsErrorsView
  *   GET /api/v1/settings/audit    → SettingsAuditView
@@ -43,6 +48,8 @@ export type Role = 'admin' | 'super';
 
 export interface Me {
   role: Role;
+  /** Адрес старого дашборда (для того, что пока живёт только там, например регистрации участников); null — не задан. */
+  legacyUrl: string | null;
 }
 
 // ── общее ───────────────────────────────────────────────────────────────────
@@ -85,6 +92,8 @@ export interface GroupBrief {
   /** Свободных мест (не меньше нуля). */
   free: number;
   format: string | null;
+  /** Новая группа: заведена под кампанию (статус «Кампания»). Подбор ставит такие первыми. */
+  isNew: boolean;
 }
 
 /** Оценённая группа: кандидат на заявку. */
@@ -98,6 +107,8 @@ export interface Candidate {
 }
 
 export interface Proposal {
+  /** Предложение закреплено: сохранено в «предварительно» и не изменится само, пока группа доступна. Иначе это свежий расчёт, он может поменяться при следующем показе. */
+  saved: boolean;
   /** Кто предложил: расчёт сервиса или (позже) языковая модель. Пока человек не утвердил, это только предложение. */
   source: 'script' | 'agent';
   /** Группа, которую предлагает план. */
@@ -144,8 +155,17 @@ export interface MatrixCell {
   /** Места минус спрос. */
   net: number;
   level: CellLevel;
+  /** Какие открытые заявки дают спрос в этой ячейке (для списка по клику). */
+  requestIds: number[];
+  /** Какие группы дают места в этой ячейке: принимающие и со свободными местами. */
+  groupIds: number[];
 }
 
+/**
+ * Строка матрицы. Особая строка с `district` = «Район не определён» собирает заявки, у которых район не
+ * определился (их не должно быть видно меньше остальных); особая колонка `age` = «Возраст не указан» —
+ * заявки без возраста. В таких ячейках есть только спрос.
+ */
 export interface MatrixRow {
   district: string;
   cells: MatrixCell[];
@@ -174,6 +194,8 @@ export interface TodayView {
   /** ISO-время формирования. */
   generatedAt: string;
   counters: Counters;
+  /** Сколько заявок утвердили сегодня (по журналу, часовой пояс сервиса). */
+  approvedToday: number;
   /** «Распределено X из Y»: готово + перезвонить + утверждено из всех, кроме отказов. */
   assigned: number;
   total: number;
@@ -211,6 +233,12 @@ export interface RequestItem {
   dataFill: [boolean, boolean, boolean, boolean];
   proposal: Proposal | null;
   noPlan: NoPlan | null;
+  /** Что человек написал про удобное время: откуда текст (анкета бота или правка координатора) и как система его поняла (поля `days`, `slot`). */
+  scheduleInfo: ParamInfo;
+  /** То же про улицу и дом (поле `street`). */
+  streetInfo: ParamInfo;
+  /** Заявка как она пришла: что человек заполнил сам, в порядке показа. */
+  original: OriginalField[];
   /** Куда человека утвердили (для bucket = done). */
   finalGroup: GroupBrief | null;
   /** Название группы текстом, если группа в реестре не нашлась. */
@@ -230,8 +258,10 @@ export interface MatchingStatus {
   auto: boolean;
   /** Последний запуск (по кнопке или автоматически); null — ещё не запускали. */
   lastRun: { at: string; created: number; replaced: number; actor: string } | null;
-  /** Сколько открытых заявок сейчас без сохранённого предложения, хотя группа для них находится. */
+  /** Сколько открытых заявок сейчас без закреплённого предложения, хотя группа для них находится. */
   waiting: number;
+  /** Сколько открытых заявок уже имеют закреплённое предложение. */
+  saved: number;
 }
 
 export interface MatchingRunOk {
@@ -246,6 +276,24 @@ export interface MatchingRunOk {
 
 export interface MatchingAutoBody {
   enabled: boolean;
+}
+
+/** Откуда взято значение параметра подбора. anketa — ответ человека (бот), manual — правка координатора. */
+export interface ParamInfo {
+  text: string | null;
+  source: 'anketa' | 'manual' | null;
+}
+
+export interface OriginalField {
+  label: string;
+  value: string;
+}
+
+export interface RequestParamsBody {
+  /** Улица и дом; пустая строка или null — убрать правку координатора (вернётся ответ из анкеты, если был). undefined — не менять. */
+  street?: string | null;
+  /** Удобные дни и время свободным текстом («пн, ср вечером»); правила те же. */
+  schedule?: string | null;
 }
 
 export interface RequestsView {
@@ -292,6 +340,35 @@ export interface ActionOk {
 export interface ActionError {
   error: 'bad_request' | 'not_found' | 'already_closed' | 'group_unavailable' | 'group_full' | 'forbidden' | 'conflict';
   message: string;
+}
+
+// ── Создание записей («+ Создать») ──────────────────────────────────────────
+
+/**
+ * Поля формы — те же имена, что у форм старого дашборда (`src/dashboard/forms.ts`: parseGroupForm и
+ * parseRequestForm), значения — строки. Проверяет сервер и возвращает первую ошибку по-русски (400).
+ */
+export interface CreateRecordBody {
+  fields: Record<string, string>;
+}
+
+export interface CreateRecordOk {
+  ok: true;
+  id: number;
+}
+
+/** Справочники для форм: серверные списки, чтобы интерфейс не держал свою копию. */
+export interface FormMeta {
+  districts: string[];
+  groupFormats: string[];
+  groupStatuses: string[];
+  compositions: string[];
+  requestStatuses: string[];
+  requestTypes: { value: string; label: string }[];
+  /** Возрастные категории анкеты бота («25-40»). */
+  ageGroups: string[];
+  /** Имена координаторов для поля «Координатор» / «Ответственный». */
+  coordinators: string[];
 }
 
 // ── Справочник ──────────────────────────────────────────────────────────────

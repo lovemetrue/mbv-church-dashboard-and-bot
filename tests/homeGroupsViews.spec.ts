@@ -538,8 +538,20 @@ describe('группы справочника', () => {
     const json = JSON.stringify(views);
     expect(json).not.toContain('Секретная');
     expect(json).not.toContain('79990001122');
-    expect(json).not.toContain('Анкетная');
     expect(json).not.toContain('"address"');
+  });
+
+  test('улица из анкеты человека видна только в его заявке (координатору нужно сверить карточку), больше нигде', () => {
+    const { views } = build({
+      groups: [group({ id: 1 })],
+      requests: [request({ id: 1, address: 'ул. Анкетная, 2', schedule: 'по вечерам' })],
+      participants: [participant({ id: 1 })],
+    });
+    const { requests, ...rest } = views;
+    expect(JSON.stringify(rest)).not.toContain('Анкетная');
+    const item = requests.items[0]!;
+    expect(item.streetInfo).toEqual({ text: 'ул. Анкетная, 2', source: 'anketa' });
+    expect(item.original).toContainEqual({ label: 'Улица и дом', value: 'ул. Анкетная, 2' });
   });
 });
 
@@ -875,6 +887,117 @@ describe('накопленные предложения и счётчик уча
 
   test('без настроек подбор выключен и запусков не было', () => {
     const { views } = build({});
-    expect(views.requests.matching).toEqual({ auto: false, lastRun: null, waiting: 0 });
+    expect(views.requests.matching).toEqual({ auto: false, lastRun: null, waiting: 0, saved: 0 });
+  });
+});
+
+
+describe('удобное время, улица и «заявка как пришла»', () => {
+  test('удобное время из анкеты разбирается на дни и время суток, улица берётся из анкеты', () => {
+    const { views } = build({
+      groups: [group({ id: 1 })],
+      requests: [request({ id: 1, place: 'Приморский', schedule: 'пн, ср - с 17 до 22 часов', address: 'ул. Рылеева 32' })],
+    });
+    const item = views.requests.items[0]!;
+    expect(item).toMatchObject({ days: ['Пн', 'Ср'], slot: 'вечер', street: 'ул. Рылеева 32' });
+    expect(item.scheduleInfo).toEqual({ text: 'пн, ср - с 17 до 22 часов', source: 'anketa' });
+    expect(item.dataFill).toEqual([true, false, true, true]);
+  });
+
+  test('правка координатора важнее анкеты и помечена как ручная', () => {
+    const { views, calls } = build({
+      groups: [group({ id: 1 })],
+      requests: [request({ id: 1, place: 'Приморский', schedule: 'вечером', manual_schedule: 'вторник утром', address: 'ул. Анкетная', manual_street: 'пр. Ручной 5' })],
+    });
+    const item = views.requests.items[0]!;
+    expect(item.scheduleInfo).toEqual({ text: 'вторник утром', source: 'manual' });
+    expect(item.streetInfo).toEqual({ text: 'пр. Ручной 5', source: 'manual' });
+    expect(item).toMatchObject({ days: ['Вт'], slot: 'утро', street: 'пр. Ручной 5' });
+    expect(calls.plan[0]!.requests[0]).toMatchObject({ days: ['Вт'], slot: 'утро', street: 'пр. Ручной 5' });
+  });
+
+  test('пустая правка не перекрывает анкету; нет ни того ни другого — источник не указан', () => {
+    const { views } = build({
+      requests: [
+        request({ id: 1, schedule: 'вечером', manual_schedule: '   ' }),
+        request({ id: 2 }),
+      ],
+    });
+    const byId = new Map(views.requests.items.map((i) => [i.id, i]));
+    expect(byId.get(1)!.scheduleInfo).toEqual({ text: 'вечером', source: 'anketa' });
+    expect(byId.get(2)!.scheduleInfo).toEqual({ text: null, source: null });
+    expect(byId.get(2)!.streetInfo).toEqual({ text: null, source: null });
+  });
+
+  test('неразобранное время остаётся «не знаю», а текст сохраняется для показа', () => {
+    const { views } = build({ requests: [request({ id: 1, schedule: 'как получится' })] });
+    expect(views.requests.items[0]).toMatchObject({ days: [], slot: null });
+    expect(views.requests.items[0]!.scheduleInfo.text).toBe('как получится');
+  });
+
+  test('«как пришла»: только то, что заполнил человек, без заметок служителей, пустое не показывается', () => {
+    const { views } = build({
+      requests: [request({
+        id: 1, fio: 'Мария Иванова', phone: '+79991112233', phones: ['+79991112233'], age: '26-35', place: 'Приморский, м. Пионерская',
+        church: 'Основная', mdg_status: 'join', leader_name: null, schedule: 'вечером', address: null, text: null,
+        note: 'внутренняя заметка служителя', extra: 'ещё заметка',
+      })],
+    });
+    const labels = views.requests.items[0]!.original.map((f) => f.label);
+    expect(labels).toEqual(['ФИО', 'Телефон', 'Возраст', 'Район и метро (как написал)', 'Церковь', 'Ответ про малую группу', 'Удобные дни и время']);
+    expect(JSON.stringify(views.requests.items[0]!.original)).not.toContain('заметка');
+    expect(views.requests.items[0]!.original.find((f) => f.label === 'Ответ про малую группу')!.value).toBe('Хочет в группу');
+  });
+
+  test('заявка без данных анкеты (из таблицы) — original содержит только ФИО', () => {
+    const { views } = build({ requests: [request({ id: 1, fio: 'Из Таблицы' })] });
+    expect(views.requests.items[0]!.original).toEqual([{ label: 'ФИО', value: 'Из Таблицы' }]);
+  });
+
+  test('уточнение параметров попадает в ленту заявки без текста улицы', () => {
+    const at = new Date('2026-10-09T10:00:00Z');
+    const { views } = build({
+      requests: [request({ id: 1 })],
+      audit: [{ entity_id: 1, at, actor: 'mbv_admin', action: 'request.params', after: { street: true, schedule: true }, note: null }],
+    });
+    expect(views.requests.items[0]!.log.map((l) => l.text)).toContain('Уточнено вручную: улица, удобное время · mbv_admin');
+  });
+
+  test('группа кампании помечена как новая, обычная — нет', () => {
+    const { views } = build({ groups: [group({ id: 1, status: 'Кампания' }), group({ id: 2 })] });
+    const byId = new Map(views.groups.items.map((g) => [g.id, g]));
+    expect(byId.get(1)!.isNew).toBe(true);
+    expect(byId.get(2)!.isNew).toBe(false);
+  });
+});
+
+describe('закрепление и «утверждено сегодня»', () => {
+  test('предложение помечено закреплённым, только если сохранено именно на показанную группу; счётчики сходятся', () => {
+    const { views } = build({
+      groups: [group({ id: 1 }), group({ id: 2 })],
+      requests: [request({ id: 1, place: 'Приморский' }), request({ id: 2, place: 'Приморский' }), request({ id: 3, place: 'Приморский' })],
+      activeProposals: new Map([[1, { groupId: 1, source: 'script' }], [2, { groupId: 99, source: 'script' }]]),
+    });
+    const byId = new Map(views.requests.items.map((i) => [i.id, i]));
+    expect(byId.get(1)!.proposal!.saved).toBe(true);
+    expect(byId.get(2)!.proposal!.saved).toBe(false);
+    expect(byId.get(3)!.proposal!.saved).toBe(false);
+    expect(views.requests.matching.saved).toBe(1);
+    expect(views.requests.matching.waiting).toBe(2);
+  });
+
+  test('«утверждено сегодня» считает утверждения этого дня по поясу сервиса, а не вчерашние и не другие действия', () => {
+    const approve = (iso: string, id: number) => ({ entity_id: id, at: new Date(iso), actor: 'a', action: 'request.approve', after: null, note: null });
+    const { views } = build({
+      requests: [request({ id: 1 }), request({ id: 2 }), request({ id: 3 }), request({ id: 4 })],
+      audit: [
+        approve('2026-10-10T07:00:00Z', 1),
+        approve('2026-10-10T08:30:00Z', 2),
+        approve('2026-10-09T20:59:00Z', 3),
+        { entity_id: 4, at: new Date('2026-10-10T08:00:00Z'), actor: 'a', action: 'request.reject', after: null, note: null },
+      ],
+    });
+    // «Сейчас» в тестах — 12:00 по Москве 10 октября; 09.10 в 23:59 по Москве — уже вчера.
+    expect(views.today.approvedToday).toBe(2);
   });
 });

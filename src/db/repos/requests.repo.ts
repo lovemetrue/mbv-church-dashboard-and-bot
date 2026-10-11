@@ -105,6 +105,9 @@ export interface DashboardRequest {
   address: string | null;
   /** Координатор отметил «нужен звонок» (новый интерфейс); у остальных false. */
   callback: boolean;
+  /** Правки координатора: улица и удобное время свободным текстом (перекрывают анкету). */
+  manual_street: string | null;
+  manual_schedule: string | null;
 }
 
 /** Что можно заполнить в форме дашборда. */
@@ -294,6 +297,7 @@ export class RequestsRepo {
       type: RequestType; text: string | null; origin: 'таблица' | 'бот' | 'ui';
       church: string | null; mdg_status: MdgStatus | null; leader_name: string | null;
       schedule: string | null; address: string | null; callback: boolean;
+      manual_street: string | null; manual_schedule: string | null;
     }>(
       `SELECT r.id, r.user_id, r.group_id,
               coalesce(r.fio, u.full_name) AS fio,
@@ -309,7 +313,8 @@ export class RequestsRepo {
               r.final_group, r.cancel_reason, r.attendance, r.type, r.text, r.origin,
               -- Ответы из анкеты бота: у заявок из таблицы церкви участника нет, будет null.
               u.church, u.mdg_status, u.leader_name,
-              u.schedule_raw AS schedule, u.address_raw AS address, r.callback
+              u.schedule_raw AS schedule, u.address_raw AS address, r.callback,
+              r.manual_street, r.manual_schedule
          FROM requests r
          LEFT JOIN users u ON u.id = r.user_id
         WHERE r.archived_at IS NULL

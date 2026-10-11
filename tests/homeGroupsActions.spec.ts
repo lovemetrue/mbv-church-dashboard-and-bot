@@ -83,6 +83,9 @@ describe('утверждение через HTTP на живой базе', () =
       actions: createActions(new PlacementRepo(db), { defaultCapacity: 10 }),
       matching: composed.matching,
       settings: composed.settings,
+      creator: composed.creator,
+      formMeta: composed.formMeta,
+      staff: composed.staff,
       reportError: (source, err, context) => { void composed.errors.record(source, err instanceof Error ? err.message : String(err), context); },
       invalidateViews: () => views.invalidate(),
       actorName: (role) => (role === 'super' ? 'super_mbv_admin' : 'mbv_admin'),
@@ -186,7 +189,7 @@ describe('раздел «Настройки» через HTTP на живой б
     const server = createHomeGroupsServer({
       auth: new SessionService(memory, { password: 'пароль-для-теста', login: 'mbv_admin', superPassword: 'другой-пароль-1', superLogin: 'super_mbv_admin', ttlSeconds: 60, maxAttempts: 5 }),
       views: composed.views, actions: createActions(composed.placement, { defaultCapacity: 10 }), matching: composed.matching,
-      settings: composed.settings,
+      settings: composed.settings, creator: composed.creator, formMeta: composed.formMeta, staff: composed.staff,
       reportError: (source, err, context) => { void composed.errors.record(source, err instanceof Error ? err.message : String(err), context); },
       invalidateViews: () => composed.views.invalidate(), actorName: (role) => (role === 'super' ? 'super_mbv_admin' : 'mbv_admin'),
       sessionTtlSeconds: 60, secureCookie: false, webDir: web,
@@ -246,6 +249,136 @@ describe('раздел «Настройки» через HTTP на живой б
       const h = await app.get('health');
       expect(h.metrics.map((m: { key: string }) => m.key)).toEqual(['cpu', 'memory', 'disk', 'database', 'sessions', 'service']);
       expect(h.metrics.find((m: { key: string }) => m.key === 'database').status).not.toBe('crit');
+    } finally { app.server.close(); }
+  });
+});
+
+
+describe('создание и параметры подбора через HTTP на живой базе', () => {
+  async function startAdmin() {
+    const store = new Map<string, string>();
+    const memory: SessionStore = {
+      async set(k, v) { store.set(k, v); }, async get(k) { return store.get(k) ?? null; },
+      async del(k) { store.delete(k); }, async incr(k) { const n = Number(store.get(k) ?? 0) + 1; store.set(k, String(n)); return n; },
+    };
+    const web = mkdtempSync(join(tmpdir(), 'hg-new-'));
+    writeFileSync(join(web, 'index.html'), '<div id="root"></div>');
+    const composed = composeService(db, realEngine, { defaultCapacity: 10, ttlMs: 60_000 });
+    const server = createHomeGroupsServer({
+      auth: new SessionService(memory, { password: 'пароль-для-теста', login: 'mbv_admin', superPassword: 'другой-пароль-1', superLogin: 'super_mbv_admin', ttlSeconds: 60, maxAttempts: 5 }),
+      views: composed.views, actions: createActions(composed.placement, { defaultCapacity: 10 }), matching: composed.matching,
+      settings: composed.settings, creator: composed.creator, formMeta: composed.formMeta, staff: composed.staff,
+      reportError: () => undefined, invalidateViews: () => composed.views.invalidate(),
+      actorName: (role) => (role === 'super' ? 'super_mbv_admin' : 'mbv_admin'), sessionTtlSeconds: 60, secureCookie: false, webDir: web,
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const login = await fetch(`${base}/login`, {
+      method: 'POST', redirect: 'manual',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-real-ip': '10.6.0.1' },
+      body: new URLSearchParams({ login: 'mbv_admin', password: 'пароль-для-теста' }),
+    });
+    const cookie = login.headers.get('set-cookie')!.split(';')[0]!;
+    const post = (path: string, body: unknown) => fetch(`${base}/api/v1/${path}`, { method: 'POST', headers: { cookie, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const get = async (path: string) => (await (await fetch(`${base}/api/v1/${path}`, { headers: { cookie } })).json()) as any;
+    return { server, post, get };
+  }
+
+  test('созданная заявка сразу видна в списке и попадает в журнал; ошибка проверки — понятный текст', async () => {
+    const app = await startAdmin();
+    try {
+      const bad = await app.post('requests/create', { fields: { type: 'join_group', status: 'Новая' } });
+      expect(bad.status).toBe(400);
+      expect(await bad.json()).toMatchObject({ error: 'bad_request', message: expect.stringContaining('ФИО') });
+
+      await app.get('requests');
+      const ok = await app.post('requests/create', { fields: { fio: 'Мария Иванова', type: 'join_group', status: 'Новая', place: 'Приморский', age: '25-40' } });
+      expect(ok.status).toBe(200);
+      const { id } = await ok.json() as { id: number };
+      const item = (await app.get('requests')).items.find((i: { id: number }) => i.id === id);
+      expect(item).toMatchObject({ fio: 'Мария Иванова' });
+      expect((await db.query(`SELECT origin FROM requests WHERE id = $1`, [id])).rows[0]).toEqual({ origin: 'ui' });
+      expect((await db.query(`SELECT actor FROM audit_log WHERE action = 'request.create'`)).rows).toEqual([{ actor: 'mbv_admin' }]);
+    } finally { app.server.close(); }
+  });
+
+  test('созданная группа появляется в справочнике с кодом, source=ui', async () => {
+    const app = await startAdmin();
+    try {
+      const ok = await app.post('groups/create', { fields: { leader: 'Иван Петров', district: 'Приморский', format: 'Основная церковь', status: 'Кампания', people: '4' } });
+      expect(ok.status).toBe(200);
+      const { id } = await ok.json() as { id: number };
+      const group = (await app.get('groups')).items.find((g: { id: number }) => g.id === id);
+      expect(group).toMatchObject({ leader: 'Иван Петров', isNew: true, people: 4 });
+      expect((await db.query(`SELECT source FROM groups WHERE id = $1`, [id])).rows[0]).toEqual({ source: 'ui' });
+    } finally { app.server.close(); }
+  });
+
+  test.each([
+    [{ leader: 'Х', district: 'Нет такого', format: 'Основная церковь', status: 'Функционирует' }, 'район'],
+    [{ leader: 'Х', district: 'Приморский', format: 'Основная церковь', status: 'Функционирует', people: '500' }, 'Число человек'],
+  ])('группа с плохими полями %j отклоняется (%s)', async (fields, fragment) => {
+    const app = await startAdmin();
+    try {
+      const r = await app.post('groups/create', { fields });
+      expect(r.status).toBe(400);
+      expect((await r.json() as { message: string }).message).toContain(fragment);
+    } finally { app.server.close(); }
+  });
+
+  test('тело не из строк и слишком длинные значения отклоняются', async () => {
+    const app = await startAdmin();
+    try {
+      expect((await app.post('requests/create', { fields: { fio: 5 } })).status).toBe(400);
+      expect((await app.post('requests/create', { fields: { fio: 'я'.repeat(4001) } })).status).toBe(400);
+      expect((await app.post('requests/create', { nofields: 1 })).status).toBe(400);
+    } finally { app.server.close(); }
+  });
+
+  test('справочники форм берутся с сервера, координаторы — из базы', async () => {
+    await db.query(`INSERT INTO coordinators (name, role, source) VALUES ('Анна Координатор', 'Координатор', 'ui')`);
+    const app = await startAdmin();
+    try {
+      const meta = await app.get('form-meta');
+      expect(meta.districts).toContain('Приморский');
+      expect(meta.requestTypes.map((t: { value: string }) => t.value)).toContain('join_group');
+      expect(meta.coordinators).toEqual(['Анна Координатор']);
+      expect(meta.ageGroups).toContain('25-40');
+    } finally { app.server.close(); }
+  });
+
+  test('улица и время, поправленные координатором, меняют понимание заявки сразу и видны в ленте без текста улицы', async () => {
+    await db.query(`INSERT INTO groups (leader, district, format, status, people, source) VALUES ('Иван', 'Приморский', 'Основная церковь', 'Функционирует', 3, 'ui')`);
+    const r = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, fio, place, origin) VALUES ('join_group', 'Новая', 'Мария', 'Приморский', 'ui') RETURNING id`)).rows[0]!.id;
+    const app = await startAdmin();
+    try {
+      const before = (await app.get('requests')).items.find((i: { id: number }) => i.id === r);
+      expect(before).toMatchObject({ days: [], slot: null, street: null, scheduleInfo: { source: null } });
+      const saved = await app.post(`requests/${r}/params`, { street: 'ул. Рылеева 32', schedule: 'пн, ср вечером' });
+      expect(saved.status).toBe(200);
+      const after = (await app.get('requests')).items.find((i: { id: number }) => i.id === r);
+      expect(after).toMatchObject({ days: ['Пн', 'Ср'], slot: 'вечер', street: 'ул. Рылеева 32', scheduleInfo: { source: 'manual' }, streetInfo: { source: 'manual' } });
+      expect(after.log.map((l: { text: string }) => l.text)).toContain('Уточнено вручную: улица, удобное время · mbv_admin');
+      expect(JSON.stringify(after.log)).not.toContain('Рылеева');
+      // «Убрать правку» возвращает пустое.
+      await app.post(`requests/${r}/params`, { street: null, schedule: '' });
+      const cleared = (await app.get('requests')).items.find((i: { id: number }) => i.id === r);
+      expect(cleared).toMatchObject({ days: [], slot: null, street: null, streetInfo: { source: null } });
+    } finally { app.server.close(); }
+  });
+
+  test('«закреплено»: после запуска подбора предложение помечено закреплённым, счётчики сходятся', async () => {
+    await db.query(`INSERT INTO groups (leader, district, format, status, people, source) VALUES ('Иван', 'Приморский', 'Основная церковь', 'Функционирует', 3, 'ui')`);
+    await db.query(`INSERT INTO requests (type, status, fio, place, age, origin) VALUES ('join_group', 'Новая', 'Мария', 'Приморский', '30', 'ui')`);
+    const app = await startAdmin();
+    try {
+      const before = await app.get('requests');
+      expect(before.matching).toMatchObject({ waiting: 1, saved: 0 });
+      expect(before.items[0].proposal.saved).toBe(false);
+      expect((await app.post('matching/run', {})).status).toBe(200);
+      const after = await app.get('requests');
+      expect(after.matching).toMatchObject({ waiting: 0, saved: 1 });
+      expect(after.items[0].proposal.saved).toBe(true);
     } finally { app.server.close(); }
   });
 });

@@ -45,6 +45,7 @@ interface Started {
   actionCalls: ActionCall[]; invalidations: () => number; setOutcome: (o: ActionOutcome) => void;
   matchingCalls: { name: string; actor: string; enabled?: boolean }[];
   setSettingsOutcome: (o: ActionOutcome) => void;
+  createCalls: { what: string; body: unknown; actor: string }[]; setCreate: (o: { ok: true; id: number } | { ok: false; error: string; message: string }) => void;
   staffCalls: { name: string; args: unknown[] }[]; setTokenInfo: (v: { fullName: string; login: string } | null) => void; setComplete: (v: { ok: true } | { ok: false; error: string; message: string }) => void;
   settingsCalls: { name: string; actor?: string; body?: unknown }[]; reported: { source: string; message: string; context: string }[];
 }
@@ -58,6 +59,8 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
   const matchingCalls: { name: string; actor: string; enabled?: boolean }[] = [];
   const settingsCalls: { name: string; actor?: string; body?: unknown }[] = [];
   const staffCalls: { name: string; args: unknown[] }[] = [];
+  const createCalls: { what: string; body: unknown; actor: string }[] = [];
+  let createOutcome: { ok: true; id: number } | { ok: false; error: string; message: string } = { ok: true, id: 77 };
   let tokenInfo: { fullName: string; login: string } | null = { fullName: 'Полина Иванова', login: 'p_ivanova' };
   let complete: { ok: true } | { ok: false; error: string; message: string } = { ok: true };
   const reported: { source: string; message: string; context: string }[] = [];
@@ -67,11 +70,17 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
   };
   let views: () => Promise<ReturnType<typeof sampleViews>> = async () => sampleViews();
   const server = createHomeGroupsServer({
-    actions: { approve: record('approve'), reject: record('reject'), setNeedCall: record('need-call') },
+    actions: { approve: record('approve'), reject: record('reject'), setNeedCall: record('need-call'), setParams: record('params') },
     matching: {
       run: async (actor) => { matchingCalls.push({ name: 'run', actor }); return { ok: true, created: 2, replaced: 1, unchanged: 3 }; },
       setAuto: async (enabled, actor) => { matchingCalls.push({ name: 'auto', actor, enabled }); },
     },
+    creator: {
+      request: async (body: unknown, actor: string) => { createCalls.push({ what: 'request', body, actor }); return createOutcome; },
+      group: async (body: unknown, actor: string) => { createCalls.push({ what: 'group', body, actor }); return createOutcome; },
+    } as never,
+    formMeta: async () => ({ districts: ['Приморский'], groupFormats: [], groupStatuses: [], compositions: [], requestStatuses: [], requestTypes: [], ageGroups: [], coordinators: [] }),
+    legacyUrl: 'http://old.example:8090',
     staff: {
       view: async () => { staffCalls.push({ name: 'view', args: [] }); return { generatedAt: 'g', items: [], personal: { enabled: false, canEnable: false, activeWithPassword: 0, mailConfigured: false } }; },
       suggestLogin: async (...a: unknown[]) => { staffCalls.push({ name: 'suggest', args: a }); return { ok: true, login: 'p_ivanova' }; },
@@ -110,7 +119,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
     viewsCalls: () => calls,
     close: () => { server.close(); },
     setViews: (f) => { views = f; },
-    actionCalls, matchingCalls, settingsCalls, reported, staffCalls, setTokenInfo: (v) => { tokenInfo = v; }, setComplete: (v) => { complete = v; }, setSettingsOutcome: (o: ActionOutcome) => { settingsOutcome = o; }, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
+    actionCalls, matchingCalls, settingsCalls, reported, staffCalls, createCalls, setCreate: (o) => { createOutcome = o; }, setTokenInfo: (v) => { tokenInfo = v; }, setComplete: (v) => { complete = v; }, setSettingsOutcome: (o: ActionOutcome) => { settingsOutcome = o; }, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
   };
 }
 
@@ -259,7 +268,7 @@ describe('вход и выход', () => {
   test('вход со сверхправами: роль super', async () => {
     const cookie = await signIn(SUPER);
     const me = await (await fetch(`${app.base}/api/v1/me`, { headers: { cookie } })).json();
-    expect(me).toEqual({ role: 'super' });
+    expect(me).toMatchObject({ role: 'super' });
   });
 
   test('выход — только POST: сессия гаснет, кука стирается, переход на вход', async () => {
@@ -306,7 +315,7 @@ describe('JSON API', () => {
     const cookie = await signIn();
     const r = await fetch(`${app.base}/api/v1/me`, { headers: { cookie } });
     expect(r.status).toBe(200);
-    expect(await r.json()).toEqual({ role: 'admin' });
+    expect(await r.json()).toMatchObject({ role: 'admin' });
   });
 
   test.each([
@@ -936,5 +945,74 @@ describe('личные входы: API пользователей', () => {
 
   test('чужие адреса — 404', async () => {
     expect((await call(await signIn(SUPER), 'delete', { id: 1 })).status).toBe(404);
+  });
+});
+
+
+describe('создание записей и справочники форм', () => {
+  const create = (cookie: string | null, what: string, body: unknown, headers: Record<string, string> = {}) =>
+    fetch(`${app.base}/api/v1/${what}/create`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}), ...headers },
+      body: typeof body === 'string' ? body : JSON.stringify(body),
+    });
+
+  test('без сессии создать нельзя: 401 и ничего не вызвано', async () => {
+    const before = app.createCalls.length;
+    expect((await create(null, 'requests', { fields: {} })).status).toBe(401);
+    expect(app.createCalls.length).toBe(before);
+  });
+
+  test.each(['requests', 'groups'])('%s: тело и логин автора передаются, ответ несёт номер, снимок сбрасывается', async (what) => {
+    const cookie = await signIn(REGULAR);
+    const inv = app.invalidations();
+    const body = { fields: { fio: 'Мария' } };
+    const r = await create(cookie, what, body);
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, id: 77 });
+    expect(app.createCalls.at(-1)).toEqual({ what: what === 'requests' ? 'request' : 'group', body, actor: REGULAR.login });
+    expect(app.invalidations()).toBe(inv + 1);
+  });
+
+  test('ошибка проверки — 400 с текстом сервера, снимок не сбрасывается', async () => {
+    app.setCreate({ ok: false, error: 'bad_request', message: 'Укажите ФИО.' });
+    try {
+      const inv = app.invalidations();
+      const r = await create(await signIn(), 'requests', { fields: {} });
+      expect(r.status).toBe(400);
+      expect(await r.json()).toEqual({ error: 'bad_request', message: 'Укажите ФИО.' });
+      expect(app.invalidations()).toBe(inv);
+    } finally { app.setCreate({ ok: true, id: 77 }); }
+  });
+
+  test('форма с другого сайта (не JSON) отклоняется: 415', async () => {
+    const r = await create(await signIn(), 'groups', 'fields=1', { 'content-type': 'application/x-www-form-urlencoded' });
+    expect(r.status).toBe(415);
+  });
+
+  test('чужие адреса создания — 404', async () => {
+    expect((await create(await signIn(), 'people', { fields: {} })).status).toBe(404);
+  });
+
+  test('справочники форм: без сессии 401, с сессией — списки', async () => {
+    expect((await fetch(`${app.base}/api/v1/form-meta`)).status).toBe(401);
+    const r = await fetch(`${app.base}/api/v1/form-meta`, { headers: { cookie: await signIn(REGULAR) } });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ districts: ['Приморский'] });
+  });
+
+  test('«кто я» отдаёт адрес старого дашборда', async () => {
+    const r = await fetch(`${app.base}/api/v1/me`, { headers: { cookie: await signIn(REGULAR) } });
+    expect(await r.json()).toEqual({ role: 'admin', legacyUrl: 'http://old.example:8090' });
+  });
+
+  test('правка параметров заявки передаёт тело и автора', async () => {
+    const cookie = await signIn(SUPER);
+    const body = { street: 'ул. Рылеева 32', schedule: 'пн, ср вечером' };
+    const r = await fetch(`${app.base}/api/v1/requests/12/params`, {
+      method: 'POST', headers: { cookie, 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+    expect(r.status).toBe(200);
+    expect(app.actionCalls.at(-1)).toEqual({ name: 'params', id: 12, body, actor: SUPER.login });
   });
 });

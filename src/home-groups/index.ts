@@ -10,6 +10,7 @@ import { mailerFromEnv } from '../platform/mail/mailer.js';
 import { composeService, engine } from './composition.js';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { llmFromEnv } from '../platform/llm/deepseek.js';
 import { notifierFromEnv } from '../admin/notifierFromEnv.js';
 import { startAutoMatching } from './matching/scheduler.js';
 import { createHomeGroupsServer } from './server.js';
@@ -68,8 +69,9 @@ async function main(): Promise<void> {
     totalDays: Number(env('CAMPAIGN_DAYS', '40')),
     timezone: env('TIMEZONE', 'Europe/Moscow'),
   };
-  const { views, matching, placement, settings, errors, staff, creator, registrar, manager, exporter, audit, campaign, botSettings, formMeta } = composeService(db, engine, {
+  const { views, matching, placement, settings, errors, staff, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, formMeta } = composeService(db, engine, {
     campaignSchedule: schedule,
+    llm: llmFromEnv(process.env),
     extraQuestionsEnv: env('EXTRA_QUESTIONS', 'off'),
     notify: notifierFromEnv(db, process.env, schedule, 'домашние группы'),
     defaultCapacity, ttlMs: 10_000, timeZone: env('TIMEZONE', 'Europe/Moscow'),
@@ -93,6 +95,7 @@ async function main(): Promise<void> {
     manager,
     campaign,
     botSettings,
+    assistant,
     exporter,
     audit,
     logo: async () => readFile(join(env('HG_ASSETS_DIR', '/app/dashboard/assets'), 'church-logo.png')).catch(() => null),

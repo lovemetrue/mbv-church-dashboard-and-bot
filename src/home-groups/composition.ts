@@ -20,6 +20,9 @@ import { createFormMeta, createRecordCreator } from './create.js';
 import { createRegistrar } from './registration.js';
 import { createManager } from './manage.js';
 import { createBotSettings } from './botSettings.js';
+import { createAssistant } from './assistant/service.js';
+import { HintsRepo } from '../db/repos/hints.repo.js';
+import type { LlmClient } from '../platform/llm/deepseek.js';
 import { requestsToCsv } from './export.js';
 import { usersToCsv } from '../core/csv.js';
 import { campaignStats } from '../dashboard/campaignStats.js';
@@ -49,6 +52,8 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     publicUrl?: string | null;
     /** Значение `EXTRA_QUESTIONS` из `.env`: показывается в настройках как «по умолчанию». */
     extraQuestionsEnv?: string;
+    /** Языковая модель помощника; null — ключ не задан, функция выключена. */
+    llm?: LlmClient | null;
     /** Расписание кампании «40 дней»: без него вкладка кампании недоступна. */
     campaignSchedule?: ScheduleOptions;
     /** Уведомление служителю о новой заявке (необязательно: без него заявки заводятся молча). */
@@ -66,7 +71,8 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     placement,
     audit: new AuditRepo(db),
     settings: appSettings,
-  }, opts.timeZone ? { timeZone: opts.timeZone } : {});
+    hints: new HintsRepo(db),
+  }, { ...(opts.timeZone ? { timeZone: opts.timeZone } : {}), assistantAvailable: (opts.llm ?? null) !== null });
   const viewOptions = { defaultCapacity: opts.defaultCapacity, ...(opts.timeZone ? { timeZone: opts.timeZone } : {}) };
 
   const views = createViewsSource({ load, engine, ttlMs: opts.ttlMs, views: viewOptions });
@@ -74,6 +80,11 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     load, engine, placement, settings: appSettings, options: viewOptions, invalidate: () => views.invalidate(),
   });
   const errors = new ErrorsRepo(db);
+  const assistant = createAssistant({
+    load, engine, viewOptions, llm: opts.llm ?? null, hints: new HintsRepo(db), prompts: new PromptsRepo(db), settings: appSettings,
+    audit: new AuditRepo(db), matching, invalidate: () => views.invalidate(),
+    reportError: (source, err, context) => { void errors.record(source, err instanceof Error ? err.message : String(err), context); },
+  });
   const settings = createSettings({
     audit: new AuditRepo(db),
     errors,
@@ -111,7 +122,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   const auditRepo = new AuditRepo(db);
   const audit = (actor: string, action: string, after: unknown) => auditRepo.write(actor, action, 'export', null, after);
   const formMeta = createFormMeta(new CoordinatorsRepo(db));
-  return { views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, formMeta };
+  return { views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, formMeta };
 }
 
 export function composeViews(db: Pool, engine: PlanEngineApi, opts: ComposeOptions): ViewsSource {

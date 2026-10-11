@@ -42,6 +42,7 @@ const nextIp = () => `10.2.0.${++ipCounter}`;
 interface ActionCall { name: string; id: number; body: unknown; actor: string }
 interface Started {
   base: string; viewsCalls: () => number; close: () => void; setViews: (f: () => Promise<ReturnType<typeof sampleViews>>) => void;
+  assistantCalls: { name: string; actor: string; enabled?: boolean }[]; setAssistantOutcome: (o: unknown) => void;
   actionCalls: ActionCall[]; auditCalls: { actor: string; action: string; after: unknown }[]; invalidations: () => number; setOutcome: (o: ActionOutcome) => void;
   matchingCalls: { name: string; actor: string; enabled?: boolean }[];
   setSettingsOutcome: (o: ActionOutcome) => void;
@@ -56,6 +57,8 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
   let outcome: ActionOutcome = { ok: true };
   let settingsOutcome: ActionOutcome = { ok: true };
   const actionCalls: ActionCall[] = [];
+  const assistantCalls: { name: string; actor: string; enabled?: boolean }[] = [];
+  let assistantOutcome: unknown = { ok: true, asked: 3, filled: 2, withQuestions: 1, proposals: 1 };
   const auditCalls: { actor: string; action: string; after: unknown }[] = [];
   const matchingCalls: { name: string; actor: string; enabled?: boolean }[] = [];
   const settingsCalls: { name: string; actor?: string; body?: unknown }[] = [];
@@ -99,6 +102,11 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
       deleteRequest: async (id: number, actor: string) => { actionCalls.push({ name: 'request.delete', id, body: undefined, actor }); return outcome; },
     } as never,
     campaign: async () => ({ day: { state: 'идёт', number: 3, total: 40, startDate: '2026-11-01' } }) as never,
+    assistant: {
+      run: async (actor: string) => { assistantCalls.push({ name: 'run', actor }); return assistantOutcome; },
+      setEnabled: async (enabled: boolean, actor: string) => { assistantCalls.push({ name: 'enabled', actor, enabled }); },
+      view: async () => ({ generatedAt: 'g', available: true, enabled: false, model: 'fake', lastRun: null }),
+    } as never,
     botSettings: {
       view: async () => { settingsCalls.push({ name: 'bot.view' }); return { generatedAt: 'g', extraQuestions: { mode: 'off', ids: '', source: 'env', envValue: 'off' } }; },
       setExtraQuestions: async (body: unknown, actor: string) => { settingsCalls.push({ name: 'bot.save', actor, body }); return settingsOutcome; },
@@ -145,7 +153,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
     viewsCalls: () => calls,
     close: () => { server.close(); },
     setViews: (f) => { views = f; },
-    actionCalls, auditCalls, matchingCalls, settingsCalls, reported, staffCalls, createCalls, setCreate: (o) => { createOutcome = o; }, setTokenInfo: (v) => { tokenInfo = v; }, setComplete: (v) => { complete = v; }, setSettingsOutcome: (o: ActionOutcome) => { settingsOutcome = o; }, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
+    actionCalls, auditCalls, assistantCalls, setAssistantOutcome: (o: unknown) => { assistantOutcome = o; }, matchingCalls, settingsCalls, reported, staffCalls, createCalls, setCreate: (o) => { createOutcome = o; }, setTokenInfo: (v) => { tokenInfo = v; }, setComplete: (v) => { complete = v; }, setSettingsOutcome: (o: ActionOutcome) => { settingsOutcome = o; }, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
   };
 }
 
@@ -1187,6 +1195,54 @@ describe('руководитель: массовые действия, прав�
     const r = await get(await signIn(REGULAR), 'team');
     expect(r.status).toBe(200);
     expect(await r.json()).toHaveProperty('totals');
+  });
+});
+
+describe('помощник по разбору заявок', () => {
+  const post = (cookie: string | null, path: string, body: unknown) => fetch(`${app.base}/api/v1/${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body),
+  });
+
+  test('запуск: без входа 401, любой вход запускает, ответ с числами, снимок сбрасывается', async () => {
+    expect((await post(null, 'assistant/run', {})).status).toBe(401);
+    const inv = app.invalidations();
+    const r = await post(await signIn(REGULAR), 'assistant/run', {});
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, asked: 3, filled: 2, withQuestions: 1, proposals: 1 });
+    expect(app.assistantCalls.at(-1)).toEqual({ name: 'run', actor: REGULAR.login });
+    expect(app.invalidations()).toBe(inv + 1);
+  });
+
+  test('помощник не подключён или выключен — 503 с понятным текстом; уже идёт разбор — 409', async () => {
+    try {
+      app.setAssistantOutcome({ ok: false, error: 'unavailable', message: 'Помощник выключен.' });
+      const off = await post(await signIn(REGULAR), 'assistant/run', {});
+      expect(off.status).toBe(503);
+      expect(await off.json()).toEqual({ error: 'unavailable', message: 'Помощник выключен.' });
+      app.setAssistantOutcome({ ok: false, error: 'conflict', message: 'Разбор уже идёт.' });
+      expect((await post(await signIn(REGULAR), 'assistant/run', {})).status).toBe(409);
+    } finally { app.setAssistantOutcome({ ok: true, asked: 3, filled: 2, withQuestions: 1, proposals: 1 }); }
+  });
+
+  test('настройки помощника — только полный вход; переключатель принимает только true или false', async () => {
+    const reg = await signIn(REGULAR);
+    expect((await fetch(`${app.base}/api/v1/settings/assistant`, { headers: { cookie: reg } })).status).toBe(403);
+    expect((await post(reg, 'settings/assistant/enabled', { enabled: true })).status).toBe(403);
+    const sup = await signIn(SUPER);
+    const view = await fetch(`${app.base}/api/v1/settings/assistant`, { headers: { cookie: sup } });
+    expect(await view.json()).toMatchObject({ available: true, enabled: false, model: 'fake' });
+    expect((await post(sup, 'settings/assistant/enabled', { enabled: true })).status).toBe(200);
+    expect(app.assistantCalls.at(-1)).toEqual({ name: 'enabled', actor: SUPER.login, enabled: true });
+    const before = app.assistantCalls.length;
+    for (const body of [{}, { enabled: 'да' }, null, { enabled: 1 }]) {
+      expect((await post(sup, 'settings/assistant/enabled', body)).status, JSON.stringify(body)).toBe(400);
+    }
+    expect(app.assistantCalls.length).toBe(before);
+  });
+
+  test('ключ и его значение в ответах настроек не встречаются', async () => {
+    const view = await (await fetch(`${app.base}/api/v1/settings/assistant`, { headers: { cookie: await signIn(SUPER) } })).text();
+    expect(view).not.toMatch(/sk-|api_?key|DEEPSEEK/i);
   });
 });
 

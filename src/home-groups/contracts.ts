@@ -37,6 +37,9 @@
  *   POST /api/v1/requests/:id/delete    (тело {})  → ActionOk | ActionError (только super)
  *   GET  /api/v1/export/requests.csv    → CSV (только super; в нём телефоны)
  *   GET  /api/v1/export/people.csv      → CSV (только super)
+ *   POST /api/v1/assistant/run          (тело {})       → AssistantRunOk | ActionError (помощник разбирает непонятные заявки)
+ *   GET  /api/v1/settings/assistant     → SettingsAssistantView (только super)
+ *   POST /api/v1/settings/assistant/enabled AssistantEnabledBody → ActionOk | ActionError (только super)
  *   GET  /api/v1/settings/bot           → SettingsBotView (только super)
  *   POST /api/v1/settings/bot/extra-questions ExtraQuestionsBody → ActionOk | ActionError (только super)
  *   POST /api/v1/requests/:id/close     CloseBody       → ActionOk | ActionError (обработано или аннулировать с причиной)
@@ -259,6 +262,8 @@ export interface RequestItem {
   dataFill: [boolean, boolean, boolean, boolean];
   proposal: Proposal | null;
   noPlan: NoPlan | null;
+  /** Разбор помощника; null — помощник заявку не трогал. */
+  assistant: AssistantNote | null;
   /** Что человек написал про удобное время: откуда текст (анкета бота или правка координатора) и как система его поняла (поля `days`, `slot`). */
   scheduleInfo: ParamInfo;
   /** То же про улицу и дом (поле `street`). */
@@ -279,6 +284,51 @@ export interface RequestItem {
  * предложенная группа не меняется, пока остаётся доступной, а новые заявки подбираются вокруг
  * уже предложенных. Первый раз подбор запускает кнопка, потом его можно включить автоматически.
  */
+/**
+ * Помощник (языковая модель) разбирает то, что скрипт не понял: «район» и «возраст» в свободной записи и удобное время.
+ * Группу он НЕ выбирает: после его разбора группу подбирает тот же расчёт, что и для остальных. Наружу уходят только
+ * возрастная категория, место и удобное время в записи человека (без имён, телефонов и адресов, номера и почты вырезаются).
+ */
+export interface AssistantStatus {
+  /** Ключ помощника задан на сервере. */
+  available: boolean;
+  /** Помощник включён в «Настройках» (по умолчанию выключен). */
+  enabled: boolean;
+  /** Сколько открытых заявок помощник может разобрать сейчас. */
+  pending: number;
+}
+
+/** Что помощник сделал с заявкой: какие поля он определил и что советует уточнить у человека. */
+export interface AssistantNote {
+  /** Какие параметры подбора определил помощник, а не скрипт: «район», «возраст», «время». Их стоит проверить. */
+  filled: ('район' | 'возраст' | 'время')[];
+  /** Готовые вопросы для разговора с человеком (до трёх). */
+  questions: string[];
+}
+
+export interface AssistantRunOk {
+  ok: true;
+  /** Сколько заявок отправлено на разбор. */
+  asked: number;
+  /** По скольким определено хотя бы одно поле. */
+  filled: number;
+  /** По скольким есть вопросы для человека. */
+  withQuestions: number;
+  /** Сколько новых предложений групп появилось после разбора. */
+  proposals: number;
+}
+
+export interface AssistantEnabledBody { enabled: boolean }
+
+export interface SettingsAssistantView {
+  generatedAt: string;
+  available: boolean;
+  enabled: boolean;
+  /** Название модели, например `deepseek-chat`. */
+  model: string | null;
+  lastRun: { at: string; actor: string; asked: number; filled: number; withQuestions: number; proposals: number } | null;
+}
+
 export interface MatchingStatus {
   /** Включён ли автоматический подбор новых заявок (каждые пару минут). */
   auto: boolean;
@@ -484,6 +534,7 @@ export interface OtherItem {
 export interface RequestsView {
   generatedAt: string;
   matching: MatchingStatus;
+  assistant: AssistantStatus;
   /** Без отказов; порядок — как показывать: перезвонить, готово, нужна помощь, утверждено. */
   items: RequestItem[];
   counters: Counters;
@@ -525,7 +576,7 @@ export interface ActionOk {
  * «Не направлять»), `group_full` (мест нет; повторить с `force: true`).
  */
 export interface ActionError {
-  error: 'bad_request' | 'not_found' | 'already_closed' | 'group_unavailable' | 'group_full' | 'forbidden' | 'conflict';
+  error: 'bad_request' | 'not_found' | 'already_closed' | 'group_unavailable' | 'group_full' | 'forbidden' | 'conflict' | 'unavailable';
   message: string;
 }
 

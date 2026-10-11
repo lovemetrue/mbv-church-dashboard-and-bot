@@ -1115,3 +1115,75 @@ describe('остальные обращения', () => {
     ]));
   });
 });
+
+describe('разбор помощника в представлениях', () => {
+  const hint = (over: Partial<import('../src/db/repos/hints.repo.js').StoredHint> = {}) => ({
+    district: 'Приморский', age: null, days: [], slot: null, questions: [], baseHash: '', ...over,
+  });
+  const hashOf = async (place: string | null, age: string | null, schedule: string | null) =>
+    (await import('../src/home-groups/assistant/brief.js')).baseHash({ place, age, schedule });
+
+  test('район, который не понял скрипт, подставляется из разбора, а карточка помечает «определил помощник»', async () => {
+    const place = 'где-то у чёрной речки';
+    const { views } = build({
+      groups: [group({ id: 1, district: 'Приморский' })],
+      requests: [request({ id: 1, place, age: '30' })],
+      hints: new Map([[1, hint({ baseHash: await hashOf(place, '30', null), questions: ['Какой район вам ближе?'] })]]),
+    });
+    const item = views.requests.items[0]!;
+    expect(item.district).toBe('Приморский');
+    expect(item.assistant).toEqual({ filled: ['район'], questions: ['Какой район вам ближе?'] });
+    expect(item.proposal?.main.group.id).toBe(1);
+  });
+
+  test('разбор не перекрывает то, что скрипт понял сам', async () => {
+    const place = 'Приморский район';
+    const { views } = build({
+      groups: [group({ id: 1, district: 'Приморский' })],
+      requests: [request({ id: 1, place })],
+      hints: new Map([[1, hint({ district: 'Невский', baseHash: await hashOf(place, null, null), questions: ['Вопрос про время есть?'] })]]),
+    });
+    const item = views.requests.items[0]!;
+    expect(item.district).toBe('Приморский');
+    expect(item.assistant).toEqual({ filled: [], questions: ['Вопрос про время есть?'] });
+  });
+
+  test('если запись изменили после разбора, разбор не применяется', async () => {
+    const { views } = build({
+      groups: [group({ id: 1, district: 'Приморский' })],
+      requests: [request({ id: 1, place: 'новое непонятное место' })],
+      hints: new Map([[1, hint({ baseHash: await hashOf('старое место', null, null) })]]),
+    });
+    expect(views.requests.items[0]!.district).toBeNull();
+    expect(views.requests.items[0]!.assistant).toBeNull();
+    expect(views.requests.assistant.pending).toBe(1);
+  });
+
+  test('«может разобрать»: только открытые заявки с непонятным текстом и без разбора', async () => {
+    const place = 'у чёрной речки';
+    const { views } = build({
+      requests: [
+        request({ id: 1, place }),
+        request({ id: 2, place: 'Приморский район' }),
+        request({ id: 3, place: null }),
+        request({ id: 4, place, status: 'Исполнена' }),
+        request({ id: 5, place }),
+      ],
+      hints: new Map([[5, hint({ baseHash: await hashOf(place, null, null) })]]),
+      assistant: { available: true, enabled: true },
+    });
+    expect(views.requests.assistant).toEqual({ available: true, enabled: true, pending: 1 });
+  });
+
+  test('время из разбора подставляется, только когда скрипт его не понял', async () => {
+    const schedule = 'как получится, по настроению';
+    const { views } = build({
+      requests: [request({ id: 1, place: 'Приморский район', schedule })],
+      hints: new Map([[1, hint({ district: null, days: ['Пн', 'Вт', 'Чт', 'Пт'], slot: 'вечер', baseHash: await hashOf('Приморский район', null, schedule) })]]),
+    });
+    const item = views.requests.items[0]!;
+    expect(item.assistant?.filled).toEqual(['время']);
+    expect(item.days).toEqual(['Пн', 'Вт', 'Чт', 'Пт']);
+    expect(item.slot).toBe('вечер');
+  });
+});

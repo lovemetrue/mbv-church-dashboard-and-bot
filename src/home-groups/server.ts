@@ -11,6 +11,7 @@ import type { RecordCreator } from './create.js';
 import type { Registrar } from './registration.js';
 import type { Manager } from './manage.js';
 import type { BotSettings } from './botSettings.js';
+import type { Assistant } from './assistant/service.js';
 import { registrationCardPage } from '../dashboard/registrationCard.js';
 import type { Settings } from '../platform/settings/service.js';
 import type { ActionError, ActionOk, MatchingRunOk, Me, Role } from './contracts.js';
@@ -56,6 +57,8 @@ export interface HomeGroupsDeps {
   creator: RecordCreator;
   /** Правка и удаление групп, координаторов, заявок. */
   manager: Manager;
+  /** Помощник по разбору заявок (языковая модель). */
+  assistant: Assistant;
   /** Настройки бота из интерфейса (только полный вход). */
   botSettings: BotSettings;
   /** Статистика кампании «40 дней»; null — расписание не задано. */
@@ -110,13 +113,14 @@ const CONTENT_TYPES: Record<string, string> = {
 
 class BodyTooLarge extends Error {}
 
-const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode|bot\/extra-questions)$/;
+const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode|bot\/extra-questions|assistant\/enabled)$/;
 const CREATE_PATH = /^\/api\/v1\/(requests|groups|people|coordinators)\/create$/;
 /** `POST /api/v1/groups/5/update`: правка и удаление записей справочника. */
 const MANAGE_PATH = /^\/api\/v1\/(groups|coordinators|people)\/(\d{1,15})\/(update|delete)$/;
 /** Страница для регистрации на месте (волонтёры у стойки): открывается тем же интерфейсом, но показывает только форму. */
 const REGISTRATION_PATH = '/registration';
 const BULK_PATH = '/api/v1/requests/bulk';
+const ASSISTANT_RUN_PATH = '/api/v1/assistant/run';
 const EXPORT_PATH = /^\/api\/v1\/export\/(requests|people)\.csv$/;
 /** `GET /api/v1/people/12/card`: печатная карточка регистрации и её QR. */
 const PERSON_PATH = /^\/api\/v1\/people\/(\d{1,15})\/(qr|card)$/;
@@ -474,6 +478,20 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     sendJson(res, 200, { ok: true } satisfies ActionOk);
   }
 
+  /** Разбор непонятных заявок помощником. Доступен обоим входам, пока помощник подключён и включён. */
+  async function handleAssistantRun(req: IncomingMessage, res: ServerResponse, sid: string | undefined): Promise<void> {
+    const call = await readAuthedJson(req, res, sid);
+    if (!call) return;
+    const outcome = await deps.assistant.run(call.actor);
+    if (!outcome.ok) {
+      sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
+      return;
+    }
+    deps.invalidateViews();
+    logger.info({ actor: call.actor, asked: outcome.asked, filled: outcome.filled, proposals: outcome.proposals }, 'домашние группы: помощник разобрал заявки');
+    sendJson(res, 200, outcome);
+  }
+
   /** Сразу несколько заявок: передать координатору или поставить отметку «нужен звонок». */
   async function handleBulk(req: IncomingMessage, res: ServerResponse, sid: string | undefined): Promise<void> {
     const call = await readAuthedJson(req, res, sid);
@@ -543,6 +561,14 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       'staff/reset': () => deps.staff.reset(call.body, call.actor),
       'staff/personal-mode': () => deps.staff.setPersonalMode(call.body, call.actor),
       'bot/extra-questions': () => deps.botSettings.setExtraQuestions(call.body, call.actor),
+      'assistant/enabled': async () => {
+        const b = call.body as { enabled?: unknown } | null;
+        if (typeof b !== 'object' || b === null || typeof b.enabled !== 'boolean') {
+          return { ok: false as const, error: 'bad_request' as const, message: 'Нужно указать: включить или выключить.' };
+        }
+        await deps.assistant.setEnabled(b.enabled, call.actor);
+        return { ok: true as const };
+      },
     };
     const outcome = await handlers[action]!();
     if (!outcome.ok) {
@@ -562,6 +588,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     const create = req.method === 'POST' ? CREATE_PATH.exec(path) : null;
     if (create) { await handleCreate(req, res, create[1]!, sid); return; }
     if (req.method === 'POST' && path === BULK_PATH) { await handleBulk(req, res, sid); return; }
+    if (req.method === 'POST' && path === ASSISTANT_RUN_PATH) { await handleAssistantRun(req, res, sid); return; }
     const manage = req.method === 'POST' ? MANAGE_PATH.exec(path) : null;
     if (manage) { await handleManage(req, res, manage[1]!, Number(manage[2]), manage[3]!, sid); return; }
     const match = req.method === 'POST' ? MATCHING_PATH.exec(path) : null;
@@ -588,6 +615,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       '/api/v1/settings/prompts': () => deps.settings.prompts(),
       '/api/v1/settings/staff': () => deps.staff.view(),
       '/api/v1/settings/bot': () => deps.botSettings.view(),
+      '/api/v1/settings/assistant': () => deps.assistant.view(),
     };
     const settingsRoute = Object.hasOwn(settingsRead, path) ? settingsRead[path] : undefined;
     if (settingsRoute) {

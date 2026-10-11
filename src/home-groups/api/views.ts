@@ -1,4 +1,6 @@
 import type { DashboardGroup } from '../../db/repos/groups.repo.js';
+import type { StoredHint } from '../../db/repos/hints.repo.js';
+import { baseHash, needsOf, anyNeed, type RawBrief } from '../assistant/brief.js';
 import type { ActivityRow, AuditRow } from '../../db/repos/audit.repo.js';
 import type { DashboardRequest } from '../../db/repos/requests.repo.js';
 import type { RegisteredParticipant } from '../../db/repos/users.repo.js';
@@ -8,7 +10,7 @@ import { inputSignature } from '../plan/signature.js';
 import { formatPhone } from '../../core/phone.js';
 import type {
   Bucket, Candidate, Counters, CoordinatorItem, CoordinatorsView, GroupBrief, GroupItem, GroupsView,
-  HealthItem, LogEntry, MatchingStatus, NoPlan, OriginalField, ParamInfo, PeopleView, PersonItem, Proposal, RequestItem, OtherItem, RequestsView, TeamView, TodayView,
+  HealthItem, LogEntry, MatchingStatus, NoPlan, OriginalField, ParamInfo, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, OtherItem, RequestsView, TeamView, TodayView,
 } from '../contracts.js';
 import type {
   Day, PlanEngineApi, PlanEntry, PlanEntryProposal, PlanGroup, PlanOutput, PlanRequest, ScoredGroup, Slot,
@@ -28,6 +30,10 @@ export interface ViewsInput {
   audit?: readonly AuditRow[];
   /** Действия за неделю по людям (для сводки руководителя). */
   activity?: readonly ActivityRow[];
+  /** Разбор помощника по заявкам (см. `request_hints`): подставляется там, где скрипт ничего не понял. */
+  hints?: ReadonlyMap<number, StoredHint>;
+  /** Подключён ли помощник (есть ключ) и включён ли он в настройках. */
+  assistant?: { available: boolean; enabled: boolean };
   /**
    * Накопленные предложения (заявка → группа и кто предложил). Они закрепляют выбор: движок
    * сохраняет группу, пока она остаётся доступной, и подбирает новые заявки вокруг неё.
@@ -240,7 +246,7 @@ export function buildViews(input: ViewsInput, engine: PlanEngineApi, now: Date, 
 /** Представления и сам план: автоматический подбор берёт из плана то, что нужно сохранить. */
 export function buildViewsWithPlan(
   input: ViewsInput, engine: PlanEngineApi, now: Date, options: ViewsOptions = {},
-): { views: Views; plan: PlanOutput; openRequestIds: number[]; signatures: Map<number, string> } {
+): { views: Views; plan: PlanOutput; openRequestIds: number[]; signatures: Map<number, string>; assistantCandidates: { id: number; brief: RawBrief }[] } {
   const defaultCapacity = options.defaultCapacity ?? DEFAULT_CAPACITY;
   const timeZone = options.timeZone ?? DEFAULT_TIME_ZONE;
   const today = localIsoDate(now, timeZone);
@@ -308,22 +314,57 @@ export function buildViewsWithPlan(
   const scheduleOf = (r: DashboardRequest): ParamInfo => paramInfo(r.manual_schedule, r.schedule);
   const streetOf = (r: DashboardRequest): ParamInfo => paramInfo(r.manual_street, r.address);
 
-  const planRequestOf = (r: DashboardRequest): PlanRequest => ({
-    id: r.id,
-    fio: nonBlank(r.fio) ?? 'Без имени',
-    ageRange: engine.parseAgeRange(r.age),
-    district: engine.resolveDistrict(nonBlank(r.place), metroIndex),
-    place: nonBlank(r.place),
-    // Удобные дни и время — свободный текст человека или правка координатора; разбираем его честно:
-    // что неясно, остаётся пустым.
-    ...humanWhen(scheduleOf(r).text),
-    street: streetOf(r).text,
-    rejectedGroupIds: [...(input.rejectedGroups?.get(r.id) ?? [])],
-    avoidDays: [],
-    avoidSlots: [],
-    pinnedGroupId: null,
-    waitingDays: daysSince(validIsoDate(r.date), today),
-  });
+  /** Записи человека, которые читает помощник (после очистки от контактов), и разбор скриптом. */
+  const briefOf = (r: DashboardRequest): RawBrief => ({ place: nonBlank(r.place), age: nonBlank(r.age), schedule: scheduleOf(r).text });
+  /** Разбор помощника применяется, только пока запись та же, по которой он сделан. */
+  const hintOf = (r: DashboardRequest): StoredHint | null => {
+    const h = input.hints?.get(r.id);
+    return h && h.baseHash === baseHash(briefOf(r)) ? h : null;
+  };
+
+  /** Что подставил помощник вместо непонятого скриптом — для пометки «проверьте» и для расчёта. */
+  const resolveWithHint = (r: DashboardRequest) => {
+    const b = briefOf(r);
+    const hint = hintOf(r);
+    const scriptDistrict = engine.resolveDistrict(b.place, metroIndex);
+    const scriptAge = engine.parseAgeRange(r.age);
+    const scriptWhen = humanWhen(b.schedule);
+    const whenKnown = scriptWhen.days.length > 0 || scriptWhen.slot !== null;
+    const filled: ('район' | 'возраст' | 'время')[] = [];
+    let district = scriptDistrict;
+    let ageRange = scriptAge;
+    let when = scriptWhen;
+    if (hint) {
+      if (district === null && hint.district) { district = hint.district; filled.push('район'); }
+      const hintAge = hint.age ? engine.parseAgeRange(hint.age) : null;
+      if (ageRange === null && hintAge) { ageRange = hintAge; filled.push('возраст'); }
+      if (!whenKnown && (hint.days.length > 0 || hint.slot)) {
+        when = { days: hint.days as Day[], slot: (hint.slot as Slot | null) ?? null };
+        filled.push('время');
+      }
+    }
+    return { district, ageRange, when, filled, hint, needs: needsOf(b, { district: scriptDistrict, ageKnown: scriptAge !== null, whenKnown }) };
+  };
+
+  const planRequestOf = (r: DashboardRequest): PlanRequest => {
+    const resolved = resolveWithHint(r);
+    return {
+      id: r.id,
+      fio: nonBlank(r.fio) ?? 'Без имени',
+      ageRange: resolved.ageRange,
+      district: resolved.district,
+      place: nonBlank(r.place),
+      // Удобные дни и время — свободный текст человека или правка координатора; разбираем его честно:
+      // что неясно, остаётся пустым (или берётся из разбора помощника, если он есть).
+      ...resolved.when,
+      street: streetOf(r).text,
+      rejectedGroupIds: [...(input.rejectedGroups?.get(r.id) ?? [])],
+      avoidDays: [],
+      avoidSlots: [],
+      pinnedGroupId: null,
+      waitingDays: daysSince(validIsoDate(r.date), today),
+    };
+  };
 
   const joinById = new Map(joinRequests.map((r) => [r.id, r]));
   // Отпечаток данных заявки и закрепление: предложение, полученное по другим данным, устарело —
@@ -414,6 +455,20 @@ export function buildViewsWithPlan(
     return log;
   };
 
+  /** Разбор помощника для карточки: что он определил (проверьте) и что советует спросить. */
+  const assistantNote = (r: DashboardRequest): AssistantNote | null => {
+    const { hint, filled } = resolveWithHint(r);
+    if (!hint || (filled.length === 0 && hint.questions.length === 0)) return null;
+    return { filled, questions: [...hint.questions] };
+  };
+
+  // Что помощник может разобрать сейчас: открытые заявки, где в записи есть текст, а скрипт его не понял, и разбора ещё нет.
+  const assistantCandidates: { id: number; brief: RawBrief }[] = [];
+  for (const r of openRequests) {
+    const resolved = resolveWithHint(r);
+    if (!resolved.hint && anyNeed(resolved.needs)) assistantCandidates.push({ id: r.id, brief: briefOf(r) });
+  }
+
   const requestItems: RequestItem[] = [];
   for (const r of joinRequests) {
     const bucket = bucketById.get(r.id)!;
@@ -442,6 +497,7 @@ export function buildViewsWithPlan(
       dataFill: [pr.district !== null, pr.ageRange !== null, pr.days.length > 0 || pr.slot !== null, pr.street !== null],
       proposal,
       noPlan,
+      assistant: assistantNote(r),
       finalGroup: finalBrief,
       finalGroupText: bucket === 'done' && !finalBrief ? nonBlank(r.final_group) : null,
       responsible: nonBlank(r.responsible),
@@ -610,12 +666,13 @@ export function buildViewsWithPlan(
       items: requestItems,
       counters,
       others: [...otherOpen, ...otherClosed],
+      assistant: { available: input.assistant?.available ?? false, enabled: input.assistant?.enabled ?? false, pending: assistantCandidates.length },
     },
     groups: { generatedAt, items: groupItems },
     people: { generatedAt, items: people },
     coordinators: { generatedAt, items: coordinatorItems },
   };
-  return { views, plan, openRequestIds: openRequests.map((r) => r.id), signatures };
+  return { views, plan, openRequestIds: openRequests.map((r) => r.id), signatures, assistantCandidates };
 }
 
 /**

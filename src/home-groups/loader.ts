@@ -1,5 +1,6 @@
 import type { AuditRepo } from '../db/repos/audit.repo.js';
 import type { CoordinatorsRepo } from '../db/repos/coordinators.repo.js';
+import type { HintsRepo } from '../db/repos/hints.repo.js';
 import type { GroupsRepo } from '../db/repos/groups.repo.js';
 import type { PlacementRepo } from '../db/repos/placement.repo.js';
 import type { SettingsRepo } from '../db/repos/settings.repo.js';
@@ -15,15 +16,16 @@ export interface LoaderRepos {
   placement: Pick<PlacementRepo, 'rejectedGroups' | 'activeProposals' | 'placedSinceFeedback'>;
   settings: Pick<SettingsRepo, 'get'>;
   audit: Pick<AuditRepo, 'requestEntries' | 'activitySince'>;
+  hints: Pick<HintsRepo, 'all'>;
 }
 
 /**
  * Читает всё нужное сервису одним заходом. SQL здесь нет: только существующие репозитории
  * (тот же слой, что у старого дашборда), поэтому архивные записи и закрытые поля отсекаются там же.
  */
-export function createLoader(repos: LoaderRepos, opts: { timeZone?: string } = {}): () => Promise<ViewsInput> {
+export function createLoader(repos: LoaderRepos, opts: { timeZone?: string; assistantAvailable?: boolean } = {}): () => Promise<ViewsInput> {
   return async () => {
-    const [groups, requests, participants, coordinators, rejectedGroups, audit, activity, activeProposals, placedNew, auto, lastRun] = await Promise.all([
+    const [groups, requests, participants, coordinators, rejectedGroups, audit, activity, activeProposals, placedNew, auto, lastRun, hints, assistantEnabled] = await Promise.all([
       repos.groups.forDashboard(),
       repos.requests.forDashboard(),
       repos.users.listRegistered(),
@@ -35,10 +37,14 @@ export function createLoader(repos: LoaderRepos, opts: { timeZone?: string } = {
       repos.placement.placedSinceFeedback(opts.timeZone),
       repos.settings.get<boolean>('matching.auto'),
       repos.settings.get<NonNullable<ViewsInput['matching']>['lastRun']>('matching.last_run'),
+      repos.hints.all(),
+      repos.settings.get<boolean>('assistant.enabled'),
     ]);
     return {
       groups, requests, participants, coordinators, rejectedGroups, audit, activity, activeProposals, placedNew,
       matching: { auto: auto === true, lastRun: lastRun ?? null },
+      hints,
+      assistant: { available: opts.assistantAvailable === true, enabled: assistantEnabled === true },
     };
   };
 }

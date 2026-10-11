@@ -135,3 +135,74 @@ describe('итог звонка', () => {
     expect(await repo.recordCall(r, 'reached', null, 'a')).toMatchObject({ ok: false, error: 'already_closed' });
   });
 });
+
+describe('закрытие и возврат заявки в работу', () => {
+  const lastRow = async (id: number) =>
+    (await db.query('SELECT status, cancel_reason, group_id, final_group, callback, handled_by, origin FROM requests WHERE id = $1', [id])).rows[0];
+
+  test('аннулирование записывает причину, снимает «нужен звонок» и закрывает заявку', async () => {
+    const r = await request({ callback: true, origin: 'таблица' });
+    expect(await repo.closeRequest(r, 'cancel', 'no_answer', null, 'a')).toEqual({ ok: true });
+    expect(await lastRow(r)).toMatchObject({ status: 'Аннулирована', cancel_reason: 'Не отвечают', callback: false, handled_by: 'a', origin: 'ui' });
+  });
+
+  test('для причины «Другое» нужен комментарий, он дописывается к причине', async () => {
+    const r = await request();
+    expect(await repo.closeRequest(r, 'cancel', 'other', null, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
+    expect(await repo.closeRequest(r, 'cancel', 'other', 'уехали из города', 'a')).toEqual({ ok: true });
+    expect((await lastRow(r)).cancel_reason).toBe('Другое: уехали из города');
+  });
+
+  test('неизвестная причина и неизвестный исход отклоняются', async () => {
+    const r = await request();
+    expect(await repo.closeRequest(r, 'cancel', 'потому' as never, null, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
+    expect(await repo.closeRequest(r, 'потом' as never, null, null, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
+    expect((await lastRow(r)).status).toBe('Новая');
+  });
+
+  test('«обработано» закрывает заявку как исполненную, группа не требуется', async () => {
+    const r = await request();
+    expect(await repo.closeRequest(r, 'done', null, 'позвонили, договорились', 'a')).toEqual({ ok: true });
+    expect(await lastRow(r)).toMatchObject({ status: 'Исполнена', group_id: null, handled_by: 'a' });
+    const log = (await audits()).at(-1)!;
+    expect(log).toMatchObject({ action: 'request.close', note: 'позвонили, договорились' });
+    expect(log.after).toEqual({ outcome: 'done', status: 'Исполнена' });
+  });
+
+  test('при закрытии действующие предложения заменяются', async () => {
+    const r = await request();
+    const g = (await db.query<{ id: number }>(`INSERT INTO groups (leader, district, format, status, source) VALUES ('И','Приморский','Основная церковь','Функционирует','ui') RETURNING id`)).rows[0]!.id;
+    await db.query(`INSERT INTO placement_proposals (request_id, group_id, source) VALUES ($1, $2, 'script')`, [r, g]);
+    await repo.closeRequest(r, 'cancel', 'declined', null, 'a');
+    expect((await db.query('SELECT status FROM placement_proposals')).rows).toEqual([{ status: 'superseded' }]);
+  });
+
+  test('закрытую заявку повторно закрыть нельзя', async () => {
+    const r = await request({ status: 'Аннулирована' });
+    expect(await repo.closeRequest(r, 'cancel', 'declined', null, 'a')).toMatchObject({ ok: false, error: 'already_closed' });
+  });
+
+  test('возврат в работу очищает группу и причину, пишет «было → стало»', async () => {
+    const g = (await db.query<{ id: number }>(`INSERT INTO groups (leader, district, format, status, source) VALUES ('И','Приморский','Основная церковь','Функционирует','ui') RETURNING id`)).rows[0]!.id;
+    const r = await request();
+    await db.query(`UPDATE requests SET status='Исполнена', group_id=$2, final_group='ДГ-0001, И' WHERE id=$1`, [r, g]);
+    expect(await repo.reopen(r, 'a')).toEqual({ ok: true });
+    expect(await lastRow(r)).toMatchObject({ status: 'В работе', group_id: null, final_group: null, cancel_reason: null });
+    const e = (await audits()).at(-1)!;
+    expect(e).toMatchObject({ action: 'request.reopen', actor: 'a' });
+    expect(e.before).toMatchObject({ status: 'Исполнена', group_id: g });
+  });
+
+  test('аннулированную заявку тоже можно вернуть', async () => {
+    const r = await request({ status: 'Аннулирована' });
+    await db.query(`UPDATE requests SET cancel_reason='Дубль заявки' WHERE id=$1`, [r]);
+    expect(await repo.reopen(r, 'a')).toEqual({ ok: true });
+    expect(await lastRow(r)).toMatchObject({ status: 'В работе', cancel_reason: null });
+  });
+
+  test('открытую заявку возвращать некуда, чужой номер — not_found', async () => {
+    const r = await request();
+    expect(await repo.reopen(r, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
+    expect(await repo.reopen(99999, 'a')).toMatchObject({ ok: false, error: 'not_found' });
+  });
+});

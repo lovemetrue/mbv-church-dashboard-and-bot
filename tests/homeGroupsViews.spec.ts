@@ -615,7 +615,7 @@ describe('люди', () => {
       requests: [request({ id: 40, user_id: 12, place: 'Ломоносовская' })],
     });
     expect(views.people.items).toEqual([{
-      key: 'u12', fio: 'Дарья Ефимова', phone: '+7 911 123-45-67', ageLabel: '26-35', district: 'Невский',
+      key: 'u12', personId: null, groups: [], fio: 'Дарья Ефимова', phone: '+7 911 123-45-67', ageLabel: '26-35', district: 'Невский',
       from: 'Бот · MAX', mdgLabel: 'Хочет в группу', date: '2026-09-12', requestId: 40, userId: 12, registrationNo: 12,
     }]);
   });
@@ -655,7 +655,7 @@ describe('люди', () => {
     });
     const person = (key: string) => views.people.items.find((p) => p.key === key)!;
     expect(person('r7')).toEqual({
-      key: 'r7', fio: 'Станислав Ким', phone: '+7 904 123-45-67', ageLabel: '26-35', district: 'Приморский',
+      key: 'r7', personId: null, groups: [], fio: 'Станислав Ким', phone: '+7 904 123-45-67', ageLabel: '26-35', district: 'Приморский',
       from: 'Таблица', mdgLabel: 'Заявка: готово к утверждению', date: '2026-10-02', requestId: 7, userId: null, registrationNo: null,
     });
     expect(person('r8')).toMatchObject({ from: 'Дашборд · Звонок', mdgLabel: 'Заявка: нужна помощь в сопоставлении', district: null });
@@ -1049,5 +1049,205 @@ describe('закрепление и изменившиеся данные', () =
     });
     expect(views.people.items.find((p) => p.key === 'u3')).toMatchObject({ userId: 3, registrationNo: 41 });
     expect(views.people.items.find((p) => p.key === 'r9')).toMatchObject({ userId: null, registrationNo: null });
+  });
+});
+
+describe('сводка команды в представлениях', () => {
+  test('сводка строится из тех же заявок и действий за неделю, что пришли в загрузку', () => {
+    const { views } = build({
+      requests: [request({ id: 1, responsible: 'Анна' }), request({ id: 2 })],
+      activity: [{ actor: 'anna', action: 'request.call', n: 2 }],
+    });
+    expect(views.team.totals).toMatchObject({ open: 2, unassigned: 1 });
+    expect(views.team.activity).toEqual([{ actor: 'anna', calls: 2, approved: 0, rejected: 0, edits: 0, assigned: 0 }]);
+  });
+});
+
+describe('остальные обращения', () => {
+  test('«готов открыть» и вопросы не идут в подбор, а попадают в отдельный список с подписью вида', () => {
+    const { views } = build({
+      requests: [
+        request({ id: 1 }),
+        request({ id: 2, type: 'lead_group', fio: 'Хочет открыть' }),
+        request({ id: 3, type: 'question', fio: 'С вопросом' }),
+      ],
+    });
+    expect(views.requests.items.map((i) => i.id)).toEqual([1]);
+    expect(views.requests.others.map((o) => [o.id, o.typeLabel, o.state])).toEqual([
+      [2, 'Хочет открыть группу или дать дом', 'open'], [3, 'Вопрос служителю', 'open'],
+    ]);
+    expect(views.team.totals.otherOpen).toBe(2);
+  });
+
+  test('аннулированная заявка «хочу в группу» остаётся доступной в списке остальных, чтобы вернуть её в работу', () => {
+    const { views } = build({ requests: [request({ id: 1, status: 'Аннулирована', cancel_reason: 'Дубль заявки' })] });
+    expect(views.requests.items).toEqual([]);
+    expect(views.requests.others).toMatchObject([{ id: 1, state: 'cancelled', cancelReason: 'Дубль заявки' }]);
+  });
+
+  test('открытые идут первыми: сначала те, кому надо перезвонить, потом давно ждущие; закрытых не больше двухсот', () => {
+    const closed = Array.from({ length: 250 }, (_, i) => request({ id: 1000 + i, type: 'question', status: 'Исполнена' }));
+    const { views } = build({
+      requests: [
+        request({ id: 1, type: 'question', date: '2026-10-09' }),
+        request({ id: 2, type: 'question', date: '2026-09-01' }),
+        request({ id: 3, type: 'question', date: '2026-10-09', callback: true }),
+        ...closed,
+      ],
+    });
+    expect(views.requests.others.slice(0, 3).map((o) => o.id)).toEqual([3, 2, 1]);
+    expect(views.requests.others).toHaveLength(3 + 200);
+    expect(views.requests.others.at(3)!.id).toBe(1249);
+  });
+
+  test('закрытие и возврат в работу попадают в ленту текстом', () => {
+    const at = new Date('2026-10-09T10:00:00Z');
+    const { views } = build({
+      requests: [request({ id: 1 })],
+      audit: [
+        { entity_id: 1, at, actor: 'anna', action: 'request.close', after: { outcome: 'cancel', reason: 'no_answer' }, note: 'трубку не берут' },
+        { entity_id: 1, at, actor: 'anna', action: 'request.close', after: { outcome: 'done' }, note: null },
+        { entity_id: 1, at, actor: 'boris', action: 'request.reopen', after: { status: 'В работе' }, note: null },
+      ],
+    });
+    expect(views.requests.items[0]!.log.map((l) => l.text)).toEqual(expect.arrayContaining([
+      'Аннулирована: не отвечают («трубку не берут») · anna', 'Отмечена обработанной · anna', 'Возвращена в работу · boris',
+    ]));
+  });
+});
+
+describe('разбор помощника в представлениях', () => {
+  const hint = (over: Partial<import('../src/db/repos/hints.repo.js').StoredHint> = {}) => ({
+    district: 'Приморский', age: null, days: [], slot: null, questions: [], baseHash: '', ...over,
+  });
+  const hashOf = async (place: string | null, age: string | null, schedule: string | null) =>
+    (await import('../src/home-groups/assistant/brief.js')).baseHash({ place, age, schedule });
+
+  test('район, который не понял скрипт, подставляется из разбора, а карточка помечает «определил помощник»', async () => {
+    const place = 'где-то у чёрной речки';
+    const { views } = build({
+      groups: [group({ id: 1, district: 'Приморский' })],
+      requests: [request({ id: 1, place, age: '30' })],
+      hints: new Map([[1, hint({ baseHash: await hashOf(place, '30', null), questions: ['Какой район вам ближе?'] })]]),
+    });
+    const item = views.requests.items[0]!;
+    expect(item.district).toBe('Приморский');
+    expect(item.assistant).toEqual({ filled: ['район'], questions: ['Какой район вам ближе?'] });
+    expect(item.proposal?.main.group.id).toBe(1);
+  });
+
+  test('разбор не перекрывает то, что скрипт понял сам', async () => {
+    const place = 'Приморский район';
+    const { views } = build({
+      groups: [group({ id: 1, district: 'Приморский' })],
+      requests: [request({ id: 1, place })],
+      hints: new Map([[1, hint({ district: 'Невский', baseHash: await hashOf(place, null, null), questions: ['Вопрос про время есть?'] })]]),
+    });
+    const item = views.requests.items[0]!;
+    expect(item.district).toBe('Приморский');
+    expect(item.assistant).toEqual({ filled: [], questions: ['Вопрос про время есть?'] });
+  });
+
+  test('если запись изменили после разбора, разбор не применяется', async () => {
+    const { views } = build({
+      groups: [group({ id: 1, district: 'Приморский' })],
+      requests: [request({ id: 1, place: 'новое непонятное место' })],
+      hints: new Map([[1, hint({ baseHash: await hashOf('старое место', null, null) })]]),
+    });
+    expect(views.requests.items[0]!.district).toBeNull();
+    expect(views.requests.items[0]!.assistant).toBeNull();
+    expect(views.requests.assistant.pending).toBe(1);
+  });
+
+  test('«может разобрать»: только открытые заявки с непонятным текстом и без разбора', async () => {
+    const place = 'у чёрной речки';
+    const { views } = build({
+      requests: [
+        request({ id: 1, place }),
+        request({ id: 2, place: 'Приморский район' }),
+        request({ id: 3, place: null }),
+        request({ id: 4, place, status: 'Исполнена' }),
+        request({ id: 5, place }),
+      ],
+      hints: new Map([[5, hint({ baseHash: await hashOf(place, null, null) })]]),
+      assistant: { available: true, enabled: true },
+    });
+    expect(views.requests.assistant).toEqual({ available: true, enabled: true, pending: 1 });
+  });
+
+  test('время из разбора подставляется, только когда скрипт его не понял', async () => {
+    const schedule = 'как получится, по настроению';
+    const { views } = build({
+      requests: [request({ id: 1, place: 'Приморский район', schedule })],
+      hints: new Map([[1, hint({ district: null, days: ['Пн', 'Вт', 'Чт', 'Пт'], slot: 'вечер', baseHash: await hashOf('Приморский район', null, schedule) })]]),
+    });
+    const item = views.requests.items[0]!;
+    expect(item.assistant?.filled).toEqual(['время']);
+    expect(item.days).toEqual(['Пн', 'Вт', 'Чт', 'Пт']);
+    expect(item.slot).toBe('вечер');
+  });
+});
+
+describe('состав групп', () => {
+  const manual = (id: number, groupId: number, personKey: string, fio: string, phone: string | null = null, joined: string | null = null) =>
+    ({ id, group_id: groupId, personKey, full_name: fio, phone, joined_on: joined, note: null });
+
+  test('утверждённые в группу появляются в её составе сами, внесённые вручную идут следом', () => {
+    const at = new Date('2026-10-09T10:00:00Z');
+    const { views } = build({
+      groups: [group({ id: 1 })],
+      requests: [request({ id: 1, status: 'Исполнена', group_id: 1, fio: 'Анна Утверждённая', phone: '+79215550011' })],
+      audit: [{ entity_id: 1, at, actor: 'a', action: 'request.approve', after: { group_id: 1 }, note: null }],
+      members: [manual(7, 1, 'u5', 'Борис Вручную', null, '2026-09-01')],
+    });
+    expect(views.groups.items[0]!.members).toEqual([
+      { kind: 'placed', id: 1, personKey: 'r1', fio: 'Анна Утверждённая', phone: '+7 921 555-00-11', date: '2026-10-09', note: null, alsoIn: [] },
+      { kind: 'manual', id: 7, personKey: 'u5', fio: 'Борис Вручную', phone: null, date: '2026-09-01', note: null, alsoIn: [] },
+    ]);
+  });
+
+  test('заявки не в статусе «Исполнена» и без группы в состав не попадают', () => {
+    const { views } = build({
+      groups: [group({ id: 1 })],
+      requests: [request({ id: 1, status: 'Новая', group_id: 1 }), request({ id: 2, status: 'Исполнена', group_id: null }), request({ id: 3, status: 'Аннулирована', group_id: 1 })],
+    });
+    expect(views.groups.items[0]!.members).toEqual([]);
+  });
+
+  test('человек и утверждён, и внесён вручную в одну группу — в составе одна строка, ручная', () => {
+    const { views } = build({
+      groups: [group({ id: 1 })],
+      requests: [request({ id: 1, user_id: 5, status: 'Исполнена', group_id: 1, fio: 'Мария' })],
+      members: [manual(7, 1, 'u5', 'Мария', null, '2026-09-01')],
+    });
+    expect(views.groups.items[0]!.members.map((m) => m.kind)).toEqual(['manual']);
+  });
+
+  test('человек в нескольких группах помечается: по телефону, а без телефона — по ключу справочника', () => {
+    const { views } = build({
+      groups: [group({ id: 1 }), group({ id: 2 }), group({ id: 3 })],
+      requests: [request({ id: 1, status: 'Исполнена', group_id: 1, fio: 'Анна Смирнова', phone: '+79215550011' })],
+      members: [
+        manual(1, 2, 'p1', 'А. Смирнова', '8 921 555-00-11'),
+        manual(2, 3, 'u9', 'Другая Анна'),
+        manual(3, 2, 'u7', 'Пётр Один'),
+        manual(4, 3, 'u7', 'Пётр Один'),
+      ],
+    });
+    const byGroup = (id: number) => views.groups.items.find((g) => g.id === id)!.members.map((m) => [m.fio, m.alsoIn]);
+    expect(byGroup(1)).toEqual([['Анна Смирнова', ['ДГ-0002']]]);
+    expect(byGroup(2)).toEqual([['А. Смирнова', ['ДГ-0001']], ['Пётр Один', ['ДГ-0003']]]);
+    expect(byGroup(3)).toEqual([['Другая Анна', []], ['Пётр Один', ['ДГ-0002']]]);
+  });
+
+  test('карточки людей, внесённые вручную, попадают в справочник «Люди» с группами, где они состоят', () => {
+    const { views } = build({
+      groups: [group({ id: 1 })],
+      members: [manual(1, 1, 'p3', 'Анна Новая', '+79215550011')],
+      persons: [{ id: 3, full_name: 'Анна Новая', phone: '+79215550011', age: '35', place: 'Приморский', note: null, created_at: new Date('2026-10-01T10:00:00Z') }],
+    });
+    expect(views.people.items.find((p) => p.key === 'p3')).toMatchObject({
+      personId: 3, fio: 'Анна Новая', phone: '+7 921 555-00-11', ageLabel: '35', district: 'Приморский', from: 'Внесён вручную', groups: ['ДГ-0001'],
+    });
   });
 });

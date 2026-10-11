@@ -7,7 +7,7 @@ import type { RequestWithUser } from '../db/repos/requests.repo.js';
 import { createDeps } from '../deps.js';
 import { logger } from '../logger.js';
 import { splitAdminIds } from './access.js';
-import { requestLinkBuilder } from './links.js';
+import { dashboardLink, requestLinkBuilder } from './links.js';
 import { AdminNotifier } from './notify.js';
 
 const readEnv = (env: NodeJS.ProcessEnv, name: string, fallback: string): string => env[name]?.trim() || fallback;
@@ -47,7 +47,7 @@ export function notifierFromEnv(
   const requestUrl = requestLinkBuilder(env['HG_PUBLIC_URL']);
   const notifier = new AdminNotifier(createDeps({
     db, platforms, admins, schedule, broadcastRate: 20,
-    dashboardUrl: readEnv(env, 'DASHBOARD_URL', 'http://5.23.48.25:8090/groups'),
+    dashboardUrl: dashboardLink(env['HG_PUBLIC_URL'], readEnv(env, 'DASHBOARD_URL', 'http://5.23.48.25:8090/groups')),
     ...(requestUrl ? { requestUrl } : {}),
   }));
   // Без этой строки в логе не отличить «уведомления настроены, но не доходят» от

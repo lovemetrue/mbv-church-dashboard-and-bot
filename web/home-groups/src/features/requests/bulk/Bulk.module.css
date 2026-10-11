@@ -1,0 +1,132 @@
+/* Массовые действия над заявками. Цвета только из токенов; смысл всегда продублирован текстом. */
+
+.panel {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.noticeOk,
+.noticeError {
+  border-radius: var(--radius);
+  padding: 9px 11px;
+  font-size: 13px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.noticeOk {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.noticeError {
+  background: var(--crit-soft);
+  color: var(--crit);
+}
+
+.selectRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 14px;
+}
+.selectAll {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--tap);
+  cursor: pointer;
+  font-weight: 500;
+}
+.selectAll input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+}
+.hint {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--accent-soft);
+}
+.count {
+  margin: 0;
+  font-weight: 600;
+}
+.assign {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.label {
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.select {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: var(--radius);
+  padding: 5px 8px;
+  min-height: var(--tap);
+  min-width: 0;
+  max-width: 100%;
+}
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.bar button {
+  min-height: var(--tap);
+}
+.bar > .hint {
+  flex-basis: 100%;
+  margin: 0;
+}
+@media (max-width: 700px) {
+  .bar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .assign {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .select {
+    width: 100%;
+    font-size: 16px; /* меньше 16 px iOS приближает страницу при фокусе */
+  }
+  .buttons button {
+    flex: 1 1 auto;
+  }
+}
+
+.confirmHint {
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.dialogFoot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+.dialogFoot button {
+  min-height: var(--tap);
+}

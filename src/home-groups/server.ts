@@ -6,9 +6,14 @@ import type { AuthPort } from '../platform/auth/personalAuth.js';
 import type { StaffService } from '../platform/auth/staffService.js';
 import { logger } from '../logger.js';
 import { ACTION_STATUS, type RequestActions } from './actions.js';
-import type { FormMeta } from './contracts.js';
+import type { CampaignView, FormMeta } from './contracts.js';
 import type { RecordCreator } from './create.js';
 import type { Registrar } from './registration.js';
+import type { Manager } from './manage.js';
+import type { BotSettings } from './botSettings.js';
+import type { Assistant } from './assistant/service.js';
+import type { Chat } from './assistant/chat.js';
+import type { Members } from './members.js';
 import { registrationCardPage } from '../dashboard/registrationCard.js';
 import type { Settings } from '../platform/settings/service.js';
 import type { ActionError, ActionOk, MatchingRunOk, Me, Role } from './contracts.js';
@@ -52,14 +57,28 @@ export interface HomeGroupsDeps {
   actions: RequestActions;
   /** Создание заявки и группы из «+ Создать». */
   creator: RecordCreator;
+  /** Правка и удаление групп, координаторов, заявок. */
+  manager: Manager;
+  /** Состав групп вручную. */
+  members: Members;
+  /** Помощник по разбору заявок (языковая модель). */
+  assistant: Assistant;
+  /** Чат помощника: вопросы по базе, только чтение. */
+  chat: Chat;
+  /** Настройки бота из интерфейса (только полный вход). */
+  botSettings: BotSettings;
+  /** Статистика кампании «40 дней»; null — расписание не задано. */
+  campaign: () => Promise<CampaignView | null>;
+  /** Выгрузки в CSV (с телефонами): только полный вход. */
+  exporter: { requests(): Promise<string>; people(): Promise<string> };
+  /** Запись в журнал вне заявки (выгрузка): без содержимого. */
+  audit: (actor: string, action: string, after: unknown) => Promise<void>;
   /** Регистрация участника служителем, QR и данные печатной карточки. */
   registrar: Registrar;
   /** Эмблема церкви для печатной карточки; нет файла — null (карточка без эмблемы). */
   logo?: () => Promise<Buffer | null>;
   /** Справочники для форм создания. */
   formMeta: () => Promise<FormMeta>;
-  /** Адрес старого дашборда (источник — `DASHBOARD_URL`): для того, что пока живёт только там. */
-  legacyUrl?: string | null;
   /** Подбор для новых заявок: запуск и переключатель автоматического режима. */
   matching: {
     run(actor: string): Promise<MatchingRunOk>;
@@ -100,15 +119,28 @@ const CONTENT_TYPES: Record<string, string> = {
 
 class BodyTooLarge extends Error {}
 
-const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode)$/;
-const CREATE_PATH = /^\/api\/v1\/(requests|groups|people)\/create$/;
+const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode|bot\/extra-questions|assistant\/enabled)$/;
+const CREATE_PATH = /^\/api\/v1\/(requests|groups|people|coordinators)\/create$/;
+/** `POST /api/v1/groups/5/update`: правка и удаление записей справочника. */
+const MANAGE_PATH = /^\/api\/v1\/(groups|coordinators|people)\/(\d{1,15})\/(update|delete)$/;
+/** Страница для регистрации на месте (волонтёры у стойки): открывается тем же интерфейсом, но показывает только форму. */
+const REGISTRATION_PATH = '/registration';
+/** Состав группы: добавить человека (`POST /groups/5/members/create`) и править или убрать строку (`POST /members/9/update`). */
+const MEMBER_ADD_PATH = /^\/api\/v1\/groups\/(\d{1,15})\/members\/create$/;
+const MEMBER_PATH = /^\/api\/v1\/members\/(\d{1,15})\/(update|delete)$/;
+/** Карточка человека, внесённая вручную: правка любым входом, удаление только полным. */
+const PERSON_EDIT_PATH = /^\/api\/v1\/persons\/(\d{1,15})\/(update|delete)$/;
+const BULK_PATH = '/api/v1/requests/bulk';
+const ASSISTANT_RUN_PATH = '/api/v1/assistant/run';
+const ASSISTANT_CHAT_PATH = '/api/v1/assistant/chat';
+const EXPORT_PATH = /^\/api\/v1\/export\/(requests|people)\.csv$/;
 /** `GET /api/v1/people/12/card`: печатная карточка регистрации и её QR. */
 const PERSON_PATH = /^\/api\/v1\/people\/(\d{1,15})\/(qr|card)$/;
 const LOGO_PATH = '/api/v1/assets/church-logo.png';
 const MATCHING_PATH = /^\/api\/v1\/matching\/(run|auto|rerun-all)$/;
 
 /** `POST /api/v1/requests/12/approve`: номер заявки — цифры, длиннее пятнадцати не бывает (Number безопасен). */
-const ACTION_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/(approve|reject|need-call|params|rematch|edit|assign|call)$/;
+const ACTION_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/(approve|reject|need-call|params|rematch|edit|assign|call|delete|close|reopen)$/;
 
 /** Адрес клиента: за nginx настоящий адрес приходит заголовком (как в старом дашборде). */
 function clientIp(req: IncomingMessage): string {
@@ -298,14 +330,16 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     const ip = clientIp(req);
     const result = await deps.auth.login(form.get('password') ?? '', ip, form.get('login') ?? undefined);
 
+    const next = form.get('next') === REGISTRATION_PATH ? REGISTRATION_PATH : undefined;
     if (!result.ok) {
       logger.warn({ ip, lockedOut: result.lockedOut === true }, 'домашние группы: неудачный вход');
-      if (result.lockedOut) sendHtml(res, 429, homeGroupsLoginPage('Слишком много попыток. Подождите 15 минут.'));
-      else sendHtml(res, 401, homeGroupsLoginPage('Неверный логин или пароль.'));
+      if (result.lockedOut) sendHtml(res, 429, homeGroupsLoginPage('Слишком много попыток. Подождите 15 минут.', undefined, next));
+      else sendHtml(res, 401, homeGroupsLoginPage('Неверный логин или пароль.', undefined, next));
       return;
     }
     logger.info({ ip, role: result.role }, 'домашние группы: вход выполнен');
-    redirect(res, '/', { 'set-cookie': cookie(result.sid!, deps.sessionTtlSeconds) });
+    // Вернуть можно только на страницу регистрации: произвольный адрес в `next` был бы открытым перенаправлением.
+    redirect(res, next ?? '/', { 'set-cookie': cookie(result.sid!, deps.sessionTtlSeconds) });
   }
 
   /**
@@ -356,6 +390,10 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     const call = await readAuthedJson(req, res, sid);
     if (!call) return;
     const { actor, body } = call;
+    if (action === 'delete' && call.role !== 'super') {
+      sendJson(res, 403, { error: 'forbidden', message: 'Удалять может только полный вход.' } satisfies ActionError);
+      return;
+    }
     const outcome = action === 'approve' ? await deps.actions.approve(requestId, body, actor)
       : action === 'reject' ? await deps.actions.reject(requestId, body, actor)
       : action === 'params' ? await deps.actions.setParams(requestId, body, actor)
@@ -363,6 +401,9 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       : action === 'edit' ? await deps.actions.edit(requestId, body, actor)
       : action === 'assign' ? await deps.actions.assign(requestId, body, actor)
       : action === 'call' ? await deps.actions.call(requestId, body, actor)
+      : action === 'delete' ? await deps.manager.deleteRequest(requestId, actor)
+      : action === 'close' ? await deps.actions.close(requestId, body, actor)
+      : action === 'reopen' ? await deps.actions.reopen(requestId, actor)
       : await deps.actions.setNeedCall(requestId, body, actor);
 
     if (!outcome.ok) {
@@ -415,6 +456,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     if (!call) return;
     const outcome = what === 'requests' ? await deps.creator.request(call.body, call.actor)
       : what === 'people' ? await deps.registrar.register(call.body, call.actor)
+      : what === 'coordinators' ? await deps.manager.createCoordinator(call.body, call.actor)
       : await deps.creator.group(call.body, call.actor);
     if (!outcome.ok) {
       sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
@@ -423,6 +465,125 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     deps.invalidateViews();
     logger.info({ actor: call.actor, what, id: outcome.id }, what === 'people' ? 'домашние группы: участник зарегистрирован' : 'домашние группы: запись создана');
     sendJson(res, 200, outcome);
+  }
+
+  /** Правка и удаление записи справочника. Удалять может только полный вход (как в старом дашборде). */
+  async function handleManage(req: IncomingMessage, res: ServerResponse, what: string, id: number, action: string, sid: string | undefined): Promise<void> {
+    const call = await readAuthedJson(req, res, sid);
+    if (!call) return;
+    if (action === 'delete' && call.role !== 'super') {
+      sendJson(res, 403, { error: 'forbidden', message: 'Удалять может только полный вход.' } satisfies ActionError);
+      return;
+    }
+    if (what === 'people' && action === 'update') { sendJson(res, 404, { error: 'not_found' }); return; }
+    const outcome = what === 'people'
+      ? await deps.manager.deletePerson(id, call.actor)
+      : what === 'groups'
+      ? (action === 'update' ? await deps.manager.updateGroup(id, call.body, call.actor) : await deps.manager.deleteGroup(id, call.actor))
+      : (action === 'update' ? await deps.manager.updateCoordinator(id, call.body, call.actor) : await deps.manager.deleteCoordinator(id, call.actor));
+    if (!outcome.ok) {
+      sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
+      return;
+    }
+    deps.invalidateViews();
+    logger.info({ actor: call.actor, what, id, action }, 'домашние группы: изменение справочника');
+    sendJson(res, 200, { ok: true } satisfies ActionOk);
+  }
+
+  /** Состав группы: любой вход (убрать человека из состава — обычная работа, запись только скрывается). */
+  async function handleMember(req: IncomingMessage, res: ServerResponse, what: 'add' | 'update' | 'remove', id: number, sid: string | undefined): Promise<void> {
+    const call = await readAuthedJson(req, res, sid);
+    if (!call) return;
+    const outcome = what === 'add' ? await deps.members.add(id, call.body, call.actor)
+      : what === 'update' ? await deps.members.update(id, call.body, call.actor)
+      : await deps.members.remove(id, call.actor);
+    if (!outcome.ok) {
+      sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
+      return;
+    }
+    deps.invalidateViews();
+    logger.info({ actor: call.actor, what, id }, 'домашние группы: изменение состава группы');
+    sendJson(res, 200, outcome);
+  }
+
+  /** Карточка человека, внесённая вручную. Удалять может только полный вход, как и остальные справочники. */
+  async function handlePersonCard(req: IncomingMessage, res: ServerResponse, id: number, action: string, sid: string | undefined): Promise<void> {
+    const call = await readAuthedJson(req, res, sid);
+    if (!call) return;
+    if (action === 'delete' && call.role !== 'super') {
+      sendJson(res, 403, { error: 'forbidden', message: 'Удалять может только полный вход.' } satisfies ActionError);
+      return;
+    }
+    const outcome = action === 'update' ? await deps.members.updatePerson(id, call.body, call.actor) : await deps.members.deletePerson(id, call.actor);
+    if (!outcome.ok) {
+      sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
+      return;
+    }
+    deps.invalidateViews();
+    logger.info({ actor: call.actor, id, action }, 'домашние группы: изменение карточки человека');
+    sendJson(res, 200, outcome);
+  }
+
+  /** Чат помощника. Тела вопросов и ответов в журнал не пишутся: в них имена и данные людей. */
+  async function handleAssistantChat(req: IncomingMessage, res: ServerResponse, sid: string | undefined): Promise<void> {
+    const call = await readAuthedJson(req, res, sid);
+    if (!call) return;
+    const outcome = await deps.chat.ask(call.body, call.actor);
+    if (!outcome.ok) {
+      sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
+      return;
+    }
+    logger.info({ actor: call.actor, queries: outcome.queries.length }, 'домашние группы: вопрос помощнику');
+    sendJson(res, 200, outcome);
+  }
+
+  /** Разбор непонятных заявок помощником. Доступен обоим входам, пока помощник подключён и включён. */
+  async function handleAssistantRun(req: IncomingMessage, res: ServerResponse, sid: string | undefined): Promise<void> {
+    const call = await readAuthedJson(req, res, sid);
+    if (!call) return;
+    const outcome = await deps.assistant.run(call.actor);
+    if (!outcome.ok) {
+      sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
+      return;
+    }
+    deps.invalidateViews();
+    logger.info({ actor: call.actor, asked: outcome.asked, filled: outcome.filled, proposals: outcome.proposals }, 'домашние группы: помощник разобрал заявки');
+    sendJson(res, 200, outcome);
+  }
+
+  /** Сразу несколько заявок: передать координатору или поставить отметку «нужен звонок». */
+  async function handleBulk(req: IncomingMessage, res: ServerResponse, sid: string | undefined): Promise<void> {
+    const call = await readAuthedJson(req, res, sid);
+    if (!call) return;
+    const outcome = await deps.actions.bulk(call.body, call.actor);
+    if (!outcome.ok) {
+      sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
+      return;
+    }
+    deps.invalidateViews();
+    logger.info({ actor: call.actor, done: outcome.done, skipped: outcome.skipped }, 'домашние группы: массовое действие над заявками');
+    sendJson(res, 200, outcome);
+  }
+
+  /** Выгрузка с телефонами: только полный вход, и каждая выгрузка остаётся в журнале. */
+  async function handleExport(res: ServerResponse, what: string, sid: string | undefined): Promise<void> {
+    const role = await deps.auth.roleOf(sid);
+    if (role !== 'super') {
+      sendJson(res, 403, { error: 'forbidden', message: 'Выгрузка доступна только полному входу.' } satisfies ActionError);
+      return;
+    }
+    const identity = await deps.auth.identityOf?.(sid);
+    const actor = identity?.login ?? deps.actorName(role);
+    const csv = what === 'requests' ? await deps.exporter.requests() : await deps.exporter.people();
+    await deps.audit(actor, 'export.csv', { what });
+    logger.info({ actor, what }, 'домашние группы: выгрузка в CSV');
+    res.writeHead(200, {
+      ...BASE_HEADERS,
+      'content-type': 'text/csv; charset=utf-8',
+      'content-disposition': `attachment; filename="${what}-${new Date().toISOString().slice(0, 10)}.csv"`,
+      'cache-control': 'no-store',
+    });
+    res.end(csv);
   }
 
   /** QR и печатная карточка регистрации: за сессией (проверена выше), с именем и телефоном — кэшировать нельзя. */
@@ -458,6 +619,15 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       'staff/invite': () => deps.staff.invite(call.body, call.actor),
       'staff/reset': () => deps.staff.reset(call.body, call.actor),
       'staff/personal-mode': () => deps.staff.setPersonalMode(call.body, call.actor),
+      'bot/extra-questions': () => deps.botSettings.setExtraQuestions(call.body, call.actor),
+      'assistant/enabled': async () => {
+        const b = call.body as { enabled?: unknown } | null;
+        if (typeof b !== 'object' || b === null || typeof b.enabled !== 'boolean') {
+          return { ok: false as const, error: 'bad_request' as const, message: 'Нужно указать: включить или выключить.' };
+        }
+        await deps.assistant.setEnabled(b.enabled, call.actor);
+        return { ok: true as const };
+      },
     };
     const outcome = await handlers[action]!();
     if (!outcome.ok) {
@@ -476,6 +646,17 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     if (settingsPost) { await handleSettingsPost(req, res, settingsPost[1]!, sid); return; }
     const create = req.method === 'POST' ? CREATE_PATH.exec(path) : null;
     if (create) { await handleCreate(req, res, create[1]!, sid); return; }
+    const memberAdd = req.method === 'POST' ? MEMBER_ADD_PATH.exec(path) : null;
+    if (memberAdd) { await handleMember(req, res, 'add', Number(memberAdd[1]), sid); return; }
+    const memberEdit = req.method === 'POST' ? MEMBER_PATH.exec(path) : null;
+    if (memberEdit) { await handleMember(req, res, memberEdit[2] === 'update' ? 'update' : 'remove', Number(memberEdit[1]), sid); return; }
+    const personEdit = req.method === 'POST' ? PERSON_EDIT_PATH.exec(path) : null;
+    if (personEdit) { await handlePersonCard(req, res, Number(personEdit[1]), personEdit[2]!, sid); return; }
+    if (req.method === 'POST' && path === BULK_PATH) { await handleBulk(req, res, sid); return; }
+    if (req.method === 'POST' && path === ASSISTANT_CHAT_PATH) { await handleAssistantChat(req, res, sid); return; }
+    if (req.method === 'POST' && path === ASSISTANT_RUN_PATH) { await handleAssistantRun(req, res, sid); return; }
+    const manage = req.method === 'POST' ? MANAGE_PATH.exec(path) : null;
+    if (manage) { await handleManage(req, res, manage[1]!, Number(manage[2]), manage[3]!, sid); return; }
     const match = req.method === 'POST' ? MATCHING_PATH.exec(path) : null;
     if (match) { await handleMatching(req, res, match[1]!, sid); return; }
     // Всё остальное — только чтение. Любой другой не-GET отвечает 404, как изменяющие маршруты
@@ -486,7 +667,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     if (path === '/api/v1/me') {
       const role = await deps.auth.roleOf(sid);
       if (!role) { sendJson(res, 401, { error: 'unauthorized' }); return; }
-      const me: Me = { role, legacyUrl: deps.legacyUrl ?? null };
+      const me: Me = { role, assistant: await deps.assistant.status() };
       sendJson(res, 200, me);
       return;
     }
@@ -499,6 +680,8 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       '/api/v1/settings/audit': () => deps.settings.audit(),
       '/api/v1/settings/prompts': () => deps.settings.prompts(),
       '/api/v1/settings/staff': () => deps.staff.view(),
+      '/api/v1/settings/bot': () => deps.botSettings.view(),
+      '/api/v1/settings/assistant': () => deps.assistant.view(),
     };
     const settingsRoute = Object.hasOwn(settingsRead, path) ? settingsRead[path] : undefined;
     if (settingsRoute) {
@@ -510,6 +693,8 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       return;
     }
 
+    const exp = EXPORT_PATH.exec(path);
+    if (exp) { await handleExport(res, exp[1]!, sid); return; }
     const person = PERSON_PATH.exec(path);
     if (person) { await handlePerson(res, Number(person[1]), person[2]!); return; }
     if (path === LOGO_PATH) {
@@ -519,9 +704,16 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       res.end(png);
       return;
     }
+    if (path === '/api/v1/campaign') {
+      const view = await deps.campaign();
+      if (!view) { sendJson(res, 404, { error: 'not_found' }); return; }
+      sendJson(res, 200, view);
+      return;
+    }
     if (path === '/api/v1/form-meta') { sendJson(res, 200, await deps.formMeta()); return; }
 
     const pick: Record<string, (v: Views) => unknown> = {
+      '/api/v1/team': (v) => v.team,
       '/api/v1/today': (v) => v.today,
       '/api/v1/requests': (v) => v.requests,
       '/api/v1/groups': (v) => v.groups,
@@ -576,7 +768,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       }
 
       if (path === '/login') {
-        if (method === 'GET') { sendHtml(res, 200, homeGroupsLoginPage(undefined, query.get('notice') ?? undefined)); return; }
+        if (method === 'GET') { sendHtml(res, 200, homeGroupsLoginPage(undefined, query.get('notice') ?? undefined, query.get('next') === REGISTRATION_PATH ? REGISTRATION_PATH : undefined)); return; }
         if (method === 'POST') { await handleLogin(req, res); return; }
         sendText(res, 404, 'Не найдено.');
         return;
@@ -607,7 +799,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       }
 
       // Адрес страницы интерфейса (маршруты рисует сам интерфейс): отдаём index.html, но только своим.
-      if (!(await deps.auth.verify(sid))) { redirect(res, '/login'); return; }
+      if (!(await deps.auth.verify(sid))) { redirect(res, path === REGISTRATION_PATH ? `/login?next=${REGISTRATION_PATH}` : '/login'); return; }
       const index = await readIfFile(resolve(deps.webDir, 'index.html'));
       if (!index) {
         sendText(res, 503, 'Интерфейс не собран.');

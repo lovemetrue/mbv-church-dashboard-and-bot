@@ -73,7 +73,7 @@ function Cell({ column, value, row }: { column: string; value: Row[string]; row:
   return <span className={styles.cellText} title={text.length > 24 ? text : undefined}>{text}</span>;
 }
 
-const NUMERIC_ALIGN = new Set(['№', 'Мест свободно', 'Вместимость', 'Проверена, дн.', 'Здоровье', 'Групп', 'Участников', 'Подтверждено за 30 дн.', 'Заявка']);
+const NUMERIC_ALIGN = new Set(['№', 'Мест свободно', 'Вместимость', 'Проверена, дн.', 'Здоровье', 'Групп', 'Участников', 'Подтверждено за 30 дн.', 'Заявка', 'В составе']);
 
 export function ReferenceTable(props: ReferenceTableProps) {
   const { label, columns, groups, grouped, total, sort, selectedKey, titleOf, onSort, onSelect } = props;

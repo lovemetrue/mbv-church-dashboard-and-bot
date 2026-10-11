@@ -135,3 +135,54 @@
   background: var(--crit-soft);
   color: var(--crit);
 }
+
+/* Окна закрытия и возврата в работу. */
+.fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0 0 12px;
+  min-width: 0;
+}
+.legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+.choice {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: var(--tap);
+  padding: 6px 4px;
+  border-top: 1px solid var(--line-soft);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.choice input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+}
+.choice span {
+  min-width: 0;
+}
+.choiceHint {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+.confirm {
+  margin: 0 0 4px;
+  overflow-wrap: anywhere;
+}
+.dialogFoot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+.dialogFoot button {
+  min-height: var(--tap);
+}

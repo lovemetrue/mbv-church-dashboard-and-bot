@@ -62,7 +62,7 @@ const NOTICES: Record<string, string> = {
 };
 
 /** Страница входа. Логин намеренно не подсказываем. `notice` — код короткого сообщения после других страниц. */
-export function homeGroupsLoginPage(error?: string, notice?: string): string {
+export function homeGroupsLoginPage(error?: string, notice?: string, next?: string): string {
   const note = notice && NOTICES[notice] ? `<p class="note" role="status">${escapeHtml(NOTICES[notice]!)}</p>` : '';
   return pageShell('Домашние группы · вход', `  <form method="post" action="/login">
     <h1>Домашние группы</h1>
@@ -76,6 +76,7 @@ export function homeGroupsLoginPage(error?: string, notice?: string): string {
       <label for="p">Пароль</label>
       <input id="p" name="password" type="password" autocomplete="current-password" required>
     </div>
+    ${next ? `<input type="hidden" name="next" value="${escapeHtml(next)}">` : ''}
     <button type="submit">Войти</button>
     ${error ? `<p class="err" role="alert">${escapeHtml(error)}</p>` : ''}
     <span class="alt"><a href="/forgot">Забыли пароль?</a></span>

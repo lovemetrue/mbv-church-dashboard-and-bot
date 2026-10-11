@@ -1,9 +1,11 @@
 import { useId, useState } from 'react';
-import type { MatchingStatus } from '@contracts';
+import type { AssistantStatus, MatchingStatus } from '@contracts';
 import { formatDateTime } from '../../entities/format';
 import { ru } from '../../shared/i18n/ru';
 import { Button, Modal } from '../../shared/ui';
 import styles from './Requests.module.css';
+import { AssistantRun } from './assistant/AssistantRun';
+import { useAssistantRun } from './assistant/useAssistantRun';
 import { useMatching } from './useMatching';
 
 const m = ru.requests.matching;
@@ -14,13 +16,23 @@ const m = ru.requests.matching;
  * Предложение остаётся предложением: человек распределён только после «Утвердить»,
  * поэтому здесь ничего не утверждается.
  */
-export function MatchingPanel({ matching, dataChanged = 0 }: { matching: MatchingStatus; dataChanged?: number }) {
+export function MatchingPanel({
+  matching,
+  assistant,
+  dataChanged = 0,
+}: {
+  matching: MatchingStatus;
+  assistant: AssistantStatus;
+  dataChanged?: number;
+}) {
   const act = useMatching();
+  const helper = useAssistantRun();
   const [confirming, setConfirming] = useState(false);
   const titleId = useId();
   const noteId = useId();
   const { lastRun } = matching;
-  const busy = act.pending !== null;
+  // Подбор, пересчёт и помощник трогают одни и те же предложения: пока идёт любой из них, остальные не запускаем.
+  const busy = act.pending !== null || helper.pending;
 
   return (
     <section className={styles.matching} aria-labelledby={titleId} aria-busy={busy}>
@@ -65,6 +77,18 @@ export function MatchingPanel({ matching, dataChanged = 0 }: { matching: Matchin
         </div>
       </div>
 
+      <AssistantRun status={assistant} run={helper} locked={act.pending !== null} />
+
+      {helper.notice &&
+        (helper.notice.kind === 'error' ? (
+          <p className={styles.noticeError} role="alert">
+            {helper.notice.text}
+          </p>
+        ) : (
+          <p className={styles.noticeOk} role="status">
+            {helper.notice.text}
+          </p>
+        ))}
       {act.notice &&
         (act.notice.kind === 'error' ? (
           <p className={styles.noticeError} role="alert">

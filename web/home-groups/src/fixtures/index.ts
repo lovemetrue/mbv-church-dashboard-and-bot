@@ -1,5 +1,7 @@
 import {
+  buildSettingsAssistant,
   buildSettingsAudit,
+  buildSettingsBot,
   buildSettingsErrors,
   buildSettingsHealth,
   buildSettingsPrompts,
@@ -9,13 +11,17 @@ import {
 } from './settings';
 import { buildFormMeta } from './formMeta';
 import { buildCoordinators, buildGroups, buildPeople, buildRequests, buildToday } from './build';
+import { buildCampaign } from './campaign';
+import { fixtureChatReply } from './chat';
+import { buildTeam } from './team';
 
 /** Ответ «сервера» в режиме фикстур. Путь — как в apiGet: «today», «requests»… */
 export function fixtureResponse(path: string): unknown {
   switch (path.replace(/^\/+/, '').replace(/\/+$/, '')) {
     case 'me':
       // В демо вход полный, иначе вкладки «Настройки» не видно.
-      return { role: 'super', legacyUrl: 'https://church.example.org' };
+      // Кнопка «Помощник» в демо видна: ключ задан, помощник включён, база готова.
+      return { role: 'super', assistant: { available: true, enabled: true, chat: true } };
     case 'form-meta':
       return buildFormMeta();
     case 'today':
@@ -28,6 +34,14 @@ export function fixtureResponse(path: string): unknown {
       return buildPeople();
     case 'coordinators':
       return buildCoordinators();
+    case 'team':
+      return buildTeam();
+    case 'campaign':
+      return buildCampaign();
+    case 'settings/bot':
+      return buildSettingsBot();
+    case 'settings/assistant':
+      return buildSettingsAssistant();
     case 'settings/health':
       return buildSettingsHealth();
     case 'settings/errors':
@@ -52,14 +66,32 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
   if (clean === 'matching/run') {
     return { ok: true, created: 0, replaced: 0, unchanged: buildRequests().matching.waiting };
   }
+  // Чат «Помощник»: ответ зависит от последнего вопроса (fixtures/chat.ts), сами данные не меняются.
+  if (clean === 'assistant/chat') return fixtureChatReply(body);
+  // Помощник: в демо он «разобрал» все три заявки, которые ждали разбора; данные при этом не меняются.
+  if (clean === 'assistant/run') return { ok: true, asked: 3, filled: 2, withQuestions: 2, proposals: 1 };
   // Пересчёт всех предложений: в демо сервера нет, поэтому «заменено» нулевое, а изменившиеся данные считаем обновлёнными.
   if (clean === 'matching/rerun-all') {
     const open = buildRequests().items.filter((r) => r.proposal && r.bucket !== 'done');
     const changed = open.filter((r) => r.proposal!.dataChanged).length;
     return { ok: true, created: 0, replaced: changed, unchanged: open.length - changed };
   }
-  // Рабочее место координатора: правка данных, «в работе у» и итог звонка. В демо данные не меняются, действие просто «получается».
-  if (/^requests\/\d+\/(edit|assign|call)$/.test(clean)) return { ok: true };
+  // Рабочее место координатора: правка данных, «в работе у», итог звонка, закрытие и возврат в работу. В демо данные не меняются, действие просто «получается».
+  if (/^requests\/\d+\/(edit|assign|call|close|reopen)$/.test(clean)) return { ok: true };
+  // Правка и удаление записей справочника и заявок: в демо данные не меняются, действие просто «получается».
+  if (/^(groups|coordinators|requests)\/\d+\/(update|delete)$/.test(clean)) return { ok: true };
+  // Состав группы: «Добавить человека» отвечает номером строки и ключом (у нового человека это карточка p…), остальное «получается».
+  if (/^groups\/\d+\/members\/create$/.test(clean)) {
+    const input = (body ?? {}) as { personKey?: string };
+    return { ok: true, id: 101, personKey: input.personKey ?? 'p2' };
+  }
+  if (/^(members|persons)\/\d+\/(update|delete)$/.test(clean)) return { ok: true };
+  // Удаление регистрации и настройка бота: в демо ничего не меняется, действие просто «получается».
+  if (/^people\/\d+\/delete$/.test(clean) || clean === 'settings/bot/extra-questions') return { ok: true };
+  // Переключатель помощника: в демо ничего не меняется, действие просто «получается».
+  if (clean === 'settings/assistant/enabled') return { ok: true };
+  // Массовое действие: в демо все выбранные «обработаны», ничего не пропущено.
+  if (clean === 'requests/bulk') return { ok: true, done: ((body ?? {}) as { ids?: number[] }).ids?.length ?? 0, skipped: 0 };
   const input = (body ?? {}) as { fullName?: string; email?: string; id?: number };
   switch (clean) {
     // Номер новой записи в демо один и тот же: данные не меняются, важно лишь показать подтверждение.
@@ -67,6 +99,9 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
       return { ok: true, id: 101 };
     case 'groups/create':
       return { ok: true, id: 13 };
+    // В фикстурах четыре координатора, поэтому новый в демо — пятый.
+    case 'coordinators/create':
+      return { ok: true, id: 5 };
     // Номера регистрации в фикстурах людей — 1, 2 и 4, поэтому новый в демо — 5 (id участника берём тем же).
     case 'people/create':
       return { ok: true, id: 5, registrationNo: 5 };

@@ -1,8 +1,8 @@
 import { useId, useState, type ChangeEvent } from 'react';
-import type { RequestItem } from '@contracts';
 import { ru } from '../../../shared/i18n/ru';
 import { Button } from '../../../shared/ui';
 import { useFormMeta } from '../../create/useFormMeta';
+import type { WorkSubject } from './subject';
 import styles from './work.module.css';
 import { WorkNoticeLine } from './WorkNotice';
 import type { RequestWorkState } from './useRequestWork';
@@ -10,7 +10,7 @@ import type { RequestWorkState } from './useRequestWork';
 const w = ru.requests.work;
 
 /** «В работе у»: сохраняется сразу по выбору, отдельной кнопки нет. */
-export function AssignSelect({ r, work }: { r: RequestItem; work: RequestWorkState }) {
+export function AssignSelect({ r, work }: { r: WorkSubject; work: RequestWorkState }) {
   const headId = useId();
   const meta = useFormMeta();
   // Выбранное, пока запрос идёт: без этого список на миг прыгал бы обратно на прежнего координатора.

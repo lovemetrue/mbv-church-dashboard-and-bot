@@ -94,6 +94,8 @@ export function CreateMenu() {
       // Одним переходом: два подряд (вкладка, затем запись) второй затёр бы первым, они читают один адрес.
       setParams((prev) => {
         const next = tabParams(prev, 'reference');
+        // Координатор живёт на своей сущности справочника; у группы сущность по умолчанию.
+        if (notice.kind === 'coordinator') next.set('ent', 'coordinators');
         next.set('rec', String(notice.id));
         return next;
       });
@@ -130,6 +132,9 @@ export function CreateMenu() {
             <button type="button" role="menuitem" tabIndex={-1} className={styles.item} onClick={() => choose('group')}>
               {ru.create.group}
             </button>
+            <button type="button" role="menuitem" tabIndex={-1} className={styles.item} onClick={() => choose('coordinator')}>
+              {ru.create.coordinator}
+            </button>
             <button type="button" role="menuitem" tabIndex={-1} className={styles.item} onClick={() => choose('member')}>
               {ru.create.member}
             </button>
@@ -140,7 +145,13 @@ export function CreateMenu() {
       {dialog && <CreateDialog kind={dialog} onClose={() => setDialog(null)} onCreated={created} />}
       {notice && (
         <CreateNotice
-          text={notice.kind === 'request' ? ru.create.createdRequest(notice.id) : ru.create.createdGroup(groupCodeOf(notice.id))}
+          text={
+            notice.kind === 'request'
+              ? ru.create.createdRequest(notice.id)
+              : notice.kind === 'coordinator'
+                ? ru.create.createdCoordinator
+                : ru.create.createdGroup(groupCodeOf(notice.id))
+          }
           onOpen={openCreated}
           onDismiss={dismissNotice}
         />

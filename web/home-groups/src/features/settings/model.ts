@@ -174,3 +174,18 @@ export function staffErrorText(error: unknown): string {
       return e.other;
   }
 }
+
+// ── настройка бота ──────────────────────────────────────────────────────────
+
+/** Есть ли в списке номеров хотя бы один: пустые куски между запятыми не считаются. */
+export const hasBotIds = (ids: string): boolean => ids.split(',').some((part) => part.trim() !== '');
+
+/** Текст ошибки сохранения настройки бота. Отказ проверки сервер пишет по-русски и для людей, его показываем как есть. */
+export function botErrorText(error: unknown): string {
+  const e = t.bot.errors;
+  if (!(error instanceof ApiError)) return e.other;
+  if (error.status === 0) return e.network;
+  if (error.status === 403 || error.code === 'forbidden') return e.forbidden;
+  if (error.code === 'bad_request') return error.message && !GENERIC_MESSAGE.test(error.message) ? error.message : e.badRequest;
+  return e.other;
+}

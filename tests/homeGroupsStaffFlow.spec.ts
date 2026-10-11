@@ -47,7 +47,7 @@ async function start() {
   writeFileSync(join(web, 'index.html'), '<div id="root"></div>');
   const server = createHomeGroupsServer({
     auth, staff: composed.staff, views: composed.views, actions: createActions(composed.placement, { defaultCapacity: 10 }),
-    matching: composed.matching, settings: composed.settings,
+    matching: composed.matching, settings: composed.settings, assistant: composed.assistant, chat: composed.chat,
     reportError: () => undefined, invalidateViews: () => composed.views.invalidate(),
     actorName: (role) => (role === 'super' ? 'super_mbv_admin' : 'mbv_admin'),
     sessionTtlSeconds: 600, secureCookie: false, webDir: web,

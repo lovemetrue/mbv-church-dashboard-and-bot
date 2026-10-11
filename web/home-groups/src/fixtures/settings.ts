@@ -4,7 +4,9 @@
  */
 import type {
   DeliveryOk,
+  SettingsAssistantView,
   SettingsAuditView,
+  SettingsBotView,
   SettingsErrorsView,
   SettingsHealthView,
   SettingsPromptsView,
@@ -368,4 +370,23 @@ export function fixtureSuggestLogin(fullName: string): string {
  */
 export function fixtureStaffDelivery(email: string, id?: number): DeliveryOk {
   return { ok: true, delivery: 'link', email, path: '/set-password?token=demo-d41d8cd98f00b204e9800998ecf8427e', ...(id ? { id } : {}) };
+}
+
+/** Настройка «новые вопросы анкеты» в демо: значение пока из файла `.env`, в настройках его не меняли. */
+export function buildSettingsBot(): SettingsBotView {
+  return {
+    generatedAt: GENERATED_AT,
+    extraQuestions: { mode: 'off', ids: '', source: 'env', envValue: 'off' },
+  };
+}
+
+/** Помощник в демо: ключ «задан», включён, один запуск в прошлом. Самого ключа в данных нет и быть не может. */
+export function buildSettingsAssistant(): SettingsAssistantView {
+  return {
+    generatedAt: GENERATED_AT,
+    available: true,
+    enabled: true,
+    model: 'deepseek-chat',
+    lastRun: { at: '2026-10-09T09:30:00+03:00', actor: 'Трофимова С.', asked: 6, filled: 4, withQuestions: 3, proposals: 2 },
+  };
 }

@@ -1,0 +1,200 @@
+/*
+ * Правка и удаление записей справочника. Цвета только из токенов темы (var(--…)).
+ * Окна — тот же Modal, что у «Создать»: на телефоне это шторка снизу, поля и кнопки не меньше 44 px.
+ */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 0;
+}
+.actions > * {
+  min-width: 0;
+}
+
+.saved {
+  margin: 8px 0 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ok);
+  overflow-wrap: anywhere;
+}
+
+/* ── опасное действие: красная кнопка тем же размером, что и обычные ─────── */
+
+button.danger {
+  border-color: var(--crit);
+  color: var(--crit);
+}
+button.danger:hover:not(:disabled) {
+  border-color: var(--crit);
+  color: var(--crit);
+  background: var(--crit-soft);
+}
+button.dangerSolid,
+button.dangerSolid:hover:not(:disabled) {
+  background: var(--crit);
+  border-color: var(--crit);
+  color: var(--surface);
+}
+button.dangerSolid:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+button.danger:focus-visible {
+  outline-color: var(--crit);
+}
+
+/* ── форма правки ────────────────────────────────────────────────────────── */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+.field,
+.fieldWide {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.fieldWide {
+  grid-column: 1 / -1;
+}
+.field label,
+.fieldWide label {
+  font-size: 13px;
+  font-weight: 600;
+}
+/* Звёздочка рисуется стилем, а не текстом: имя поля для скринридера остаётся чистым. */
+.required::after {
+  content: ' *';
+  color: var(--crit);
+}
+.control {
+  display: block;
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+}
+textarea.control {
+  resize: vertical;
+  min-height: 72px;
+}
+.invalid {
+  border-color: var(--crit);
+}
+.fieldError {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--crit);
+}
+.hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.note {
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* Флажок: вся строка нажимается, а не только квадратик. */
+.check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--tap);
+  cursor: pointer;
+  font-weight: 600;
+}
+.check input {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  accent-color: var(--accent);
+}
+
+.formError {
+  margin: 10px 0 0;
+  padding: 9px 11px;
+  border-radius: var(--radius);
+  background: var(--crit-soft);
+  color: var(--crit);
+  font-size: 13px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+/* Кнопки остаются на виду, пока форма прокручивается: на телефоне она длиннее экрана. */
+.foot {
+  position: sticky;
+  bottom: -14px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 14px -18px -14px;
+  padding: 10px 18px;
+  background: var(--surface);
+  border-top: 1px solid var(--line-soft);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+/* В окне подтверждения форма короткая: кнопки идут сразу за текстом. */
+.confirm {
+  margin: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.footStatic {
+  position: static;
+  margin: 14px 0 0;
+  padding: 0;
+  border: 0;
+}
+.metaError {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.metaError .foot {
+  position: static;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+@media (max-width: 700px), (pointer: coarse) {
+  .control {
+    min-height: var(--tap);
+    font-size: 16px; /* меньше 16 px iOS приближает страницу при фокусе */
+  }
+  textarea.control {
+    min-height: 88px;
+  }
+  .foot {
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    border-radius: 0;
+  }
+  .footStatic {
+    padding-bottom: 0;
+  }
+  .foot > button {
+    flex: 1 1 0;
+  }
+  .actions > button {
+    flex: 1 1 auto;
+  }
+}

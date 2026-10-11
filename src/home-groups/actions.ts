@@ -1,5 +1,5 @@
 import type { ActionError, ApproveBody, NeedCallBody, RejectBody, RejectReason } from './contracts.js';
-import { CALL_RESULTS, type CallResult } from '../db/repos/placement.repo.js';
+import { CALL_RESULTS, CANCEL_REASONS, type CallResult, type CancelReason } from '../db/repos/placement.repo.js';
 import type { ActionOutcome, PlacementRepo } from '../db/repos/placement.repo.js';
 
 /**
@@ -13,11 +13,20 @@ export interface RequestActions {
   setNeedCall(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
   setParams(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
   rematch(requestId: number, actor: string): Promise<ActionOutcome>;
+  bulk(body: unknown, actor: string): Promise<BulkOutcome>;
+  close(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
+  reopen(requestId: number, actor: string): Promise<ActionOutcome>;
   edit(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
   assign(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
   call(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
 }
 
+export type BulkOutcome = { ok: true; done: number; skipped: number } | Extract<ActionOutcome, { ok: false }>;
+
+/** Сколько заявок можно обработать за раз: ограничение от случайного «выбрать всё» на тысячу строк. */
+export const BULK_LIMIT = 100;
+
+const badBulk = (message: string): Extract<ActionOutcome, { ok: false }> => ({ ok: false, error: 'bad_request', message });
 const bad = (message: string): ActionOutcome => ({ ok: false, error: 'bad_request', message });
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -61,6 +70,48 @@ export function createActions(
         out[key] = v;
       }
       return placement.setParams(requestId, out, actor);
+    },
+
+    async bulk(body, actor) {
+      if (!isRecord(body) || !Array.isArray(body['ids'])) return badBulk('Нужно выбрать заявки.');
+      const ids = body['ids'];
+      if (ids.length === 0) return badBulk('Нужно выбрать заявки.');
+      if (ids.length > BULK_LIMIT) return badBulk(`За раз можно обработать не больше ${BULK_LIMIT} заявок.`);
+      if (!ids.every(isId)) return badBulk('Номера заявок должны быть целыми положительными числами.');
+      const unique = [...new Set(ids as number[])];
+      let run: (id: number) => Promise<ActionOutcome>;
+      if (body['action'] === 'assign') {
+        const who = body['responsible'];
+        if (who !== undefined && who !== null && typeof who !== 'string') return badBulk('Имя должно быть текстом или null.');
+        run = (id) => placement.assign(id, who ?? null, actor);
+      } else if (body['action'] === 'need-call') {
+        if (typeof body['value'] !== 'boolean') return badBulk('Нужно указать, ставить отметку или снимать.');
+        const value = body['value'];
+        run = (id) => placement.setNeedCall(id, value, actor);
+      } else {
+        return badBulk('Неизвестное действие.');
+      }
+      // По одной, каждая в своей транзакции: закрытая или пропавшая заявка пропускается и не срывает остальные.
+      let done = 0;
+      for (const id of unique) {
+        const out = await run(id);
+        if (out.ok) done += 1;
+        else if (out.error === 'bad_request') return out;
+      }
+      return { ok: true, done, skipped: unique.length - done };
+    },
+
+    async close(requestId, body, actor) {
+      if (!isRecord(body) || (body['outcome'] !== 'done' && body['outcome'] !== 'cancel')) return bad('Нужно указать исход: обработано или аннулировать.');
+      const reason = body['reason'];
+      if (reason !== undefined && reason !== null && (typeof reason !== 'string' || !Object.hasOwn(CANCEL_REASONS, reason))) return bad('Неизвестная причина.');
+      const comment = body['comment'];
+      if (comment !== undefined && comment !== null && typeof comment !== 'string') return bad('Комментарий должен быть текстом.');
+      return placement.closeRequest(requestId, body['outcome'], (reason ?? null) as CancelReason | null, comment ?? null, actor);
+    },
+
+    async reopen(requestId, actor) {
+      return placement.reopen(requestId, actor);
     },
 
     async edit(requestId, body, actor) {
@@ -112,4 +163,5 @@ export const ACTION_STATUS: Record<ActionError['error'], number> = {
   group_full: 409,
   forbidden: 403,
   conflict: 409,
+  unavailable: 503,
 };

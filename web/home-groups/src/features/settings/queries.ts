@@ -4,9 +4,13 @@ import type {
   ActionOk,
   CreateStaffBody,
   DeliveryOk,
+  ExtraQuestionsBody,
   PersonalModeBody,
   SavePromptBody,
+  AssistantEnabledBody,
+  SettingsAssistantView,
   SettingsAuditView,
+  SettingsBotView,
   SettingsErrorsView,
   SettingsHealthView,
   SettingsPromptsView,
@@ -17,6 +21,7 @@ import type {
   UpdateStaffBody,
 } from '@contracts';
 import { ApiError, apiGet, apiPost } from '../../shared/api/client';
+import { queryKeys } from '../../shared/api/queries';
 
 /*
  * Данные раздела «Настройки». Раздел не зависит от внутренностей других экранов: берёт только
@@ -36,6 +41,8 @@ export const settingsKeys = {
   audit: ['settings', 'audit'],
   prompts: ['settings', 'prompts'],
   staff: ['settings', 'staff'],
+  bot: ['settings', 'bot'],
+  assistant: ['settings', 'assistant'],
 } as const;
 
 const common = {
@@ -133,5 +140,64 @@ export function useStaffActions() {
     invite: (body: StaffIdBody) => changing<DeliveryOk>('settings/staff/invite', body),
     reset: (body: StaffIdBody) => changing<DeliveryOk>('settings/staff/reset', body),
     setPersonalMode: (body: PersonalModeBody) => changing<ActionOk>('settings/staff/personal-mode', body),
+  };
+}
+
+/** Настройка бота — раз в минуту, как инструкции: её могли сохранить с другого устройства. */
+export const BOT_REFRESH_MS = 60_000;
+
+export function useSettingsBot(): UseQueryResult<SettingsBotView> {
+  return useQuery({
+    queryKey: settingsKeys.bot,
+    queryFn: ({ signal }) => apiGet<SettingsBotView>('settings/bot', signal),
+    ...common,
+    refetchInterval: BOT_REFRESH_MS,
+    refetchIntervalInBackground: false,
+  });
+}
+
+/**
+ * Сохранение «кому задавать новые вопросы анкеты». После успеха ждём перечитывания настройки: пока экран показывает
+ * прежний источник («из файла .env»), считать сохранение принятым рано. Ошибку не глотаем — её показывает вызвавший.
+ */
+export function useBotActions() {
+  const queryClient = useQueryClient();
+  return {
+    async saveExtraQuestions(body: ExtraQuestionsBody): Promise<void> {
+      await apiPost('settings/bot/extra-questions', body);
+      await queryClient.invalidateQueries({ queryKey: settingsKeys.bot });
+    },
+  };
+}
+
+/** Настройка помощника — раз в минуту, как бот: её могли изменить с другого устройства, а «последний запуск» меняется сам. */
+export const ASSISTANT_REFRESH_MS = 60_000;
+
+export function useSettingsAssistant(): UseQueryResult<SettingsAssistantView> {
+  return useQuery({
+    queryKey: settingsKeys.assistant,
+    queryFn: ({ signal }) => apiGet<SettingsAssistantView>('settings/assistant', signal),
+    ...common,
+    refetchInterval: ASSISTANT_REFRESH_MS,
+    refetchIntervalInBackground: false,
+  });
+}
+
+/**
+ * Переключатель «Помощник включён». После успеха ждём перечитывания настройки (как у бота), а «Заявки» помечаем
+ * устаревшими: кнопка помощника там появляется и пропадает по этой настройке, и ждать минуты до опроса незачем.
+ * Ошибку не глотаем — её показывает вызвавший.
+ */
+export function useAssistantActions() {
+  const queryClient = useQueryClient();
+  return {
+    async setEnabled(enabled: boolean): Promise<void> {
+      const body: AssistantEnabledBody = { enabled };
+      await apiPost('settings/assistant/enabled', body);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: settingsKeys.assistant }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.requests }),
+      ]);
+    },
   };
 }

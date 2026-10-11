@@ -62,7 +62,10 @@ services:
 
   # Дашборд статистики: вход по паролю, сессии в Valkey.
   # Тот же образ, что и бот, просто другая команда.
+  # Профиль legacy: без него `docker compose up -d` старый дашборд не трогает. Выкладка (scripts/deploy.sh)
+  # включает профиль, пока в .env не стоит LEGACY_DASHBOARD=off, — так его отключают без правки этого файла.
   dashboard:
+    profiles: ['legacy']
     build: .
     restart: unless-stopped
     command: node dist/dashboard/index.js

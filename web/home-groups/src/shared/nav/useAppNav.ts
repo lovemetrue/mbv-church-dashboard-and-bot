@@ -1,12 +1,16 @@
 import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { BucketFilter } from '../../entities/buckets';
+import type { OtherFilter, RequestsView } from '../../entities/others';
 import {
   parseBucket,
   parseEntity,
   parseId,
+  parseOtherFilter,
   parseTab,
+  parseView,
   patchParams,
+  RESP_NOBODY,
   tabParams,
   type EntityId,
   type ParamPatch,
@@ -42,6 +46,10 @@ export function useAppNav() {
       tab: parseTab(params.get('tab')),
       search: params.get('q') ?? '',
       bucket: parseBucket(params.get('bucket')),
+      /** Режим списка «Заявок»: 'wait' — хотят в группу, 'others' — другие обращения. */
+      view: parseView(params.get('view')),
+      /** Чип списка обращений; 'open' по умолчанию. */
+      otherFilter: parseOtherFilter(params.get('ostate')),
       /** «В работе у»: '' — все, RESP_NOBODY — никто не взял, иначе имя. */
       responsible: params.get('resp') ?? '',
       requestId: parseId(params.get('req')),
@@ -76,12 +84,23 @@ export function useAppNav() {
     // Сменился список — открытая заявка могла из него выпасть, поэтому req сбрасываем, как у чипов.
     setResponsible: (who: string) => update({ resp: who || null, req: null }),
     setBucket: (b: BucketFilter) => update({ bucket: b === 'all' ? null : b, req: null }),
+    // Режим списка: открытая карточка и отборы чипов принадлежат прежнему списку и сбрасываются.
+    // Поиск и «В работе у» общие для обоих режимов и сохраняются.
+    setView: (v: RequestsView) => update({ view: v === 'others' ? 'others' : null, req: null, bucket: null, ostate: null }),
+    setOtherFilter: (f: OtherFilter) => update({ ostate: f === 'open' ? null : f, req: null }),
     openRequest: (id: number) => setParams((prev) => {
       const next = tabParams(prev, 'requests');
       next.set('req', String(id));
       return next;
     }),
     closeRequest: () => update({ req: null }),
+    /**
+     * «Заявки» с отбором «В работе у» (из «Команды»): who === null — заявки, которые никто не взял.
+     * Поиск шапки не переносим: он спрятал бы часть заявок, и число в строке «Нагрузки» разошлось бы со списком.
+     */
+    goResponsible: (who: string | null) => setParams(() => new URLSearchParams({ tab: 'requests', resp: who ?? RESP_NOBODY })),
+    /** «Других обращений открыто» в «Команде»: «Заявки» в режиме «Другие обращения». Поиск шапки не переносим, как и у goResponsible. */
+    goOthers: () => setParams(() => new URLSearchParams({ tab: 'requests', view: 'others' })),
     goBucket: (b: BucketFilter) => setParams((prev) => {
       const next = tabParams(prev, 'requests');
       if (b !== 'all') next.set('bucket', b);
@@ -97,6 +116,8 @@ export function useAppNav() {
       if (firstId !== undefined) next.set('req', String(firstId));
       return next;
     }),
+    /** «Настройки» сразу на нужном разделе (из подсказки «Включить: Настройки → Помощник»). */
+    goSettingsSection: (sec: string) => setParams(() => new URLSearchParams({ tab: 'settings', sec })),
     setEntity: (e: EntityId) =>
       setParams((prev) => {
         const next = tabParams(prev, 'reference');
@@ -104,6 +125,24 @@ export function useAppNav() {
         return next;
       }),
     openRecord: (key: string) => update({ rec: key }),
+    /**
+     * Карточка человека в «Справочнике → Люди» из любого места (состав группы). Адрес собираем одним
+     * вызовом: два подряд («сущность», потом «запись») в react-router 6 затёрли бы друг друга.
+     */
+    openPerson: (key: string) =>
+      setParams((prev) => {
+        const next = tabParams(prev, 'reference');
+        next.set('ent', 'people');
+        next.set('rec', key);
+        return next;
+      }),
+    /** Карточка группы в «Справочнике → Группы» (из карточки человека). */
+    openGroup: (id: number) =>
+      setParams((prev) => {
+        const next = tabParams(prev, 'reference');
+        next.set('rec', String(id));
+        return next;
+      }),
     closeRecord: () => update({ rec: null }),
   };
 }

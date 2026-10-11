@@ -12,7 +12,10 @@ import { ActionDialogs, ActionNoticeLine, isActionable, RequestActions } from '.
 import styles from './Requests.module.css';
 import { useRequestActions, type RequestActionsState } from './useRequestActions';
 import { useRequestParams, type ParamField } from './useRequestParams';
+import { subjectOfRequest } from './work/subject';
 import { WorkPlace } from './work/WorkPlace';
+import { DeleteRequestSection } from '../manage';
+import { AssistantNoteBlock } from './assistant/AssistantNoteBlock';
 
 const noValue = <span className={styles.note}>{ru.reference.notSpecified}</span>;
 
@@ -466,7 +469,18 @@ function NeighborsNav({ n, closed }: { n: RequestNeighbors; closed: boolean }) {
   );
 }
 
-export function RequestCard({ r, onClose, neighbors }: { r: RequestItem; onClose: () => void; neighbors?: RequestNeighbors }) {
+export function RequestCard({
+  r,
+  onClose,
+  neighbors,
+  onClosed,
+}: {
+  r: RequestItem;
+  onClose: () => void;
+  neighbors?: RequestNeighbors;
+  /** Заявку закрыли («Закрыть заявку…»): тот, кто показывает карточку, убирает её и оставляет итог на экране. */
+  onClosed: (text: string) => void;
+}) {
   // Состояние действий держим здесь, а не в кнопках: после «Утвердить» кнопки пропадают,
   // а подтверждение должно остаться на экране.
   const act = useRequestActions(r);
@@ -503,7 +517,8 @@ export function RequestCard({ r, onClose, neighbors }: { r: RequestItem; onClose
       <DrawerSection title={ru.requests.contacts}>
         <KeyValue rows={contacts} />
       </DrawerSection>
-      <WorkPlace key={r.id} r={r} />
+      <AssistantNoteBlock key={r.id} note={r.assistant} />
+      <WorkPlace key={r.id} subject={subjectOfRequest(r)} onClosed={onClosed} />
       <DrawerSection>
         <Params key={r.id} r={r} />
       </DrawerSection>
@@ -522,6 +537,7 @@ export function RequestCard({ r, onClose, neighbors }: { r: RequestItem; onClose
           <p className={styles.note}>{ru.requests.logEmpty}</p>
         )}
       </DrawerSection>
+      <DeleteRequestSection id={r.id} fio={r.fio} onDeleted={onClose} />
     </Drawer>
   );
 }

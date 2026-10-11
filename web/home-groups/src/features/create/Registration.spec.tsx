@@ -49,7 +49,7 @@ async function fillRequired(user: ReturnType<typeof userEvent.setup>, d: HTMLEle
 }
 
 describe('регистрация участника: меню', () => {
-  test('пункт «Участник» открывает форму регистрации, а не ссылку на старый дашборд', async () => {
+  test('пункт «Участник» открывает форму регистрации в окне, а не ссылку', async () => {
     stubFetchWithFixtures();
     const user = userEvent.setup();
     renderAt(<App />, REFERENCE);
@@ -70,7 +70,7 @@ describe('регистрация участника: меню', () => {
     renderAt(<App />, REFERENCE);
     await user.click(screen.getByRole('button', { name: '+ Создать' }));
     const menu = screen.getByRole('menu', { name: 'Что создать' });
-    expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Заявка', 'Группа', 'Участник (регистрация)']);
+    expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Заявка', 'Группа', 'Координатор', 'Участник (регистрация)']);
   });
 });
 
@@ -104,8 +104,8 @@ describe('регистрация участника: форма', () => {
     ]);
     expect(within(status(dialog)).getAllByRole('option').map((o) => o.textContent)).toEqual([
       '— не спрошено —',
-      'готов открыть Малую группу',
-      'готов предоставить свой дом для Малой группы',
+      'хочет открыть Малую группу',
+      'может предоставить свой дом для Малой группы',
       'хочет присоединиться к Малой группе',
       'уже состоит в Малой группе',
       'ведёт Малую группу',
@@ -184,7 +184,7 @@ describe('регистрация участника: форма', () => {
     });
   });
 
-  test('заполненная форма уходит со всеми полями под теми же именами, что в старом дашборде', async () => {
+  test('заполненная форма уходит со всеми полями под именами полей API', async () => {
     const fetchMock = stubFetchWithFixtures({ 'people/create': OK });
     const user = userEvent.setup();
     renderAt(<App />, REFERENCE);
@@ -366,5 +366,58 @@ describe('регистрация участника: ошибки и повто�
     expect(screen.getByRole('dialog', { name: 'Регистрация участника' })).toBeInTheDocument();
     await act(async () => release());
     expect(await within(dialog).findByText('Номер регистрации №7')).toBeInTheDocument();
+  });
+});
+
+describe('регистрация участника: страница для регистрации на месте', () => {
+  const PAGE_LINE = () => `Страница для регистрации на месте: ${window.location.origin}/registration`;
+
+  function stubClipboard(writeText: (text: string) => Promise<void>) {
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+  }
+
+  test('внизу окна написан адрес страницы /registration и есть кнопка «Скопировать ссылку»', async () => {
+    stubFetchWithFixtures();
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const dialog = await openRegistration(user);
+    expect(dialog).toHaveTextContent(PAGE_LINE());
+    expect(within(dialog).getByRole('button', { name: 'Скопировать ссылку' })).toBeInTheDocument();
+  });
+
+  test('строка с адресом остаётся и после регистрации, рядом с номером и QR', async () => {
+    stubFetchWithFixtures({ 'people/create': OK });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const dialog = await openRegistration(user);
+    await fillRequired(user, dialog);
+    await user.click(submitButton(dialog));
+    await within(dialog).findByText('Участник зарегистрирован.');
+    expect(dialog).toHaveTextContent(PAGE_LINE());
+  });
+
+  test('«Скопировать ссылку» кладёт в буфер полный адрес страницы и говорит об этом', async () => {
+    stubFetchWithFixtures();
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => {});
+    renderAt(<App />, REFERENCE);
+    const dialog = await openRegistration(user);
+    stubClipboard(writeText);
+    await user.click(within(dialog).getByRole('button', { name: 'Скопировать ссылку' }));
+    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/registration`);
+    expect(await within(dialog).findByText('Ссылка скопирована.')).toBeInTheDocument();
+  });
+
+  test('если буфер обмена недоступен, сказано словами, а не тихо', async () => {
+    stubFetchWithFixtures();
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const dialog = await openRegistration(user);
+    stubClipboard(async () => {
+      throw new Error('запрещено');
+    });
+    await user.click(within(dialog).getByRole('button', { name: 'Скопировать ссылку' }));
+    expect(await within(dialog).findByText(/Не получилось скопировать/)).toBeInTheDocument();
+    expect(within(dialog).queryByText('Ссылка скопирована.')).not.toBeInTheDocument();
   });
 });

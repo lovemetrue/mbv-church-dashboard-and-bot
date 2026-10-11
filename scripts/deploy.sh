@@ -29,7 +29,15 @@ until docker compose logs bot 2>&1 | grep -q 'схема базы актуаль
 done
 echo "bot готов"
 
-docker compose up -d --build dashboard
+# Старый дашборд: LEGACY_DASHBOARD=off в .env отключает его (контейнер останавливается и больше не поднимается),
+# любое другое значение или его отсутствие — как раньше. Читаем построчно, а не через `. ./.env`: см. ниже про HG_PORT.
+LEGACY_VALUE="$(grep -E '^LEGACY_DASHBOARD=' .env 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\r"\047 ' | tr 'A-Z' 'a-z' || true)"
+if [ "$LEGACY_VALUE" = "off" ]; then
+  docker compose --profile legacy stop dashboard || true
+  echo "старый дашборд отключён (LEGACY_DASHBOARD=off)"
+else
+  docker compose --profile legacy up -d --build dashboard
+fi
 docker compose up -d --build home-groups
 # На случай, если в docker-compose.yml поменялось что-то у db/valkey —
 # сами они не пересобираются (образы, не build:.), но пересоздать при

@@ -10,6 +10,7 @@ import { mailerFromEnv } from '../platform/mail/mailer.js';
 import { composeService, engine } from './composition.js';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { llmFromEnv } from '../platform/llm/deepseek.js';
 import { notifierFromEnv } from '../admin/notifierFromEnv.js';
 import { startAutoMatching } from './matching/scheduler.js';
 import { createHomeGroupsServer } from './server.js';
@@ -28,17 +29,6 @@ const env = (name: string, fallback?: string): string => {
  * базу только действиями координатора над заявками (`actions.ts`), каждое — с записью в журнал. Пароли и Redis те же — один вход на оба сервиса, но с разными куками.
  * Новых обязательных переменных нет: всё, чего не задано, берётся из значений по умолчанию.
  */
-/** Адрес старого дашборда без пути: `DASHBOARD_URL` у бота вида `http://host:8090/groups`. Нет или непонятен — null. */
-function legacyOrigin(): string | null {
-  const raw = process.env['DASHBOARD_URL']?.trim();
-  if (!raw) return null;
-  try {
-    return new URL(raw).origin;
-  } catch {
-    return null;
-  }
-}
-
 async function main(): Promise<void> {
   const password = env('DASHBOARD_PASSWORD');
   if (password.length < 8) throw new Error('DASHBOARD_PASSWORD короче восьми символов');
@@ -79,7 +69,10 @@ async function main(): Promise<void> {
     totalDays: Number(env('CAMPAIGN_DAYS', '40')),
     timezone: env('TIMEZONE', 'Europe/Moscow'),
   };
-  const { views, matching, placement, settings, errors, staff, creator, registrar, formMeta } = composeService(db, engine, {
+  const { views, matching, placement, settings, errors, staff, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, chat, members, formMeta } = composeService(db, engine, {
+    campaignSchedule: schedule,
+    llm: llmFromEnv(process.env),
+    extraQuestionsEnv: env('EXTRA_QUESTIONS', 'off'),
     notify: notifierFromEnv(db, process.env, schedule, 'домашние группы'),
     defaultCapacity, ttlMs: 10_000, timeZone: env('TIMEZONE', 'Europe/Moscow'),
     store,
@@ -99,9 +92,16 @@ async function main(): Promise<void> {
     staff,
     creator,
     registrar,
+    manager,
+    campaign,
+    botSettings,
+    assistant,
+    chat,
+    members,
+    exporter,
+    audit,
     logo: async () => readFile(join(env('HG_ASSETS_DIR', '/app/dashboard/assets'), 'church-logo.png')).catch(() => null),
     formMeta,
-    legacyUrl: legacyOrigin(),
     views,
     actions: createActions(placement, { defaultCapacity }, matching),
     matching,

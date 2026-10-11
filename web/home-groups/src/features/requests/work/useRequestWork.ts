@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { AssignBody, CallBody, CallResult, RequestEditBody } from '@contracts';
+import type { AssignBody, CallBody, CallResult, CloseBody, RequestEditBody } from '@contracts';
 import { ApiError, apiPost } from '../../../shared/api/client';
 import { queryKeys } from '../../../shared/api/queries';
 import { ru } from '../../../shared/i18n/ru';
@@ -8,7 +8,7 @@ import { ru } from '../../../shared/i18n/ru';
 const w = ru.requests.work;
 
 /** Блок карточки, рядом с которым показывается результат: сообщение стоит там, где человек нажимал. */
-export type WorkBlock = 'assign' | 'call' | 'edit';
+export type WorkBlock = 'assign' | 'call' | 'edit' | 'close';
 
 export interface WorkNotice {
   block: WorkBlock;
@@ -48,9 +48,9 @@ const CALL_DONE: Record<CallResult, string> = {
 };
 
 /**
- * Рабочее место координатора над одной заявкой: «в работе у», итог звонка, правка данных.
+ * Рабочее место координатора над одной заявкой: «в работе у», итог звонка, правка данных, закрытие.
  *
- * Запрос в каждый момент один: пока он идёт, блокируются все три блока, иначе правка и итог
+ * Запрос в каждый момент один: пока он идёт, блокируются все блоки, иначе правка и итог
  * звонка, отправленные подряд, могли бы прийти на сервер в другом порядке. Одного `pending`
  * мало (два нажатия приходят до перерисовки), поэтому флаг ещё и в `ref`.
  */
@@ -65,6 +65,8 @@ export function useRequestWork(requestId: number) {
       queryClient.invalidateQueries({ queryKey: queryKeys.requests }),
       queryClient.invalidateQueries({ queryKey: queryKeys.today }),
       queryClient.invalidateQueries({ queryKey: queryKeys.groups }),
+      // «Команда» считает открытые заявки и обращения: после закрытия и возврата её числа устаревают.
+      queryClient.invalidateQueries({ queryKey: queryKeys.team }),
     ]);
 
   /** Возвращает true, если сервер принял действие. */
@@ -107,6 +109,10 @@ export function useRequestWork(requestId: number) {
     },
     /** `fields` — названия изменённых полей для подтверждения (без значений). */
     edit: (body: RequestEditBody, fields: string[]) => run('edit', 'edit', body, w.editSaved(fields)),
+    /** Закрыть заявку: `okText` показывается, если окно закрытия ещё на экране; обычно карточка закрывается сама. */
+    close: (body: CloseBody, okText: string) => run('close', 'close', body, okText),
+    /** Вернуть закрытую заявку в работу; тело пустое, как требует контракт. */
+    reopen: () => run('close', 'reopen', {}, ru.requests.close.reopened),
   };
 }
 

@@ -5,9 +5,11 @@ import { isBucketFilter, type BucketFilter } from '../../entities/buckets';
  * Состояние экрана живёт в адресе (`?tab=requests&bucket=ready&req=12`), а не в памяти:
  * так оно переживает перезагрузку и кнопку «назад», а на запись можно дать ссылку.
  *
- *   tab     today (по умолчанию) | requests | reference | settings (только полный вход)
+ *   tab     today (по умолчанию) | requests | team | reference | settings (только полный вход)
  *   q       поиск по заявкам (общий для шапки)
  *   bucket  all (по умолчанию) | queue (к обзвону: ready + callback) | ready | callback | human | done
+ *   view    others — «Другие обращения» вместо списка «Хотят в группу»; без параметра — обычный список
+ *   ostate  чип списка обращений: done | cancelled | all; без параметра — открытые
  *   resp    «В работе у»: имя ответственного, RESP_NOBODY («-») — заявки, которые никто не взял; без параметра — все
  *   req     открытая заявка
  *   ent     groups (по умолчанию) | people | coordinators
@@ -15,8 +17,8 @@ import { isBucketFilter, type BucketFilter } from '../../entities/buckets';
  *   f, rq, col, sort, gb — таблица справочника, см. shared/filters/serialize.ts
  *   sec     раздел «Настроек»; значения и значение по умолчанию знает сам раздел (features/settings)
  */
-export type TabId = 'today' | 'requests' | 'reference' | 'settings';
-export const TAB_IDS: readonly TabId[] = ['today', 'requests', 'reference', 'settings'];
+export type TabId = 'today' | 'requests' | 'team' | 'reference' | 'settings';
+export const TAB_IDS: readonly TabId[] = ['today', 'requests', 'team', 'reference', 'settings'];
 
 /** Вкладки, которые видит только полный вход. */
 const SUPER_ONLY_TABS: readonly TabId[] = ['settings'];
@@ -45,6 +47,8 @@ export function parseEntity(v: string | null): EntityId {
 export function parseBucket(v: string | null): BucketFilter {
   return isBucketFilter(v) ? v : 'all';
 }
+/** Разбор режима списка и чипа обращений живёт рядом с их типами. */
+export { parseOtherFilter, parseView } from '../../entities/others';
 export function parseId(v: string | null): number | null {
   if (!v || !/^\d+$/.test(v)) return null;
   return Number(v);

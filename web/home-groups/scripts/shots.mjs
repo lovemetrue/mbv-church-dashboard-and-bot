@@ -72,6 +72,15 @@ const SCREENS = [
   // Рабочее место координатора: связь, «в работе у», итог звонка и форма «Править данные» (заявка 1 с планом).
   { name: 'requests-work', url: '/?tab=requests&req=1', ready: '[role=dialog][aria-label^="Карточка заявки"]', scroll: 'text=Связаться' },
   { name: 'requests-work-edit', url: '/?tab=requests&req=1', ready: '[role=dialog][aria-label^="Карточка заявки"]', click: 'button:has-text("Править данные")', then: 'form[aria-label="Правка данных заявки"]', scroll: 'form[aria-label="Правка данных заявки"] button[type=submit]' },
+  // Закрытие заявки: окно с выбором исхода и с причинами аннулирования; «Другие обращения»: список, карточки, возврат в работу.
+  { name: 'requests-close', url: '/?tab=requests&req=1', ready: '[role=dialog][aria-label^="Карточка заявки"]', click: 'button:has-text("Закрыть заявку…")', then: '[role=dialog][aria-modal=true]' },
+  { name: 'requests-close-cancel', url: '/?tab=requests&req=1', ready: '[role=dialog][aria-label^="Карточка заявки"]', click: ['button:has-text("Закрыть заявку…")', 'label:has-text("Аннулировать")', 'label:has-text("Другое")'], then: '[role=dialog][aria-modal=true] textarea' },
+  { name: 'others-list', url: '/?tab=requests&view=others', ready: 'ul[aria-label="Список обращений"]' },
+  { name: 'others-list-all', url: '/?tab=requests&view=others&ostate=all', ready: 'ul[aria-label="Список обращений"]' },
+  { name: 'others-card', url: '/?tab=requests&view=others&req=202', ready: '[role=dialog][aria-label^="Карточка обращения"]' },
+  { name: 'others-card-work', url: '/?tab=requests&view=others&req=202', ready: '[role=dialog][aria-label^="Карточка обращения"]', scroll: 'button:has-text("Закрыть заявку…")' },
+  { name: 'others-card-cancelled', url: '/?tab=requests&view=others&ostate=cancelled&req=205', ready: '[role=dialog][aria-label^="Карточка обращения"]', scroll: 'button:has-text("Вернуть в работу")' },
+  { name: 'others-reopen', url: '/?tab=requests&view=others&ostate=cancelled&req=205', ready: '[role=dialog][aria-label^="Карточка обращения"]', click: 'button:has-text("Вернуть в работу")', then: '[role=dialog][aria-modal=true]' },
   { name: 'requests-original', url: '/?tab=requests&req=1', ready: '[role=dialog][aria-label^="Карточка заявки"]', click: '[role=dialog] button[aria-expanded="false"]', scroll: 'text=Как система это поняла' },
   // «Подобрать заново»: обычная заявка (кнопка и подсказка) и заявка, у которой данные изменились после закрепления.
   { name: 'requests-rematch', url: '/?tab=requests&req=1', ready: '[role=dialog][aria-label^="Карточка заявки"]', scroll: 'button:has-text("Подобрать заново")' },
@@ -79,6 +88,11 @@ const SCREENS = [
   { name: 'requests-queue', url: '/?tab=requests&bucket=queue', ready: 'nav[aria-label="Переход между заявками"]' },
   { name: 'requests-reject', url: '/?tab=requests&req=1', ready: '[role=dialog][aria-label^="Карточка заявки"]', click: 'button[aria-label^="Отклонить группу"]' },
   { name: 'requests-list', url: '/?tab=requests', ready: 'ul[aria-label="Список заявок"]' },
+  // «Команда»: сводка руководителя (в фикстурах вход полный, поэтому виден и блок «Выгрузка»).
+  { name: 'team', url: '/?tab=team', ready: 'table[aria-label="Нагрузка по координаторам"]', full: true },
+  // Массовые действия: выбраны две заявки; затем выбран координатор и открыто окно подтверждения.
+  { name: 'requests-bulk', url: '/?tab=requests', ready: 'ul[aria-label="Список заявок"]', click: ['input[aria-label="Выбрать заявку Алексей Орлов"]', 'input[aria-label="Выбрать заявку Мария Соколова"]'], then: 'section[aria-label="Массовые действия"]' },
+  { name: 'requests-bulk-confirm', url: '/?tab=requests', ready: 'ul[aria-label="Список заявок"]', click: ['input[aria-label="Выбрать заявку Алексей Орлов"]', 'input[aria-label="Выбрать заявку Мария Соколова"]'], then: 'section[aria-label="Массовые действия"]', select: [['section[aria-label="Массовые действия"] select', 'Петров Г.']], submit: 'section[aria-label="Массовые действия"] button:text-is("Передать")', after: '[role=dialog]' },
   // Отбор «В работе у» и «Мои виды»: выбран ответственный; окно видов со сохранённым видом.
   { name: 'requests-resp', url: '/?tab=requests', ready: 'ul[aria-label="Список заявок"]', select: [['[role=group][aria-label="Отбор списка заявок"] select', 'Пётр Г.']], after: 'ul[aria-label="Список заявок"] li' },
   { name: 'requests-views', url: '/?tab=requests&bucket=ready', ready: 'ul[aria-label="Список заявок"]', click: '[role=group][aria-label="Отбор списка заявок"] button:has-text("Мои виды")', then: '[role=dialog][aria-label="Мои виды"]', fill: [['[role=dialog][aria-label="Мои виды"] input[type=text]', 'Готовые к утверждению']], submit: '[role=dialog][aria-label="Мои виды"] button[type=submit]', after: '[role=dialog][aria-label="Мои виды"] ul' },
@@ -88,6 +102,13 @@ const SCREENS = [
   { name: 'reference-people', url: '/?tab=reference&ent=people', ready: 'table' },
   { name: 'reference-coordinators', url: '/?tab=reference&ent=coordinators&rec=1', ready: '[role=dialog][aria-label^="Карточка координатора"]' },
   { name: 'reference-filters-open', url: '/?tab=reference', ready: 'table', click: 'button:has-text("Фильтры")' },
+  // Правка и удаление записей справочника (в фикстурах вход полный, поэтому «Удалить» видна). Окна — Modal с aria-modal.
+  { name: 'manage-group-card', url: '/?tab=reference&rec=2', ready: '[role=dialog][aria-label^="Карточка группы"]', scroll: 'button[aria-label^="Править группу"]' },
+  { name: 'manage-group-edit', url: '/?tab=reference&rec=2', ready: '[role=dialog][aria-label^="Карточка группы"]', click: 'button[aria-label^="Править группу"]', then: '[role=dialog][aria-modal=true] select >> nth=3' },
+  { name: 'manage-coordinator-edit', url: '/?tab=reference&ent=coordinators&rec=1', ready: '[role=dialog][aria-label^="Карточка координатора"]', click: 'button[aria-label^="Править координатора"]', then: '[role=dialog][aria-modal=true] input' },
+  { name: 'manage-group-delete', url: '/?tab=reference&rec=2', ready: '[role=dialog][aria-label^="Карточка группы"]', click: 'button[aria-label^="Удалить группу"]', then: '[role=dialog][aria-modal=true] button:has-text("Удалить")' },
+  { name: 'manage-request-delete', url: '/?tab=requests&req=1', ready: '[role=dialog][aria-label^="Карточка заявки"]', scroll: 'button[aria-label^="Удалить заявку"]' },
+  { name: 'manage-create-coordinator', url: '/?tab=reference&ent=coordinators', ready: 'table', click: ['button:has-text("+ Создать")', '[role=menuitem]:has-text("Координатор")'], then: '[role=dialog][aria-modal=true] input' },
   { name: 'reference-view-open', url: '/?tab=reference', ready: 'table', click: 'button:has-text("Вид таблицы")' },
   // «Настройки» (в фикстурах вход полный). full — снимок всей страницы: разделы длиннее экрана.
   { name: 'settings-health', url: '/?tab=settings', ready: 'ul[aria-label="Метрики сервера"]', full: true },
@@ -128,17 +149,107 @@ const SCREENS = [
   },
   // Справочник «Люди»: карточка человека с номером регистрации и ссылками.
   { name: 'reference-people-card', url: '/?tab=reference&ent=people&rec=u1', ready: '[role=dialog][aria-label^="Карточка человека"]' },
+  // «Команда → Кампания «40 дней»», страница /registration для волонтёров, «Настройки → Бот», новые поля правки группы
+  // и удаление регистрации из карточки человека.
+  { name: 'team-campaign', url: '/?tab=team&sec=campaign', ready: 'ul[aria-label="Материалы по дням кампании"]', full: true },
+  { name: 'registration-page', url: '/registration', ready: 'select', full: true },
+  {
+    name: 'registration-page-join',
+    url: '/registration',
+    ready: 'select',
+    fill: [['input[type=text] >> nth=0', 'Анна Петрова']],
+    select: [['select >> nth=1', 'join']],
+    after: 'select >> nth=2',
+    full: true,
+  },
+  {
+    name: 'registration-page-done',
+    url: '/registration',
+    ready: 'select',
+    fill: [['input[type=text] >> nth=0', 'Анна Петрова'], ['input[type=text] >> nth=1', '+7 911 000 11 22']],
+    submit: 'main button[type=submit]:has-text("Зарегистрировать")',
+    after: 'main img',
+    full: true,
+  },
+  { name: 'settings-bot', url: '/?tab=settings&sec=bot', ready: 'input[type=radio]', full: true },
+  { name: 'settings-bot-list', url: '/?tab=settings&sec=bot', ready: 'input[type=radio]', click: 'label:has-text("Только этим людям")', then: 'input[type=text]', fill: [['input[type=text]', '111111111, max:222222222']], full: true },
+  // Помощник: блок подбора с кнопкой, окно подтверждения, карточки с блоком «Помощник» (4 — с определёнными полями, 8 — только вопросы), метка в списке и «Настройки → Помощник».
+  { name: 'assistant-panel', url: '/?tab=requests', ready: 'button:has-text("Попросить помощника")' },
+  { name: 'assistant-confirm', url: '/?tab=requests', ready: 'button:has-text("Попросить помощника")', click: 'button:has-text("Попросить помощника")', then: '[role=dialog][aria-modal=true]' },
+  { name: 'assistant-done', url: '/?tab=requests', ready: 'button:has-text("Попросить помощника")', click: ['button:has-text("Попросить помощника")', 'button:has-text("Да, разобрать")'], then: '[role=status]:has-text("Готово: отправлено")' },
+  { name: 'assistant-card', url: '/?tab=requests&req=4', ready: '[role=dialog][aria-label^="Карточка заявки"]', scroll: 'button:has-text("Скопировать вопросы")' },
+  { name: 'assistant-card-questions', url: '/?tab=requests&bucket=human&req=8', ready: '[role=dialog][aria-label^="Карточка заявки"]', scroll: 'button:has-text("Скопировать вопросы")' },
+  { name: 'assistant-settings', url: '/?tab=settings&sec=assistant', ready: '[role=switch]', full: true },
+  { name: 'manage-group-edit-write', url: '/?tab=reference&rec=2', ready: '[role=dialog][aria-label^="Карточка группы"]', click: 'button[aria-label^="Править группу"]', then: '[role=dialog][aria-modal=true] select >> nth=3', scroll: 'text=Новый адрес' },
+  { name: 'reference-people-card-delete', url: '/?tab=reference&ent=people&rec=u1', ready: '[role=dialog][aria-label^="Карточка человека"]', click: 'button[aria-label^="Удалить регистрацию"]', then: '[role=dialog][aria-modal=true] button:has-text("Удалить")' },
   // Справочник групп сразу после открытия: закрытая скрыта, отбор по умолчанию виден чипом.
   { name: 'reference-groups-default', url: '/?tab=reference', ready: 'table' },
   // Закрытая группа с длинным ФИО: ведущий обрезан многоточием.
   { name: 'reference-groups-closed', url: '/?tab=reference&f=Статус:eq:Закрыта', ready: 'table' },
   { name: 'reference-filtered', url: '/?tab=reference&f=Район:eq:Приморский&gb=Статус&col=№&col=Ведущий&col=Район&col=Статус&col=Здоровье', ready: 'table' },
+  // Состав группы: карточка с направленными и внесёнными вручную (метка «Есть и в…»), окно «Добавить человека» (поиск, выбор, «Уже в составе»
+  // и режим «Новый человек») и карточки людей: со списком групп и внесённая вручную с правкой.
+  { name: 'members-group-card', url: '/?tab=reference&rec=1', ready: '[role=dialog][aria-label^="Карточка группы"]', scroll: 'ul[aria-label="Состоят в группе"]' },
+  { name: 'members-group-empty', url: '/?tab=reference&rec=3', ready: '[role=dialog][aria-label^="Карточка группы"]', scroll: 'button[aria-label="Добавить человека"]' },
+  {
+    name: 'members-add-search',
+    url: '/?tab=reference&rec=4',
+    ready: '[role=dialog][aria-label^="Карточка группы"]',
+    click: 'button[aria-label="Добавить человека"]',
+    then: '[role=dialog][aria-modal=true] ul[aria-label="Люди из справочника"]',
+    fill: [['[role=dialog][aria-modal=true] input[type=search]', 'ор']],
+    clickAfter: '[role=dialog][aria-modal=true] ul[aria-label="Люди из справочника"] button:not([disabled]) >> nth=0',
+  },
+  {
+    name: 'members-add-new',
+    url: '/?tab=reference&rec=4',
+    ready: '[role=dialog][aria-label^="Карточка группы"]',
+    click: ['button[aria-label="Добавить человека"]', '[role=dialog][aria-modal=true] [role=tab]:has-text("Новый человек")'],
+    then: '[role=dialog][aria-modal=true] input[type=text]',
+    fill: [
+      ['[role=dialog][aria-modal=true] input[type=text] >> nth=0', 'Анна Лебедева'],
+      ['[role=dialog][aria-modal=true] input[type=text] >> nth=1', '+7 911 111 22 33'],
+      ['[role=dialog][aria-modal=true] input[type=text] >> nth=3', 'Купчино'],
+    ],
+  },
+  { name: 'members-person-card', url: '/?tab=reference&ent=people&rec=u1', ready: '[role=dialog][aria-label^="Карточка человека"]', then: 'button[aria-label="Открыть группу ДГ-0012"]' },
+  { name: 'members-person-manual', url: '/?tab=reference&ent=people&rec=p1', ready: '[role=dialog][aria-label^="Карточка человека"]', then: 'button[aria-label^="Править карточку"]' },
+  { name: 'members-people-groups-col', url: '/?tab=reference&ent=people&col=ФИО&col=Район&col=Группы', ready: 'table' },
+  { name: 'members-groups-col', url: '/?tab=reference&col=№&col=Ведущий&col=Места&col=В составе&sort=В составе:desc', ready: 'table' },
+  // Плавающая кнопка «✦ Помощник» (на «Сегодня»), открытое окно с подсказками, ответ с таблицей и раскрытым «Как посмотрел», ошибка сервиса.
+  { name: 'chat-fab', url: '/', ready: 'button:has-text("✦ Помощник")' },
+  { name: 'chat-open', url: '/', ready: 'button:has-text("✦ Помощник")', click: 'button:has-text("✦ Помощник")', then: '[role=dialog][aria-label="Помощник"] [role=group]' },
+  {
+    name: 'chat-answer',
+    url: '/',
+    ready: 'button:has-text("✦ Помощник")',
+    click: 'button:has-text("✦ Помощник")',
+    then: '[role=dialog][aria-label="Помощник"] [role=group]',
+    fill: [['[role=dialog][aria-label="Помощник"] textarea', 'В каком районе перебор групп?']],
+    submit: '[role=dialog][aria-label="Помощник"] button[aria-label="Отправить"]',
+    after: '[role=dialog][aria-label="Помощник"] table',
+    afterClick: '[role=dialog][aria-label="Помощник"] summary',
+    scroll: '[role=dialog][aria-label="Помощник"] button:has-text("Скопировать ответ")',
+  },
+  {
+    name: 'chat-error',
+    url: '/',
+    ready: 'button:has-text("✦ Помощник")',
+    click: 'button:has-text("✦ Помощник")',
+    then: '[role=dialog][aria-label="Помощник"] [role=group]',
+    fill: [['[role=dialog][aria-label="Помощник"] textarea', 'Покажи, что за ошибка']],
+    submit: '[role=dialog][aria-label="Помощник"] button[aria-label="Отправить"]',
+    after: '[role=dialog][aria-label="Помощник"] button:has-text("Повторить")',
+  },
 ];
 
 const SHOTS = [
   ...['requests-work', 'requests-work-edit'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light'], [s, 400, 'dark'], [s, 400, 'gray']]),
   // [экран, ширина, тема]
   ['reference-groups-closed', 1280, 'light'],
+  ...['manage-group-card', 'manage-group-edit', 'manage-coordinator-edit', 'manage-group-delete', 'manage-request-delete', 'manage-create-coordinator'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
+  ['manage-group-edit', 400, 'dark'],
+  ['manage-group-delete', 400, 'gray'],
   ...['create-menu', 'create-request', 'create-group', 'reference-groups-default'].flatMap((s) => [[s, 1280, 'light'], [s, 400, 'light']]),
   ...['registration-form', 'registration-form-join', 'registration-done', 'reference-people-card'].flatMap((s) => [[s, 1280, 'light'], [s, 400, 'light']]),
   ['registration-done', 400, 'dark'],
@@ -148,6 +259,14 @@ const SHOTS = [
   ['settings-health', 1280, 'dark'],
   ['settings-health', 400, 'gray'],
   ...['today', 'requests', 'reference-groups', 'reference-people'].map((s) => [s, 1280, 'light']),
+  // Кампания, страница регистрации, настройка бота, новые поля правки группы, удаление регистрации.
+  ...['team-campaign', 'registration-page', 'registration-page-join', 'registration-page-done', 'settings-bot', 'settings-bot-list', 'manage-group-edit-write', 'reference-people-card-delete'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
+  ...['assistant-panel', 'assistant-confirm', 'assistant-done', 'assistant-card', 'assistant-card-questions', 'assistant-settings'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
+  ['assistant-card', 400, 'dark'],
+  ['assistant-settings', 400, 'gray'],
+  ['team-campaign', 400, 'dark'],
+  ['registration-page', 400, 'gray'],
+  ['settings-bot', 400, 'dark'],
   ['today', 1280, 'dark'],
   ['today', 1280, 'gray'],
   ['requests', 1280, 'gray'],
@@ -174,6 +293,20 @@ const SHOTS = [
   ['today-pult', 1280, 'dark'],
   ['today-pult', 1024, 'light'],
   ...['requests-resp', 'requests-views', 'reference-views'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
+  ...['team', 'requests-bulk', 'requests-bulk-confirm'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
+  ...['requests-close', 'requests-close-cancel', 'others-list', 'others-card', 'others-card-work', 'others-card-cancelled', 'others-reopen'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
+  ['others-list-all', 400, 'light'],
+  ['others-list', 400, 'dark'],
+  ['others-card-work', 400, 'gray'],
+  ['team', 400, 'dark'],
+  ['team', 1280, 'gray'],
+  ...['members-group-card', 'members-group-empty', 'members-add-search', 'members-add-new', 'members-person-card', 'members-person-manual', 'members-people-groups-col', 'members-groups-col'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
+  ['members-group-card', 400, 'dark'],
+  ['members-add-search', 400, 'gray'],
+  ...['chat-fab', 'chat-open', 'chat-answer', 'chat-error'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
+  ['chat-answer', 400, 'dark'],
+  ['chat-open', 400, 'gray'],
+  ['chat-fab', 1280, 'dark'],
 ];
 
 const browser = await chromium.launch({ executablePath: chromePath, args: ['--no-sandbox'] });
@@ -236,8 +369,12 @@ for (const [screenName, width, theme] of SHOTS) {
   if (screen.then) await page.waitForSelector(screen.then, { timeout: 5000 });
   for (const [sel, text] of screen.fill ?? []) await page.fill(sel, text);
   for (const [sel, value] of screen.select ?? []) await page.selectOption(sel, value);
+  // clickAfter — клик уже после ввода (например, выбрать человека из отфильтрованного списка).
+  for (const sel of [screen.clickAfter].flat().filter(Boolean)) await page.click(sel);
   if (screen.submit) await page.click(screen.submit);
   if (screen.after) await page.waitForSelector(screen.after, { timeout: 5000 });
+  // afterClick — клик уже после ответа «сервера» (например, раскрыть блок «Как посмотрел» под ответом).
+  for (const sel of [screen.afterClick].flat().filter(Boolean)) await page.click(sel);
   if (screen.scroll) await page.locator(screen.scroll).first().scrollIntoViewIfNeeded();
   await page.waitForTimeout(150);
 

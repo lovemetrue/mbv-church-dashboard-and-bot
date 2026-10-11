@@ -6,6 +6,7 @@
  * считает иначе, правда — на сервере.
  */
 import type {
+  AssistantStatus,
   Bucket,
   Candidate,
   CellLevel,
@@ -15,6 +16,7 @@ import type {
   Counters,
   GroupBrief,
   GroupItem,
+  GroupMember,
   GroupsView,
   HealthItem,
   MatchingStatus,
@@ -44,6 +46,8 @@ import {
   type RawGroup,
   type RawRequest,
 } from './raw';
+import { RAW_MANUAL_MEMBERS } from './members';
+import { buildOthers } from './others';
 import { requestExtras } from './requestExtras';
 
 const DEFAULT_CAPACITY = 10;
@@ -330,7 +334,9 @@ export function buildRequests(): RequestsView {
     waiting: items.filter((x) => x.bucket !== 'done' && x.proposal && !x.proposal.saved).length,
     saved: items.filter((x) => x.bucket !== 'done' && x.proposal?.saved).length,
   };
-  return { generatedAt: GENERATED_AT, matching, items, counters };
+  // В демо помощник подключён и включён; три заявки ещё ждут его разбора.
+  const assistant: AssistantStatus = { available: true, enabled: true, pending: 3 };
+  return { generatedAt: GENERATED_AT, matching, assistant, items, counters, others: buildOthers() };
 }
 
 export function buildToday(): TodayView {
@@ -426,11 +432,53 @@ function healthOf(g: RawGroup): { score: number; items: HealthItem[] } {
   return { score: items.reduce((a, i) => a + (i.ok ? i.points : 0), 0), items };
 }
 
+/** Человек справочника по ключу: имя и телефон в составе читаются отсюда, а не хранятся копией. */
+function rawPersonByKey(key: string): { fio: string; phone: string | null } | undefined {
+  if (key.startsWith('r')) {
+    const raw = RAW_REQUESTS.find((x) => `r${x.id}` === key);
+    return raw ? { fio: raw.fio, phone: raw.phone } : undefined;
+  }
+  return RAW_EXTRA_PEOPLE.find((x) => x.key === key);
+}
+
+/** Состав каждой группы: сначала направленные через сервис (закрытые заявки), потом внесённые вручную. */
+function membersByGroup(): Map<number, GroupMember[]> {
+  const base = new Map<number, Omit<GroupMember, 'alsoIn'>[]>();
+  const push = (groupId: number, m: Omit<GroupMember, 'alsoIn'>) => base.set(groupId, [...(base.get(groupId) ?? []), m]);
+  for (const r of RAW_REQUESTS) {
+    if (r.finalGroupId === null || r.status !== 'Исполнена') continue;
+    const approved = r.log.find((l) => l.text.startsWith('Утверждена'));
+    push(r.finalGroupId, { kind: 'placed', personKey: `r${r.id}`, id: r.id, fio: r.fio, phone: r.phone, date: approved?.at ?? null, note: null });
+  }
+  for (const m of RAW_MANUAL_MEMBERS) {
+    const person = rawPersonByKey(m.personKey);
+    if (!person) continue;
+    push(m.groupId, { kind: 'manual', personKey: m.personKey, id: m.id, fio: person.fio, phone: person.phone, date: m.date, note: m.note });
+  }
+  const codeOf = new Map(RAW_GROUPS.map((g) => [g.id, groupBrief(g).code]));
+  const out = new Map<number, GroupMember[]>();
+  for (const [groupId, list] of base) {
+    out.set(
+      groupId,
+      list.map((m) => ({
+        ...m,
+        alsoIn: [...base.entries()]
+          .filter(([otherId, others]) => otherId !== groupId && others.some((o) => o.personKey === m.personKey))
+          .map(([otherId]) => codeOf.get(otherId) ?? '')
+          .filter(Boolean),
+      })),
+    );
+  }
+  return out;
+}
+
 export function buildGroups(): GroupsView {
   const plan = buildPlan();
   const requests = buildRequests().items;
+  const members = membersByGroup();
   const items: GroupItem[] = RAW_GROUPS.map((g) => ({
     ...groupBrief(g),
+    members: members.get(g.id) ?? [],
     coLeader: g.coLeader,
     phone: g.phone,
     ageText: g.ages.join(', '),
@@ -461,10 +509,16 @@ export function buildGroups(): GroupsView {
 
 export function buildPeople(): PeopleView {
   const requests = buildRequests();
+  // В каких группах состоит человек: обратная сторона составов, коды в порядке групп.
+  const byGroup = membersByGroup();
+  const groupsOf = (key: string): string[] =>
+    RAW_GROUPS.filter((g) => (byGroup.get(g.id) ?? []).some((m) => m.personKey === key)).map((g) => groupBrief(g).code);
   const fromRequests: PersonItem[] = RAW_REQUESTS.map((raw) => {
     const item = requests.items.find((x) => x.id === raw.id);
     return {
       key: `r${raw.id}`,
+      personId: null,
+      groups: groupsOf(`r${raw.id}`),
       fio: raw.fio,
       phone: raw.phone,
       ageLabel: raw.ageLabel || null,
@@ -478,7 +532,7 @@ export function buildPeople(): PeopleView {
       requestId: raw.id,
     };
   });
-  const extras: PersonItem[] = RAW_EXTRA_PEOPLE.map((p) => ({ ...p, requestId: null }));
+  const extras: PersonItem[] = RAW_EXTRA_PEOPLE.map((p) => ({ ...p, personId: p.personId ?? null, groups: groupsOf(p.key), requestId: null }));
   return { generatedAt: GENERATED_AT, items: [...fromRequests, ...extras] };
 }
 

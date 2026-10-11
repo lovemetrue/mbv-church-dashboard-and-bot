@@ -6,7 +6,7 @@ export interface Option {
   label: string;
 }
 
-/** Описание одного поля формы. Имя совпадает с именем поля формы старого дашборда (`forms.ts`). */
+/** Описание одного поля формы. Имя совпадает с именем поля в теле запроса API. */
 export interface FieldSpec {
   name: string;
   label: string;
@@ -95,6 +95,18 @@ export function groupSpec(meta: FormMeta): FormSpec {
     ],
     address: { name: 'address', label: t.address, kind: 'text', wide: true, autoComplete: 'off' },
     initial: { status: known(meta.groupStatuses, 'Функционирует') },
+  };
+}
+
+/** Координатор: ФИО и роль, справочники сервера не нужны. */
+export function coordinatorSpec(): FormSpec {
+  const t = ru.create.coordinatorFields;
+  return {
+    fields: [
+      { name: 'name', label: t.name, kind: 'text', required: true, wide: true, autoComplete: 'off' },
+      { name: 'role', label: t.role, kind: 'text', required: true, wide: true, placeholder: ru.create.coordinatorRolePlaceholder, autoComplete: 'off' },
+    ],
+    initial: {},
   };
 }
 

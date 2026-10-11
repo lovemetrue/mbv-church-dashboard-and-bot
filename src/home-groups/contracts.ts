@@ -27,6 +27,31 @@
  *   POST /api/v1/requests/:id/edit     RequestEditBody → ActionOk | ActionError (ФИО, телефон, возраст, район, комментарий)
  *   POST /api/v1/requests/:id/assign    AssignBody      → ActionOk | ActionError («в работе у»)
  *   POST /api/v1/requests/:id/call      CallBody        → ActionOk | ActionError (итог звонка)
+ *   GET  /api/v1/team                   → TeamView (нагрузка, сроки ожидания, действия за неделю)
+ *   POST /api/v1/requests/bulk          BulkBody → BulkOk | ActionError (передать или отметить «нужен звонок» сразу нескольким)
+ *   POST /api/v1/groups/:id/update      UpdateBody → ActionOk | ActionError (правка части полей группы; адрес и телефоны только записываются, обратно не отдаются)
+ *   POST /api/v1/groups/:id/delete      (тело {})  → ActionOk | ActionError (только super; скрывает, а не стирает)
+ *   POST /api/v1/coordinators/create    CreateRecordBody → CreateRecordOk | ActionError
+ *   POST /api/v1/coordinators/:id/update UpdateBody → ActionOk | ActionError
+ *   POST /api/v1/coordinators/:id/delete (тело {}) → ActionOk | ActionError (только super)
+ *   POST /api/v1/requests/:id/delete    (тело {})  → ActionOk | ActionError (только super)
+ *   GET  /api/v1/export/requests.csv    → CSV (только super; в нём телефоны)
+ *   GET  /api/v1/export/people.csv      → CSV (только super)
+ *   POST /api/v1/groups/:id/members/create MemberAddBody → MemberAddOk | ActionError (добавить человека из справочника или внести нового «по плюсу»)
+ *   POST /api/v1/members/:id/update     UpdateBody → ActionOk | ActionError (только joinedOn и note; имя и телефон правятся в карточке человека)
+ *   POST /api/v1/members/:id/delete     (тело {})  → ActionOk | ActionError (убрать из состава: запись скрывается)
+ *   POST /api/v1/persons/:id/update     UpdateBody → ActionOk | ActionError (правка карточки, внесённой вручную: ключ p<id>)
+ *   POST /api/v1/persons/:id/delete     (тело {})  → ActionOk | ActionError (только super; карточка скрывается)
+ *   POST /api/v1/assistant/chat         ChatBody → ChatOk | ActionError (кнопка «✦ Помощник»: вопросы по базе, только чтение; имена модель не видит)
+ *   POST /api/v1/assistant/run          (тело {})       → AssistantRunOk | ActionError (помощник разбирает непонятные заявки)
+ *   GET  /api/v1/settings/assistant     → SettingsAssistantView (только super)
+ *   POST /api/v1/settings/assistant/enabled AssistantEnabledBody → ActionOk | ActionError (только super)
+ *   GET  /api/v1/settings/bot           → SettingsBotView (только super)
+ *   POST /api/v1/settings/bot/extra-questions ExtraQuestionsBody → ActionOk | ActionError (только super)
+ *   POST /api/v1/requests/:id/close     CloseBody       → ActionOk | ActionError (обработано или аннулировать с причиной)
+ *   POST /api/v1/requests/:id/reopen    (тело {})       → ActionOk | ActionError (вернуть закрытую заявку в работу)
+ *   POST /api/v1/people/:id/delete      (тело {})       → ActionOk | ActionError (только super; стирает регистрацию с заявками)
+ *   GET  /api/v1/campaign               → CampaignView  (кампания «40 дней», только чтение)
  *   POST /api/v1/requests/:id/rematch  (тело {})         → ActionOk | ActionError (подобрать заново одну заявку)
  *   POST /api/v1/matching/rerun-all    (тело {})         → MatchingRunOk | ActionError (пересчитать все закреплённые предложения)
  *   GET /api/v1/form-meta         → FormMeta            (справочники для форм «Создать»)
@@ -56,8 +81,8 @@ export type Role = 'admin' | 'super';
 
 export interface Me {
   role: Role;
-  /** Адрес старого дашборда (для того, что пока живёт только там, например регистрации участников); null — не задан. */
-  legacyUrl: string | null;
+  /** Состояние помощника для кнопки «✦ Помощник»: показывается, когда ключ задан, помощник включён и база готова. */
+  assistant?: { available: boolean; enabled: boolean; chat: boolean };
 }
 
 // ── общее ───────────────────────────────────────────────────────────────────
@@ -245,6 +270,8 @@ export interface RequestItem {
   dataFill: [boolean, boolean, boolean, boolean];
   proposal: Proposal | null;
   noPlan: NoPlan | null;
+  /** Разбор помощника; null — помощник заявку не трогал. */
+  assistant: AssistantNote | null;
   /** Что человек написал про удобное время: откуда текст (анкета бота или правка координатора) и как система его поняла (поля `days`, `slot`). */
   scheduleInfo: ParamInfo;
   /** То же про улицу и дом (поле `street`). */
@@ -265,6 +292,90 @@ export interface RequestItem {
  * предложенная группа не меняется, пока остаётся доступной, а новые заявки подбираются вокруг
  * уже предложенных. Первый раз подбор запускает кнопка, потом его можно включить автоматически.
  */
+/**
+ * Помощник (языковая модель) разбирает то, что скрипт не понял: «район» и «возраст» в свободной записи и удобное время.
+ * Группу он НЕ выбирает: после его разбора группу подбирает тот же расчёт, что и для остальных. Наружу уходят только
+ * возрастная категория, место и удобное время в записи человека (без имён, телефонов и адресов, номера и почты вырезаются).
+ */
+export interface AssistantStatus {
+  /** Ключ помощника задан на сервере. */
+  available: boolean;
+  /** Помощник включён в «Настройках» (по умолчанию выключен). */
+  enabled: boolean;
+  /** Сколько открытых заявок помощник может разобрать сейчас. */
+  pending: number;
+}
+
+/** Что помощник сделал с заявкой: какие поля он определил и что советует уточнить у человека. */
+export interface AssistantNote {
+  /** Какие параметры подбора определил помощник, а не скрипт: «район», «возраст», «время». Их стоит проверить. */
+  filled: ('район' | 'возраст' | 'время')[];
+  /** Готовые вопросы для разговора с человеком (до трёх). */
+  questions: string[];
+}
+
+/** Один ход разговора с помощником. Сервер историю не хранит: интерфейс присылает последние ходы целиком. */
+export interface ChatTurn {
+  role: 'user' | 'assistant';
+  /** До 2000 знаков. */
+  content: string;
+}
+
+export interface ChatBody {
+  /** От 1 до 12 ходов; последний — вопрос человека. */
+  messages: ChatTurn[];
+}
+
+/** Запрос, который помощник выполнил в базе (его можно показать — «как посмотрел»). */
+export interface ChatQuery {
+  sql: string;
+  ok: boolean;
+  /** Сколько строк вернулось. */
+  rows: number;
+  /** Что не получилось (если ok = false). */
+  error?: string;
+}
+
+/** Точная выдержка из базы под ответом: чтобы цифры можно было перепроверить, а не верить пересказу модели. Здесь настоящие имена. */
+export interface ChatTable {
+  columns: string[];
+  rows: (string | number | boolean | null)[][];
+  /** Строк в базе больше, чем показано (до 100). */
+  truncated: boolean;
+}
+
+export interface ChatOk {
+  ok: true;
+  /** Ответ помощника простым русским текстом (с настоящими именами). */
+  answer: string;
+  queries: ChatQuery[];
+  /** Таблицы из успешных запросов (не больше двух, последние). */
+  tables: ChatTable[];
+}
+
+export interface AssistantRunOk {
+  ok: true;
+  /** Сколько заявок отправлено на разбор. */
+  asked: number;
+  /** По скольким определено хотя бы одно поле. */
+  filled: number;
+  /** По скольким есть вопросы для человека. */
+  withQuestions: number;
+  /** Сколько новых предложений групп появилось после разбора. */
+  proposals: number;
+}
+
+export interface AssistantEnabledBody { enabled: boolean }
+
+export interface SettingsAssistantView {
+  generatedAt: string;
+  available: boolean;
+  enabled: boolean;
+  /** Название модели, например `deepseek-chat`. */
+  model: string | null;
+  lastRun: { at: string; actor: string; asked: number; filled: number; withQuestions: number; proposals: number } | null;
+}
+
 export interface MatchingStatus {
   /** Включён ли автоматический подбор новых заявок (каждые пару минут). */
   auto: boolean;
@@ -333,12 +444,149 @@ export interface CallBody {
   comment?: string | null;
 }
 
+/** Правка записи справочника: присланные поля меняются, остальные (в том числе закрытые) остаются как были. */
+export interface UpdateBody {
+  fields: Record<string, string>;
+}
+
+export interface BulkBody {
+  /** Номера заявок, не больше 100. */
+  ids: number[];
+  action: 'assign' | 'need-call';
+  /** Для assign: имя координатора, null или пусто — снять. */
+  responsible?: string | null;
+  /** Для need-call: поставить (true) или снять (false) отметку. */
+  value?: boolean;
+}
+
+export interface BulkOk {
+  ok: true;
+  /** Сколько заявок обработано (в том числе уже стоявших в нужном состоянии). */
+  done: number;
+  /** Сколько пропущено: закрыты или не найдены. */
+  skipped: number;
+}
+
+export interface TeamWorkload {
+  /** Имя координатора из «в работе у»; null — заявки, которые никто не взял. */
+  name: string | null;
+  open: number;
+  /** Из них ждут звонка. */
+  callback: number;
+  /** Из них ждут больше недели. */
+  over7: number;
+  /** Сколько дней ждёт самая старая; null — дат нет. */
+  oldestDays: number | null;
+}
+
+export interface TeamActivity {
+  /** Логин, под которым выполнено действие. Пока вход общий, все действия под одним именем. */
+  actor: string;
+  calls: number;
+  approved: number;
+  rejected: number;
+  edits: number;
+  assigned: number;
+}
+
+export interface TeamView {
+  generatedAt: string;
+  totals: {
+    open: number;
+    unassigned: number;
+    callback: number;
+    over7: number;
+    /** Утверждено за последние 7 дней. */
+    approvedWeek: number;
+    /** Открытые обращения, которые не идут в подбор (готов открыть, вопросы). */
+    otherOpen: number;
+  };
+  /** Сколько открытых заявок ждут: 0–2 дня, 3–7, 8–14, 15 и больше, дата неизвестна. */
+  aging: { label: string; count: number }[];
+  workload: TeamWorkload[];
+  /** Самые старые открытые заявки (ждут больше недели), не больше 20. */
+  stuck: { id: number; fio: string; waitingDays: number; responsible: string | null; bucket: Bucket }[];
+  /** Действия за последние 7 дней по логинам. */
+  activity: TeamActivity[];
+}
+
+/** Статистика кампании «40 дней» (только чтение). Форма совпадает с `CampaignStats` из `src/dashboard/campaignStats.ts`. */
+export interface CampaignView {
+  participants: { registered: number; complete: number; incomplete: number; kitsIssued: number; blocked: number; unfinished: number };
+  mdg: { open: number; home: number; join: number; member: number; leader: number };
+  byPlatform: { platform: 'telegram' | 'max'; registered: number; complete: number; incomplete: number; kitsIssued: number; blocked: number; unfinished: number }[];
+  newRequests: number;
+  days: { loaded: number; total: number; ranges: string; list: { day: number; loaded: boolean; length: number }[] };
+  day: { state: 'до старта' | 'идёт' | 'завершена'; number: number; total: number; startDate: string };
+  broadcasts: { key: string; createdAt: string; finished: boolean; sent: number; pending: number; failed: number; blocked: number }[];
+}
+
+/** Настройка бота «новые вопросы анкеты» (удобное время и адрес): кому их задавать. */
+export interface SettingsBotView {
+  generatedAt: string;
+  extraQuestions: {
+    /** off — никому; all — всем; list — только людям из списка `ids`. */
+    mode: 'off' | 'all' | 'list';
+    /** Список через запятую: «111111111» или «max:111111111». Для остальных режимов пустая строка. */
+    ids: string;
+    /** Откуда действует значение: из этой настройки или из файла `.env` сервера (пока настройку не меняли). */
+    source: 'settings' | 'env';
+    /** Значение из `.env`: показывается как «было по умолчанию». */
+    envValue: string;
+  };
+}
+
+export interface ExtraQuestionsBody {
+  mode: 'off' | 'all' | 'list';
+  /** Для `list`: id через запятую, обязательно хотя бы один. */
+  ids?: string;
+}
+
+export type CancelReason = 'declined' | 'no_answer' | 'duplicate' | 'self_found' | 'other';
+
+export interface CloseBody {
+  /** done — обработано (разобрались без группы); cancel — аннулировать с причиной. */
+  outcome: 'done' | 'cancel';
+  /** Нужна при cancel; для `other` обязателен комментарий. */
+  reason?: CancelReason;
+  comment?: string | null;
+}
+
+/**
+ * Обращение, которое не идёт в подбор группы: «готов открыть группу», «дам дом», вопрос служителю, «уже состою
+ * в группе» — и закрытые заявки «хочу в группу» (аннулированные), чтобы их можно было вернуть в работу.
+ * Работают с ним теми же действиями, что и с заявкой, кроме подбора и утверждения.
+ */
+export interface OtherItem {
+  id: number;
+  type: 'join_group' | 'lead_group' | 'question' | 'already_member' | 'already_leader';
+  /** «Хочет открыть группу», «Вопрос служителю» и т. д. */
+  typeLabel: string;
+  state: 'open' | 'done' | 'cancelled';
+  fio: string;
+  phone: string | null;
+  ageLabel: string | null;
+  place: string | null;
+  status: string;
+  source: string;
+  waitingDays: number | null;
+  callback: boolean;
+  responsible: string | null;
+  note: string | null;
+  cancelReason: string | null;
+  original: OriginalField[];
+  log: LogEntry[];
+}
+
 export interface RequestsView {
   generatedAt: string;
   matching: MatchingStatus;
+  assistant: AssistantStatus;
   /** Без отказов; порядок — как показывать: перезвонить, готово, нужна помощь, утверждено. */
   items: RequestItem[];
   counters: Counters;
+  /** Остальные обращения: открытые сверху (звонок, потом давно ждущие), закрытых не больше 200. */
+  others: OtherItem[];
 }
 
 // ── Действия координатора ───────────────────────────────────────────────────
@@ -375,7 +623,7 @@ export interface ActionOk {
  * «Не направлять»), `group_full` (мест нет; повторить с `force: true`).
  */
 export interface ActionError {
-  error: 'bad_request' | 'not_found' | 'already_closed' | 'group_unavailable' | 'group_full' | 'forbidden' | 'conflict';
+  error: 'bad_request' | 'not_found' | 'already_closed' | 'group_unavailable' | 'group_full' | 'forbidden' | 'conflict' | 'unavailable';
   message: string;
 }
 
@@ -431,7 +679,45 @@ export interface HealthItem {
   points: number;
 }
 
+/**
+ * Человек в составе группы. Два источника: «направлен» — его утвердили в эту группу через сервис (появляется сам,
+ * правится заявкой), «вручную» — внесён служителем как уже ходящий в группу (правится и убирается здесь).
+ */
+export interface GroupMember {
+  kind: 'placed' | 'manual';
+  /** Ключ человека в справочнике («Люди»): u12, r345 или p7. Имя и телефон в составе читаются оттуда, а не копируются. */
+  personKey: string;
+  /** Для `placed` номер заявки, для `manual` номер строки состава. */
+  id: number;
+  fio: string;
+  phone: string | null;
+  /** Когда направлен (`placed`, если известно) или вступил (`manual`); ISO-дата. */
+  date: string | null;
+  note: string | null;
+  /** Коды других групп, где этот человек тоже есть (совпал телефон, а без телефона — ФИО): повод проверить. */
+  alsoIn: string[];
+}
+
+/** Добавить человека в состав: выбрать из справочника (`personKey`) ИЛИ внести нового (`newPerson`) — карточка появится в «Людях». */
+export interface MemberAddBody {
+  personKey?: string;
+  newPerson?: { fio: string; phone?: string | null; age?: string | null; place?: string | null; note?: string | null };
+  /** Дата вступления, 2026-09-01, не из будущего. */
+  joinedOn?: string | null;
+  note?: string | null;
+}
+
+export interface MemberAddOk {
+  ok: true;
+  /** Номер строки состава. */
+  id: number;
+  /** Ключ человека в справочнике (у нового — p<id>). */
+  personKey: string;
+}
+
 export interface GroupItem extends GroupBrief {
+  /** Состав: сначала направленные через сервис, потом внесённые вручную. */
+  members: GroupMember[];
   coLeader: string | null;
   phone: string | null;
   ageText: string | null;
@@ -463,8 +749,12 @@ export interface GroupsView {
 }
 
 export interface PersonItem {
-  /** Устойчивый ключ строки: «u12» (участник) или «r345» (заявка без участника). */
+  /** Устойчивый ключ строки: «u12» (участник), «r345» (заявка без участника) или «p7» (карточка, внесённая вручную). */
   key: string;
+  /** Номер карточки для ключа p<id> (правка и удаление через `/persons/:id/…`); у остальных null. */
+  personId: number | null;
+  /** Коды групп, в составе которых человек есть: направленный через сервис или внесённый вручную. */
+  groups: string[];
   fio: string;
   phone: string | null;
   ageLabel: string | null;

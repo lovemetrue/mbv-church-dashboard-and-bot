@@ -86,7 +86,7 @@
 }
 .row {
   display: grid;
-  grid-template-columns: minmax(140px, 1.1fr) minmax(170px, 1.3fr) 56px 60px;
+  grid-template-columns: var(--tap) minmax(140px, 1.1fr) minmax(170px, 1.3fr) 56px 60px;
   gap: 12px;
   align-items: center;
   padding: 10px 12px;
@@ -107,6 +107,24 @@
   font-weight: 600;
   border-top: 0;
   background: var(--surface-2);
+}
+/* Флажок выбора для массовых действий: ячейка в 44 px, чтобы попасть пальцем. */
+.pick {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap);
+  margin: -10px 0;
+  cursor: pointer;
+}
+.pick input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+}
+/* Выбрана для массового действия: фон слабее, чем у открытой заявки; главное — сам отмеченный флажок. */
+.rows .picked {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
 }
 .selected,
 .rows .selected:hover {
@@ -165,11 +183,16 @@
     display: none;
   }
   .row {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: 'who dots' 'prop conf';
-    gap: 6px 12px;
-    padding: 12px;
+    grid-template-columns: var(--tap) minmax(0, 1fr) auto;
+    grid-template-areas: 'pick who dots' 'pick prop conf';
+    gap: 6px 8px;
+    padding: 12px 12px 12px 4px;
     min-height: var(--tap);
+  }
+  .pick {
+    grid-area: pick;
+    align-self: start;
+    margin: -6px 0 0;
   }
   .who {
     grid-area: who;
@@ -801,4 +824,120 @@
   padding: 2px 4px;
   font-size: 13px;
   color: var(--muted);
+}
+
+/* Переключатель «Хотят в группу | Другие обращения»: две кнопки в ряд над списком, на телефоне делят ширину. */
+.views {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.views > button {
+  min-height: var(--tap);
+  flex: 0 1 auto;
+}
+@media (max-width: 700px) {
+  .views > button {
+    flex: 1 1 0;
+    min-width: 0;
+    justify-content: center;
+    text-align: center;
+  }
+}
+
+/* Итог закрытия: тихая строка, как «Пришло новых заявок». Пустая область места не занимает. */
+.closedNote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 0 0 12px;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  background: var(--ok-soft);
+  color: var(--ok);
+  font-size: 13px;
+  font-weight: 500;
+}
+.closedNote p {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.closedNoteEmpty:empty {
+  display: none;
+}
+
+/* Помощник: кнопка и подсказки в блоке подбора, метка в строке списка и блок в карточке. */
+.assistantRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+.assistantRow > button {
+  min-height: var(--tap);
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+}
+.assistantHint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.assistantHint .linkBtn {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.assistantTag {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 0 7px;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  color: var(--warn);
+}
+.assistantBlock {
+  min-width: 0;
+}
+.assistantFilled {
+  margin: 0 0 4px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+/* «проверьте» обязательно и заметно: это догадка модели, а не слова человека. */
+.assistantCheck {
+  color: var(--warn);
+  font-weight: 700;
+}
+.assistantQuestions {
+  margin: 0 0 8px;
+  padding-left: 20px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.assistantQuestions li {
+  margin-bottom: 4px;
+}
+.assistantCopy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+.assistantCopy button {
+  min-height: var(--tap);
 }

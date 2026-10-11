@@ -12,15 +12,15 @@ afterEach(() => {
 });
 
 describe('оболочка', () => {
-  test('вкладки обычного входа — это tablist с выбранной «Сегодня», у «Заявок» стоит счётчик открытых, вкладок «Контроль» и «Настройки» нет', async () => {
+  test('вкладки обычного входа — это tablist с выбранной «Сегодня», у «Заявок» стоит счётчик открытых, вкладки «Настройки» нет, а «Команда» есть', async () => {
     // Фикстуры отдают полный вход, а здесь проверяется обычный: «Настройки» ему не показываются.
     stubFetchWithFixtures({ me: () => new Response(JSON.stringify({ role: 'admin' }), { status: 200 }) });
     renderAt(<App />);
     const tabs = screen.getByRole('tablist', { name: 'Разделы' });
     const names = within(tabs).getAllByRole('tab').map((t) => t.textContent);
     expect(names[0]).toBe('Сегодня');
-    expect(names[2]).toBe('Справочник');
-    expect(names).toHaveLength(3);
+    expect(names[3]).toBe('Справочник');
+    expect(names).toHaveLength(4);
     expect(within(tabs).getByRole('tab', { name: 'Сегодня' })).toHaveAttribute('aria-selected', 'true');
     // Число открытых берём из тех же фикстур: оно растёт вместе с демо-заявками.
     const open = openCount(buildRequests().counters);

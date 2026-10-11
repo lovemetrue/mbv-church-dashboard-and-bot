@@ -1,0 +1,51 @@
+import type { OtherItem, RequestItem } from '@contracts';
+
+/**
+ * Минимум полей, которые нужны блоку «Работа с заявкой»: заявка из подбора и «другое обращение»
+ * устроены по-разному, но звонят, передают, правят и закрывают их одинаково. Блок не знает ни про
+ * предложения, ни про корзины: ему важно лишь, открыта ли запись, готова ли и аннулирована ли.
+ */
+export interface WorkSubject {
+  /** request — идёт в подбор группы; other — всё остальное (возврат из закрытого говорит по-другому). */
+  kind: 'request' | 'other';
+  id: number;
+  fio: string;
+  phone: string | null;
+  ageLabel: string | null;
+  place: string | null;
+  note: string | null;
+  responsible: string | null;
+  callback: boolean;
+  /** open — в работе; done — обработана или утверждена; cancelled — аннулирована. */
+  state: 'open' | 'done' | 'cancelled';
+}
+
+export function subjectOfRequest(r: RequestItem): WorkSubject {
+  return {
+    kind: 'request',
+    id: r.id,
+    fio: r.fio,
+    phone: r.phone,
+    ageLabel: r.ageLabel,
+    place: r.place,
+    note: r.note,
+    responsible: r.responsible,
+    callback: r.callback,
+    state: r.bucket === 'done' ? 'done' : r.bucket === 'cancelled' ? 'cancelled' : 'open',
+  };
+}
+
+export function subjectOfOther(o: OtherItem): WorkSubject {
+  return {
+    kind: 'other',
+    id: o.id,
+    fio: o.fio,
+    phone: o.phone,
+    ageLabel: o.ageLabel,
+    place: o.place,
+    note: o.note,
+    responsible: o.responsible,
+    callback: o.callback,
+    state: o.state,
+  };
+}

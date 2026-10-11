@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { buildCoordinators, buildGroups, buildPeople, buildRequests, buildToday } from './build';
 import { buildFormMeta } from './formMeta';
-import { fixtureActionResponse } from './index';
+import { fixtureActionResponse, fixtureResponse } from './index';
 
 describe('фикстуры', () => {
   test('счётчики сходятся со списком заявок, отказы в список не попадают', () => {
@@ -113,5 +113,35 @@ describe('фикстуры', () => {
     expect(res.ok).toBe(true);
     expect(buildPeople().items.map((p) => p.registrationNo)).not.toContain(res.registrationNo);
     expect(buildPeople().items.map((p) => p.userId)).not.toContain(res.id);
+  });
+
+  test('кампания и настройка бота отдаются демо-маршрутами, а удаление регистрации и сохранение настройки «получаются»', () => {
+    const campaign = fixtureResponse('campaign') as { days: { total: number; list: unknown[] } };
+    expect(campaign.days.list).toHaveLength(campaign.days.total);
+    const bot = fixtureResponse('settings/bot') as { extraQuestions: { mode: string; source: string } };
+    expect(['off', 'all', 'list']).toContain(bot.extraQuestions.mode);
+    expect(['settings', 'env']).toContain(bot.extraQuestions.source);
+    expect(fixtureActionResponse('people/1/delete', {})).toEqual({ ok: true });
+    expect(fixtureActionResponse('settings/bot/extra-questions', { mode: 'all' })).toEqual({ ok: true });
+  });
+
+  test('в демо помощник подключён и включён, а разбор есть у двух заявок: с определёнными полями и только с вопросами', () => {
+    const view = buildRequests();
+    expect(view.assistant).toEqual({ available: true, enabled: true, pending: 3 });
+    const noted = view.items.filter((i) => i.assistant);
+    expect(noted).toHaveLength(2);
+    expect(noted.map((i) => i.assistant!.filled.length).sort()).toEqual([0, 2]);
+    expect(noted.find((i) => i.assistant!.filled.length === 0)!.assistant!.questions).toHaveLength(3);
+    expect(noted.find((i) => i.assistant!.filled.length === 2)!.assistant!.questions).toHaveLength(2);
+    expect(view.items.filter((i) => !i.assistant).every((i) => i.assistant === null)).toBe(true);
+  });
+
+  test('демо-маршруты помощника: настройка без ключа, запуск разбора и переключатель «получаются»', () => {
+    const settings = fixtureResponse('settings/assistant') as Record<string, unknown>;
+    expect(settings).toMatchObject({ available: true, enabled: true, model: 'deepseek-chat' });
+    // Самого ключа в данных быть не должно ни под каким именем.
+    expect(JSON.stringify(settings)).not.toMatch(/sk-|key/i);
+    expect(fixtureActionResponse('assistant/run', {})).toMatchObject({ ok: true, asked: 3 });
+    expect(fixtureActionResponse('settings/assistant/enabled', { enabled: false })).toEqual({ ok: true });
   });
 });

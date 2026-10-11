@@ -18,6 +18,23 @@ import { createSettings } from '../platform/settings/service.js';
 import { realHealthSources, collectHealth } from '../platform/settings/health.js';
 import { createFormMeta, createRecordCreator } from './create.js';
 import { createRegistrar } from './registration.js';
+import { createManager } from './manage.js';
+import { createBotSettings } from './botSettings.js';
+import { createMembers } from './members.js';
+import { MembersRepo } from '../db/repos/members.repo.js';
+import { createAssistant } from './assistant/service.js';
+import { createChat } from './assistant/chat.js';
+import { createReadonlyRunner } from './assistant/readonly.js';
+import { loadPseudonyms } from './assistant/pseudonyms.js';
+import { HintsRepo } from '../db/repos/hints.repo.js';
+import type { LlmClient } from '../platform/llm/deepseek.js';
+import { requestsToCsv } from './export.js';
+import { usersToCsv } from '../core/csv.js';
+import { campaignStats } from '../dashboard/campaignStats.js';
+import { CampaignRepo } from '../db/repos/campaign.repo.js';
+import { DeliveriesRepo } from '../db/repos/deliveries.repo.js';
+import type { ScheduleOptions } from '../broadcast/schedule.js';
+import type { CampaignView } from './contracts.js';
 import type { RequestWithUser } from '../db/repos/requests.repo.js';
 import { createLoader } from './loader.js';
 import { createMatching } from './matching/run.js';
@@ -38,6 +55,12 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     mailer?: Mailer;
     /** Публичный адрес сервиса для ссылок в письмах (`HG_PUBLIC_URL`). */
     publicUrl?: string | null;
+    /** Значение `EXTRA_QUESTIONS` из `.env`: показывается в настройках как «по умолчанию». */
+    extraQuestionsEnv?: string;
+    /** Языковая модель помощника; null — ключ не задан, функция выключена. */
+    llm?: LlmClient | null;
+    /** Расписание кампании «40 дней»: без него вкладка кампании недоступна. */
+    campaignSchedule?: ScheduleOptions;
     /** Уведомление служителю о новой заявке (необязательно: без него заявки заводятся молча). */
     notify?: (request: RequestWithUser) => Promise<void>;
     /** Сбросить кэш входа после изменения людей и режима. */
@@ -53,7 +76,9 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     placement,
     audit: new AuditRepo(db),
     settings: appSettings,
-  }, opts.timeZone ? { timeZone: opts.timeZone } : {});
+    hints: new HintsRepo(db),
+    members: new MembersRepo(db),
+  }, { ...(opts.timeZone ? { timeZone: opts.timeZone } : {}), assistantAvailable: (opts.llm ?? null) !== null });
   const viewOptions = { defaultCapacity: opts.defaultCapacity, ...(opts.timeZone ? { timeZone: opts.timeZone } : {}) };
 
   const views = createViewsSource({ load, engine, ttlMs: opts.ttlMs, views: viewOptions });
@@ -61,6 +86,24 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     load, engine, placement, settings: appSettings, options: viewOptions, invalidate: () => views.invalidate(),
   });
   const errors = new ErrorsRepo(db);
+  const assistant = createAssistant({
+    load, engine, viewOptions, llm: opts.llm ?? null, hints: new HintsRepo(db), prompts: new PromptsRepo(db), settings: appSettings,
+    audit: new AuditRepo(db), matching, invalidate: () => views.invalidate(),
+    reportError: (source, err, context) => { void errors.record(source, err instanceof Error ? err.message : String(err), context); },
+    roleReady: async () => {
+      try {
+        const { rows } = await db.query<{ ok: boolean }>(`SELECT pg_has_role(current_user, 'assistant_ro', 'USAGE') AS ok FROM pg_roles WHERE rolname = 'assistant_ro'`);
+        return rows[0]?.ok === true;
+      } catch {
+        return false;
+      }
+    },
+  });
+  const chat = createChat({
+    llm: opts.llm ?? null, settings: appSettings, audit: new AuditRepo(db), runQuery: createReadonlyRunner(db),
+    pseudonyms: () => loadPseudonyms(db), capacity: opts.defaultCapacity,
+    reportError: (source, err, context) => { void errors.record(source, err instanceof Error ? err.message : String(err), context); },
+  });
   const settings = createSettings({
     audit: new AuditRepo(db),
     errors,
@@ -82,8 +125,24 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   const notify = opts.notify ?? (async () => undefined);
   const creator = createRecordCreator({ requests: requestsRepo, groups: new GroupsRepo(db), audit: new AuditRepo(db), notify });
   const registrar = createRegistrar({ users: new UsersRepo(db), requests: requestsRepo, audit: new AuditRepo(db), notify });
+  const members = createMembers({ members: new MembersRepo(db), audit: new AuditRepo(db) });
+  const usersRepo = new UsersRepo(db);
+  const manager = createManager({
+    groups: new GroupsRepo(db), coordinators: new CoordinatorsRepo(db), requests: requestsRepo, users: usersRepo, audit: new AuditRepo(db),
+  });
+  // Кампания «40 дней» (только чтение): те же репозитории и тот же расчёт, что у бота и старого дашборда.
+  const campaign = async (): Promise<CampaignView | null> => opts.campaignSchedule
+    ? campaignStats({ users: usersRepo, requests: requestsRepo, campaign: new CampaignRepo(db), deliveries: new DeliveriesRepo(db) }, opts.campaignSchedule)
+    : null;
+  const exporter = {
+    requests: async () => requestsToCsv((await views()).requests.items),
+    people: async () => usersToCsv(await usersRepo.exportRows()),
+  };
+  const botSettings = createBotSettings({ settings: appSettings, audit: new AuditRepo(db), envValue: opts.extraQuestionsEnv ?? 'off' });
+  const auditRepo = new AuditRepo(db);
+  const audit = (actor: string, action: string, after: unknown) => auditRepo.write(actor, action, 'export', null, after);
   const formMeta = createFormMeta(new CoordinatorsRepo(db));
-  return { views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, formMeta };
+  return { views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, chat, members, formMeta };
 }
 
 export function composeViews(db: Pool, engine: PlanEngineApi, opts: ComposeOptions): ViewsSource {

@@ -42,7 +42,9 @@ const nextIp = () => `10.2.0.${++ipCounter}`;
 interface ActionCall { name: string; id: number; body: unknown; actor: string }
 interface Started {
   base: string; viewsCalls: () => number; close: () => void; setViews: (f: () => Promise<ReturnType<typeof sampleViews>>) => void;
-  actionCalls: ActionCall[]; invalidations: () => number; setOutcome: (o: ActionOutcome) => void;
+  chatCalls: { body: unknown; actor: string }[]; setChatOutcome: (o: unknown) => void;
+  assistantCalls: { name: string; actor: string; enabled?: boolean }[]; setAssistantOutcome: (o: unknown) => void;
+  actionCalls: ActionCall[]; auditCalls: { actor: string; action: string; after: unknown }[]; invalidations: () => number; setOutcome: (o: ActionOutcome) => void;
   matchingCalls: { name: string; actor: string; enabled?: boolean }[];
   setSettingsOutcome: (o: ActionOutcome) => void;
   createCalls: { what: string; body: unknown; actor: string }[]; setCreate: (o: { ok: true; id: number } | { ok: false; error: string; message: string }) => void;
@@ -56,6 +58,11 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
   let outcome: ActionOutcome = { ok: true };
   let settingsOutcome: ActionOutcome = { ok: true };
   const actionCalls: ActionCall[] = [];
+  const chatCalls: { body: unknown; actor: string }[] = [];
+  let chatOutcome: unknown = { ok: true, answer: 'Перебор в ДГ-0001.', queries: [{ sql: 'select 1', ok: true, rows: 1 }], tables: [] };
+  const assistantCalls: { name: string; actor: string; enabled?: boolean }[] = [];
+  let assistantOutcome: unknown = { ok: true, asked: 3, filled: 2, withQuestions: 1, proposals: 1 };
+  const auditCalls: { actor: string; action: string; after: unknown }[] = [];
   const matchingCalls: { name: string; actor: string; enabled?: boolean }[] = [];
   const settingsCalls: { name: string; actor?: string; body?: unknown }[] = [];
   const staffCalls: { name: string; args: unknown[] }[] = [];
@@ -70,7 +77,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
   };
   let views: () => Promise<ReturnType<typeof sampleViews>> = async () => sampleViews();
   const server = createHomeGroupsServer({
-    actions: { approve: record('approve'), reject: record('reject'), setNeedCall: record('need-call'), setParams: record('params'), rematch: async (id: number, actor: string) => { actionCalls.push({ name: 'rematch', id, body: undefined, actor }); return outcome; }, edit: record('edit'), assign: record('assign'), call: record('call') },
+    actions: { approve: record('approve'), reject: record('reject'), setNeedCall: record('need-call'), setParams: record('params'), rematch: async (id: number, actor: string) => { actionCalls.push({ name: 'rematch', id, body: undefined, actor }); return outcome; }, edit: record('edit'), assign: record('assign'), call: record('call'), close: record('close'), reopen: async (id: number, actor: string) => { actionCalls.push({ name: 'reopen', id, body: undefined, actor }); return outcome; }, bulk: async (body: unknown, actor: string) => { actionCalls.push({ name: 'bulk', id: 0, body, actor }); return { ok: true as const, done: 2, skipped: 1 }; } },
     matching: {
       run: async (actor) => { matchingCalls.push({ name: 'run', actor }); return { ok: true, created: 2, replaced: 1, unchanged: 3 }; },
       rerunAll: async (actor) => { matchingCalls.push({ name: 'rerun-all', actor }); return { ok: true, created: 5, replaced: 0, unchanged: 0 }; },
@@ -88,9 +95,40 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
       qr: async (id: number) => (id === 5 ? Buffer.from('\x89PNG-фейк') : null),
       card: async (id: number) => (id === 5 ? { registrationNo: 4242, fullName: 'Иван Петров', phone: '+79110001122', church: null, mdgStatus: null } : null),
     } as never,
+    manager: {
+      updateGroup: async (id: number, body: unknown, actor: string) => { actionCalls.push({ name: 'group.update', id, body, actor }); return outcome; },
+      deleteGroup: async (id: number, actor: string) => { actionCalls.push({ name: 'group.delete', id, body: undefined, actor }); return outcome; },
+      createCoordinator: async (body: unknown, actor: string) => { createCalls.push({ what: 'coordinator', body, actor }); return createOutcome; },
+      updateCoordinator: async (id: number, body: unknown, actor: string) => { actionCalls.push({ name: 'coordinator.update', id, body, actor }); return outcome; },
+      deleteCoordinator: async (id: number, actor: string) => { actionCalls.push({ name: 'coordinator.delete', id, body: undefined, actor }); return outcome; },
+      deletePerson: async (id: number, actor: string) => { actionCalls.push({ name: 'person.delete', id, body: undefined, actor }); return outcome; },
+      deleteRequest: async (id: number, actor: string) => { actionCalls.push({ name: 'request.delete', id, body: undefined, actor }); return outcome; },
+    } as never,
+    campaign: async () => ({ day: { state: 'идёт', number: 3, total: 40, startDate: '2026-11-01' } }) as never,
+    members: {
+      add: async (id: number, body: unknown, actor: string) => { actionCalls.push({ name: 'member.add', id, body, actor }); return createOutcome.ok ? { ok: true as const, id: createOutcome.id, personKey: 'u1' } : createOutcome; },
+      update: async (id: number, body: unknown, actor: string) => { actionCalls.push({ name: 'member.update', id, body, actor }); return outcome; },
+      remove: async (id: number, actor: string) => { actionCalls.push({ name: 'member.remove', id, body: undefined, actor }); return outcome; },
+      updatePerson: async (id: number, body: unknown, actor: string) => { actionCalls.push({ name: 'person.update', id, body, actor }); return outcome; },
+      deletePerson: async (id: number, actor: string) => { actionCalls.push({ name: 'person.delete', id, body: undefined, actor }); return outcome; },
+    } as never,
+    chat: {
+      ask: async (body: unknown, actor: string) => { chatCalls.push({ body, actor }); return chatOutcome; },
+    } as never,
+    assistant: {
+      status: async () => ({ available: true, enabled: true, chat: true }),
+      run: async (actor: string) => { assistantCalls.push({ name: 'run', actor }); return assistantOutcome; },
+      setEnabled: async (enabled: boolean, actor: string) => { assistantCalls.push({ name: 'enabled', actor, enabled }); },
+      view: async () => ({ generatedAt: 'g', available: true, enabled: false, model: 'fake', lastRun: null }),
+    } as never,
+    botSettings: {
+      view: async () => { settingsCalls.push({ name: 'bot.view' }); return { generatedAt: 'g', extraQuestions: { mode: 'off', ids: '', source: 'env', envValue: 'off' } }; },
+      setExtraQuestions: async (body: unknown, actor: string) => { settingsCalls.push({ name: 'bot.save', actor, body }); return settingsOutcome; },
+    } as never,
+    exporter: { requests: async () => '\uFEFF№;ФИО\r\n1;Мария\r\n', people: async () => '\uFEFFномер\r\n' },
+    audit: async (actor: string, action: string, after: unknown) => { auditCalls.push({ actor, action, after }); },
     logo: async () => Buffer.from('\x89PNG-логотип'),
     formMeta: async () => ({ districts: ['Приморский'], groupFormats: [], groupStatuses: [], compositions: [], requestStatuses: [], requestTypes: [], ageGroups: [], coordinators: [], churches: [], mdgStatuses: [] }),
-    legacyUrl: 'http://old.example:8090',
     staff: {
       view: async () => { staffCalls.push({ name: 'view', args: [] }); return { generatedAt: 'g', items: [], personal: { enabled: false, canEnable: false, activeWithPassword: 0, mailConfigured: false } }; },
       suggestLogin: async (...a: unknown[]) => { staffCalls.push({ name: 'suggest', args: a }); return { ok: true, login: 'p_ivanova' }; },
@@ -129,7 +167,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
     viewsCalls: () => calls,
     close: () => { server.close(); },
     setViews: (f) => { views = f; },
-    actionCalls, matchingCalls, settingsCalls, reported, staffCalls, createCalls, setCreate: (o) => { createOutcome = o; }, setTokenInfo: (v) => { tokenInfo = v; }, setComplete: (v) => { complete = v; }, setSettingsOutcome: (o: ActionOutcome) => { settingsOutcome = o; }, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
+    actionCalls, auditCalls, assistantCalls, chatCalls, setChatOutcome: (o: unknown) => { chatOutcome = o; }, setAssistantOutcome: (o: unknown) => { assistantOutcome = o; }, matchingCalls, settingsCalls, reported, staffCalls, createCalls, setCreate: (o) => { createOutcome = o; }, setTokenInfo: (v) => { tokenInfo = v; }, setComplete: (v) => { complete = v; }, setSettingsOutcome: (o: ActionOutcome) => { settingsOutcome = o; }, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
   };
 }
 
@@ -177,7 +215,7 @@ function raw(base: string, path: string, method = 'GET', headers: Record<string,
   });
 }
 
-const API_ROUTES = ['me', 'today', 'requests', 'groups', 'people', 'coordinators'];
+const API_ROUTES = ['me', 'team', 'today', 'requests', 'groups', 'people', 'coordinators'];
 
 describe('вход и выход', () => {
   test('страница входа отдаётся без сессии, по-русски, без подсказки логина', async () => {
@@ -665,7 +703,7 @@ describe('действия координатора над заявкой', () =
   test('чужие адреса действий — 404, а GET по адресу действия не выполняет его', async () => {
     const cookie = await signIn();
     const before = app.actionCalls.length;
-    for (const path of ['abc/approve', '1/delete', '1/approve/extra', '1']) {
+    for (const path of ['abc/approve', '1/remove', '1/approve/extra', '1']) {
       expect((await act(cookie, path, { groupId: 1 })).status, path).toBe(404);
     }
     const g = await fetch(`${app.base}/api/v1/requests/1/approve`, { headers: { cookie } });
@@ -1001,7 +1039,7 @@ describe('создание записей и справочники форм', (
   });
 
   test('чужие адреса создания — 404', async () => {
-    expect((await create(await signIn(), 'coordinators', { fields: {} })).status).toBe(404);
+    expect((await create(await signIn(), 'staff', { fields: {} })).status).toBe(404);
   });
 
   test('регистрация участника: тело и автор передаются, ответ несёт номер регистрации, снимок сбрасывается', async () => {
@@ -1064,9 +1102,9 @@ describe('создание записей и справочники форм', (
     expect(await r.json()).toMatchObject({ districts: ['Приморский'] });
   });
 
-  test('«кто я» отдаёт адрес старого дашборда', async () => {
+  test('«кто я» отдаёт роль', async () => {
     const r = await fetch(`${app.base}/api/v1/me`, { headers: { cookie: await signIn(REGULAR) } });
-    expect(await r.json()).toEqual({ role: 'admin', legacyUrl: 'http://old.example:8090' });
+    expect(await r.json()).toMatchObject({ role: 'admin' });
   });
 
   test('правка параметров заявки передаёт тело и автора', async () => {
@@ -1100,6 +1138,283 @@ describe('рабочие действия координатора: правка
     expect(r.status).toBe(200);
     expect(app.actionCalls.at(-1)).toEqual({ name: action, id: 12, body, actor: REGULAR.login });
     expect(app.invalidations()).toBe(inv + 1);
+  });
+});
+
+describe('руководитель: массовые действия, правка и удаление справочника, выгрузка', () => {
+  const post = (cookie: string | null, path: string, body: unknown) => fetch(`${app.base}/api/v1/${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body),
+  });
+  const get = (cookie: string | null, path: string) => fetch(`${app.base}/api/v1/${path}`, { headers: cookie ? { cookie } : {} });
+
+  test('массовое действие: без сессии 401, с сессией — тело и автор передаются, ответ с числами, снимок сбрасывается', async () => {
+    expect((await post(null, 'requests/bulk', {})).status).toBe(401);
+    const inv = app.invalidations();
+    const body = { ids: [1, 2, 3], action: 'assign', responsible: 'Анна' };
+    const r = await post(await signIn(REGULAR), 'requests/bulk', body);
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, done: 2, skipped: 1 });
+    expect(app.actionCalls.at(-1)).toEqual({ name: 'bulk', id: 0, body, actor: REGULAR.login });
+    expect(app.invalidations()).toBe(inv + 1);
+  });
+
+  test.each([
+    ['groups/5/update', { fields: { people: '8' } }, 'group.update'],
+    ['coordinators/5/update', { fields: { role: 'x' } }, 'coordinator.update'],
+  ])('%s доступно и обычному входу', async (path, body, name) => {
+    const r = await post(await signIn(REGULAR), path, body);
+    expect(r.status).toBe(200);
+    expect(app.actionCalls.at(-1)).toEqual({ name, id: 5, body, actor: REGULAR.login });
+  });
+
+  test.each([
+    ['groups/5/delete', 'group.delete'], ['coordinators/5/delete', 'coordinator.delete'], ['requests/5/delete', 'request.delete'],
+  ])('%s: обычному входу 403 и ничего не вызвано, полному — выполняется', async (path, name) => {
+    const before = app.actionCalls.length;
+    const denied = await post(await signIn(REGULAR), path, {});
+    expect(denied.status).toBe(403);
+    expect(app.actionCalls.length).toBe(before);
+    const ok = await post(await signIn(SUPER), path, {});
+    expect(ok.status).toBe(200);
+    expect(app.actionCalls.at(-1)).toMatchObject({ name, id: 5, actor: SUPER.login });
+  });
+
+  test('новый координатор заводится через общий путь создания', async () => {
+    const r = await post(await signIn(REGULAR), 'coordinators/create', { fields: { name: 'Анна', role: 'Координатор' } });
+    expect(r.status).toBe(200);
+    expect(app.createCalls.at(-1)).toMatchObject({ what: 'coordinator', actor: REGULAR.login });
+  });
+
+  test('выгрузка CSV: без сессии 401, обычному входу 403, полному — файл и запись в журнал без содержимого', async () => {
+    expect((await get(null, 'export/requests.csv')).status).toBe(401);
+    expect((await get(await signIn(REGULAR), 'export/requests.csv')).status).toBe(403);
+    const before = app.auditCalls.length;
+    const r = await get(await signIn(SUPER), 'export/requests.csv');
+    expect(r.status).toBe(200);
+    expect(r.headers.get('content-type')).toMatch(/text\/csv/);
+    expect(r.headers.get('content-disposition')).toMatch(/attachment; filename="requests-\d{4}-\d{2}-\d{2}\.csv"/);
+    expect(r.headers.get('cache-control')).toBe('no-store');
+    expect(await r.text()).toContain('Мария');
+    expect(app.auditCalls.length).toBe(before + 1);
+    expect(app.auditCalls.at(-1)).toEqual({ actor: SUPER.login, action: 'export.csv', after: { what: 'requests' } });
+  });
+
+  test('выгрузка людей — те же правила', async () => {
+    expect((await get(await signIn(REGULAR), 'export/people.csv')).status).toBe(403);
+    expect((await get(await signIn(SUPER), 'export/people.csv')).status).toBe(200);
+  });
+
+  test('сводка команды отдаётся после входа', async () => {
+    expect((await get(null, 'team')).status).toBe(401);
+    const r = await get(await signIn(REGULAR), 'team');
+    expect(r.status).toBe(200);
+    expect(await r.json()).toHaveProperty('totals');
+  });
+});
+
+describe('состав группы и карточки людей', () => {
+  const post = (cookie: string | null, path: string, body: unknown) => fetch(`${app.base}/api/v1/${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body),
+  });
+
+  test('без входа 401, любой вход добавляет человека, правит и убирает; снимок сбрасывается', async () => {
+    expect((await post(null, 'groups/5/members/create', { personKey: 'u1' })).status).toBe(401);
+    const cookie = await signIn(REGULAR);
+    const inv = app.invalidations();
+    const add = await post(cookie, 'groups/5/members/create', { personKey: 'u1' });
+    expect(add.status).toBe(200);
+    expect(await add.json()).toEqual({ ok: true, id: 77, personKey: 'u1' });
+    expect(app.actionCalls.at(-1)).toEqual({ name: 'member.add', id: 5, body: { personKey: 'u1' }, actor: REGULAR.login });
+    expect((await post(cookie, 'members/9/update', { fields: { note: 'x' } })).status).toBe(200);
+    expect(app.actionCalls.at(-1)).toMatchObject({ name: 'member.update', id: 9 });
+    expect((await post(cookie, 'members/9/delete', {})).status).toBe(200);
+    expect(app.actionCalls.at(-1)).toMatchObject({ name: 'member.remove', id: 9, actor: REGULAR.login });
+    expect(app.invalidations()).toBe(inv + 3);
+  });
+
+  test('карточка человека: правит любой вход, удаляет только полный', async () => {
+    const reg = await signIn(REGULAR);
+    expect((await post(reg, 'persons/3/update', { fields: { fio: 'Анна' } })).status).toBe(200);
+    expect(app.actionCalls.at(-1)).toMatchObject({ name: 'person.update', id: 3 });
+    const before = app.actionCalls.length;
+    expect((await post(reg, 'persons/3/delete', {})).status).toBe(403);
+    expect(app.actionCalls.length).toBe(before);
+    expect((await post(await signIn(SUPER), 'persons/3/delete', {})).status).toBe(200);
+    expect(app.actionCalls.at(-1)).toMatchObject({ name: 'person.delete', id: 3, actor: SUPER.login });
+  });
+
+  test('чужие адреса — 404', async () => {
+    const cookie = await signIn(REGULAR);
+    for (const path of ['groups/abc/members/create', 'members/9/archive', 'members/create', 'groups/5/members', 'persons/x/update']) {
+      expect((await post(cookie, path, {})).status, path).toBe(404);
+    }
+  });
+});
+
+describe('чат помощника', () => {
+  const post = (cookie: string | null, body: unknown) => fetch(`${app.base}/api/v1/assistant/chat`, {
+    method: 'POST', headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body),
+  });
+
+  test('без входа 401; с входом любой вопрос уходит в чат вместе с автором, ответ возвращается как есть', async () => {
+    expect((await post(null, { messages: [] })).status).toBe(401);
+    const body = { messages: [{ role: 'user', content: 'Где перебор?' }] };
+    const r = await post(await signIn(REGULAR), body);
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ ok: true, answer: 'Перебор в ДГ-0001.' });
+    expect(app.chatCalls.at(-1)).toEqual({ body, actor: REGULAR.login });
+  });
+
+  test('не подключён → 503, лимит вопросов → 409, неверный вопрос → 400, и всё с текстом', async () => {
+    const cookie = await signIn(REGULAR);
+    try {
+      for (const [error, status] of [['unavailable', 503], ['conflict', 409], ['bad_request', 400]] as const) {
+        app.setChatOutcome({ ok: false, error, message: `текст ${error}` });
+        const r = await post(cookie, { messages: [{ role: 'user', content: 'x' }] });
+        expect(r.status).toBe(status);
+        expect(await r.json()).toEqual({ error, message: `текст ${error}` });
+      }
+    } finally { app.setChatOutcome({ ok: true, answer: 'Перебор в ДГ-0001.', queries: [], tables: [] }); }
+  });
+
+  test('форма с другого сайта (не JSON) отклоняется: 415', async () => {
+    const r = await fetch(`${app.base}/api/v1/assistant/chat`, {
+      method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: await signIn(REGULAR) }, body: 'messages=1',
+    });
+    expect(r.status).toBe(415);
+  });
+
+  test('«кто я» сообщает состояние помощника для кнопки', async () => {
+    const me = await (await fetch(`${app.base}/api/v1/me`, { headers: { cookie: await signIn(REGULAR) } })).json();
+    expect(me).toEqual({ role: 'admin', assistant: { available: true, enabled: true, chat: true } });
+  });
+});
+
+describe('помощник по разбору заявок', () => {
+  const post = (cookie: string | null, path: string, body: unknown) => fetch(`${app.base}/api/v1/${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body),
+  });
+
+  test('запуск: без входа 401, любой вход запускает, ответ с числами, снимок сбрасывается', async () => {
+    expect((await post(null, 'assistant/run', {})).status).toBe(401);
+    const inv = app.invalidations();
+    const r = await post(await signIn(REGULAR), 'assistant/run', {});
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, asked: 3, filled: 2, withQuestions: 1, proposals: 1 });
+    expect(app.assistantCalls.at(-1)).toEqual({ name: 'run', actor: REGULAR.login });
+    expect(app.invalidations()).toBe(inv + 1);
+  });
+
+  test('помощник не подключён или выключен — 503 с понятным текстом; уже идёт разбор — 409', async () => {
+    try {
+      app.setAssistantOutcome({ ok: false, error: 'unavailable', message: 'Помощник выключен.' });
+      const off = await post(await signIn(REGULAR), 'assistant/run', {});
+      expect(off.status).toBe(503);
+      expect(await off.json()).toEqual({ error: 'unavailable', message: 'Помощник выключен.' });
+      app.setAssistantOutcome({ ok: false, error: 'conflict', message: 'Разбор уже идёт.' });
+      expect((await post(await signIn(REGULAR), 'assistant/run', {})).status).toBe(409);
+    } finally { app.setAssistantOutcome({ ok: true, asked: 3, filled: 2, withQuestions: 1, proposals: 1 }); }
+  });
+
+  test('настройки помощника — только полный вход; переключатель принимает только true или false', async () => {
+    const reg = await signIn(REGULAR);
+    expect((await fetch(`${app.base}/api/v1/settings/assistant`, { headers: { cookie: reg } })).status).toBe(403);
+    expect((await post(reg, 'settings/assistant/enabled', { enabled: true })).status).toBe(403);
+    const sup = await signIn(SUPER);
+    const view = await fetch(`${app.base}/api/v1/settings/assistant`, { headers: { cookie: sup } });
+    expect(await view.json()).toMatchObject({ available: true, enabled: false, model: 'fake' });
+    expect((await post(sup, 'settings/assistant/enabled', { enabled: true })).status).toBe(200);
+    expect(app.assistantCalls.at(-1)).toEqual({ name: 'enabled', actor: SUPER.login, enabled: true });
+    const before = app.assistantCalls.length;
+    for (const body of [{}, { enabled: 'да' }, null, { enabled: 1 }]) {
+      expect((await post(sup, 'settings/assistant/enabled', body)).status, JSON.stringify(body)).toBe(400);
+    }
+    expect(app.assistantCalls.length).toBe(before);
+  });
+
+  test('ключ и его значение в ответах настроек не встречаются', async () => {
+    const view = await (await fetch(`${app.base}/api/v1/settings/assistant`, { headers: { cookie: await signIn(SUPER) } })).text();
+    expect(view).not.toMatch(/sk-|api_?key|DEEPSEEK/i);
+  });
+});
+
+describe('настройка бота «новые вопросы анкеты»', () => {
+  test('только полный вход: обычному 403 на чтение и запись, полному — данные и сохранение с автором', async () => {
+    const reg = await signIn(REGULAR);
+    expect((await fetch(`${app.base}/api/v1/settings/bot`, { headers: { cookie: reg } })).status).toBe(403);
+    const deniedPost = await fetch(`${app.base}/api/v1/settings/bot/extra-questions`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: reg }, body: JSON.stringify({ mode: 'all' }),
+    });
+    expect(deniedPost.status).toBe(403);
+    const sup = await signIn(SUPER);
+    const view = await fetch(`${app.base}/api/v1/settings/bot`, { headers: { cookie: sup } });
+    expect(view.status).toBe(200);
+    expect(await view.json()).toHaveProperty('extraQuestions.mode', 'off');
+    const before = app.settingsCalls.length;
+    const saved = await fetch(`${app.base}/api/v1/settings/bot/extra-questions`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie: sup }, body: JSON.stringify({ mode: 'all' }),
+    });
+    expect(saved.status).toBe(200);
+    expect(app.settingsCalls.slice(before)).toEqual([{ name: 'bot.save', actor: SUPER.login, body: { mode: 'all' } }]);
+  });
+});
+
+describe('закрытие заявки, возврат в работу, регистрация, кампания', () => {
+  const post = (cookie: string | null, path: string, body: unknown) => fetch(`${app.base}/api/v1/${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body),
+  });
+
+  test.each([['close', { outcome: 'cancel', reason: 'no_answer' }], ['reopen', {}]])('%s: доступно обычному входу, тело и автор передаются', async (action, body) => {
+    const inv = app.invalidations();
+    expect((await post(null, `requests/9/${action}`, body)).status).toBe(401);
+    const r = await post(await signIn(REGULAR), `requests/9/${action}`, body);
+    expect(r.status).toBe(200);
+    expect(app.actionCalls.at(-1)).toMatchObject({ name: action, id: 9, actor: REGULAR.login });
+    expect(app.invalidations()).toBe(inv + 1);
+  });
+
+  test('удаление регистрации: обычному входу 403, полному — выполняется; правка людей через этот путь не существует', async () => {
+    const before = app.actionCalls.length;
+    expect((await post(await signIn(REGULAR), 'people/5/delete', {})).status).toBe(403);
+    expect(app.actionCalls.length).toBe(before);
+    expect((await post(await signIn(SUPER), 'people/5/delete', {})).status).toBe(200);
+    expect(app.actionCalls.at(-1)).toMatchObject({ name: 'person.delete', id: 5, actor: SUPER.login });
+    expect((await post(await signIn(SUPER), 'people/5/update', { fields: {} })).status).toBe(404);
+  });
+
+  test('кампания «40 дней»: без входа 401, со входом — данные', async () => {
+    expect((await fetch(`${app.base}/api/v1/campaign`)).status).toBe(401);
+    const r = await fetch(`${app.base}/api/v1/campaign`, { headers: { cookie: await signIn(REGULAR) } });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toHaveProperty('day.number', 3);
+  });
+
+  test('страница регистрации без входа ведёт на вход с возвратом, после входа возвращает на неё', async () => {
+    const anon = await fetch(`${app.base}/registration`, { redirect: 'manual' });
+    expect(anon.status).toBe(302);
+    expect(anon.headers.get('location')).toBe('/login?next=/registration');
+    const page = await (await fetch(`${app.base}/login?next=/registration`)).text();
+    expect(page).toContain('name="next" value="/registration"');
+    const login = await fetch(`${app.base}/login`, {
+      method: 'POST', redirect: 'manual',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-real-ip': nextIp() },
+      body: new URLSearchParams({ login: REGULAR.login, password: REGULAR.password, next: '/registration' }),
+    });
+    expect(login.status).toBe(302);
+    expect(login.headers.get('location')).toBe('/registration');
+    const cookie = login.headers.get('set-cookie')!.split(';')[0]!;
+    const shown = await fetch(`${app.base}/registration`, { headers: { cookie } });
+    expect(shown.status).toBe(200);
+    expect(await shown.text()).toContain('id="root"');
+  });
+
+  test('возврат после входа только на страницу регистрации: чужой адрес в next игнорируется', async () => {
+    const login = await fetch(`${app.base}/login`, {
+      method: 'POST', redirect: 'manual',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-real-ip': nextIp() },
+      body: new URLSearchParams({ login: REGULAR.login, password: REGULAR.password, next: 'https://evil.example/' }),
+    });
+    expect(login.headers.get('location')).toBe('/');
   });
 });
 

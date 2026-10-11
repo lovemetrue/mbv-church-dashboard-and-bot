@@ -3,7 +3,7 @@
  * Вынесено отдельно от raw.ts, чтобы не раздувать сырые данные и не мешать правке групп.
  * Вымышленные данные; у заявок из таблицы анкеты нет, поэтому у них всё пусто.
  */
-import type { OriginalField, ParamInfo } from '@contracts';
+import type { AssistantNote, OriginalField, ParamInfo } from '@contracts';
 import { formatPhone } from '../entities/format';
 import type { RawRequest } from './raw';
 
@@ -11,6 +11,7 @@ export interface RequestExtras {
   scheduleInfo: ParamInfo;
   streetInfo: ParamInfo;
   original: OriginalField[];
+  assistant: AssistantNote | null;
 }
 
 const none: ParamInfo = { text: null, source: null };
@@ -52,12 +53,28 @@ const SAID: Record<number, { time?: ParamInfo; street?: ParamInfo }> = {
   19: { time: anketa('понедельник с утра') },
 };
 
+/**
+ * Разбор помощника в демо: у заявки 4 он определил район и время, у 8 ничего не смог определить и подсказал вопросы.
+ * Всего таких заявок две, а «ждут разбора» в демо три (см. `buildRequests`): одна ещё не разобрана.
+ */
+const ASSISTANT: Record<number, AssistantNote> = {
+  4: {
+    filled: ['район', 'время'],
+    questions: ['Какая станция метро или остановка к вам ближе всего?', 'По четвергам или пятницам вам удобнее, и во сколько заканчивается работа?'],
+  },
+  8: {
+    filled: [],
+    questions: ['Рядом с какой станцией метро вы живёте?', 'Сколько вам лет: к какой возрастной категории вас отнести?', 'В какие дни недели и в какое время вам удобно приходить?'],
+  },
+};
+
 export function requestExtras(r: RawRequest): RequestExtras {
   const said = SAID[r.id] ?? {};
   const fromBot = r.source.startsWith('Бот');
   return {
     scheduleInfo: said.time ?? none,
     streetInfo: said.street ?? none,
+    assistant: ASSISTANT[r.id] ?? null,
     // В анкете человек писал сам; координаторскую правку в «исходное» не кладём.
     original: fromBot
       ? answers(

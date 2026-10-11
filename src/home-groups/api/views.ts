@@ -1,5 +1,8 @@
 import type { DashboardGroup } from '../../db/repos/groups.repo.js';
-import type { AuditRow } from '../../db/repos/audit.repo.js';
+import type { MemberRow, PersonRow } from '../../db/repos/members.repo.js';
+import type { StoredHint } from '../../db/repos/hints.repo.js';
+import { baseHash, needsOf, anyNeed, type RawBrief } from '../assistant/brief.js';
+import type { ActivityRow, AuditRow } from '../../db/repos/audit.repo.js';
 import type { DashboardRequest } from '../../db/repos/requests.repo.js';
 import type { RegisteredParticipant } from '../../db/repos/users.repo.js';
 import type { CoordinatorRow } from '../../db/repos/coordinators.repo.js';
@@ -8,11 +11,12 @@ import { inputSignature } from '../plan/signature.js';
 import { formatPhone } from '../../core/phone.js';
 import type {
   Bucket, Candidate, Counters, CoordinatorItem, CoordinatorsView, GroupBrief, GroupItem, GroupsView,
-  HealthItem, LogEntry, MatchingStatus, NoPlan, OriginalField, ParamInfo, PeopleView, PersonItem, Proposal, RequestItem, RequestsView, TodayView,
+  HealthItem, LogEntry, MatchingStatus, NoPlan, OriginalField, ParamInfo, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, GroupMember, OtherItem, RequestsView, TeamView, TodayView,
 } from '../contracts.js';
 import type {
   Day, PlanEngineApi, PlanEntry, PlanEntryProposal, PlanGroup, PlanOutput, PlanRequest, ScoredGroup, Slot,
 } from '../plan/types.js';
+import { buildTeam } from './team.js';
 import { daysSince, localIsoDate, validIsoDate } from './dates.js';
 
 /** Уже загруженные строки: функция ниже ничего не читает из базы и не знает про сеть. */
@@ -25,6 +29,16 @@ export interface ViewsInput {
   rejectedGroups?: ReadonlyMap<number, readonly number[]>;
   /** Действия над заявками из журнала: показываются в ленте карточки. */
   audit?: readonly AuditRow[];
+  /** Действия за неделю по людям (для сводки руководителя). */
+  activity?: readonly ActivityRow[];
+  /** Разбор помощника по заявкам (см. `request_hints`): подставляется там, где скрипт ничего не понял. */
+  hints?: ReadonlyMap<number, StoredHint>;
+  /** Состав групп, внесённый вручную. */
+  members?: readonly MemberRow[];
+  /** Карточки людей, внесённые вручную. */
+  persons?: readonly PersonRow[];
+  /** Подключён ли помощник (есть ключ) и включён ли он в настройках. */
+  assistant?: { available: boolean; enabled: boolean };
   /**
    * Накопленные предложения (заявка → группа и кто предложил). Они закрепляют выбор: движок
    * сохраняет группу, пока она остаётся доступной, и подбирает новые заявки вокруг неё.
@@ -45,6 +59,7 @@ export interface ViewsOptions {
 
 /** Всё, что отдают ручки API, посчитанное за один проход по одному снимку данных. */
 export interface Views {
+  team: TeamView;
   today: TodayView;
   requests: RequestsView;
   groups: GroupsView;
@@ -93,6 +108,16 @@ const REJECT_REASON_TEXT: Record<string, string> = {
   other: 'другое',
 };
 
+const CANCEL_TEXT: Record<string, string> = {
+  declined: 'отказались', no_answer: 'не отвечают', duplicate: 'дубль заявки', self_found: 'нашли группу сами', other: 'другое',
+};
+
+const TYPE_LABEL: Record<OtherItem['type'], string> = {
+  join_group: 'Хочет в домашнюю группу', lead_group: 'Хочет открыть группу или дать дом', question: 'Вопрос служителю',
+  already_member: 'Уже состоит в группе', already_leader: 'Уже ведёт группу',
+};
+const OTHER_CLOSED_LIMIT = 200;
+
 const CALL_RESULT_TEXT: Record<string, string> = {
   reached: 'Звонок: дозвонились', no_answer: 'Звонок: не дозвонились', later: 'Звонок: просили перезвонить позже', refused: 'Звонок: отказался',
 };
@@ -135,6 +160,15 @@ function auditText(a: AuditRow): string | null {
       const note = nonBlank(a.note);
       return `${text}${note ? ` («${note}»)` : ''} · ${a.actor}`;
     }
+    case 'request.close': {
+      const note = nonBlank(a.note);
+      const what = after['outcome'] === 'cancel'
+        ? `Аннулирована: ${CANCEL_TEXT[String(after['reason'])] ?? 'причина не указана'}`
+        : 'Отмечена обработанной';
+      return `${what}${note ? ` («${note}»)` : ''} · ${a.actor}`;
+    }
+    case 'request.reopen':
+      return `Возвращена в работу · ${a.actor}`;
     default:
       return null;
   }
@@ -217,7 +251,7 @@ export function buildViews(input: ViewsInput, engine: PlanEngineApi, now: Date, 
 /** Представления и сам план: автоматический подбор берёт из плана то, что нужно сохранить. */
 export function buildViewsWithPlan(
   input: ViewsInput, engine: PlanEngineApi, now: Date, options: ViewsOptions = {},
-): { views: Views; plan: PlanOutput; openRequestIds: number[]; signatures: Map<number, string> } {
+): { views: Views; plan: PlanOutput; openRequestIds: number[]; signatures: Map<number, string>; assistantCandidates: { id: number; brief: RawBrief }[] } {
   const defaultCapacity = options.defaultCapacity ?? DEFAULT_CAPACITY;
   const timeZone = options.timeZone ?? DEFAULT_TIME_ZONE;
   const today = localIsoDate(now, timeZone);
@@ -285,22 +319,57 @@ export function buildViewsWithPlan(
   const scheduleOf = (r: DashboardRequest): ParamInfo => paramInfo(r.manual_schedule, r.schedule);
   const streetOf = (r: DashboardRequest): ParamInfo => paramInfo(r.manual_street, r.address);
 
-  const planRequestOf = (r: DashboardRequest): PlanRequest => ({
-    id: r.id,
-    fio: nonBlank(r.fio) ?? 'Без имени',
-    ageRange: engine.parseAgeRange(r.age),
-    district: engine.resolveDistrict(nonBlank(r.place), metroIndex),
-    place: nonBlank(r.place),
-    // Удобные дни и время — свободный текст человека или правка координатора; разбираем его честно:
-    // что неясно, остаётся пустым.
-    ...humanWhen(scheduleOf(r).text),
-    street: streetOf(r).text,
-    rejectedGroupIds: [...(input.rejectedGroups?.get(r.id) ?? [])],
-    avoidDays: [],
-    avoidSlots: [],
-    pinnedGroupId: null,
-    waitingDays: daysSince(validIsoDate(r.date), today),
-  });
+  /** Записи человека, которые читает помощник (после очистки от контактов), и разбор скриптом. */
+  const briefOf = (r: DashboardRequest): RawBrief => ({ place: nonBlank(r.place), age: nonBlank(r.age), schedule: scheduleOf(r).text });
+  /** Разбор помощника применяется, только пока запись та же, по которой он сделан. */
+  const hintOf = (r: DashboardRequest): StoredHint | null => {
+    const h = input.hints?.get(r.id);
+    return h && h.baseHash === baseHash(briefOf(r)) ? h : null;
+  };
+
+  /** Что подставил помощник вместо непонятого скриптом — для пометки «проверьте» и для расчёта. */
+  const resolveWithHint = (r: DashboardRequest) => {
+    const b = briefOf(r);
+    const hint = hintOf(r);
+    const scriptDistrict = engine.resolveDistrict(b.place, metroIndex);
+    const scriptAge = engine.parseAgeRange(r.age);
+    const scriptWhen = humanWhen(b.schedule);
+    const whenKnown = scriptWhen.days.length > 0 || scriptWhen.slot !== null;
+    const filled: ('район' | 'возраст' | 'время')[] = [];
+    let district = scriptDistrict;
+    let ageRange = scriptAge;
+    let when = scriptWhen;
+    if (hint) {
+      if (district === null && hint.district) { district = hint.district; filled.push('район'); }
+      const hintAge = hint.age ? engine.parseAgeRange(hint.age) : null;
+      if (ageRange === null && hintAge) { ageRange = hintAge; filled.push('возраст'); }
+      if (!whenKnown && (hint.days.length > 0 || hint.slot)) {
+        when = { days: hint.days as Day[], slot: (hint.slot as Slot | null) ?? null };
+        filled.push('время');
+      }
+    }
+    return { district, ageRange, when, filled, hint, needs: needsOf(b, { district: scriptDistrict, ageKnown: scriptAge !== null, whenKnown }) };
+  };
+
+  const planRequestOf = (r: DashboardRequest): PlanRequest => {
+    const resolved = resolveWithHint(r);
+    return {
+      id: r.id,
+      fio: nonBlank(r.fio) ?? 'Без имени',
+      ageRange: resolved.ageRange,
+      district: resolved.district,
+      place: nonBlank(r.place),
+      // Удобные дни и время — свободный текст человека или правка координатора; разбираем его честно:
+      // что неясно, остаётся пустым (или берётся из разбора помощника, если он есть).
+      ...resolved.when,
+      street: streetOf(r).text,
+      rejectedGroupIds: [...(input.rejectedGroups?.get(r.id) ?? [])],
+      avoidDays: [],
+      avoidSlots: [],
+      pinnedGroupId: null,
+      waitingDays: daysSince(validIsoDate(r.date), today),
+    };
+  };
 
   const joinById = new Map(joinRequests.map((r) => [r.id, r]));
   // Отпечаток данных заявки и закрепление: предложение, полученное по другим данным, устарело —
@@ -391,6 +460,20 @@ export function buildViewsWithPlan(
     return log;
   };
 
+  /** Разбор помощника для карточки: что он определил (проверьте) и что советует спросить. */
+  const assistantNote = (r: DashboardRequest): AssistantNote | null => {
+    const { hint, filled } = resolveWithHint(r);
+    if (!hint || (filled.length === 0 && hint.questions.length === 0)) return null;
+    return { filled, questions: [...hint.questions] };
+  };
+
+  // Что помощник может разобрать сейчас: открытые заявки, где в записи есть текст, а скрипт его не понял, и разбора ещё нет.
+  const assistantCandidates: { id: number; brief: RawBrief }[] = [];
+  for (const r of openRequests) {
+    const resolved = resolveWithHint(r);
+    if (!resolved.hint && anyNeed(resolved.needs)) assistantCandidates.push({ id: r.id, brief: briefOf(r) });
+  }
+
   const requestItems: RequestItem[] = [];
   for (const r of joinRequests) {
     const bucket = bucketById.get(r.id)!;
@@ -419,6 +502,7 @@ export function buildViewsWithPlan(
       dataFill: [pr.district !== null, pr.ageRange !== null, pr.days.length > 0 || pr.slot !== null, pr.street !== null],
       proposal,
       noPlan,
+      assistant: assistantNote(r),
       finalGroup: finalBrief,
       finalGroupText: bucket === 'done' && !finalBrief ? nonBlank(r.final_group) : null,
       responsible: nonBlank(r.responsible),
@@ -426,6 +510,33 @@ export function buildViewsWithPlan(
       log: logOf(r, finalBrief),
     });
   }
+  // Остальные обращения: всё, что не идёт в подбор, и аннулированные «хочу в группу» (чтобы вернуть в работу).
+  const otherAll = input.requests.filter((r) => r.type !== 'join_group' || bucketById.get(r.id) === 'cancelled');
+  const otherState = (r: DashboardRequest): OtherItem['state'] => (r.status === DONE ? 'done' : r.status === CANCELLED ? 'cancelled' : 'open');
+  const otherItem = (r: DashboardRequest): OtherItem => ({
+    id: r.id,
+    type: r.type as OtherItem['type'],
+    typeLabel: TYPE_LABEL[r.type as OtherItem['type']] ?? 'Обращение',
+    state: otherState(r),
+    fio: nonBlank(r.fio) ?? 'Без имени',
+    phone: displayPhone(r.phones, r.phone),
+    ageLabel: nonBlank(r.age),
+    place: nonBlank(r.place),
+    status: r.status,
+    source: sourceLabel(r.origin, r.source),
+    waitingDays: daysSince(validIsoDate(r.date), today),
+    callback: r.callback,
+    responsible: nonBlank(r.responsible),
+    note: joinParts([r.note, r.extra], ' | '),
+    cancelReason: nonBlank(r.cancel_reason),
+    original: originalFields(r),
+    log: logOf(r, null),
+  });
+  const otherOpen = otherAll.filter((r) => otherState(r) === 'open').map(otherItem)
+    .sort((a, b) => Number(b.callback) - Number(a.callback) || (b.waitingDays ?? -1) - (a.waitingDays ?? -1) || a.id - b.id);
+  const otherClosed = otherAll.filter((r) => otherState(r) !== 'open').map(otherItem)
+    .sort((a, b) => b.id - a.id).slice(0, OTHER_CLOSED_LIMIT);
+
   requestItems.sort((a, b) =>
     (BUCKET_ORDER[a.bucket] ?? 99) - (BUCKET_ORDER[b.bucket] ?? 99)
     || (b.waitingDays ?? -1) - (a.waitingDays ?? -1)
@@ -444,6 +555,50 @@ export function buildViewsWithPlan(
     }
     plannedByGroup.set(groupId, list);
   }
+
+  // Состав групп: направленные через сервис (заявка «Исполнена» с группой) и внесённые вручную (ссылки на справочник людей).
+  const membersByGroup = new Map<number, GroupMember[]>();
+  const addMember = (groupId: number, m: GroupMember) => membersByGroup.set(groupId, [...(membersByGroup.get(groupId) ?? []), m]);
+  // Человек из справочника один и тот же независимо от того, как он в состав попал: ключ u/r/p.
+  const manualKeys = new Map<number, Set<string>>();
+  for (const m of input.members ?? []) {
+    manualKeys.set(m.group_id, (manualKeys.get(m.group_id) ?? new Set<string>()).add(m.personKey));
+    addMember(m.group_id, {
+      kind: 'manual', id: m.id, personKey: m.personKey, fio: nonBlank(m.full_name) ?? 'Без имени',
+      phone: nonBlank(formatPhone(nonBlank(m.phone))), date: validIsoDate(m.joined_on), note: nonBlank(m.note), alsoIn: [],
+    });
+  }
+  for (const r of joinRequests) {
+    if (r.status !== DONE || r.group_id === null) continue;
+    const key = r.user_id !== null ? `u${r.user_id}` : `r${r.id}`;
+    // Внесён и вручную, и утверждён: показываем одну строку, ручная точнее (в ней дата вступления).
+    if (manualKeys.get(r.group_id)?.has(key)) continue;
+    const approved = (auditByRequest.get(r.id) ?? []).filter((a) => a.action === 'request.approve').at(-1);
+    addMember(r.group_id, {
+      kind: 'placed', id: r.id, personKey: key, fio: nonBlank(r.fio) ?? 'Без имени', phone: displayPhone(r.phones, r.phone),
+      date: approved?.at ? localIsoDate(approved.at, timeZone) : null, note: null, alsoIn: [],
+    });
+  }
+  // «Есть и в другой группе»: тот же человек по телефону, а без телефона — по ключу справочника.
+  const identOf = (m: GroupMember): string => {
+    const digits = (m.phone ?? '').replace(/\D/g, '');
+    return digits.length >= 10 ? `t:${digits.slice(-10)}` : `k:${m.personKey}`;
+  };
+  const groupsOfIdent = new Map<string, Set<number>>();
+  const groupsOfPerson = new Map<string, Set<number>>();
+  for (const [groupId, list] of membersByGroup) {
+    for (const m of list) {
+      groupsOfIdent.set(identOf(m), (groupsOfIdent.get(identOf(m)) ?? new Set<number>()).add(groupId));
+      groupsOfPerson.set(m.personKey, (groupsOfPerson.get(m.personKey) ?? new Set<number>()).add(groupId));
+    }
+  }
+  for (const [groupId, list] of membersByGroup) {
+    for (const m of list) {
+      m.alsoIn = [...(groupsOfIdent.get(identOf(m)) ?? [])].filter((id) => id !== groupId).sort((x, y) => x - y).map(groupCode);
+    }
+  }
+  const memberOrder = (m: GroupMember): number => (m.kind === 'placed' ? 0 : 1);
+  const groupCodesOf = (key: string): string[] => [...(groupsOfPerson.get(key) ?? [])].sort((x, y) => x - y).map(groupCode);
 
   const groupItems: GroupItem[] = input.groups.map((g) => {
     const p = planGroupById.get(g.id)!;
@@ -465,6 +620,7 @@ export function buildViewsWithPlan(
       health: groupHealth(g, p),
       placedNew: input.placedNew?.get(g.id) ?? 0,
       plannedRequests: plannedByGroup.get(g.id) ?? [],
+      members: [...(membersByGroup.get(g.id) ?? [])].sort((a, b) => memberOrder(a) - memberOrder(b)),
     };
   });
 
@@ -479,6 +635,8 @@ export function buildViewsWithPlan(
   for (const u of input.participants) {
     people.push({
       key: `u${u.id}`,
+      personId: null,
+      groups: groupCodesOf(`u${u.id}`),
       fio: nonBlank(u.full_name) ?? 'Без имени',
       phone: nonBlank(formatPhone(nonBlank(u.phone))),
       ageLabel: nonBlank(u.age),
@@ -497,6 +655,8 @@ export function buildViewsWithPlan(
     const pr = planRequests.get(r.id)!;
     people.push({
       key: `r${r.id}`,
+      personId: null,
+      groups: groupCodesOf(`r${r.id}`),
       fio: pr.fio,
       phone: displayPhone(r.phones, r.phone),
       ageLabel: nonBlank(r.age),
@@ -507,6 +667,24 @@ export function buildViewsWithPlan(
       mdgLabel: `Заявка: ${BUCKET_NAMES[bucketById.get(r.id)!]}`,
       date: validIsoDate(r.date),
       requestId: r.id,
+    });
+  }
+  // Карточки, внесённые вручную (кого нет ни среди зарегистрированных, ни среди заявок).
+  for (const p of input.persons ?? []) {
+    people.push({
+      key: `p${p.id}`,
+      personId: p.id,
+      groups: groupCodesOf(`p${p.id}`),
+      fio: nonBlank(p.full_name) ?? 'Без имени',
+      phone: nonBlank(formatPhone(nonBlank(p.phone))),
+      ageLabel: nonBlank(p.age),
+      district: engine.resolveDistrict(nonBlank(p.place), metroIndex),
+      from: 'Внесён вручную',
+      userId: null,
+      registrationNo: null,
+      mdgLabel: 'Не спрошено',
+      date: localIsoDate(new Date(p.created_at), options.timeZone ?? DEFAULT_TIME_ZONE),
+      requestId: null,
     });
   }
   people.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || a.key.localeCompare(b.key));
@@ -541,6 +719,7 @@ export function buildViewsWithPlan(
   ).length;
 
   const views: Views = {
+    team: buildTeam(requestItems, [...(input.activity ?? [])], generatedAt, [...otherOpen, ...otherClosed]),
     today: {
       generatedAt,
       counters,
@@ -558,12 +737,14 @@ export function buildViewsWithPlan(
       matching: { auto: input.matching?.auto ?? false, lastRun: input.matching?.lastRun ?? null, waiting, saved },
       items: requestItems,
       counters,
+      others: [...otherOpen, ...otherClosed],
+      assistant: { available: input.assistant?.available ?? false, enabled: input.assistant?.enabled ?? false, pending: assistantCandidates.length },
     },
     groups: { generatedAt, items: groupItems },
     people: { generatedAt, items: people },
     coordinators: { generatedAt, items: coordinatorItems },
   };
-  return { views, plan, openRequestIds: openRequests.map((r) => r.id), signatures };
+  return { views, plan, openRequestIds: openRequests.map((r) => r.id), signatures, assistantCandidates };
 }
 
 /**

@@ -180,7 +180,7 @@ export class Router {
       leadPhoneTaken,
       now: Date.now(),
       extraQuestions: extraQuestionsEnabled(
-        this.deps.extraQuestions,
+        await this.deps.extraQuestionsNow(),
         update.ctx.platform,
         update.ctx.platformUserId,
       ),

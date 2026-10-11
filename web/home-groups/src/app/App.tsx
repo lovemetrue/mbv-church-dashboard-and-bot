@@ -1,11 +1,15 @@
 import { useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useMe } from '../shared/api/queries';
 import { ru } from '../shared/i18n/ru';
 import { useAppNav } from '../shared/nav';
 import { LoadingState } from '../shared/ui';
+import { AssistantChat } from '../features/assistant-chat';
+import { isRegistrationPath, RegistrationPage } from '../features/create/RegistrationPage';
 import { RequestsScreen } from '../features/requests/RequestsScreen';
 import { ReferenceScreen } from '../features/reference/ReferenceScreen';
 import { SettingsScreen } from '../features/settings/SettingsScreen';
+import { TeamScreen } from '../features/team/TeamScreen';
 import { TodayScreen } from '../features/today/TodayScreen';
 import styles from './App.module.css';
 import { Header } from './Header';
@@ -30,8 +34,18 @@ function SettingsRoute() {
   return denied ? null : <LoadingState />;
 }
 
-/** Оболочка: шапка, вкладки и содержимое выбранной вкладки. Роутер и провайдеры — снаружи. */
+/**
+ * Оболочка: шапка, вкладки и содержимое выбранной вкладки. Роутер и провайдеры — снаружи.
+ * Страница `/registration` решается до оболочки, а не внутри неё: оболочка при показе тут же начинает читать
+ * заявки и «Сегодня», а волонтёру на месте нужна только форма.
+ */
 export function App() {
+  const { pathname } = useLocation();
+  if (isRegistrationPath(pathname)) return <RegistrationPage />;
+  return <Shell />;
+}
+
+function Shell() {
   const nav = useAppNav();
   return (
     <div className={styles.wrap}>
@@ -43,9 +57,11 @@ export function App() {
       <main id={PANEL_ID} role="tabpanel" aria-labelledby={tabDomId(nav.tab)} tabIndex={-1} className={styles.main}>
         {nav.tab === 'today' && <TodayScreen />}
         {nav.tab === 'requests' && <RequestsScreen />}
+        {nav.tab === 'team' && <TeamScreen />}
         {nav.tab === 'reference' && <ReferenceScreen />}
         {nav.tab === 'settings' && <SettingsRoute />}
       </main>
+      <AssistantChat />
     </div>
   );
 }

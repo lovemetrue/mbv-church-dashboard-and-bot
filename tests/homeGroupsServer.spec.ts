@@ -42,6 +42,7 @@ const nextIp = () => `10.2.0.${++ipCounter}`;
 interface ActionCall { name: string; id: number; body: unknown; actor: string }
 interface Started {
   base: string; viewsCalls: () => number; close: () => void; setViews: (f: () => Promise<ReturnType<typeof sampleViews>>) => void;
+  chatCalls: { body: unknown; actor: string }[]; setChatOutcome: (o: unknown) => void;
   assistantCalls: { name: string; actor: string; enabled?: boolean }[]; setAssistantOutcome: (o: unknown) => void;
   actionCalls: ActionCall[]; auditCalls: { actor: string; action: string; after: unknown }[]; invalidations: () => number; setOutcome: (o: ActionOutcome) => void;
   matchingCalls: { name: string; actor: string; enabled?: boolean }[];
@@ -57,6 +58,8 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
   let outcome: ActionOutcome = { ok: true };
   let settingsOutcome: ActionOutcome = { ok: true };
   const actionCalls: ActionCall[] = [];
+  const chatCalls: { body: unknown; actor: string }[] = [];
+  let chatOutcome: unknown = { ok: true, answer: 'Перебор в ДГ-0001.', queries: [{ sql: 'select 1', ok: true, rows: 1 }], tables: [] };
   const assistantCalls: { name: string; actor: string; enabled?: boolean }[] = [];
   let assistantOutcome: unknown = { ok: true, asked: 3, filled: 2, withQuestions: 1, proposals: 1 };
   const auditCalls: { actor: string; action: string; after: unknown }[] = [];
@@ -109,7 +112,11 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
       updatePerson: async (id: number, body: unknown, actor: string) => { actionCalls.push({ name: 'person.update', id, body, actor }); return outcome; },
       deletePerson: async (id: number, actor: string) => { actionCalls.push({ name: 'person.delete', id, body: undefined, actor }); return outcome; },
     } as never,
+    chat: {
+      ask: async (body: unknown, actor: string) => { chatCalls.push({ body, actor }); return chatOutcome; },
+    } as never,
     assistant: {
+      status: async () => ({ available: true, enabled: true, chat: true }),
       run: async (actor: string) => { assistantCalls.push({ name: 'run', actor }); return assistantOutcome; },
       setEnabled: async (enabled: boolean, actor: string) => { assistantCalls.push({ name: 'enabled', actor, enabled }); },
       view: async () => ({ generatedAt: 'g', available: true, enabled: false, model: 'fake', lastRun: null }),
@@ -160,7 +167,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
     viewsCalls: () => calls,
     close: () => { server.close(); },
     setViews: (f) => { views = f; },
-    actionCalls, auditCalls, assistantCalls, setAssistantOutcome: (o: unknown) => { assistantOutcome = o; }, matchingCalls, settingsCalls, reported, staffCalls, createCalls, setCreate: (o) => { createOutcome = o; }, setTokenInfo: (v) => { tokenInfo = v; }, setComplete: (v) => { complete = v; }, setSettingsOutcome: (o: ActionOutcome) => { settingsOutcome = o; }, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
+    actionCalls, auditCalls, assistantCalls, chatCalls, setChatOutcome: (o: unknown) => { chatOutcome = o; }, setAssistantOutcome: (o: unknown) => { assistantOutcome = o; }, matchingCalls, settingsCalls, reported, staffCalls, createCalls, setCreate: (o) => { createOutcome = o; }, setTokenInfo: (v) => { tokenInfo = v; }, setComplete: (v) => { complete = v; }, setSettingsOutcome: (o: ActionOutcome) => { settingsOutcome = o; }, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
   };
 }
 
@@ -1097,7 +1104,7 @@ describe('создание записей и справочники форм', (
 
   test('«кто я» отдаёт роль', async () => {
     const r = await fetch(`${app.base}/api/v1/me`, { headers: { cookie: await signIn(REGULAR) } });
-    expect(await r.json()).toEqual({ role: 'admin' });
+    expect(await r.json()).toMatchObject({ role: 'admin' });
   });
 
   test('правка параметров заявки передаёт тело и автора', async () => {
@@ -1241,6 +1248,45 @@ describe('состав группы и карточки людей', () => {
     for (const path of ['groups/abc/members/create', 'members/9/archive', 'members/create', 'groups/5/members', 'persons/x/update']) {
       expect((await post(cookie, path, {})).status, path).toBe(404);
     }
+  });
+});
+
+describe('чат помощника', () => {
+  const post = (cookie: string | null, body: unknown) => fetch(`${app.base}/api/v1/assistant/chat`, {
+    method: 'POST', headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body),
+  });
+
+  test('без входа 401; с входом любой вопрос уходит в чат вместе с автором, ответ возвращается как есть', async () => {
+    expect((await post(null, { messages: [] })).status).toBe(401);
+    const body = { messages: [{ role: 'user', content: 'Где перебор?' }] };
+    const r = await post(await signIn(REGULAR), body);
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ ok: true, answer: 'Перебор в ДГ-0001.' });
+    expect(app.chatCalls.at(-1)).toEqual({ body, actor: REGULAR.login });
+  });
+
+  test('не подключён → 503, лимит вопросов → 409, неверный вопрос → 400, и всё с текстом', async () => {
+    const cookie = await signIn(REGULAR);
+    try {
+      for (const [error, status] of [['unavailable', 503], ['conflict', 409], ['bad_request', 400]] as const) {
+        app.setChatOutcome({ ok: false, error, message: `текст ${error}` });
+        const r = await post(cookie, { messages: [{ role: 'user', content: 'x' }] });
+        expect(r.status).toBe(status);
+        expect(await r.json()).toEqual({ error, message: `текст ${error}` });
+      }
+    } finally { app.setChatOutcome({ ok: true, answer: 'Перебор в ДГ-0001.', queries: [], tables: [] }); }
+  });
+
+  test('форма с другого сайта (не JSON) отклоняется: 415', async () => {
+    const r = await fetch(`${app.base}/api/v1/assistant/chat`, {
+      method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: await signIn(REGULAR) }, body: 'messages=1',
+    });
+    expect(r.status).toBe(415);
+  });
+
+  test('«кто я» сообщает состояние помощника для кнопки', async () => {
+    const me = await (await fetch(`${app.base}/api/v1/me`, { headers: { cookie: await signIn(REGULAR) } })).json();
+    expect(me).toEqual({ role: 'admin', assistant: { available: true, enabled: true, chat: true } });
   });
 });
 

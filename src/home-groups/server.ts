@@ -12,6 +12,7 @@ import type { Registrar } from './registration.js';
 import type { Manager } from './manage.js';
 import type { BotSettings } from './botSettings.js';
 import type { Assistant } from './assistant/service.js';
+import type { Chat } from './assistant/chat.js';
 import type { Members } from './members.js';
 import { registrationCardPage } from '../dashboard/registrationCard.js';
 import type { Settings } from '../platform/settings/service.js';
@@ -62,6 +63,8 @@ export interface HomeGroupsDeps {
   members: Members;
   /** Помощник по разбору заявок (языковая модель). */
   assistant: Assistant;
+  /** Чат помощника: вопросы по базе, только чтение. */
+  chat: Chat;
   /** Настройки бота из интерфейса (только полный вход). */
   botSettings: BotSettings;
   /** Статистика кампании «40 дней»; null — расписание не задано. */
@@ -129,6 +132,7 @@ const MEMBER_PATH = /^\/api\/v1\/members\/(\d{1,15})\/(update|delete)$/;
 const PERSON_EDIT_PATH = /^\/api\/v1\/persons\/(\d{1,15})\/(update|delete)$/;
 const BULK_PATH = '/api/v1/requests/bulk';
 const ASSISTANT_RUN_PATH = '/api/v1/assistant/run';
+const ASSISTANT_CHAT_PATH = '/api/v1/assistant/chat';
 const EXPORT_PATH = /^\/api\/v1\/export\/(requests|people)\.csv$/;
 /** `GET /api/v1/people/12/card`: печатная карточка регистрации и её QR. */
 const PERSON_PATH = /^\/api\/v1\/people\/(\d{1,15})\/(qr|card)$/;
@@ -520,6 +524,19 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     sendJson(res, 200, outcome);
   }
 
+  /** Чат помощника. Тела вопросов и ответов в журнал не пишутся: в них имена и данные людей. */
+  async function handleAssistantChat(req: IncomingMessage, res: ServerResponse, sid: string | undefined): Promise<void> {
+    const call = await readAuthedJson(req, res, sid);
+    if (!call) return;
+    const outcome = await deps.chat.ask(call.body, call.actor);
+    if (!outcome.ok) {
+      sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
+      return;
+    }
+    logger.info({ actor: call.actor, queries: outcome.queries.length }, 'домашние группы: вопрос помощнику');
+    sendJson(res, 200, outcome);
+  }
+
   /** Разбор непонятных заявок помощником. Доступен обоим входам, пока помощник подключён и включён. */
   async function handleAssistantRun(req: IncomingMessage, res: ServerResponse, sid: string | undefined): Promise<void> {
     const call = await readAuthedJson(req, res, sid);
@@ -636,6 +653,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     const personEdit = req.method === 'POST' ? PERSON_EDIT_PATH.exec(path) : null;
     if (personEdit) { await handlePersonCard(req, res, Number(personEdit[1]), personEdit[2]!, sid); return; }
     if (req.method === 'POST' && path === BULK_PATH) { await handleBulk(req, res, sid); return; }
+    if (req.method === 'POST' && path === ASSISTANT_CHAT_PATH) { await handleAssistantChat(req, res, sid); return; }
     if (req.method === 'POST' && path === ASSISTANT_RUN_PATH) { await handleAssistantRun(req, res, sid); return; }
     const manage = req.method === 'POST' ? MANAGE_PATH.exec(path) : null;
     if (manage) { await handleManage(req, res, manage[1]!, Number(manage[2]), manage[3]!, sid); return; }
@@ -649,7 +667,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     if (path === '/api/v1/me') {
       const role = await deps.auth.roleOf(sid);
       if (!role) { sendJson(res, 401, { error: 'unauthorized' }); return; }
-      const me: Me = { role };
+      const me: Me = { role, assistant: await deps.assistant.status() };
       sendJson(res, 200, me);
       return;
     }

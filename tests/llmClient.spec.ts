@@ -65,3 +65,42 @@ describe('клиент DeepSeek', () => {
     await expect(client.complete({ system: 's', user: 'u' })).rejects.toMatchObject({ code: 'network' });
   });
 });
+
+describe('разговор с вызовом инструментов', () => {
+  const toolReply = new Response(JSON.stringify({
+    choices: [{ message: { content: null, tool_calls: [{ id: 'c1', type: 'function', function: { name: 'query', arguments: '{"sql":"select 1"}' } }] } }],
+    usage: { prompt_tokens: 7, completion_tokens: 3 },
+  }), { status: 200 });
+
+  test('просьба выполнить запрос разбирается, а история уходит с вызовами и результатами', async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const client = createDeepSeekClient({
+      apiKey: 'k', model: 'm',
+      fetch: async (_url, init) => { bodies.push(JSON.parse(String(init!.body))); return bodies.length === 1 ? toolReply : ok('Готово'); },
+    });
+    const tools = [{ name: 'query', description: 'запрос', parameters: { type: 'object', properties: { sql: { type: 'string' } } } }];
+    const first = await client.chat({ messages: [{ role: 'system', content: 'с' }, { role: 'user', content: 'в' }], tools });
+    expect(first).toEqual({ content: null, toolCalls: [{ id: 'c1', name: 'query', arguments: '{"sql":"select 1"}' }], promptTokens: 7, completionTokens: 3 });
+    expect(bodies[0]!['tools']).toEqual([{ type: 'function', function: tools[0] }]);
+    expect(bodies[0]!['response_format']).toBeUndefined();
+
+    const second = await client.chat({
+      messages: [
+        { role: 'user', content: 'в' },
+        { role: 'assistant', content: null, toolCalls: first.toolCalls },
+        { role: 'tool', toolCallId: 'c1', content: '[{"n":1}]' },
+      ],
+      tools,
+    });
+    expect(second.content).toBe('Готово');
+    expect((bodies[1]!['messages'] as unknown[]).slice(1)).toEqual([
+      { role: 'assistant', content: null, tool_calls: [{ id: 'c1', type: 'function', function: { name: 'query', arguments: '{"sql":"select 1"}' } }] },
+      { role: 'tool', tool_call_id: 'c1', content: '[{"n":1}]' },
+    ]);
+  });
+
+  test('пустой ответ без вызовов — ошибка формата', async () => {
+    const client = createDeepSeekClient({ apiKey: 'k', model: 'm', fetch: async () => new Response('{"choices":[{"message":{"content":null}}]}', { status: 200 }) });
+    await expect(client.chat({ messages: [{ role: 'user', content: 'в' }] })).rejects.toMatchObject({ code: 'format' });
+  });
+});

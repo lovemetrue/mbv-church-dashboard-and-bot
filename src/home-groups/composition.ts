@@ -23,6 +23,9 @@ import { createBotSettings } from './botSettings.js';
 import { createMembers } from './members.js';
 import { MembersRepo } from '../db/repos/members.repo.js';
 import { createAssistant } from './assistant/service.js';
+import { createChat } from './assistant/chat.js';
+import { createReadonlyRunner } from './assistant/readonly.js';
+import { loadPseudonyms } from './assistant/pseudonyms.js';
 import { HintsRepo } from '../db/repos/hints.repo.js';
 import type { LlmClient } from '../platform/llm/deepseek.js';
 import { requestsToCsv } from './export.js';
@@ -87,6 +90,19 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     load, engine, viewOptions, llm: opts.llm ?? null, hints: new HintsRepo(db), prompts: new PromptsRepo(db), settings: appSettings,
     audit: new AuditRepo(db), matching, invalidate: () => views.invalidate(),
     reportError: (source, err, context) => { void errors.record(source, err instanceof Error ? err.message : String(err), context); },
+    roleReady: async () => {
+      try {
+        const { rows } = await db.query<{ ok: boolean }>(`SELECT pg_has_role(current_user, 'assistant_ro', 'USAGE') AS ok FROM pg_roles WHERE rolname = 'assistant_ro'`);
+        return rows[0]?.ok === true;
+      } catch {
+        return false;
+      }
+    },
+  });
+  const chat = createChat({
+    llm: opts.llm ?? null, settings: appSettings, audit: new AuditRepo(db), runQuery: createReadonlyRunner(db),
+    pseudonyms: () => loadPseudonyms(db), capacity: opts.defaultCapacity,
+    reportError: (source, err, context) => { void errors.record(source, err instanceof Error ? err.message : String(err), context); },
   });
   const settings = createSettings({
     audit: new AuditRepo(db),
@@ -126,7 +142,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   const auditRepo = new AuditRepo(db);
   const audit = (actor: string, action: string, after: unknown) => auditRepo.write(actor, action, 'export', null, after);
   const formMeta = createFormMeta(new CoordinatorsRepo(db));
-  return { views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, members, formMeta };
+  return { views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, chat, members, formMeta };
 }
 
 export function composeViews(db: Pool, engine: PlanEngineApi, opts: ComposeOptions): ViewsSource {

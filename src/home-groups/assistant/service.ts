@@ -42,6 +42,8 @@ export function createAssistant(deps: {
   matching: { run(actor: string): Promise<MatchingRunOk> };
   invalidate: () => void;
   reportError: (source: string, err: unknown, context: string) => void;
+  /** Готова ли в базе роль только для чтения (нужна чату). */
+  roleReady?: () => Promise<boolean>;
 }) {
   let running = false;
   const ages = AGE_GROUPS.filter((a) => deps.engine.parseAgeRange(a) !== null);
@@ -49,6 +51,13 @@ export function createAssistant(deps: {
 
   return {
     available: (): boolean => deps.llm !== null,
+
+    /** Для кнопки «✦ Помощник»: показывать её, только когда всё готово. */
+    async status(): Promise<{ available: boolean; enabled: boolean; chat: boolean }> {
+      const enabled = (await deps.settings.get<boolean>(ASSISTANT_ENABLED_KEY)) === true;
+      const chat = deps.llm !== null && enabled && (await (deps.roleReady?.() ?? Promise.resolve(false)));
+      return { available: deps.llm !== null, enabled, chat };
+    },
     isEnabled: async (): Promise<boolean> => (await deps.settings.get<boolean>(ASSISTANT_ENABLED_KEY)) === true,
 
     async setEnabled(enabled: boolean, actor: string): Promise<void> {

@@ -42,6 +42,7 @@
  *   POST /api/v1/members/:id/delete     (тело {})  → ActionOk | ActionError (убрать из состава: запись скрывается)
  *   POST /api/v1/persons/:id/update     UpdateBody → ActionOk | ActionError (правка карточки, внесённой вручную: ключ p<id>)
  *   POST /api/v1/persons/:id/delete     (тело {})  → ActionOk | ActionError (только super; карточка скрывается)
+ *   POST /api/v1/assistant/chat         ChatBody → ChatOk | ActionError (кнопка «✦ Помощник»: вопросы по базе, только чтение; имена модель не видит)
  *   POST /api/v1/assistant/run          (тело {})       → AssistantRunOk | ActionError (помощник разбирает непонятные заявки)
  *   GET  /api/v1/settings/assistant     → SettingsAssistantView (только super)
  *   POST /api/v1/settings/assistant/enabled AssistantEnabledBody → ActionOk | ActionError (только super)
@@ -80,6 +81,8 @@ export type Role = 'admin' | 'super';
 
 export interface Me {
   role: Role;
+  /** Состояние помощника для кнопки «✦ Помощник»: показывается, когда ключ задан, помощник включён и база готова. */
+  assistant?: { available: boolean; enabled: boolean; chat: boolean };
 }
 
 // ── общее ───────────────────────────────────────────────────────────────────
@@ -309,6 +312,45 @@ export interface AssistantNote {
   filled: ('район' | 'возраст' | 'время')[];
   /** Готовые вопросы для разговора с человеком (до трёх). */
   questions: string[];
+}
+
+/** Один ход разговора с помощником. Сервер историю не хранит: интерфейс присылает последние ходы целиком. */
+export interface ChatTurn {
+  role: 'user' | 'assistant';
+  /** До 2000 знаков. */
+  content: string;
+}
+
+export interface ChatBody {
+  /** От 1 до 12 ходов; последний — вопрос человека. */
+  messages: ChatTurn[];
+}
+
+/** Запрос, который помощник выполнил в базе (его можно показать — «как посмотрел»). */
+export interface ChatQuery {
+  sql: string;
+  ok: boolean;
+  /** Сколько строк вернулось. */
+  rows: number;
+  /** Что не получилось (если ok = false). */
+  error?: string;
+}
+
+/** Точная выдержка из базы под ответом: чтобы цифры можно было перепроверить, а не верить пересказу модели. Здесь настоящие имена. */
+export interface ChatTable {
+  columns: string[];
+  rows: (string | number | boolean | null)[][];
+  /** Строк в базе больше, чем показано (до 100). */
+  truncated: boolean;
+}
+
+export interface ChatOk {
+  ok: true;
+  /** Ответ помощника простым русским текстом (с настоящими именами). */
+  answer: string;
+  queries: ChatQuery[];
+  /** Таблицы из успешных запросов (не больше двух, последние). */
+  tables: ChatTable[];
 }
 
 export interface AssistantRunOk {

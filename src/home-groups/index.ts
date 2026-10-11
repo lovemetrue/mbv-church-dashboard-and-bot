@@ -69,7 +69,7 @@ async function main(): Promise<void> {
     totalDays: Number(env('CAMPAIGN_DAYS', '40')),
     timezone: env('TIMEZONE', 'Europe/Moscow'),
   };
-  const { views, matching, placement, settings, errors, staff, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, members, formMeta } = composeService(db, engine, {
+  const { views, matching, placement, settings, errors, staff, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, chat, members, formMeta } = composeService(db, engine, {
     campaignSchedule: schedule,
     llm: llmFromEnv(process.env),
     extraQuestionsEnv: env('EXTRA_QUESTIONS', 'off'),
@@ -96,6 +96,7 @@ async function main(): Promise<void> {
     campaign,
     botSettings,
     assistant,
+    chat,
     members,
     exporter,
     audit,

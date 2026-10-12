@@ -337,10 +337,16 @@ export class PlacementRepo {
    * регистрацию, «уже веду группу» — группа получает ссылку на регистрацию ведущего. В обоих случаях обращение закрывается
    * как обработанное: звонить незачем, данные легли в справочники. Всё в одной транзакции, с записью в журнал.
    *
-   * Группу выбирает вызывающий (предложение расчёта по имени ведущего или выбор человека): здесь проверяется только,
-   * что она есть. Чужую связь «ведущий» не перезаписываем — это решает человек.
+   * Групп может быть несколько: человек ходит в две группы или ведёт две. Записывается всё или ничего — недоступная
+   * группа или чужой ведущий у любой из них отменяют весь разбор. «Уже было» — только если не изменилось ни одной.
+   *
+   * Группы выбирает вызывающий (предложение расчёта по имени ведущего или выбор человека): здесь проверяется только,
+   * что они есть. Чужую связь «ведущий» не перезаписываем — это решает человек.
    */
-  async reconcile(requestId: number, kind: 'member' | 'leader', groupId: number, actor: string): Promise<ActionOutcome & { already?: boolean }> {
+  async reconcile(requestId: number, kind: 'member' | 'leader', groupIds: readonly number[], actor: string): Promise<ActionOutcome & { already?: boolean }> {
+    // Порядок блокировок один у всех (по возрастанию), иначе два разбора с пересекающимися группами повисли бы друг на друге.
+    const ids = [...new Set(groupIds)].sort((a, b) => a - b);
+    if (ids.length === 0) return fail('bad_request', 'Нужно указать группу.');
     return this.tx(async (c) => {
       const { rows } = await c.query<{ status: string; type: string; user_id: number | null; callback: boolean }>(
         `SELECT status, type, user_id::int AS user_id, callback FROM requests WHERE id = $1 AND archived_at IS NULL FOR UPDATE`,
@@ -353,31 +359,38 @@ export class PlacementRepo {
       if (req.user_id === null) return fail('bad_request', 'У обращения нет регистрации человека: внесите его в справочник вручную.');
       const registered = await c.query('SELECT 1 FROM users WHERE id = $1 AND registration_no IS NOT NULL', [req.user_id]);
       if ((registered.rowCount ?? 0) === 0) return fail('bad_request', 'Человек не завершил регистрацию.');
-      const g = await c.query<{ leader_user_id: number | null }>(
-        'SELECT leader_user_id::int AS leader_user_id FROM groups WHERE id = $1 AND archived_at IS NULL FOR UPDATE', [groupId],
+      const g = await c.query<{ id: number; leader_user_id: number | null }>(
+        'SELECT id::int AS id, leader_user_id::int AS leader_user_id FROM groups WHERE id = ANY($1::bigint[]) AND archived_at IS NULL ORDER BY id FOR UPDATE', [ids],
       );
-      if (!g.rows[0]) return fail('group_unavailable', 'Группа не найдена или в архиве.');
+      // Все или ничего: одна недоступная группа в списке отменяет весь разбор, человек увидит ошибку и поправит выбор.
+      if (g.rows.length !== ids.length) return fail('group_unavailable', 'Одна из групп не найдена или в архиве.');
 
-      let already = false;
-      if (kind === 'member') {
-        // Утверждённый сервисом в эту группу уже виден в составе сам (по заявке «Исполнена»): второй записи не нужно.
-        const placed = await c.query(
-          `SELECT 1 FROM requests WHERE group_id = $1 AND user_id = $2 AND type = 'join_group' AND status = 'Исполнена' AND archived_at IS NULL`,
-          [groupId, req.user_id],
-        );
-        const inserted = (placed.rowCount ?? 0) > 0 ? null : await c.query(
-          `INSERT INTO group_members (group_id, user_id, created_by) SELECT $1, $2, $3
-            WHERE NOT EXISTS (SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2 AND archived_at IS NULL)`,
-          [groupId, req.user_id, actor],
-        );
-        already = inserted === null || (inserted.rowCount ?? 0) === 0;
-      } else {
-        const current = g.rows[0].leader_user_id;
-        if (current !== null && current !== req.user_id) return fail('conflict', 'У этой группы уже связан другой ведущий.');
-        already = current === req.user_id;
-        // Запись из таблицы после правки в интерфейсе — «ui»: повторный перенос таблицы её не затрёт (см. CLAUDE.md).
-        if (!already) await c.query(`UPDATE groups SET leader_user_id = $2, source = CASE WHEN source = 'таблица' THEN 'ui' ELSE source END WHERE id = $1`, [groupId, req.user_id]);
+      // Сначала проверки, потом записи: проваленная проверка на середине оставила бы часть групп записанной.
+      if (kind === 'leader' && g.rows.some((r) => r.leader_user_id !== null && r.leader_user_id !== req.user_id)) {
+        return fail('conflict', 'У одной из этих групп уже связан другой ведущий.');
       }
+
+      let changed = 0;
+      for (const row of g.rows) {
+        if (kind === 'member') {
+          // Утверждённый сервисом в эту группу уже виден в составе сам (по заявке «Исполнена»): второй записи не нужно.
+          const placed = await c.query(
+            `SELECT 1 FROM requests WHERE group_id = $1 AND user_id = $2 AND type = 'join_group' AND status = 'Исполнена' AND archived_at IS NULL`,
+            [row.id, req.user_id],
+          );
+          const inserted = (placed.rowCount ?? 0) > 0 ? null : await c.query(
+            `INSERT INTO group_members (group_id, user_id, created_by) SELECT $1, $2, $3
+              WHERE NOT EXISTS (SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2 AND archived_at IS NULL)`,
+            [row.id, req.user_id, actor],
+          );
+          if (inserted !== null && (inserted.rowCount ?? 0) > 0) changed += 1;
+        } else if (row.leader_user_id !== req.user_id) {
+          // Запись из таблицы после правки в интерфейсе — «ui»: повторный перенос таблицы её не затрёт (см. CLAUDE.md).
+          await c.query(`UPDATE groups SET leader_user_id = $2, source = CASE WHEN source = 'таблица' THEN 'ui' ELSE source END WHERE id = $1`, [row.id, req.user_id]);
+          changed += 1;
+        }
+      }
+      const already = changed === 0;
 
       await c.query(
         `UPDATE requests SET status = 'Исполнена', callback = false, handled_by = $2, handled_at = now(),
@@ -385,7 +398,8 @@ export class PlacementRepo {
           WHERE id = $1`,
         [requestId, actor],
       );
-      await this.audit(c, actor, 'request.reconcile', requestId, { status: req.status, callback: req.callback }, { kind, group_id: groupId, already }, null);
+      // group_id — первая группа (так журнал читали до нескольких групп), group_ids — все.
+      await this.audit(c, actor, 'request.reconcile', requestId, { status: req.status, callback: req.callback }, { kind, group_id: ids[0], group_ids: ids, already }, null);
       return { ok: true, already } as const;
     });
   }

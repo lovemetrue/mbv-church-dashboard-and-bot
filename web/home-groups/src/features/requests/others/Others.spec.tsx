@@ -404,7 +404,7 @@ describe('«Другие обращения»: блок «Разбор»', () =>
     expect(errors.mock.calls.filter((c) => String(c[0]).includes('same key'))).toEqual([]);
     errors.mockRestore();
 
-    await user.click(within(recBlock(card)).getAllByRole('radio')[0]!);
+    await user.click(within(recBlock(card)).getAllByRole('checkbox')[0]!);
     await user.click(within(recBlock(card)).getByRole('button', { name: /Связать с группой и закрыть/ }));
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
     // запрос ушёл по открытому обращению (208), а не по тем, что открывали до него
@@ -415,9 +415,9 @@ describe('«Другие обращения»: блок «Разбор»', () =>
     const { card } = await openOtherCard(206);
     const block = recBlock(card);
     expect(within(block).getByText(fixtureOther(206).reconcile!.text)).toBeInTheDocument();
-    const group = within(block).getByRole('radiogroup', { name: 'В состав какой группы внести человека' });
-    expect(within(group).getAllByRole('radio')).toHaveLength(2);
-    const exact = within(block).getByRole('radio', { name: /ДГ-0012 · Ольга К\. · Приморский/ });
+    const group = within(block).getByRole('group', { name: /^В состав каких групп внести человека/ });
+    expect(within(group).getAllByRole('checkbox')).toHaveLength(2);
+    const exact = within(block).getByRole('checkbox', { name: /ДГ-0012 · Ольга К\. · Приморский/ });
     expect(exact).toBeChecked();
     expect(within(block).getByText('точно')).toBeInTheDocument();
     expect(within(block).getByRole('button', { name: 'Внести в состав и закрыть' })).toBeEnabled();
@@ -427,11 +427,11 @@ describe('«Другие обращения»: блок «Разбор»', () =>
     const user = userEvent.setup();
     const { card } = await openOtherCard(207);
     const block = recBlock(card);
-    const likely = within(block).getByRole('radio', { name: /ДГ-0040 · Павел Д\. · Невский/ });
+    const likely = within(block).getByRole('checkbox', { name: /ДГ-0040 · Павел Д\. · Невский/ });
     expect(likely).not.toBeChecked();
     expect(within(block).getByText('похоже')).toBeInTheDocument();
     expect(within(block).queryByText('точно')).not.toBeInTheDocument();
-    expect(within(block).getByRole('radio', { name: 'Другая группа…' })).not.toBeChecked();
+    expect(within(block).getByRole('checkbox', { name: 'Другие группы…' })).not.toBeChecked();
     const submit = within(block).getByRole('button', { name: 'Внести в состав и закрыть' });
     expect(submit).toBeDisabled();
     await user.click(likely);
@@ -441,24 +441,24 @@ describe('«Другие обращения»: блок «Разбор»', () =>
   test('choose у ведущего: две группы, метки «точно» и «похоже», кнопка «Связать с группой и закрыть»', async () => {
     const { card } = await openOtherCard(208);
     const block = recBlock(card);
-    expect(within(block).getByRole('radio', { name: /ДГ-0019 · Дмитрий В\./ })).not.toBeChecked();
-    expect(within(block).getByRole('radio', { name: /ДГ-0027 · Андрей М\./ })).not.toBeChecked();
+    expect(within(block).getByRole('checkbox', { name: /ДГ-0019 · Дмитрий В\./ })).not.toBeChecked();
+    expect(within(block).getByRole('checkbox', { name: /ДГ-0027 · Андрей М\./ })).not.toBeChecked();
     expect(within(block).getByText('точно')).toBeInTheDocument();
     expect(within(block).getByText('похоже')).toBeInTheDocument();
     expect(within(block).getByRole('button', { name: 'Связать с группой и закрыть' })).toBeDisabled();
     expect(within(block).queryByRole('button', { name: 'Внести в состав и закрыть' })).not.toBeInTheDocument();
   });
 
-  test('noleader: найденных групп нет, есть только «Другая группа…» со списком групп, кнопка ждёт выбора', async () => {
+  test('noleader: найденных групп нет, есть только «Другие группы…» со списком групп, кнопка ждёт выбора', async () => {
     const user = userEvent.setup();
     const { card } = await openOtherCard(203);
     const block = recBlock(card);
-    const radios = within(block).getAllByRole('radio');
-    expect(radios.map((r) => (r.closest('label') as HTMLElement).textContent)).toEqual(['Другая группа…']);
+    const radios = within(block).getAllByRole('checkbox');
+    expect(radios.map((r) => (r.closest('label') as HTMLElement).textContent)).toEqual(['Другие группы…']);
     expect(radios[0]).toBeChecked();
     const submit = within(block).getByRole('button', { name: 'Внести в состав и закрыть' });
     expect(submit).toBeDisabled();
-    const select = await within(block).findByRole('combobox', { name: 'Группа из справочника' });
+    const select = await within(block).findByRole('combobox', { name: 'Добавить группу из справочника' });
     await user.selectOptions(select, within(select).getByRole('option', { name: 'ДГ-0027 · Андрей М. · Приморский' }));
     expect(submit).toBeEnabled();
   });
@@ -466,8 +466,8 @@ describe('«Другие обращения»: блок «Разбор»', () =>
   test('none: то же, что noleader, и кнопка называется по виду обращения', async () => {
     const { card } = await openOtherCard(209);
     const block = recBlock(card);
-    expect(within(block).getAllByRole('radio')).toHaveLength(1);
-    expect(await within(block).findByRole('combobox', { name: 'Группа из справочника' })).toBeInTheDocument();
+    expect(within(block).getAllByRole('checkbox')).toHaveLength(1);
+    expect(await within(block).findByRole('combobox', { name: 'Добавить группу из справочника' })).toBeInTheDocument();
     expect(within(block).getByRole('button', { name: 'Связать с группой и закрыть' })).toBeDisabled();
   });
 
@@ -475,50 +475,114 @@ describe('«Другие обращения»: блок «Разбор»', () =>
     const { card } = await openOtherCard(211);
     const block = recBlock(card);
     expect(within(block).getByText(fixtureOther(211).reconcile!.text)).toBeInTheDocument();
-    expect(within(block).queryByRole('radio')).not.toBeInTheDocument();
+    expect(within(block).queryByRole('checkbox')).not.toBeInTheDocument();
     expect(within(block).queryByRole('button')).not.toBeInTheDocument();
   });
 
-  test('«Другая группа…» ищет по коду, ведущему и району и не теряет уже выбранную группу', async () => {
+  test('«Другие группы…» ищет по коду, ведущему и району; добавленная группа уходит из списка в «Добавленные группы», и её можно убрать', async () => {
     const user = userEvent.setup();
     const { card } = await openOtherCard(207);
     const block = recBlock(card);
-    await user.click(within(block).getByRole('radio', { name: 'Другая группа…' }));
-    const select = await within(block).findByRole('combobox', { name: 'Группа из справочника' });
+    await user.click(within(block).getByRole('checkbox', { name: 'Другие группы…' }));
+    const select = await within(block).findByRole('combobox', { name: 'Добавить группу из справочника' });
     expect(within(select).getAllByRole('option').length).toBeGreaterThan(10);
-    await user.selectOptions(select, within(select).getByRole('option', { name: /ДГ-0027/ }));
     await user.type(within(block).getByRole('searchbox', { name: 'Найти группу' }), 'невский');
     const names = within(select).getAllByRole('option').map((o) => o.textContent);
-    expect(names).toContain('ДГ-0027 · Андрей М. · Приморский');
     expect(names).toContain('ДГ-0040 · Павел Д. · Невский');
     expect(names).not.toContain('ДГ-0012 · Ольга К. · Приморский');
+
+    await user.clear(within(block).getByRole('searchbox', { name: 'Найти группу' }));
+
+    await user.selectOptions(select, within(select).getByRole('option', { name: /ДГ-0035/ }));
+    const chosen = within(block).getByRole('list', { name: 'Добавленные группы' });
+    expect(within(chosen).getAllByRole('listitem')).toHaveLength(1);
+    expect(within(select).queryByRole('option', { name: /ДГ-0035/ })).not.toBeInTheDocument();
+    await user.click(within(chosen).getByRole('button', { name: 'Убрать группу ДГ-0035' }));
+    expect(within(block).queryByRole('list', { name: 'Добавленные группы' })).not.toBeInTheDocument();
+    expect(within(select).getByRole('option', { name: /ДГ-0035/ })).toBeInTheDocument();
   });
 
-  test('отправляется ровно найденная выбранная группа: запрос на requests/:id/reconcile с groupId', async () => {
+  test('отправляется ровно найденная выбранная группа: запрос на requests/:id/reconcile с groupIds', async () => {
     const user = userEvent.setup();
     const { overrides, reply } = serverAfterPost([208]);
     const { card, fetchMock } = await openOtherCard(208, { ...overrides, 'requests/208/reconcile': reply({ ok: true, already: false }) });
     const block = recBlock(card);
-    await user.click(within(block).getByRole('radio', { name: /ДГ-0027/ }));
+    await user.click(within(block).getByRole('checkbox', { name: /ДГ-0027/ }));
     await user.click(within(block).getByRole('button', { name: 'Связать с группой и закрыть' }));
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
-    expect(posts(fetchMock)[0]).toMatchObject({ path: 'requests/208/reconcile', body: { groupId: 2 } });
+    expect(posts(fetchMock)[0]).toMatchObject({ path: 'requests/208/reconcile', body: { groupIds: [2] } });
   });
 
-  test('отправляется группа из «Другой группы…», а не прежняя выбранная из найденных', async () => {
+  test('отправляется группа только из «Других групп…», когда из найденных ничего не отмечено', async () => {
     const user = userEvent.setup();
     const { overrides, reply } = serverAfterPost([207]);
     const { card, fetchMock } = await openOtherCard(207, { ...overrides, 'requests/207/reconcile': reply({ ok: true, already: false }) });
     const block = recBlock(card);
-    await user.click(within(block).getByRole('radio', { name: /ДГ-0040/ }));
-    await user.click(within(block).getByRole('radio', { name: 'Другая группа…' }));
-    const select = await within(block).findByRole('combobox', { name: 'Группа из справочника' });
-    // пока в списке ничего не выбрано, отправлять нечего
+    await user.click(within(block).getByRole('checkbox', { name: 'Другие группы…' }));
+    const select = await within(block).findByRole('combobox', { name: 'Добавить группу из справочника' });
+    // пока в списке ничего не добавлено, отправлять нечего
     expect(within(block).getByRole('button', { name: 'Внести в состав и закрыть' })).toBeDisabled();
     await user.selectOptions(select, within(select).getByRole('option', { name: /ДГ-0035/ }));
     await user.click(within(block).getByRole('button', { name: 'Внести в состав и закрыть' }));
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
-    expect(posts(fetchMock)[0]!.body).toEqual({ groupId: 9 });
+    expect(posts(fetchMock)[0]!.body).toEqual({ groupIds: [9] });
+  });
+
+  test('можно отметить несколько найденных групп: кнопка называет число, уходят все номера, итог перечисляет коды', async () => {
+    const user = userEvent.setup();
+    const { overrides, reply } = serverAfterPost([208]);
+    const { card, fetchMock } = await openOtherCard(208, { ...overrides, 'requests/208/reconcile': reply({ ok: true, already: false }) });
+    const block = recBlock(card);
+    await user.click(within(block).getByRole('checkbox', { name: /ДГ-0019/ }));
+    expect(within(block).getByRole('button', { name: 'Связать с группой и закрыть' })).toBeEnabled();
+    await user.click(within(block).getByRole('checkbox', { name: /ДГ-0027/ }));
+    await user.click(within(block).getByRole('button', { name: 'Связать с группами (2) и закрыть' }));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect(posts(fetchMock)[0]).toMatchObject({ path: 'requests/208/reconcile', body: { groupIds: [8, 2] } });
+    expect(await screen.findByText('Обращение разобрано: группы ДГ-0019, ДГ-0027 связаны с этим ведущим.')).toBeInTheDocument();
+  });
+
+  test('найденная группа и добавленная из справочника уходят вместе; снятая галочка группу из запроса убирает', async () => {
+    const user = userEvent.setup();
+    const { overrides, reply } = serverAfterPost([207]);
+    const { card, fetchMock } = await openOtherCard(207, { ...overrides, 'requests/207/reconcile': reply({ ok: true, already: false }) });
+    const block = recBlock(card);
+    const likely = within(block).getByRole('checkbox', { name: /ДГ-0040/ });
+    await user.click(likely);
+    await user.click(within(block).getByRole('checkbox', { name: 'Другие группы…' }));
+    const select = await within(block).findByRole('combobox', { name: 'Добавить группу из справочника' });
+    await user.selectOptions(select, within(select).getByRole('option', { name: /ДГ-0035/ }));
+    expect(within(block).getByRole('button', { name: 'Внести в состав групп (2) и закрыть' })).toBeEnabled();
+    // снятая и вновь поставленная галочка: группа в запросе один раз
+    await user.click(likely);
+    await user.click(likely);
+    await user.click(within(block).getByRole('button', { name: 'Внести в состав групп (2) и закрыть' }));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect(posts(fetchMock)[0]!.body).toEqual({ groupIds: [expect.any(Number), 9] });
+    expect(await screen.findByText(/Обращение разобрано: человек внесён в состав групп ДГ-0040, ДГ-0035\./)).toBeInTheDocument();
+  });
+
+  test('группа, добавленная из справочника, но уже найденная, просто отмечается среди найденных, а не дублируется', async () => {
+    const user = userEvent.setup();
+    const { card } = await openOtherCard(207);
+    const block = recBlock(card);
+    await user.click(within(block).getByRole('checkbox', { name: 'Другие группы…' }));
+    const select = await within(block).findByRole('combobox', { name: 'Добавить группу из справочника' });
+    await user.selectOptions(select, within(select).getByRole('option', { name: /ДГ-0040/ }));
+    expect(within(block).getByRole('checkbox', { name: /ДГ-0040/ })).toBeChecked();
+    expect(within(block).queryByRole('list', { name: 'Добавленные группы' })).not.toBeInTheDocument();
+    expect(within(block).getByRole('button', { name: 'Внести в состав и закрыть' })).toBeEnabled();
+  });
+
+  test('сняли «Другие группы…»: добавленные ранее в запрос не попадают, а кнопка снова ждёт выбора', async () => {
+    const user = userEvent.setup();
+    const { card } = await openOtherCard(203);
+    const block = recBlock(card);
+    const select = await within(block).findByRole('combobox', { name: 'Добавить группу из справочника' });
+    await user.selectOptions(select, within(select).getByRole('option', { name: /ДГ-0027/ }));
+    expect(within(block).getByRole('button', { name: 'Внести в состав и закрыть' })).toBeEnabled();
+    await user.click(within(block).getByRole('checkbox', { name: 'Другие группы…' }));
+    expect(within(block).getByRole('button', { name: 'Внести в состав и закрыть' })).toBeDisabled();
   });
 
   test('подтверждения перед отправкой нет: запрос уходит сразу, и список перечитывается', async () => {
@@ -592,14 +656,14 @@ describe('«Другие обращения»: блок «Разбор»', () =>
     await screen.findByText(/Обращение разобрано/);
   });
 
-  test('conflict: объясняем своими словами, что у группы уже есть другой ведущий; карточка остаётся, список не перечитывается', async () => {
+  test('conflict: объясняем своими словами, что у одной из групп уже есть другой ведущий и ничего не записано; карточка остаётся, список не перечитывается', async () => {
     const user = userEvent.setup();
     const { card, fetchMock } = await openOtherCard(210, {
       'requests/210/reconcile': () => json({ error: 'conflict', message: 'служебный текст' }, 409),
     });
     await user.click(within(card).getByRole('button', { name: 'Связать с группой и закрыть' }));
     const alert = await within(card).findByRole('alert');
-    expect(alert).toHaveTextContent('У этой группы уже связан другой ведущий.');
+    expect(alert).toHaveTextContent('У одной из групп уже связан другой ведущий. Ничего не записано');
     expect(alert).not.toHaveTextContent('служебный текст');
     expect(getsOf(fetchMock, 'requests')).toBe(1);
     expect(currentSearch().get('req')).toBe('210');

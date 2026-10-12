@@ -1,3 +1,4 @@
+import { addressKey } from '../src/home-groups/geocode.js';
 import { describe, expect, test } from 'vitest';
 import type { DashboardGroup } from '../src/db/repos/groups.repo.js';
 import type { DashboardRequest } from '../src/db/repos/requests.repo.js';
@@ -432,6 +433,21 @@ describe('экран «Сегодня»', () => {
 });
 
 describe('группы справочника', () => {
+  test('координаты из кэша геокодера уходят в подбор у группы и у заявки; нет в кэше — null', () => {
+    const geo = new Map([
+      [addressKey('ул. Рылеева, 32')!, { lat: 59.94, lon: 30.35 }],
+      [addressKey('ул. Анкетная, 2')!, { lat: 59.95, lon: 30.36 }],
+      [addressKey('ул. Потерянная, 9')!, null],
+    ]);
+    const { calls } = build({
+      groups: [group({ id: 1, address: 'ул. Рылеева, 32' }), group({ id: 2, address: 'ул. Потерянная, 9' }), group({ id: 3, address: null })],
+      requests: [request({ id: 1, address: 'ул. Анкетная, 2', place: 'Приморский' })],
+      geo,
+    });
+    expect(calls.plan[0]!.groups.map((g) => g.coords ?? null)).toEqual([{ lat: 59.94, lon: 30.35 }, null, null]);
+    expect(calls.plan[0]!.requests[0]!.coords).toEqual({ lat: 59.95, lon: 30.36 });
+  });
+
   test('для движка: возраст и «когда» разобраны, улица из адреса, вместимость по умолчанию', () => {
     const { calls } = build({
       groups: [group({ id: 1, age: '25-40', day: 'Вторник', time: '19:00', people: 6, metro: ' Беговая ', address: 'ул. Закрытая, 5' })],

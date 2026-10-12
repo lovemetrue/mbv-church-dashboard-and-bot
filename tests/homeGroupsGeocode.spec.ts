@@ -1,0 +1,82 @@
+import { describe, expect, test } from 'vitest';
+import { addressKey, createYandexGeocoder, distanceMeters, geocodePending, type Geocoder, type GeocodeStore } from '../src/home-groups/geocode.js';
+import { addressesOf } from '../src/home-groups/geocodeJob.js';
+import type { GeocodeEntry } from '../src/db/repos/geocode.repo.js';
+
+const reply = (pos: string, precision: string) => ({
+  response: { GeoObjectCollection: { featureMember: [{ GeoObject: { Point: { pos }, metaDataProperty: { GeocoderMetaData: { precision } } } }] } },
+});
+const fakeFetch = (status: number, body: unknown) => (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
+
+describe('ключ адреса', () => {
+  test('регистр, знаки препинания и пробелы не плодят разные адреса', () => {
+    expect(addressKey('ул. Рылеева, д. 32')).toBe(addressKey('УЛ  Рылеева д 32'));
+    expect(addressKey('  ')).toBeNull();
+    expect(addressKey(null)).toBeNull();
+  });
+});
+
+describe('расстояние', () => {
+  test('Невский пр. — Лиговский пр. по прямой около километра', () => {
+    const m = distanceMeters({ lat: 59.9343, lon: 30.3351 }, { lat: 59.9311, lon: 30.3609 });
+    expect(m).toBeGreaterThan(1300);
+    expect(m).toBeLessThan(1700);
+  });
+});
+
+describe('Яндекс.Геокодер', () => {
+  test('«долгота широта» разбирается в правильном порядке, к адресу достраивается город', async () => {
+    let asked = '';
+    const geocoder = createYandexGeocoder('KEY', (async (url: URL) => { asked = String(url); return new Response(JSON.stringify(reply('30.30 59.93', 'exact'))); }) as unknown as typeof fetch);
+    expect(await geocoder.geocode('ул. Рылеева, 32')).toEqual({ kind: 'found', point: { lat: 59.93, lon: 30.3 }, precision: 'exact' });
+    expect(decodeURIComponent(asked.replaceAll('+', ' '))).toContain('geocode=Санкт-Петербург, ул. Рылеева, 32');
+    expect(asked).toContain('apikey=KEY');
+  });
+
+  test('середина улицы и центр города (street, other) для расстояния не годятся — адрес «не найден»', async () => {
+    for (const precision of ['street', 'other']) {
+      expect(await createYandexGeocoder('K', fakeFetch(200, reply('30 59', precision))).geocode('Рылеева')).toEqual({ kind: 'missing' });
+    }
+  });
+
+  test('лимит и неверный ключ (403/429) — это сбой, а не «не найден»: кэшировать нельзя', async () => {
+    for (const status of [403, 429]) {
+      expect((await createYandexGeocoder('K', fakeFetch(status, {})).geocode('Рылеева 1')).kind).toBe('failed');
+    }
+  });
+});
+
+describe('дозаполнение кэша', () => {
+  const memory = (): GeocodeStore & { rows: Map<string, GeocodeEntry> } => {
+    const rows = new Map<string, GeocodeEntry>();
+    return { rows, all: async () => new Map(rows), save: async (k, p) => { rows.set(k, p); } };
+  };
+  const found: Geocoder = { geocode: async () => ({ kind: 'found', point: { lat: 1, lon: 2 }, precision: 'exact' }) };
+
+  test('спрашивает только то, чего нет в кэше, и один адрес один раз', async () => {
+    const store = memory();
+    store.rows.set(addressKey('ул. Рылеева, 32')!, { lat: 9, lon: 9 });
+    const asked: string[] = [];
+    const geocoder: Geocoder = { geocode: async (a) => { asked.push(a); return found.geocode(a); } };
+    const r = await geocodePending(['ул. Рылеева, 32', 'Мира 5', 'мира  5'], store, geocoder, { pauseMs: 0, sleep: async () => {} });
+    expect(asked).toEqual(['Мира 5']);
+    expect(r).toEqual({ done: 1, failed: null });
+  });
+
+  test('«не найден» записывается (повторно не спрашиваем), сбой останавливает заход и ничего не записывает', async () => {
+    const store = memory();
+    const missing: Geocoder = { geocode: async () => ({ kind: 'missing' }) };
+    await geocodePending(['Неизвестная 1'], store, missing, { sleep: async () => {} });
+    expect(store.rows.get(addressKey('Неизвестная 1')!)).toBeNull();
+    const broken: Geocoder = { geocode: async () => ({ kind: 'failed', message: 'лимит' }) };
+    const r = await geocodePending(['Новая 2', 'Новая 3'], store, broken, { sleep: async () => {} });
+    expect(r).toEqual({ done: 0, failed: 'лимит' });
+    expect(store.rows.has(addressKey('Новая 2')!)).toBe(false);
+  });
+
+  test('адреса берутся у групп и из заявок; правка координатора важнее анкеты', () => {
+    const groups = [{ address: 'ул. Группы, 1' }, { address: null }] as never;
+    const requests = [{ manual_street: 'ул. Правка, 2', address: 'ул. Анкета, 3' }, { manual_street: null, address: 'ул. Анкета, 4' }, { manual_street: null, address: null }] as never;
+    expect(addressesOf({ groups, requests })).toEqual(['ул. Группы, 1', 'ул. Правка, 2', 'ул. Анкета, 4']);
+  });
+});

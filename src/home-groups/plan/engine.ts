@@ -1,5 +1,6 @@
 import type { Reason } from '../contracts.js';
 import { matchesMetro } from '../../core/matching.js';
+import { distanceMeters } from '../geocode.js';
 import { streetKey } from './street.js';
 import type {
   PlanEntry,
@@ -127,8 +128,26 @@ function slotPart(r: PlanRequest, g: PlanGroup, settings: PlanSettings, timeUnkn
   return { weight, share: 0, reason: { tone: 'bad', text: `время суток не совпало: ${g.slot}` } };
 }
 
+/** Расстояние словами: «350 м», «2,4 км». */
+const distanceText = (m: number): string => (m < 1000 ? `${Math.round(m / 10) * 10} м` : `${(m / 1000).toFixed(1).replace('.', ',')} км`);
+
+/**
+ * Близость по координатам: домашняя группа может быть в соседнем квартале, а названия улиц у них разные. Ступени — по
+ * пешей доступности: до полукилометра как «рядом», дальше доля падает, за шесть километров — ноль.
+ */
+function distancePart(weight: number, meters: number): Part {
+  const text = distanceText(meters);
+  if (meters <= 500) return { weight, share: 1, reason: { tone: 'good', text: `адрес рядом: ${text}` } };
+  if (meters <= 1500) return { weight, share: 0.75, reason: { tone: 'good', text: `адрес близко: ${text}` } };
+  if (meters <= 3000) return { weight, share: 0.5, reason: { tone: 'neutral', text: `адрес в ${text}` } };
+  if (meters <= 6000) return { weight, share: 0.25, reason: { tone: 'plain', text: `адрес далеко: ${text}` } };
+  return { weight, share: 0, reason: { tone: 'plain', text: `адрес очень далеко: ${text}` } };
+}
+
 function streetPart(r: PlanRequest, g: PlanGroup, settings: PlanSettings): Part {
   const weight = settings.weights.street;
+  // Координаты точнее названия улицы, но есть не у всех адресов (не нашли, ключа геокодера нет): тогда — как раньше.
+  if (r.coords && g.coords) return distancePart(weight, distanceMeters(r.coords, g.coords));
   if (g.street === null) {
     // Адреса у группы нет — сверяем по метро или ориентиру. Человек мог назвать станцию и в «улице», и в «районе».
     if (g.metro === null) return { weight, share: 0.5, reason: { tone: 'neutral', text: 'у группы нет адреса и метро' } };

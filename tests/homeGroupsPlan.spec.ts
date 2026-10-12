@@ -265,6 +265,18 @@ describe('оценка совпадения: считается только п�
     expect(scoreOf(r, withAddress)).toBe(81);
   });
 
+  test('координаты адресов важнее названия улицы: соседний квартал — почти полный вес, другой конец города — ноль', () => {
+    const r = request({ street: 'ул. Рылеева, 32', coords: { lat: 59.9400, lon: 30.3500 } });
+    const next = group({ street: 'Литейный пр.', coords: { lat: 59.9420, lon: 30.3520 } });
+    expect(scoreOf(r, next)).toBe(100);
+    expect(reasonsOf(r, next)).toContain('адрес рядом: 250 м');
+    const far = group({ street: 'ул. Рылеева', coords: { lat: 59.8300, lon: 30.1500 } });
+    expect(scoreOf(r, far)).toBe(81);
+    expect(reasonsOf(r, far).some((t) => t.startsWith('адрес очень далеко'))).toBe(true);
+    // Нет координат у группы — прежнее сравнение по названию улицы.
+    expect(scoreOf(r, group({ street: 'ул. Рылеева', coords: null }))).toBe(100);
+  });
+
   test('возраст группы неизвестен → половина веса возраста и причина', () => {
     const r = request();
     const g = group({ ageRange: null });

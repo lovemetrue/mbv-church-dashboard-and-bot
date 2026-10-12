@@ -24,6 +24,7 @@ import { createMembers } from './members.js';
 import { createReconciler } from './reconcile/service.js';
 import { createStrange } from './strange.js';
 import { MembersRepo } from '../db/repos/members.repo.js';
+import { GeocodeRepo } from '../db/repos/geocode.repo.js';
 import { StrangeRepo } from '../db/repos/strange.repo.js';
 import { createAssistant } from './assistant/service.js';
 import { ChatHistoryRepo } from '../db/repos/chatHistory.repo.js';
@@ -98,6 +99,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     hints: new HintsRepo(db),
     members: new MembersRepo(db),
     strange: new StrangeRepo(db),
+    geocode: new GeocodeRepo(db),
   }, { ...(opts.timeZone ? { timeZone: opts.timeZone } : {}), assistantAvailable: () => assistantAvailable() });
   const viewOptions = { defaultCapacity: opts.defaultCapacity, ...(opts.timeZone ? { timeZone: opts.timeZone } : {}) };
 
@@ -166,7 +168,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   const auditRepo = new AuditRepo(db);
   const audit = (actor: string, action: string, after: unknown) => auditRepo.write(actor, action, 'export', null, after);
   const formMeta = createFormMeta(new CoordinatorsRepo(db));
-  return { views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, chat, members, reconciler, strange, formMeta };
+  return { load, views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, chat, members, reconciler, strange, formMeta };
 }
 
 export function composeViews(db: Pool, engine: PlanEngineApi, opts: ComposeOptions): ViewsSource {

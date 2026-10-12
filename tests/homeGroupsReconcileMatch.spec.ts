@@ -40,6 +40,15 @@ describe('разбор имён', () => {
     // Короткие слова сравниваются целиком: «Ира» и «Ирина» — разные записи, их решает человек.
     expect(sameToken('ира', 'ирина')).toBe(false);
   });
+
+  test('имя не склеивается с фамилией от того же корня: «Иван» — не «Иванов», «Пётр» — не «Петров»', () => {
+    expect(sameToken('иван', 'иванов')).toBe(false);
+    expect(sameToken('петр', 'петров')).toBe(false);
+    expect(sameToken('олег', 'олегович')).toBe(false);
+    expect(sameToken('александр', 'александров')).toBe(false);
+    // а окончание в одну букву по-прежнему не мешает
+    expect(sameToken('иванов', 'иванова')).toBe(true);
+  });
 });
 
 describe('поиск группы по ведущему', () => {
@@ -63,8 +72,17 @@ describe('поиск группы по ведущему', () => {
   });
 
   test('телефон точнее имени: совпал номер в любом формате и среди нескольких номеров в одной ячейке', () => {
-    expect(findGroups({ name: 'Совсем Другое', phones: ['+7 981 803-47-05'] }, GROUPS)).toEqual([{ groupId: 1, tier: 'exact', by: 'phone', role: 'leader' }]);
+    expect(findGroups({ name: 'Раиса Иванова', phones: ['+7 981 803-47-05'] }, GROUPS)).toEqual([{ groupId: 1, tier: 'exact', by: 'phone', role: 'leader' }]);
     expect(findGroups({ name: null, phones: ['89112398191'] }, GROUPS).map((c) => c.groupId)).toEqual([20, 21]);
+  });
+
+  test('номер совпал, а имя с ведущим не имеет ничего общего (общий телефон семьи) — только «похоже»', () => {
+    expect(findGroups({ name: 'Совсем Другое', phones: ['+7 981 803-47-05'] }, GROUPS)).toEqual([{ groupId: 1, tier: 'likely', by: 'phone', role: 'leader' }]);
+    expect(planReconcile({ name: 'Совсем Другое', phones: ['+7 981 803-47-05'] }, GROUPS).status).toBe('choose');
+  });
+
+  test('номер совпал, а в имени есть слово ведущего (жена с телефоном мужа): точно', () => {
+    expect(findGroups({ name: 'Малявина Мария', phones: ['89001112233'] }, GROUPS)).toEqual([{ groupId: 30, tier: 'exact', by: 'phone', role: 'leader' }]);
   });
 
   test('номер из семи цифр или короче ничего не находит: так совпадения случайны', () => {

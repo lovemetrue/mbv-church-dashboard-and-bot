@@ -58,6 +58,12 @@ describe('«уже веду группу»: ведущий ищется по с�
   });
 
   test('телефон второго ведущего тоже находит группу', () => {
-    expect(readyGroupOf(req({ type: 'already_leader', fio: 'Совсем Другая', phone: '+79619163378' }), GROUPS)).toBe(8);
+    expect(readyGroupOf(req({ type: 'already_leader', fio: 'Марина Клименко', phone: '+79619163378' }), GROUPS)).toBe(8);
+  });
+
+  test('чужой человек с номером ведущего (общий телефон) в «готово» не попадает: только выбор с пометкой «похоже»', () => {
+    const r = req({ type: 'already_leader', fio: 'Серебренникова Анастасия Анатольевна', phone: '+79001112233' });
+    expect(readyGroupOf(r, GROUPS)).toBeNull();
+    expect(reconcileOf(r, GROUPS)).toMatchObject({ status: 'choose', candidates: [{ groupId: 5, tier: 'likely', by: 'phone' }] });
   });
 });

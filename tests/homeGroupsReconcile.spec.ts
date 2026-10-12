@@ -27,7 +27,7 @@ async function person(uid: string, type: 'already_member' | 'already_leader', op
   const userId = await seedUser(db, { id: uid, mdgStatus: type === 'already_member' ? 'member' : 'leader', ...(opts.fio ? { fio: opts.fio } : {}), ...(opts.phone ? { phone: opts.phone } : {}) });
   if (opts.leader) await db.query('UPDATE users SET leader_name = $2 WHERE id = $1', [userId, opts.leader]);
   const { rows } = await db.query<{ id: number }>(
-    `INSERT INTO requests (type, user_id, fio, status, origin) VALUES ($1, $2, 'Из заявки', 'Новая', 'бот') RETURNING id`, [type, userId],
+    `INSERT INTO requests (type, user_id, fio, status, origin) VALUES ($1, $2, $3, 'Новая', 'бот') RETURNING id`, [type, userId, opts.fio ?? 'Из заявки'],
   );
   return { requestId: rows[0]!.id, userId };
 }

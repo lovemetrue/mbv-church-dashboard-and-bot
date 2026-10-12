@@ -1,4 +1,5 @@
 import {
+  buildLlmTestResult,
   buildSettingsAssistant,
   buildSettingsAudit,
   buildSettingsBot,
@@ -8,6 +9,7 @@ import {
   buildSettingsStaff,
   fixtureStaffDelivery,
   fixtureSuggestLogin,
+  saveDemoLlm,
   sendDemoInvites,
 } from './settings';
 import { buildFormMeta } from './formMeta';
@@ -103,6 +105,12 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
   if (clean === 'settings/bot/send-extra-questions') return { ok: true, sent: sendDemoInvites(), failed: 0, blocked: 0 };
   // Переключатель помощника: в демо ничего не меняется, действие просто «получается».
   if (clean === 'settings/assistant/enabled') return { ok: true };
+  // Подключение помощника: в демо сохранение «получается», а проверка отвечает успехом (отказом — на ключ-образец).
+  if (clean === 'settings/assistant/llm') {
+    saveDemoLlm((body ?? {}) as Parameters<typeof saveDemoLlm>[0]);
+    return { ok: true };
+  }
+  if (clean === 'settings/assistant/llm-test') return buildLlmTestResult((body ?? {}) as Parameters<typeof buildLlmTestResult>[0]);
   // Массовое действие: в демо все выбранные «обработаны», ничего не пропущено.
   if (clean === 'requests/bulk') return { ok: true, done: ((body ?? {}) as { ids?: number[] }).ids?.length ?? 0, skipped: 0 };
   const input = (body ?? {}) as { fullName?: string; email?: string; id?: number };

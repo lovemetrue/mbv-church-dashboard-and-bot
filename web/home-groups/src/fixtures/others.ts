@@ -5,12 +5,14 @@
  */
 import type { OtherItem } from '@contracts';
 
-export function buildOthers(): OtherItem[] {
+function baseOthers(): OtherItem[] {
   return [
     {
       id: 201,
       type: 'question',
       typeLabel: 'Вопрос служителю',
+      gist: 'Спрашивает, можно ли прийти на встречу группы с детьми.',
+      reconcile: null,
       state: 'open',
       fio: 'Игорь Седов',
       phone: '79215550101',
@@ -39,6 +41,8 @@ export function buildOthers(): OtherItem[] {
       id: 202,
       type: 'lead_group',
       typeLabel: 'Хочет открыть группу или дать дом',
+      gist: 'Хочет открыть свою группу в Выборгском районе.',
+      reconcile: null,
       state: 'open',
       fio: 'Юлия Громова',
       phone: '79215550102',
@@ -67,6 +71,13 @@ export function buildOthers(): OtherItem[] {
       id: 203,
       type: 'already_member',
       typeLabel: 'Уже состоит в группе',
+      gist: 'Сообщает, что уже состоит в группе, но ведущего не назвали.',
+      reconcile: {
+        kind: 'member',
+        status: 'noleader',
+        text: 'В обращении не назван ведущий, поэтому группу по справочнику найти нельзя. Выберите группу вручную.',
+        candidates: [],
+      },
       state: 'open',
       fio: 'Анастасия Орлова',
       phone: null,
@@ -86,10 +97,190 @@ export function buildOthers(): OtherItem[] {
       ],
       log: [{ at: '2026-10-07', text: 'Заявка создана: уже состоит в группе.' }],
     },
+    // Разбор по справочникам: по одному обращению на каждое состояние (ready, choose, none, nouser) и ещё одно готовое,
+    // чтобы у «Разобрать все готовые» было больше одного. Ответственные заполнены у всех, чтобы «Никто не взял» оставалось за 201.
+    {
+      id: 206,
+      type: 'already_member',
+      typeLabel: 'Уже состоит в группе',
+      gist: 'Состоит в группе, ведущая Ольга К., Приморский район.',
+      reconcile: {
+        kind: 'member',
+        status: 'ready',
+        text: 'Найдена одна группа: ДГ-0012, ведущая Ольга К. Достаточно подтвердить, и человек будет внесён в её состав.',
+        candidates: [{ groupId: 1, code: 'ДГ-0012', leader: 'Ольга К.', district: 'Приморский', tier: 'exact', by: 'name' }],
+      },
+      state: 'open',
+      fio: 'Мария Кузнецова',
+      phone: '79215550106',
+      ageLabel: '26–35',
+      place: 'Приморский',
+      status: 'Новая',
+      source: 'Бот · Telegram',
+      waitingDays: 3,
+      callback: false,
+      responsible: 'Анна Л.',
+      note: null,
+      cancelReason: null,
+      original: [
+        { label: 'Имя', value: 'Мария Кузнецова' },
+        { label: 'Малая группа', value: 'Уже состою в группе' },
+        { label: 'Ведущий', value: 'Ольга К.' },
+      ],
+      log: [{ at: '2026-10-09', text: 'Заявка создана: уже состоит в группе.' }],
+    },
+    {
+      id: 207,
+      type: 'already_member',
+      typeLabel: 'Уже состоит в группе',
+      gist: 'Состоит в группе, ведущий Павел Дмитриев, Невский район.',
+      reconcile: {
+        kind: 'member',
+        status: 'choose',
+        text: 'Точного совпадения нет, но есть похожая группа: ДГ-0040, ведущий Павел Д. Проверьте и выберите её или другую.',
+        candidates: [{ groupId: 6, code: 'ДГ-0040', leader: 'Павел Д.', district: 'Невский', tier: 'likely', by: 'name' }],
+      },
+      state: 'open',
+      fio: 'Сергей Волков',
+      phone: '79215550107',
+      ageLabel: '36–45',
+      place: 'Невский',
+      status: 'Новая',
+      source: 'Бот · MAX',
+      waitingDays: 3,
+      callback: false,
+      responsible: 'Анна Л.',
+      note: null,
+      cancelReason: null,
+      original: [
+        { label: 'Имя', value: 'Сергей Волков' },
+        { label: 'Малая группа', value: 'Уже состою в группе' },
+        { label: 'Ведущий', value: 'Павел Дмитриев' },
+      ],
+      log: [{ at: '2026-10-09', text: 'Заявка создана: уже состоит в группе.' }],
+    },
+    {
+      id: 208,
+      type: 'already_leader',
+      typeLabel: 'Уже ведёт группу',
+      gist: 'Ведёт группу в Приморском районе, встречи по средам.',
+      reconcile: {
+        kind: 'leader',
+        status: 'choose',
+        text: 'Нашли две группы с похожими ведущими. Выберите ту, которую ведёт этот человек.',
+        candidates: [
+          { groupId: 8, code: 'ДГ-0019', leader: 'Дмитрий В.', district: 'Приморский', tier: 'exact', by: 'phone' },
+          { groupId: 2, code: 'ДГ-0027', leader: 'Андрей М.', district: 'Приморский', tier: 'likely', by: 'name' },
+        ],
+      },
+      state: 'open',
+      fio: 'Дмитрий Воронин',
+      phone: '79215550108',
+      ageLabel: '36–45',
+      place: 'Приморский',
+      status: 'Новая',
+      source: 'Бот · Telegram',
+      waitingDays: 2,
+      callback: false,
+      responsible: 'Анна Л.',
+      note: null,
+      cancelReason: null,
+      original: [
+        { label: 'Имя', value: 'Дмитрий Воронин' },
+        { label: 'Малая группа', value: 'Уже веду группу' },
+      ],
+      log: [{ at: '2026-10-10', text: 'Заявка создана: уже ведёт группу.' }],
+    },
+    {
+      id: 209,
+      type: 'already_leader',
+      typeLabel: 'Уже ведёт группу',
+      gist: 'Ведёт группу на Васильевском острове, встречи по субботам.',
+      reconcile: {
+        kind: 'leader',
+        status: 'none',
+        text: 'Ведущего «Роман Белов» нет в справочнике групп. Выберите группу вручную или сначала заведите её в «Справочнике».',
+        candidates: [],
+      },
+      state: 'open',
+      fio: 'Роман Белов',
+      phone: '79215550109',
+      ageLabel: '26–35',
+      place: 'Василеостровский',
+      status: 'Новая',
+      source: 'Бот · Telegram',
+      waitingDays: 2,
+      callback: false,
+      responsible: 'Анна Л.',
+      note: null,
+      cancelReason: null,
+      original: [
+        { label: 'Имя', value: 'Роман Белов' },
+        { label: 'Малая группа', value: 'Уже веду группу' },
+      ],
+      log: [{ at: '2026-10-10', text: 'Заявка создана: уже ведёт группу.' }],
+    },
+    {
+      id: 210,
+      type: 'already_leader',
+      typeLabel: 'Уже ведёт группу',
+      gist: 'Ведёт группу в Невском районе, встречи по понедельникам.',
+      reconcile: {
+        kind: 'leader',
+        status: 'ready',
+        text: 'Найдена одна группа: ДГ-0112, ведущая Татьяна Ф. Достаточно подтвердить, и группа будет связана с этим ведущим.',
+        candidates: [{ groupId: 12, code: 'ДГ-0112', leader: 'Татьяна Ф.', district: 'Невский', tier: 'exact', by: 'phone' }],
+      },
+      state: 'open',
+      fio: 'Татьяна Фёдорова',
+      phone: '79212005519',
+      ageLabel: '36–45',
+      place: 'Невский',
+      status: 'Новая',
+      source: 'Форма регистрации',
+      waitingDays: 1,
+      callback: false,
+      responsible: 'Анна Л.',
+      note: null,
+      cancelReason: null,
+      original: [
+        { label: 'Имя', value: 'Татьяна Фёдорова' },
+        { label: 'Малая группа', value: 'Уже веду группу' },
+      ],
+      log: [{ at: '2026-10-11', text: 'Заявка создана: уже ведёт группу.' }],
+    },
+    {
+      id: 211,
+      type: 'already_member',
+      typeLabel: 'Уже состоит в группе',
+      gist: 'Состоит в группе у Ольги К.; обращение заведено вручную.',
+      reconcile: {
+        kind: 'member',
+        status: 'nouser',
+        text: 'У обращения нет регистрации человека: оно заведено вручную. Состав группы в таком случае пополняется только руками, в «Справочнике → Группы».',
+        candidates: [],
+      },
+      state: 'open',
+      fio: 'Олег Фомин',
+      phone: null,
+      ageLabel: null,
+      place: null,
+      status: 'Новая',
+      source: 'Вручную',
+      waitingDays: 1,
+      callback: false,
+      responsible: 'Анна Л.',
+      note: null,
+      cancelReason: null,
+      original: [],
+      log: [{ at: '2026-10-11', text: 'Заявка заведена вручную: уже состоит в группе.' }],
+    },
     {
       id: 204,
       type: 'lead_group',
       typeLabel: 'Хочет открыть группу или дать дом',
+      gist: 'Хочет открыть группу, предлагает помещение.',
+      reconcile: null,
       state: 'done',
       fio: 'Виктор Лебедев',
       phone: '79215550104',
@@ -112,6 +303,8 @@ export function buildOthers(): OtherItem[] {
       id: 205,
       type: 'join_group',
       typeLabel: 'Хочет в домашнюю группу',
+      gist: 'Заявка на вступление в группу: позже группа нашлась сама.',
+      reconcile: null,
       state: 'cancelled',
       fio: 'Тимур Ахметов',
       phone: '79215550105',
@@ -137,4 +330,62 @@ export function buildOthers(): OtherItem[] {
       ],
     },
   ];
+}
+
+/**
+ * Демо-состояние: какие обращения «разобрали» в режиме фикстур. Сервера нет, поэтому без этого кнопка «Внести в состав
+ * и закрыть» ничего бы не меняла и список выглядел бы сломанным. Живёт в модуле, как «отправленные» доп. вопросы.
+ */
+const reconciledDemo = new Set<number>();
+
+/** Для тестов: вернуть демо в состояние «ничего не разбирали». */
+export function resetDemoReconciled(): void {
+  reconciledDemo.clear();
+}
+
+/** Обращение, которое сервер разобрал бы по одной группе точно, как `reconcile-ready`. */
+const isReadyExactly = (o: OtherItem): boolean =>
+  o.state === 'open' && o.reconcile?.status === 'ready' && o.reconcile.candidates.filter((c) => c.tier === 'exact').length === 1;
+
+/** Разобрать одно обращение: оно уходит в закрытые. Возвращает false, если оно уже закрыто или не найдено. */
+export function reconcileDemoOther(id: number): boolean {
+  const item = baseOthers().find((o) => o.id === id);
+  if (!item || item.state !== 'open' || reconciledDemo.has(id)) return false;
+  reconciledDemo.add(id);
+  return true;
+}
+
+/** Разобрать сразу все готовые из списка: чужие номера, закрытые и не «готовые» пропускаются. */
+export function reconcileDemoReady(ids: readonly number[]): { applied: number; skipped: number } {
+  let applied = 0;
+  for (const id of new Set(ids)) {
+    const item = baseOthers().find((o) => o.id === id);
+    if (item && !reconciledDemo.has(id) && isReadyExactly(item)) {
+      reconciledDemo.add(id);
+      applied++;
+    }
+  }
+  return { applied, skipped: new Set(ids).size - applied };
+}
+
+/**
+ * Обращения для демо: открытые сверху, как у сервера; разобранные в этой сессии стоят первыми среди закрытых
+ * («свежие первыми»), и разбор у них уже снят.
+ */
+export function buildOthers(): OtherItem[] {
+  const all = baseOthers().map<OtherItem>((o) =>
+    reconciledDemo.has(o.id)
+      ? {
+          ...o,
+          state: 'done',
+          status: 'Исполнена',
+          reconcile: null,
+          log: [...o.log, { at: '2026-10-12', text: 'Закрыта: обработана (разобрано по справочникам).' }],
+        }
+      : o,
+  );
+  const open = all.filter((o) => o.state === 'open');
+  const justDone = all.filter((o) => o.state !== 'open' && reconciledDemo.has(o.id));
+  const rest = all.filter((o) => o.state !== 'open' && !reconciledDemo.has(o.id));
+  return [...open, ...justDone, ...rest];
 }

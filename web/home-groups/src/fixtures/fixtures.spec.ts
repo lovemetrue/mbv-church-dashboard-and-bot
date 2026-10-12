@@ -2,9 +2,13 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { buildCoordinators, buildGroups, buildPeople, buildRequests, buildToday } from './build';
 import { buildFormMeta } from './formMeta';
 import { fixtureActionResponse, fixtureResponse } from './index';
+import { buildOthers, resetDemoReconciled } from './others';
 import { resetDemoInvites } from './settings';
 
-afterEach(() => resetDemoInvites());
+afterEach(() => {
+  resetDemoInvites();
+  resetDemoReconciled();
+});
 
 describe('фикстуры', () => {
   test('счётчики сходятся со списком заявок, отказы в список не попадают', () => {
@@ -156,5 +160,62 @@ describe('фикстуры', () => {
     expect(JSON.stringify(settings)).not.toMatch(/sk-|key/i);
     expect(fixtureActionResponse('assistant/run', {})).toMatchObject({ ok: true, asked: 3 });
     expect(fixtureActionResponse('settings/assistant/enabled', { enabled: false })).toEqual({ ok: true });
+  });
+});
+
+describe('фикстуры: разбор «других обращений»', () => {
+  const open = () => buildOthers().filter((o) => o.state === 'open');
+
+  test('у каждого обращения есть суть, а все пять состояний разбора и «без разбора» представлены', () => {
+    const all = buildOthers();
+    expect(all.every((o) => o.gist.trim().length > 0)).toBe(true);
+    const statuses = new Set(open().map((o) => o.reconcile?.status ?? null));
+    expect(statuses).toEqual(new Set(['ready', 'choose', 'none', 'noleader', 'nouser', null]));
+  });
+
+  test('закрытые обращения разбора не несут, ready ведёт ровно к одной точной группе, а nouser и none — ни к одной', () => {
+    for (const o of buildOthers()) {
+      if (o.state !== 'open') expect(o.reconcile).toBeNull();
+      const r = o.reconcile;
+      if (!r) continue;
+      if (r.status === 'ready') expect(r.candidates.filter((c) => c.tier === 'exact')).toHaveLength(1);
+      if (r.status === 'nouser' || r.status === 'none' || r.status === 'noleader') expect(r.candidates).toEqual([]);
+    }
+  });
+
+  test('группы кандидатов есть в справочнике групп, и код с ведущим сходятся', () => {
+    const groups = new Map(buildGroups().items.map((g) => [g.id, g]));
+    for (const o of buildOthers())
+      for (const c of o.reconcile?.candidates ?? []) {
+        const g = groups.get(c.groupId)!;
+        expect(g).toBeDefined();
+        expect(c.code).toBe(g.code);
+        expect(c.leader).toBe(g.leader);
+        expect(c.district).toBe(g.district);
+      }
+  });
+
+  test('одна группа связана с регистрацией ведущего, остальные нет', () => {
+    const linked = buildGroups().items.filter((g) => g.leaderKey !== null);
+    expect(linked.map((g) => g.leaderKey)).toEqual(['u2']);
+  });
+
+  test('POST requests/:id/reconcile: обращение уходит в закрытые, разбор снят, повтор отвечает «уже было так»', () => {
+    const before = open().length;
+    expect(fixtureActionResponse('requests/206/reconcile', { groupId: 1 })).toEqual({ ok: true, already: false });
+    const item = buildOthers().find((o) => o.id === 206)!;
+    expect(item.state).toBe('done');
+    expect(item.reconcile).toBeNull();
+    expect(open()).toHaveLength(before - 1);
+    expect(buildOthers().findIndex((o) => o.id === 206)).toBe(before - 1);
+    expect(fixtureActionResponse('requests/206/reconcile', { groupId: 1 })).toEqual({ ok: true, already: true });
+  });
+
+  test('POST requests/reconcile-ready: разбирает готовые, остальные и чужие номера пропускает', () => {
+    const res = fixtureActionResponse('requests/reconcile-ready', { ids: [206, 210, 207, 999] });
+    expect(res).toEqual({ ok: true, applied: 2, skipped: 2 });
+    expect(open().filter((o) => o.reconcile?.status === 'ready')).toHaveLength(0);
+    expect(open().some((o) => o.id === 207)).toBe(true);
+    expect(fixtureActionResponse('requests/reconcile-ready', { ids: [206, 210] })).toEqual({ ok: true, applied: 0, skipped: 2 });
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { parseBucket, parseEntity, parseId, parseOtherFilter, parseTab, parseView, patchParams, tabParams, visibleTabs } from './params';
+import { parseBucket, parseEntity, parseId, parseOtherFilter, parseReconcileFilter, parseTab, parseView, patchParams, tabParams, visibleTabs } from './params';
 
 const p = (s: string) => new URLSearchParams(s);
 
@@ -76,5 +76,19 @@ describe('режим списка «Заявок» в адресе', () => {
 
   test('при смене вкладки режим списка и чип обращений сбрасываются', () => {
     expect(tabParams(p('tab=requests&view=others&ostate=done&q=иван'), 'team').toString()).toBe('tab=team&q=%D0%B8%D0%B2%D0%B0%D0%BD');
+  });
+
+  test('отбор по разбору: известные значения читаются, всё остальное — «Все открытые»', () => {
+    expect(parseReconcileFilter(null)).toBe('all');
+    expect(parseReconcileFilter('ready')).toBe('ready');
+    expect(parseReconcileFilter('choose')).toBe('choose');
+    expect(parseReconcileFilter('missing')).toBe('missing');
+    expect(parseReconcileFilter('rest')).toBe('rest');
+    expect(parseReconcileFilter('all')).toBe('all');
+    expect(parseReconcileFilter('done')).toBe('all');
+  });
+
+  test('при смене вкладки отбор по разбору сбрасывается вместе с остальным', () => {
+    expect(tabParams(p('tab=requests&view=others&orec=ready'), 'team').toString()).toBe('tab=team');
   });
 });

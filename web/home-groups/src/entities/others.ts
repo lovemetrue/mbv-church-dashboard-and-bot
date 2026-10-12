@@ -20,3 +20,19 @@ export function parseOtherFilter(v: string | null): OtherFilter {
 }
 
 export type OtherState = OtherItem['state'];
+
+/**
+ * Отбор открытых обращений по тому, что сервер нашёл в справочниках («разбор»). Это вторая строка чипов под
+ * «Открытыми», а не вкладка: живёт в адресе параметром `orec`, без параметра — «Все открытые».
+ *
+ *   ready    — найдена одна группа, достаточно подтвердить
+ *   choose   — нужно выбрать из найденных
+ *   missing  — группы нет в справочнике (none) или ведущий не указан (noleader)
+ *   rest     — разбирать нечего: вопросы, «хочу открыть», обращения без регистрации человека (nouser)
+ */
+export type ReconcileFilter = 'all' | 'ready' | 'choose' | 'missing' | 'rest';
+export const RECONCILE_FILTERS: readonly ReconcileFilter[] = ['all', 'ready', 'choose', 'missing', 'rest'];
+
+export function parseReconcileFilter(v: string | null): ReconcileFilter {
+  return (RECONCILE_FILTERS as readonly string[]).includes(v ?? '') ? (v as ReconcileFilter) : 'all';
+}

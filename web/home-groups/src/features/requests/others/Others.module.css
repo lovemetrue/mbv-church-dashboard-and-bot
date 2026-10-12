@@ -102,14 +102,28 @@
   color: var(--muted);
 }
 
-/* На телефоне строка складывается: имя на всю ширину, под ним тип и контакт в два столбца. */
+/* Суть обращения: вторая строка на всю ширину. Двух строк хватает, чтобы понять, о чём речь; целиком текст в карточке. */
+.gist {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* На телефоне строка складывается: имя на всю ширину, под ним тип и контакт в два столбца, ниже суть. */
 @media (max-width: 700px) {
   .head {
     display: none;
   }
   .row {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-areas: 'who who' 'kind contact';
+    grid-template-areas: 'who who' 'kind contact' 'gist gist';
     gap: 6px 12px;
     padding: 12px;
     min-height: var(--tap);
@@ -122,6 +136,9 @@
   }
   .contact {
     grid-area: contact;
+  }
+  .gist {
+    grid-area: gist;
   }
 }
 
@@ -149,4 +166,110 @@
 .log li {
   padding: 2px 0;
   overflow-wrap: anywhere;
+}
+
+/* Суть в карточке: крупнее остального текста, это первое, что нужно прочесть. */
+.gistBig {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.4;
+  font-weight: 500;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* Блок «Разбор» */
+.recText {
+  margin: 0 0 10px;
+  overflow-wrap: anywhere;
+}
+.fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0 0 10px;
+  min-width: 0;
+}
+.legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+.choice {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: var(--tap);
+  padding: 6px 4px;
+  border-top: 1px solid var(--line-soft);
+  cursor: pointer;
+}
+.choice input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+}
+.choiceBody {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.picker {
+  margin: 0 0 10px;
+}
+.fieldLabel {
+  display: block;
+  margin: 4px 0 6px;
+  font-weight: 600;
+  font-size: 13px;
+}
+.field {
+  display: block;
+  width: 100%;
+  min-height: var(--tap);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 9px 11px;
+  margin-bottom: 10px;
+}
+.recError {
+  background: var(--crit-soft);
+  color: var(--crit);
+  border-radius: var(--radius);
+  padding: 9px 11px;
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+/* «Разобрать все готовые» над списком и окно подтверждения */
+.bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+.bulk > button {
+  min-height: var(--tap);
+}
+.bulk .recError {
+  margin: 0;
+  flex: 1 1 240px;
+}
+.confirmText {
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+.dialogFoot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+.dialogFoot button {
+  min-height: var(--tap);
 }

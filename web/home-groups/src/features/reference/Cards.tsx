@@ -28,6 +28,24 @@ export function GroupCard({ g, onClose }: { g: GroupItem; onClose: () => void })
   const nav = useAppNav();
   const tone = healthTone(g.health.score);
   const rows: KvRow[] = [
+    // Строка только у связанного ведущего: связь появляется, когда обращение «уже веду группу» сверено со справочником.
+    // Ключ регистрации («u12») человеку ничего не говорит, поэтому показываем только переход к карточке.
+    ...(g.leaderKey
+      ? [
+          {
+            label: ru.reference.leader,
+            value: (
+              <span className={styles.leaderLinked}>
+                <span>{g.leader}</span>
+                <span className={styles.note}>{ru.reference.leaderLinked}</span>
+                <Button size="sm" onClick={() => nav.openPerson(g.leaderKey as string)} aria-label={ru.reference.openLeaderAria}>
+                  {ru.reference.openLeader}
+                </Button>
+              </span>
+            ),
+          },
+        ]
+      : []),
     { label: 'Возраст', value: orNone(g.ageText) },
     { label: 'Когда', value: g.whenText ?? <Pill tone="human">{ru.reference.notSpecified}</Pill> },
     {

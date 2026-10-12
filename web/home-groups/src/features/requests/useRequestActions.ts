@@ -11,7 +11,9 @@ export type ActionDialog =
   | { requestId: number; kind: 'reject'; group: GroupBrief }
   | { requestId: number; kind: 'full'; group: GroupBrief }
   /** Подтверждение для запасного варианта: он не главный, и случайный клик по нему не должен распределять человека. */
-  | { requestId: number; kind: 'confirm'; group: GroupBrief };
+  | { requestId: number; kind: 'confirm'; group: GroupBrief }
+  /** Человек отмечен «странным»: обычная группа ему не подходит, поэтому перед утверждением спрашиваем ещё раз. */
+  | { requestId: number; kind: 'strange'; group: GroupBrief; force: boolean };
 
 export interface ActionNotice {
   requestId: number;
@@ -110,8 +112,17 @@ export function useRequestActions(r: RequestItem) {
     setDialog(next);
   };
 
-  /** Утвердить заявку в группу; `force` — после подтверждения «мест нет». */
-  async function approve(group: GroupBrief, force = false) {
+  /**
+   * Утвердить заявку в группу; `force` — после подтверждения «мест нет», `confirmed` — после подтверждения про
+   * «странного человека». Заявку с меткой в любую группу сначала подтверждаем окном: все пути утверждения (основная
+   * кнопка, запасной вариант, «Другая группа») сходятся здесь, поэтому проверка стоит в одном месте.
+   */
+  async function approve(group: GroupBrief, force = false, confirmed = false) {
+    if (r.strange && !confirmed) {
+      setNotice(null);
+      setDialog({ requestId: r.id, kind: 'strange', group, force });
+      return;
+    }
     const body: ApproveBody = force ? { groupId: group.id, force: true } : { groupId: group.id };
     const out = await run('approve', body, ru.requests.act.approved(group.code));
     if (out.ok || out.code === 'already_closed') setDialog(null);

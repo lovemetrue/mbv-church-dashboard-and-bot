@@ -5,11 +5,10 @@ import { FORMS, plural } from '../../entities/plural';
 import { useRequests, useToday } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
 import { useAppNav } from '../../shared/nav';
-import { Button, ErrorState, LoadingState } from '../../shared/ui';
+import { Button, ErrorState, LoadingState, Tip } from '../../shared/ui';
 import { CellPanel } from './CellPanel';
 import { Matrix, type CellRef } from './Matrix';
 import { useMatrixPrefs } from './prefs';
-import { Tip } from './Tip';
 import { ApprovedWidget, HelpWidget } from './Widgets';
 import styles from './Today.module.css';
 

@@ -1,6 +1,7 @@
-import type { GroupBrief, GroupItem, RequestItem } from '@contracts';
+import type { GroupBrief, GroupItem, Proposal, RequestItem } from '@contracts';
 import type { BucketFilter } from '../../entities/buckets';
 import { phoneDigits } from '../../entities/format';
+import { isStrangeHold } from '../../entities/strange';
 import { RESP_NOBODY } from '../../shared/nav/params';
 
 /**
@@ -51,16 +52,19 @@ export interface BucketCounts {
   callback: number;
   human: number;
   done: number;
+  /** «Странные»: с меткой «Странный человек», из любой корзины. */
+  strange: number;
 }
 
 /** Счётчики на чипах считаются по найденному, а не по всему: так видно, сколько попало в поиск. */
 export function countBuckets(items: readonly RequestItem[]): BucketCounts {
-  const c: BucketCounts = { all: 0, queue: 0, ready: 0, callback: 0, human: 0, done: 0 };
+  const c: BucketCounts = { all: 0, queue: 0, ready: 0, callback: 0, human: 0, done: 0, strange: 0 };
   for (const r of items) {
     if (r.bucket === 'cancelled') continue;
     c.all++;
     c[r.bucket]++;
     if (r.bucket === 'ready' || r.bucket === 'callback') c.queue++;
+    if (r.strange) c.strange++;
   }
   return c;
 }
@@ -72,6 +76,7 @@ export function countBuckets(items: readonly RequestItem[]): BucketCounts {
 export function filterByBucket(items: readonly RequestItem[], bucket: BucketFilter): RequestItem[] {
   const open = items.filter((r) => r.bucket !== 'cancelled');
   if (bucket === 'all') return open;
+  if (bucket === 'strange') return open.filter((r) => r.strange !== null);
   if (bucket === 'queue') {
     return [...open.filter((r) => r.bucket === 'callback'), ...open.filter((r) => r.bucket === 'ready')];
   }
@@ -108,3 +113,10 @@ export function unavailableReason(
   if (brief.free <= 0) return 'noSeats';
   return null;
 }
+
+/**
+ * Предложение группы, которое можно показывать. Заявку с меткой «Странный человек» сервер из подбора исключает
+ * (`noPlan.code === 'strange'`) и предложения у неё не присылает; если бы устаревший ответ или кэш его всё же
+ * принесли, обычную группу такому человеку предлагать нельзя: показываем только причину, а группу ищут вручную.
+ */
+export const proposalOf = (r: Pick<RequestItem, 'proposal' | 'noPlan'>): Proposal | null => (isStrangeHold(r) ? null : r.proposal);

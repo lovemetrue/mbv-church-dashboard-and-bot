@@ -1,0 +1,58 @@
+/* Значок «Странный человек»: цвет — переменная опасности темы, не вшитый. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  /* Зона нажатия больше самого значка, чтобы на него можно было навести и с телефона. */
+  margin: 0 3px;
+  color: var(--crit);
+  border-radius: 50%;
+  cursor: help;
+  vertical-align: middle;
+}
+.badge:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.badge svg {
+  display: block;
+}
+
+/* Полоса стоит прямо в теле карточки (Drawer), у разделов которой поля по 18 px: те же поля и здесь. */
+.banner {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 14px 18px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--crit);
+  border-left-width: 5px;
+  border-radius: var(--radius);
+  background: var(--crit-soft);
+  color: var(--ink);
+  min-width: 0;
+}
+.bannerIcon {
+  flex: none;
+  color: var(--crit);
+  margin-top: 1px;
+}
+.bannerBody {
+  min-width: 0;
+}
+.bannerBody p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.bannerTitle {
+  font-weight: 700;
+  color: var(--crit);
+}
+.bannerMeta {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.bannerNote {
+  margin-top: 4px;
+}

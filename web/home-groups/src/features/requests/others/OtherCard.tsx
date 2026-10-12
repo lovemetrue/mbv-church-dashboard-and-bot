@@ -1,7 +1,7 @@
 import type { OtherItem } from '@contracts';
 import { formatDateShort, formatPhone } from '../../../entities/format';
 import { ru } from '../../../shared/i18n/ru';
-import { AgeTag, Drawer, DrawerSection, KeyValue, Pill, type KvRow } from '../../../shared/ui';
+import { AgeTag, Drawer, DrawerSection, KeyValue, Pill, StrangeBadge, StrangeBanner, type KvRow } from '../../../shared/ui';
 import { DeleteRequestSection } from '../../manage';
 import { subjectOfOther } from '../work/subject';
 import { WorkPlace } from '../work/WorkPlace';
@@ -33,7 +33,12 @@ export function OtherCard({ item, onClose, onClosed }: { item: OtherItem; onClos
     <Drawer
       docked
       label={o.cardLabel(item.fio)}
-      title={item.fio}
+      title={
+        <>
+          {item.fio}
+          <StrangeBadge mark={item.strange} size={18} />
+        </>
+      }
       subtitle={
         <>
           <Pill tone={STATE_TONE[item.state]}>{STATE_LABEL[item.state]}</Pill>
@@ -43,6 +48,7 @@ export function OtherCard({ item, onClose, onClosed }: { item: OtherItem; onClos
       }
       onClose={onClose}
     >
+      <StrangeBanner mark={item.strange} />
       {item.gist && (
         <DrawerSection title={o.gistTitle}>
           <p className={styles.gistBig}>{item.gist}</p>

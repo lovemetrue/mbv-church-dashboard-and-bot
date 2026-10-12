@@ -12,9 +12,11 @@ import {
 } from './settings';
 import { buildFormMeta } from './formMeta';
 import { buildCoordinators, buildGroups, buildPeople, buildRequests, buildToday } from './build';
+import { RAW_REQUESTS } from './raw';
+import { setDemoStrange, strangeKey } from './strange';
 import { buildCampaign } from './campaign';
 import { fixtureChatReply } from './chat';
-import { reconcileDemoOther, reconcileDemoReady } from './others';
+import { buildOthers, reconcileDemoOther, reconcileDemoReady } from './others';
 import { buildTeam } from './team';
 
 /** Ответ «сервера» в режиме фикстур. Путь — как в apiGet: «today», «requests»… */
@@ -80,6 +82,21 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
   }
   // Рабочее место координатора: правка данных, «в работе у», итог звонка, закрытие и возврат в работу. В демо данные не меняются, действие просто «получается».
   if (/^requests\/\d+\/(edit|assign|call|close|reopen)$/.test(clean)) return { ok: true };
+  // Метка «Странный человек»: в демо она ставится и снимается, и видна везде, где виден человек (fixtures/strange.ts).
+  if (/^requests\/\d+\/strange$/.test(clean)) {
+    const id = Number(clean.split('/')[1]);
+    const input = (body ?? {}) as { value?: boolean; note?: string | null };
+    const request = RAW_REQUESTS.find((r) => r.id === id);
+    const other = request ? undefined : buildOthers().find((o) => o.id === id);
+    setDemoStrange(request ? strangeKey(request.phone, `r${id}`) : strangeKey(other?.phone, `o${id}`), input.value === true, input.note);
+    return { ok: true };
+  }
+  if (clean === 'people/strange') {
+    const input = (body ?? {}) as { key?: string; value?: boolean; note?: string | null };
+    const person = buildPeople().items.find((p) => p.key === input.key);
+    setDemoStrange(strangeKey(person?.phone, input.key ?? ''), input.value === true, input.note);
+    return { ok: true };
+  }
   // Разбор «других обращений»: в демо обращение уходит в закрытые (fixtures/others.ts), а повторный разбор отвечает «уже было так».
   if (/^requests\/\d+\/reconcile$/.test(clean)) {
     const id = Number(clean.split('/')[1]);

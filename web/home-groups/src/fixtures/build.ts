@@ -49,6 +49,7 @@ import {
 import { RAW_MANUAL_MEMBERS } from './members';
 import { buildOthers } from './others';
 import { requestExtras } from './requestExtras';
+import { demoStrangeOf, STRANGE_NO_PLAN } from './strange';
 
 const DEFAULT_CAPACITY = 10;
 const WEIGHTS = { district: 40, age: 25, time: 20, street: 15 };
@@ -251,6 +252,8 @@ export function buildPlan(requests: RawRequest[] = RAW_REQUESTS, groups: RawGrou
         // У пары закреплённых заявок после закрепления поправили данные: так в демо видна метка
         // «Данные изменились». Свежий расчёт «изменившихся данных» не имеет, поэтому только saved.
         dataChanged: (r.waitingDays ?? 0) >= 2 && DATA_CHANGED_REQUESTS.has(r.id),
+        // Подробности «что изменилось» в демо-данных пока не заведены (как у предложений, посчитанных до миграции 033).
+        changes: null,
         // В фикстурах предложения всегда считает сервис: языковой модели («agent») здесь нет.
         source: 'script',
         main: toCandidate(pick, confidence),
@@ -297,7 +300,12 @@ export function buildRequests(): RequestsView {
   const all: RequestItem[] = RAW_REQUESTS.map((r) => {
     const entry = plan.byRequest.get(r.id);
     const fin = r.finalGroupId != null ? RAW_GROUPS.find((x) => x.id === r.finalGroupId) : undefined;
+    const strange = demoStrangeOf(r.phone, `r${r.id}`);
+    const bucket = bucketOf(r, entry);
+    // Как у сервера: открытую заявку с меткой в автоматический подбор не берут, ей нужна ручная группа.
+    const held = strange !== null && bucket !== 'done' && bucket !== 'cancelled';
     return {
+      strange,
       id: r.id,
       fio: r.fio,
       phone: r.phone,
@@ -309,12 +317,12 @@ export function buildRequests(): RequestsView {
       street: r.street,
       source: r.source,
       status: r.status,
-      bucket: bucketOf(r, entry),
+      bucket: held ? 'human' : bucket,
       callback: r.callback,
       waitingDays: r.waitingDays,
       dataFill: [!!r.district, !!r.age, r.days.length > 0 || !!r.slot, !!r.street],
-      proposal: entry?.proposal ?? null,
-      noPlan: entry?.noPlan ?? null,
+      proposal: held ? null : (entry?.proposal ?? null),
+      noPlan: held ? STRANGE_NO_PLAN : (entry?.noPlan ?? null),
       ...requestExtras(r),
       finalGroup: fin ? groupBrief(fin) : null,
       finalGroupText: r.finalGroupText,
@@ -448,12 +456,12 @@ function membersByGroup(): Map<number, GroupMember[]> {
   for (const r of RAW_REQUESTS) {
     if (r.finalGroupId === null || r.status !== 'Исполнена') continue;
     const approved = r.log.find((l) => l.text.startsWith('Утверждена'));
-    push(r.finalGroupId, { kind: 'placed', personKey: `r${r.id}`, id: r.id, fio: r.fio, phone: r.phone, date: approved?.at ?? null, note: null });
+    push(r.finalGroupId, { kind: 'placed', personKey: `r${r.id}`, id: r.id, fio: r.fio, phone: r.phone, date: approved?.at ?? null, note: null, strange: demoStrangeOf(r.phone, `r${r.id}`) });
   }
   for (const m of RAW_MANUAL_MEMBERS) {
     const person = rawPersonByKey(m.personKey);
     if (!person) continue;
-    push(m.groupId, { kind: 'manual', personKey: m.personKey, id: m.id, fio: person.fio, phone: person.phone, date: m.date, note: m.note });
+    push(m.groupId, { kind: 'manual', personKey: m.personKey, id: m.id, fio: person.fio, phone: person.phone, date: m.date, note: m.note, strange: demoStrangeOf(person.phone, m.personKey) });
   }
   const codeOf = new Map(RAW_GROUPS.map((g) => [g.id, groupBrief(g).code]));
   const out = new Map<number, GroupMember[]>();
@@ -517,6 +525,7 @@ export function buildPeople(): PeopleView {
   const fromRequests: PersonItem[] = RAW_REQUESTS.map((raw) => {
     const item = requests.items.find((x) => x.id === raw.id);
     return {
+      strange: demoStrangeOf(raw.phone, `r${raw.id}`),
       key: `r${raw.id}`,
       personId: null,
       groups: groupsOf(`r${raw.id}`),
@@ -533,7 +542,7 @@ export function buildPeople(): PeopleView {
       requestId: raw.id,
     };
   });
-  const extras: PersonItem[] = RAW_EXTRA_PEOPLE.map((p) => ({ ...p, personId: p.personId ?? null, groups: groupsOf(p.key), requestId: null }));
+  const extras: PersonItem[] = RAW_EXTRA_PEOPLE.map((p) => ({ ...p, personId: p.personId ?? null, groups: groupsOf(p.key), requestId: null, strange: demoStrangeOf(p.phone, p.key) }));
   return { generatedAt: GENERATED_AT, items: [...fromRequests, ...extras] };
 }
 

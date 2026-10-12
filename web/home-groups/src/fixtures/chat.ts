@@ -1,4 +1,4 @@
-import type { ChatBody, ChatOk } from '@contracts';
+import type { ChatOk } from '@contracts';
 import { ApiError } from '../shared/api/client';
 
 /**
@@ -6,8 +6,8 @@ import { ApiError } from '../shared/api/client';
  * «перебор» даёт таблицу групп по районам, «ошибка» — отказ сервиса (для снимков ошибки), остальное — общий ответ.
  */
 export function fixtureChatReply(body: unknown): ChatOk {
-  const turns = (body as Partial<ChatBody> | undefined)?.messages ?? [];
-  const question = [...turns].reverse().find((t) => t.role === 'user')?.content ?? '';
+  const sent = body as { message?: string; messages?: { role: string; content: string }[] } | undefined;
+  const question = sent?.message ?? [...(sent?.messages ?? [])].reverse().find((t) => t.role === 'user')?.content ?? '';
 
   if (/ошибка/i.test(question)) {
     throw new ApiError(503, 'Служба модели сейчас недоступна. Попробуйте через минуту.', 'unavailable');

@@ -1,4 +1,4 @@
-import type { OtherItem, RequestItem } from '@contracts';
+import type { OtherItem, RequestItem, StrangeMark } from '@contracts';
 
 /**
  * Минимум полей, которые нужны блоку «Работа с заявкой»: заявка из подбора и «другое обращение»
@@ -16,6 +16,8 @@ export interface WorkSubject {
   note: string | null;
   responsible: string | null;
   callback: boolean;
+  /** Метка «Странный человек» на человеке записи; null — нет. */
+  strange: StrangeMark | null;
   /** open — в работе; done — обработана или утверждена; cancelled — аннулирована. */
   state: 'open' | 'done' | 'cancelled';
 }
@@ -31,6 +33,7 @@ export function subjectOfRequest(r: RequestItem): WorkSubject {
     note: r.note,
     responsible: r.responsible,
     callback: r.callback,
+    strange: r.strange,
     state: r.bucket === 'done' ? 'done' : r.bucket === 'cancelled' ? 'cancelled' : 'open',
   };
 }
@@ -46,6 +49,7 @@ export function subjectOfOther(o: OtherItem): WorkSubject {
     note: o.note,
     responsible: o.responsible,
     callback: o.callback,
+    strange: o.strange,
     state: o.state,
   };
 }

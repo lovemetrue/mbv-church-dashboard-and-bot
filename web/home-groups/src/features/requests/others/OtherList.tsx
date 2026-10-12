@@ -1,7 +1,7 @@
 import type { OtherItem } from '@contracts';
 import { formatPhone } from '../../../entities/format';
 import { ru } from '../../../shared/i18n/ru';
-import { AgeTag, Pill, type PillTone } from '../../../shared/ui';
+import { AgeTag, Pill, StrangeBadge, type PillTone } from '../../../shared/ui';
 import styles from './Others.module.css';
 
 const o = ru.requests.others;
@@ -54,6 +54,7 @@ export function OtherList({
               >
                 {it.fio}
               </button>
+              <StrangeBadge mark={it.strange} />
               {it.ageLabel && <AgeTag>{it.ageLabel}</AgeTag>}
               <span className={styles.place}>{it.place ?? ru.common.placeUnknown}</span>
               {it.responsible && <span className={styles.inWork}>{ru.requests.inWorkBy(it.responsible)}</span>}

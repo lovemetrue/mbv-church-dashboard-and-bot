@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { buildAddBody, formatDayMonth, formatDayMonthYear, isFutureDate, normalizeText, searchPeople, todayIso } from './model';
 
 const person = (over: Partial<PersonItem>): PersonItem => ({
+  strange: null,
   key: 'u1',
   personId: null,
   groups: [],

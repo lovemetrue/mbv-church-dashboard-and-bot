@@ -1,6 +1,6 @@
 import type { CellLevel, MatrixCell, TodayView } from '@contracts';
 import { ru } from '../../shared/i18n/ru';
-import { EmptyState } from '../../shared/ui';
+import { EmptyState, Tip } from '../../shared/ui';
 import {
   MATRIX_MODES,
   MATRIX_SORTS,
@@ -18,7 +18,6 @@ import {
   type MatrixSort,
   type Totals,
 } from './model';
-import { Tip } from './Tip';
 import styles from './Today.module.css';
 
 const LEVEL_CLASS: Record<CellLevel, string | undefined> = {

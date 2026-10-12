@@ -113,6 +113,9 @@ function WaitingContent({
               {BUCKET_LABEL[b]}
             </Chip>
           ))}
+          <Chip pressed={nav.bucket === 'strange'} count={counts.strange} onClick={() => nav.setBucket('strange')}>
+            {ru.strange.chip}
+          </Chip>
         </div>
         <div className={styles.tools} role="group" aria-label={ru.requests.toolsLabel}>
           <ResponsibleSelect items={data.items} value={nav.responsible} onChange={nav.setResponsible} />

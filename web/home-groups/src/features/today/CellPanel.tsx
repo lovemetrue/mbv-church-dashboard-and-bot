@@ -15,6 +15,7 @@ import {
   LoadingState,
   NewGroupIcon,
   Pill,
+  StrangeBadge,
   type KvRow,
   type PillTone,
 } from '../../shared/ui';
@@ -56,6 +57,8 @@ function WaitingList({ ids }: { ids: readonly number[] }) {
           <button type="button" className={styles.prow} onClick={() => nav.openRequest(r.id)}>
             <span className={styles.prowMain}>
               <b>{r.fio}</b>
+              {/* Вся строка — кнопка, поэтому значок без фокуса: подсказка у него обычный title. */}
+              <StrangeBadge mark={r.strange} interactive={false} />
               {r.ageLabel && <AgeTag>{r.ageLabel}</AgeTag>}
             </span>
             <span className={styles.prowSub}>

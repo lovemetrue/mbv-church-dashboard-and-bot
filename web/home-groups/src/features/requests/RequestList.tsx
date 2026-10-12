@@ -2,9 +2,10 @@ import type { RequestItem } from '@contracts';
 import { BUCKET_LABEL } from '../../entities/buckets';
 import { groupLabel, groupLine } from '../../entities/format';
 import { ru } from '../../shared/i18n/ru';
-import { AgeTag, ConfidenceDots, Pill } from '../../shared/ui';
+import { AgeTag, ConfidenceDots, Pill, StrangeBadge } from '../../shared/ui';
 import { SavedTag } from './SavedTag';
 import { AssistantTag } from './assistant/AssistantTag';
+import { proposalOf } from './model';
 import styles from './Requests.module.css';
 
 function proposalText(r: RequestItem) {
@@ -12,7 +13,8 @@ function proposalText(r: RequestItem) {
     if (r.finalGroup) return `→ ${groupLabel(r.finalGroup)} (${r.finalGroup.leader})`;
     return r.finalGroupText ? `→ ${r.finalGroupText}` : '';
   }
-  if (r.proposal) return groupLine(r.proposal.main.group);
+  const proposal = proposalOf(r);
+  if (proposal) return groupLine(proposal.main.group);
   return null;
 }
 
@@ -44,7 +46,8 @@ export function RequestList({ items, selectedId, onSelect, selection }: RequestL
       <ul className={styles.rows} aria-label={ru.requests.listLabel}>
         {items.map((r) => {
           const text = proposalText(r);
-          const confidence = r.proposal && r.bucket !== 'done' ? (r.proposal.main.confidence ?? r.proposal.main.score) : null;
+          const proposal = proposalOf(r);
+          const confidence = proposal && r.bucket !== 'done' ? (proposal.main.confidence ?? proposal.main.score) : null;
           const picked = selection.isPicked(r.id);
           return (
             <li
@@ -74,6 +77,7 @@ export function RequestList({ items, selectedId, onSelect, selection }: RequestL
                 >
                   {r.fio}
                 </button>
+                <StrangeBadge mark={r.strange} />
                 {r.ageLabel && <AgeTag>{r.ageLabel}</AgeTag>}
                 <span className={styles.place}>{r.place ?? ru.common.placeUnknown}</span>
                 <AssistantTag note={r.assistant} />
@@ -83,7 +87,7 @@ export function RequestList({ items, selectedId, onSelect, selection }: RequestL
                 <Pill tone={r.bucket === 'cancelled' ? 'plain' : r.bucket}>{BUCKET_LABEL[r.bucket]}</Pill>
                 <div className={styles.propText}>
                   {text ?? <span className={styles.note}>{r.noPlan?.reason ?? ''}</span>}
-                  {r.proposal && r.bucket !== 'done' && <SavedTag saved={r.proposal.saved} dataChanged={r.proposal.dataChanged} />}
+                  {proposal && r.bucket !== 'done' && <SavedTag saved={proposal.saved} dataChanged={proposal.dataChanged} />}
                 </div>
               </div>
               <div className={`${styles.conf} num`}>

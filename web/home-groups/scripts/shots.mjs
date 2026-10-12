@@ -247,6 +247,24 @@ const SCREENS = [
     submit: '[role=dialog][aria-label="Помощник"] button[aria-label="Отправить"]',
     after: '[role=dialog][aria-label="Помощник"] button:has-text("Повторить")',
   },
+  // Метка «Странный человек»: красный значок в списках, плашка и флажок в карточке (заявка 14 отмечена в демо), вопрос при утверждении,
+  // чип «Странные», значок в «Людях», в составе группы и в «Других обращениях».
+  { name: 'strange-list', url: '/?tab=requests', ready: 'ul[aria-label="Список заявок"] [role=img][aria-label^="Странный человек"]', scroll: 'ul[aria-label="Список заявок"] [role=img][aria-label^="Странный человек"]' },
+  { name: 'strange-chip', url: '/?tab=requests&bucket=strange', ready: 'ul[aria-label="Список заявок"] [role=img][aria-label^="Странный человек"]', scroll: 'ul[aria-label="Список заявок"] [role=img][aria-label^="Странный человек"]' },
+  { name: 'strange-card', url: '/?tab=requests&req=14', ready: '[role=dialog][aria-label^="Карточка заявки"] [role=note]' },
+  { name: 'strange-work', url: '/?tab=requests&req=14', ready: '[role=dialog][aria-label^="Карточка заявки"] [role=note]', scroll: 'button:has-text("Сохранить отметку")' },
+  { name: 'strange-work-new', url: '/?tab=requests&req=1', ready: '[role=dialog][aria-label^="Карточка заявки"]', click: 'label:has-text("Странный человек")', then: 'textarea[maxlength="300"]', scroll: 'button:has-text("Сохранить отметку")' },
+  {
+    name: 'strange-confirm',
+    url: '/?tab=requests&req=14',
+    ready: '[role=dialog][aria-label^="Карточка заявки"] [role=note]',
+    click: ['button[aria-label="Выбрать другую группу из списка"]', '[role=dialog][aria-modal=true] button[aria-label^="Выбрать и утвердить"]:not([disabled]) >> nth=0'],
+    then: '[role=dialog][aria-modal=true]:has-text("Всё равно направить")',
+  },
+  { name: 'strange-people', url: '/?tab=reference&ent=people', ready: 'table [role=img][aria-label^="Странный человек"]', scroll: 'table [role=img][aria-label^="Странный человек"]' },
+  { name: 'strange-person-card', url: '/?tab=reference&ent=people&rec=u2', ready: '[role=dialog][aria-label^="Карточка человека"] [role=note]', scroll: 'button:has-text("Снять отметку"), button:has-text("Сохранить отметку")' },
+  { name: 'strange-members', url: '/?tab=reference&rec=2', ready: '[role=dialog][aria-label^="Карточка группы"]', scroll: 'ul[aria-label="Состоят в группе"] [role=img][aria-label^="Странный человек"]' },
+  { name: 'strange-others', url: '/?tab=requests&view=others', ready: 'ul[aria-label="Список обращений"] [role=img][aria-label^="Странный человек"]', scroll: 'ul[aria-label="Список обращений"] [role=img][aria-label^="Странный человек"]' },
 ];
 
 const SHOTS = [
@@ -316,6 +334,8 @@ const SHOTS = [
   ['chat-answer', 400, 'dark'],
   ['chat-open', 400, 'gray'],
   ['chat-fab', 1280, 'dark'],
+  ...['strange-list', 'strange-chip', 'strange-card', 'strange-work', 'strange-work-new', 'strange-confirm', 'strange-people', 'strange-person-card', 'strange-members', 'strange-others'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
+  ...['strange-list', 'strange-card', 'strange-confirm'].flatMap((s) => [[s, 400, 'dark'], [s, 400, 'gray']]),
 ];
 
 const browser = await chromium.launch({ executablePath: chromePath, args: ['--no-sandbox'] });

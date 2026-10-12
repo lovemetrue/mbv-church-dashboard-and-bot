@@ -4,6 +4,7 @@ import type { ViewScope } from './model';
 
 const BUCKET_TEXT: Record<string, string> = {
   queue: ru.requests.queueChip,
+  strange: ru.strange.chip,
   ready: 'Готово к утверждению',
   callback: 'Перезвонить',
   human: 'Нужна помощь в сопоставлении',

@@ -4,7 +4,7 @@ import { formatPhone, groupLabel, phoneDigits } from '../../../entities/format';
 import { usePeople } from '../../../shared/api/queries';
 import { ru } from '../../../shared/i18n/ru';
 import { useAppNav } from '../../../shared/nav';
-import { Button, ErrorState, LoadingState, Modal, Pill } from '../../../shared/ui';
+import { Button, ErrorState, LoadingState, Modal, Pill, StrangeBadge } from '../../../shared/ui';
 import buttonStyles from '../../../shared/ui/Button.module.css';
 import manage from '../Manage.module.css';
 import { buildAddBody, isFutureDate, searchPeople, todayIso, type AddForm } from './model';
@@ -238,6 +238,8 @@ export function AddMemberDialog({ g, onClose }: { g: GroupItem; onClose: () => v
                           >
                             <span className={styles.optionName}>
                               {p.fio}
+                              {/* Вся строка — кнопка: значок без фокуса, подсказка у него обычный title. Нужен именно здесь, чтобы не добавить «странного» в обычную группу не глядя. */}
+                              <StrangeBadge mark={p.strange} interactive={false} />
                               {already && <Pill>{t.already}</Pill>}
                             </span>
                             <span className={styles.optionMeta}>{meta}</span>

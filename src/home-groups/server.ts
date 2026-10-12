@@ -141,6 +141,8 @@ const PERSON_STRANGE_PATH = '/api/v1/people/strange';
 const RECONCILE_READY_PATH = '/api/v1/requests/reconcile-ready';
 const ASSISTANT_RUN_PATH = '/api/v1/assistant/run';
 const ASSISTANT_CHAT_PATH = '/api/v1/assistant/chat';
+const ASSISTANT_CHAT_HISTORY_PATH = '/api/v1/assistant/chat/history';
+const ASSISTANT_CHAT_CLEAR_PATH = '/api/v1/assistant/chat/clear';
 const EXPORT_PATH = /^\/api\/v1\/export\/(requests|people)\.csv$/;
 /** `GET /api/v1/people/12/card`: печатная карточка регистрации и её QR. */
 const PERSON_PATH = /^\/api\/v1\/people\/(\d{1,15})\/(qr|card)$/;
@@ -568,6 +570,13 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     sendJson(res, 200, outcome);
   }
 
+  /** Очистка истории чата: стирается только разговор того, кто вошёл, чужой не тронуть. */
+  async function handleAssistantChatClear(req: IncomingMessage, res: ServerResponse, sid: string | undefined): Promise<void> {
+    const call = await readAuthedJson(req, res, sid);
+    if (!call) return;
+    sendJson(res, 200, await deps.chat.clear(call.actor));
+  }
+
   /** Разбор непонятных заявок помощником. Доступен обоим входам, пока помощник подключён и включён. */
   async function handleAssistantRun(req: IncomingMessage, res: ServerResponse, sid: string | undefined): Promise<void> {
     const call = await readAuthedJson(req, res, sid);
@@ -716,6 +725,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     if (req.method === 'POST' && path === PERSON_STRANGE_PATH) { await handlePersonStrange(req, res, sid); return; }
     if (req.method === 'POST' && path === RECONCILE_READY_PATH) { await handleReconcileReady(req, res, sid); return; }
     if (req.method === 'POST' && path === ASSISTANT_CHAT_PATH) { await handleAssistantChat(req, res, sid); return; }
+    if (req.method === 'POST' && path === ASSISTANT_CHAT_CLEAR_PATH) { await handleAssistantChatClear(req, res, sid); return; }
     if (req.method === 'POST' && path === ASSISTANT_RUN_PATH) { await handleAssistantRun(req, res, sid); return; }
     const manage = req.method === 'POST' ? MANAGE_PATH.exec(path) : null;
     if (manage) { await handleManage(req, res, manage[1]!, Number(manage[2]), manage[3]!, sid); return; }
@@ -752,6 +762,15 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
         return;
       }
       sendJson(res, 200, await settingsRoute());
+      return;
+    }
+
+    if (path === ASSISTANT_CHAT_HISTORY_PATH) {
+      const role = await deps.auth.roleOf(sid);
+      if (!role) { sendJson(res, 401, { error: 'unauthorized' }); return; }
+      const identity = await deps.auth.identityOf?.(sid);
+      // В истории настоящие имена людей; sendJson отдаёт её с no-store, так что в кэше браузера она не залежится.
+      sendJson(res, 200, await deps.chat.history(identity?.login ?? deps.actorName(role)));
       return;
     }
 

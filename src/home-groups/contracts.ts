@@ -47,6 +47,8 @@
  *   POST /api/v1/persons/:id/update     UpdateBody → ActionOk | ActionError (правка карточки, внесённой вручную: ключ p<id>)
  *   POST /api/v1/persons/:id/delete     (тело {})  → ActionOk | ActionError (только super; карточка скрывается)
  *   POST /api/v1/assistant/chat         ChatBody → ChatOk | ActionError (кнопка «✦ Помощник»: вопросы по базе, только чтение; имена модель не видит)
+ *   GET  /api/v1/assistant/chat/history  → ChatHistoryView (последние сообщения этого входа)
+ *   POST /api/v1/assistant/chat/clear   {} → { ok: true } (стереть историю этого входа)
  *   POST /api/v1/assistant/run          (тело {})       → AssistantRunOk | ActionError (помощник разбирает непонятные заявки)
  *   GET  /api/v1/settings/assistant     → SettingsAssistantView (только super)
  *   POST /api/v1/settings/assistant/enabled AssistantEnabledBody → ActionOk | ActionError (только super)
@@ -144,7 +146,20 @@ export interface Candidate {
   reasons: Reason[];
 }
 
+/** Что изменилось в данных заявки с тех пор, как предложили группу. */
+export interface DataChange {
+  /** «Район», «Возраст», «Дни», «Время суток», «Улица». */
+  field: string;
+  before: string | null;
+  after: string | null;
+}
+
 export interface Proposal {
+  /**
+   * Что именно изменилось (по снимку данных на момент предложения). null — снимка нет (предложение сохранено до того,
+   * как их стали хранить): известно лишь, что данные изменились. Пустой список бывает, если после изменения всё вернулось.
+   */
+  changes: DataChange[] | null;
   /** Данные заявки изменились после закрепления (район, возраст, время, улица): закреплённая группа ещё не пересчитана, нужно «подобрать заново». */
   dataChanged: boolean;
   /** Предложение закреплено: сохранено в «предварительно» и не изменится само, пока группа доступна. Иначе это свежий расчёт, он может поменяться при следующем показе. */
@@ -345,15 +360,23 @@ export interface AssistantNote {
   questions: string[];
 }
 
-/** Один ход разговора с помощником. Сервер историю не хранит: интерфейс присылает последние ходы целиком. */
+/** Один ход разговора с помощником. Разговор хранит сервер (по логину); модели уходят последние 6 сообщений. */
 export interface ChatTurn {
   role: 'user' | 'assistant';
   /** До 2000 знаков. */
   content: string;
 }
 
-export interface ChatBody {
-  /** От 1 до 12 ходов; последний — вопрос человека. */
+/** Обычно присылается только новый вопрос: историю сервер знает сам. `messages` — прежний вид, ничего не сохраняет. */
+export type ChatBody =
+  | { message: string }
+  | {
+      /** От 1 до 12 ходов; последний — вопрос человека. */
+      messages: ChatTurn[];
+    };
+
+/** Что показать при открытии чата: последние сообщения этого входа, старые первыми (с настоящими именами). */
+export interface ChatHistoryView {
   messages: ChatTurn[];
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { inputSignature } from '../src/home-groups/plan/signature.js';
+import { diffSnapshots, inputSignature, inputSnapshot, parseSnapshot } from '../src/home-groups/plan/signature.js';
 
 const base = { district: 'Приморский', ageRange: [25, 35] as [number, number], days: ['Пн' as const, 'Ср' as const], slot: 'вечер' as const, street: 'ул. Рылеева 32' };
 
@@ -22,5 +22,34 @@ describe('отпечаток данных заявки', () => {
     expect(inputSignature({ ...base, street: null })).toBe(inputSignature({ ...base, street: '   ' }));
     expect(inputSignature({ ...base, slot: null })).not.toBe(inputSignature(base));
     expect(inputSignature({ ...base, district: null, ageRange: null })).toMatch(/^[0-9a-f]{16}$/);
+  });
+});
+
+describe('снимок данных для показа: что изменилось', () => {
+  test('снимок — готовые к показу строки: район, возраст, дни по порядку, время суток, улица', () => {
+    expect(inputSnapshot(base)).toEqual({ district: 'Приморский', age: '25–35', days: 'Пн, Ср', slot: 'вечер', street: 'ул. Рылеева 32' });
+    expect(inputSnapshot({ ...base, days: ['Ср', 'Пн'], street: '  ' })).toMatchObject({ days: 'Пн, Ср', street: null });
+    expect(inputSnapshot({ district: null, ageRange: [40, 40], days: [], slot: null, street: null }))
+      .toEqual({ district: null, age: '40', days: null, slot: null, street: null });
+  });
+
+  test('различия — по каждому изменившемуся полю: было и стало, с русским названием поля', () => {
+    const before = inputSnapshot(base);
+    const after = inputSnapshot({ ...base, street: 'ул. Новая 5', slot: null });
+    expect(diffSnapshots(before, after)).toEqual([
+      { field: 'Время суток', before: 'вечер', after: null },
+      { field: 'Улица', before: 'ул. Рылеева 32', after: 'ул. Новая 5' },
+    ]);
+  });
+
+  test('одно и то же даёт пустой список; регистр и пробелы в улице не считаются изменением', () => {
+    expect(diffSnapshots(inputSnapshot(base), inputSnapshot(base))).toEqual([]);
+    expect(diffSnapshots(inputSnapshot(base), inputSnapshot({ ...base, street: ' УЛ. РЫЛЕЕВА 32 ' }))).toEqual([]);
+  });
+
+  test('снимок из базы читается, а мусор вместо него — null, а не ошибка', () => {
+    const snap = inputSnapshot(base);
+    expect(parseSnapshot(JSON.parse(JSON.stringify(snap)))).toEqual(snap);
+    for (const junk of [null, undefined, 5, 'x', [], { district: 5 }, { district: null, age: null }]) expect(parseSnapshot(junk), String(junk)).toBeNull();
   });
 });

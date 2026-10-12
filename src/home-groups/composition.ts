@@ -26,6 +26,7 @@ import { createStrange } from './strange.js';
 import { MembersRepo } from '../db/repos/members.repo.js';
 import { StrangeRepo } from '../db/repos/strange.repo.js';
 import { createAssistant } from './assistant/service.js';
+import { ChatHistoryRepo } from '../db/repos/chatHistory.repo.js';
 import { createChat } from './assistant/chat.js';
 import { createReadonlyRunner } from './assistant/readonly.js';
 import { loadPseudonyms } from './assistant/pseudonyms.js';
@@ -107,7 +108,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     },
   });
   const chat = createChat({
-    llm: opts.llm ?? null, settings: appSettings, audit: new AuditRepo(db), runQuery: createReadonlyRunner(db),
+    llm: opts.llm ?? null, settings: appSettings, audit: new AuditRepo(db), history: new ChatHistoryRepo(db), runQuery: createReadonlyRunner(db),
     pseudonyms: () => loadPseudonyms(db), capacity: opts.defaultCapacity,
     reportError: (source, err, context) => { void errors.record(source, err instanceof Error ? err.message : String(err), context); },
   });

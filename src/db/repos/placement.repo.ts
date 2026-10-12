@@ -2,6 +2,7 @@ import type { Pool, PoolClient } from 'pg';
 import { groupCode } from '../../core/groups.js';
 import { PASSING_STATUSES } from '../../core/matching.js';
 import { normalizePhone } from '../../core/phone.js';
+import { diffSnapshots, parseSnapshot, type InputSnapshot } from '../../home-groups/plan/signature.js';
 
 /**
  * «Предварительно» и решения координатора.
@@ -57,6 +58,8 @@ export interface DesiredProposal {
   groupId: number;
   /** Отпечаток данных заявки, по которым получено предложение (см. plan/signature.ts). */
   inputHash?: string;
+  /** Данные заявки в виде для показа: по нему видно, что изменилось, когда отпечаток уже другой. */
+  inputSnapshot?: InputSnapshot;
   confidence: number;
   /** Причины подбора как показываются человеку: [{tone, text}]. */
   rationale: unknown;
@@ -540,13 +543,13 @@ export class PlacementRepo {
   }
 
   /** Действующие предложения: заявка → группа и кто предложил. Закрепляют выбор при следующем расчёте. */
-  async activeProposals(): Promise<Map<number, { groupId: number | null; source: 'script' | 'agent' | 'manual'; inputHash: string | null }>> {
-    const { rows } = await this.db.query<{ request_id: number; group_id: number | null; source: 'script' | 'agent' | 'manual'; input_hash: string | null }>(
-      `SELECT request_id, group_id, source, input_hash FROM placement_proposals WHERE status = 'proposed'`,
+  async activeProposals(): Promise<Map<number, { groupId: number | null; source: 'script' | 'agent' | 'manual'; inputHash: string | null; inputSnapshot: InputSnapshot | null }>> {
+    const { rows } = await this.db.query<{ request_id: number; group_id: number | null; source: 'script' | 'agent' | 'manual'; input_hash: string | null; input_snapshot: unknown }>(
+      `SELECT request_id, group_id, source, input_hash, input_snapshot FROM placement_proposals WHERE status = 'proposed'`,
     );
     return new Map(rows.map((r) => [
       Number(r.request_id),
-      { groupId: r.group_id === null ? null : Number(r.group_id), source: r.source, inputHash: r.input_hash },
+      { groupId: r.group_id === null ? null : Number(r.group_id), source: r.source, inputHash: r.input_hash, inputSnapshot: parseSnapshot(r.input_snapshot) },
     ]));
   }
 
@@ -559,8 +562,8 @@ export class PlacementRepo {
   async syncProposals(desired: readonly DesiredProposal[], actor: string, scope?: ReadonlySet<number>): Promise<SyncResult> {
     return this.tx(async (c) => {
       await c.query(`SELECT pg_advisory_xact_lock(hashtext('hg_matching'))`);
-      const { rows } = await c.query<{ id: number; request_id: number; group_id: number; input_hash: string | null }>(
-        `SELECT id, request_id, group_id, input_hash FROM placement_proposals WHERE status = 'proposed' AND group_id IS NOT NULL`,
+      const { rows } = await c.query<{ id: number; request_id: number; group_id: number; input_hash: string | null; input_snapshot: unknown }>(
+        `SELECT id, request_id, group_id, input_hash, input_snapshot FROM placement_proposals WHERE status = 'proposed' AND group_id IS NOT NULL`,
       );
       // scope — «подобрать заново» для одной заявки: остальные закреплённые предложения не трогаем.
       const current = new Map(rows.filter((r) => !scope || scope.has(Number(r.request_id))).map((r) => [Number(r.request_id), r]));
@@ -569,10 +572,20 @@ export class PlacementRepo {
 
       const insert = (d: DesiredProposal) =>
         c.query(
-          `INSERT INTO placement_proposals (request_id, group_id, source, confidence, rationale, input_hash)
-           VALUES ($1, $2, 'script', $3, $4::jsonb, $5)`,
-          [d.requestId, d.groupId, d.confidence, JSON.stringify(d.rationale), d.inputHash ?? null],
+          `INSERT INTO placement_proposals (request_id, group_id, source, confidence, rationale, input_hash, input_snapshot)
+           VALUES ($1, $2, 'script', $3, $4::jsonb, $5, $6::jsonb)`,
+          [d.requestId, d.groupId, d.confidence, JSON.stringify(d.rationale), d.inputHash ?? null, d.inputSnapshot ? JSON.stringify(d.inputSnapshot) : null],
         );
+      // В журнал — какие поля заявки изменились (названия, без значений: улица и время — данные человека).
+      const logDataChange = async (had: { request_id: number; input_hash: string | null; input_snapshot: unknown }, d: DesiredProposal) => {
+        if (!d.inputHash || had.input_hash === d.inputHash) return;
+        const before = parseSnapshot(had.input_snapshot);
+        const fields = before && d.inputSnapshot ? diffSnapshots(before, d.inputSnapshot).map((x) => x.field) : [];
+        await c.query(
+          `INSERT INTO audit_log (actor, service, action, entity_type, entity_id, after) VALUES ($1, 'home-groups', 'request.data_changed', 'request', $2, $3::jsonb)`,
+          [actor, d.requestId, JSON.stringify({ fields })],
+        );
+      };
       const supersede = (id: number) =>
         c.query(
           `UPDATE placement_proposals SET status = 'superseded', decided_by = $2, decided_at = now() WHERE id = $1`,
@@ -585,11 +598,13 @@ export class PlacementRepo {
         if (Number(had.group_id) === d.groupId) {
           // Та же группа, но данные заявки другие: предложение подтверждено по новым данным — обновляем отпечаток.
           if (d.inputHash && had.input_hash !== d.inputHash) {
-            await c.query('UPDATE placement_proposals SET input_hash = $2 WHERE id = $1', [Number(had.id), d.inputHash]);
+            await logDataChange(had, d);
+            await c.query('UPDATE placement_proposals SET input_hash = $2, input_snapshot = $3::jsonb WHERE id = $1', [Number(had.id), d.inputHash, d.inputSnapshot ? JSON.stringify(d.inputSnapshot) : null]);
           }
           result.unchanged += 1;
           continue;
         }
+        await logDataChange(had, d);
         await supersede(Number(had.id));
         await insert(d);
         result.replaced += 1;

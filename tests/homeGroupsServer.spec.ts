@@ -116,6 +116,8 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
     } as never,
     chat: {
       ask: async (body: unknown, actor: string) => { chatCalls.push({ body, actor }); return chatOutcome; },
+      history: async (actor: string) => { chatCalls.push({ body: 'history', actor }); return { messages: [{ role: 'user', content: 'Где перебор?' }, { role: 'assistant', content: 'В ДГ-0001.' }] }; },
+      clear: async (actor: string) => { chatCalls.push({ body: 'clear', actor }); return { ok: true }; },
     } as never,
     assistant: {
       status: async () => ({ available: true, enabled: true, chat: true }),
@@ -1286,6 +1288,27 @@ describe('чат помощника', () => {
         expect(await r.json()).toEqual({ error, message: `текст ${error}` });
       }
     } finally { app.setChatOutcome({ ok: true, answer: 'Перебор в ДГ-0001.', queries: [], tables: [] }); }
+  });
+
+  test('история чата: без входа 401; с входом отдаётся история именно этого входа, без кэша', async () => {
+    const url = `${app.base}/api/v1/assistant/chat/history`;
+    expect((await fetch(url)).status).toBe(401);
+    const r = await fetch(url, { headers: { cookie: await signIn(REGULAR) } });
+    expect(r.status).toBe(200);
+    expect(r.headers.get('cache-control')).toBe('no-store');
+    expect(await r.json()).toEqual({ messages: [{ role: 'user', content: 'Где перебор?' }, { role: 'assistant', content: 'В ДГ-0001.' }] });
+    expect(app.chatCalls.at(-1)).toEqual({ body: 'history', actor: REGULAR.login });
+  });
+
+  test('очистка истории: без входа 401, с входом стирается история этого входа; GET по этому адресу — 404', async () => {
+    const url = `${app.base}/api/v1/assistant/chat/clear`;
+    expect((await post(null, {})).status).toBe(401);
+    expect((await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).status).toBe(401);
+    const cookie = await signIn(REGULAR);
+    const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: '{}' });
+    expect(await r.json()).toEqual({ ok: true });
+    expect(app.chatCalls.at(-1)).toEqual({ body: 'clear', actor: REGULAR.login });
+    expect((await fetch(url, { headers: { cookie } })).status).toBe(404);
   });
 
   test('форма с другого сайта (не JSON) отклоняется: 415', async () => {

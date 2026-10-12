@@ -2,6 +2,7 @@ import type { DashboardGroup } from '../../db/repos/groups.repo.js';
 import type { MemberRow, PersonRow } from '../../db/repos/members.repo.js';
 import type { StoredHint } from '../../db/repos/hints.repo.js';
 import type { StrangeMarkRow } from '../../db/repos/strange.repo.js';
+import { diffSnapshots, inputSnapshot, type InputSnapshot } from '../plan/signature.js';
 import { gistOf } from '../reconcile/gist.js';
 import { reconcileOf } from '../reconcile/plan.js';
 import { baseHash, needsOf, anyNeed, type RawBrief } from '../assistant/brief.js';
@@ -14,7 +15,7 @@ import { inputSignature } from '../plan/signature.js';
 import { formatPhone } from '../../core/phone.js';
 import type {
   Bucket, Candidate, Counters, CoordinatorItem, CoordinatorsView, GroupBrief, GroupItem, GroupsView,
-  HealthItem, LogEntry, MatchingStatus, NoPlan, StrangeMark, OriginalField, ParamInfo, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, GroupMember, OtherItem, RequestsView, TeamView, TodayView,
+  HealthItem, LogEntry, MatchingStatus, NoPlan, StrangeMark, DataChange, OriginalField, ParamInfo, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, GroupMember, OtherItem, RequestsView, TeamView, TodayView,
 } from '../contracts.js';
 import type {
   Day, PlanEngineApi, PlanEntry, PlanEntryProposal, PlanGroup, PlanOutput, PlanRequest, ScoredGroup, Slot,
@@ -48,7 +49,7 @@ export interface ViewsInput {
    * Накопленные предложения (заявка → группа и кто предложил). Они закрепляют выбор: движок
    * сохраняет группу, пока она остаётся доступной, и подбирает новые заявки вокруг неё.
    */
-  activeProposals?: ReadonlyMap<number, { groupId: number | null; source: 'script' | 'agent' | 'manual'; inputHash?: string | null }>;
+  activeProposals?: ReadonlyMap<number, { groupId: number | null; source: 'script' | 'agent' | 'manual'; inputHash?: string | null; inputSnapshot?: InputSnapshot | null }>;
   /** Сколько человек утвердил сервис в группу после последней обратной связи ведущего. */
   placedNew?: ReadonlyMap<number, number>;
   /** Настройки подбора: автоматический ли он и когда запускали в последний раз. */
@@ -174,6 +175,10 @@ function auditText(a: AuditRow): string | null {
     }
     case 'request.reopen':
       return `Возвращена в работу · ${a.actor}`;
+    case 'request.data_changed': {
+      const fields = Array.isArray(after['fields']) ? (after['fields'] as unknown[]).map(String).filter(Boolean) : [];
+      return fields.length > 0 ? `Данные для подбора изменились: ${fields.join(', ').toLowerCase()}` : 'Данные для подбора изменились';
+    }
     case 'request.strange':
       return after['value'] === true ? `Отмечено «странный человек» · ${a.actor}` : `Метка «странный человек» снята · ${a.actor}`;
     case 'request.reconcile': {
@@ -266,7 +271,7 @@ export function buildViews(input: ViewsInput, engine: PlanEngineApi, now: Date, 
 /** Представления и сам план: автоматический подбор берёт из плана то, что нужно сохранить. */
 export function buildViewsWithPlan(
   input: ViewsInput, engine: PlanEngineApi, now: Date, options: ViewsOptions = {},
-): { views: Views; plan: PlanOutput; openRequestIds: number[]; signatures: Map<number, string>; assistantCandidates: { id: number; brief: RawBrief }[] } {
+): { views: Views; plan: PlanOutput; openRequestIds: number[]; signatures: Map<number, string>; snapshots: Map<number, InputSnapshot>; assistantCandidates: { id: number; brief: RawBrief }[] } {
   const defaultCapacity = options.defaultCapacity ?? DEFAULT_CAPACITY;
   const timeZone = options.timeZone ?? DEFAULT_TIME_ZONE;
   const today = localIsoDate(now, timeZone);
@@ -422,12 +427,14 @@ export function buildViewsWithPlan(
   // Отпечаток данных заявки и закрепление: предложение, полученное по другим данным, устарело —
   // его группа не закрепляется, заявку пересчитает следующий «Закрепить подбор» или «Подобрать заново».
   const signatures = new Map<number, string>();
+  const snapshots = new Map<number, InputSnapshot>();
   const dataChanged = new Set<number>();
   const planRequests = new Map<number, PlanRequest>();
   for (const r of joinRequests) {
     const base = planRequestOf(r);
     const signature = inputSignature(base);
     signatures.set(r.id, signature);
+    snapshots.set(r.id, inputSnapshot(base));
     const stored = input.activeProposals?.get(r.id);
     const changed = stored !== undefined && stored.groupId !== null && stored.inputHash != null && stored.inputHash !== signature;
     if (changed) dataChanged.add(r.id);
@@ -462,6 +469,14 @@ export function buildViewsWithPlan(
     return group ? { group, score: s.score, confidence, reasons: s.reasons } : null;
   };
 
+  // Что изменилось у заявки с тех пор, как предложили группу: разница между снимком у предложения и текущими данными.
+  const changesOf = (requestId: number): DataChange[] | null => {
+    if (!dataChanged.has(requestId)) return null;
+    const before = input.activeProposals?.get(requestId)?.inputSnapshot;
+    const now = snapshots.get(requestId);
+    return before && now ? diffSnapshots(before, now) : null;
+  };
+
   const proposalOf = (e: PlanEntryProposal, requestId: number): Proposal | null => {
     const main = candidate(e.main, e.confidence);
     if (!main) return null;
@@ -470,6 +485,7 @@ export function buildViewsWithPlan(
       // Закреплено, если в «предварительно» уже лежит предложение именно на эту группу.
       saved: input.activeProposals?.get(requestId)?.groupId === main.group.id && !dataChanged.has(requestId),
       dataChanged: dataChanged.has(requestId),
+      changes: changesOf(requestId),
       // Источник — тот, кто предложил эту группу и сохранил предложение; иначе это свежий расчёт.
       source: sourceOfProposal(input.activeProposals?.get(requestId), main.group.id),
       main,
@@ -807,7 +823,7 @@ export function buildViewsWithPlan(
     people: { generatedAt, items: people },
     coordinators: { generatedAt, items: coordinatorItems },
   };
-  return { views, plan, openRequestIds: openRequests.map((r) => r.id), signatures, assistantCandidates };
+  return { views, plan, openRequestIds: openRequests.map((r) => r.id), signatures, snapshots, assistantCandidates };
 }
 
 /**

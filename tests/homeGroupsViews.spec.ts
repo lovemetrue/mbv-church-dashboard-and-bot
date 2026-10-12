@@ -54,8 +54,8 @@ const empty: ViewsInput = { groups: [], requests: [], participants: [], coordina
 
 function build(input: Partial<ViewsInput>, engineOptions: FakeEngineOptions = {}, options = {}) {
   const fake = createFakeEngine(engineOptions);
-  const { views, signatures } = buildViewsWithPlan({ ...empty, ...input }, fake.engine, NOW, options);
-  return { views, signatures, ...fake };
+  const { views, signatures, snapshots } = buildViewsWithPlan({ ...empty, ...input }, fake.engine, NOW, options);
+  return { views, signatures, snapshots, ...fake };
 }
 
 describe('какие заявки уходят в движок и на экран', () => {
@@ -1040,6 +1040,30 @@ describe('закрепление и изменившиеся данные', () =
   test('заявка без закрепления: dataChanged = false', () => {
     const { views } = build({ groups: [group({ id: 1 })], requests: [request({ id: 7, place: 'Приморский' })] });
     expect(views.requests.items[0]!.proposal).toMatchObject({ saved: false, dataChanged: false });
+  });
+
+  test('что изменилось: по снимку у предложения видно «было → стало» для каждого изменившегося поля', () => {
+    const first = build({ groups: [group({ id: 1 })], requests: [request({ id: 7, place: 'Приморский' })] });
+    const before = first.snapshots.get(7)!;
+    const { views } = build({
+      groups: [group({ id: 1 })],
+      requests: [request({ id: 7, place: 'Приморский', age: '40-55', schedule: null })],
+      // Снимок у предложения: район тот же, а возраст в заявке тогда не был известен — стал известен после правки.
+      activeProposals: new Map([[7, { groupId: 1, source: 'script', inputHash: 'устарел', inputSnapshot: { ...before, street: 'ул. Старая 1' } }]]),
+    });
+    const changes = views.requests.items[0]!.proposal!.changes!;
+    expect(changes.map((c) => [c.field, c.before])).toEqual(expect.arrayContaining([['Улица', 'ул. Старая 1']]));
+    expect(changes.every((c) => c.before !== c.after)).toBe(true);
+  });
+
+  test('если снимка нет (предложение сохранено раньше) или данные не менялись, список изменений — null', () => {
+    const noSnapshot = build({
+      groups: [group({ id: 1 })], requests: [request({ id: 7, place: 'Приморский' })],
+      activeProposals: new Map([[7, { groupId: 1, source: 'script', inputHash: 'устарел', inputSnapshot: null }]]),
+    });
+    expect(noSnapshot.views.requests.items[0]!.proposal).toMatchObject({ dataChanged: true, changes: null });
+    const same = build({ groups: [group({ id: 1 })], requests: [request({ id: 7, place: 'Приморский' })] });
+    expect(same.views.requests.items[0]!.proposal).toMatchObject({ dataChanged: false, changes: null });
   });
 
   test('участник отдаёт id и номер регистрации; строка из заявки — только id участника', () => {

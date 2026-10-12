@@ -14,6 +14,7 @@ import { serviceFromEnv } from '../admin/notifierFromEnv.js';
 import { createExtraInvites } from '../core/extraInvites.js';
 import { startAutoMatching } from './matching/scheduler.js';
 import { createHomeGroupsServer } from './server.js';
+import { startGeocoding } from './geocodeJob.js';
 
 const env = (name: string, fallback?: string): string => {
   const v = process.env[name]?.trim();
@@ -70,7 +71,7 @@ async function main(): Promise<void> {
     timezone: env('TIMEZONE', 'Europe/Moscow'),
   };
   const bots = serviceFromEnv(db, process.env, schedule, 'домашние группы');
-  const { views, matching, placement, settings, errors, staff, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, chat, members, reconciler, strange, formMeta } = composeService(db, engine, {
+  const { load, views, matching, placement, settings, errors, staff, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, chat, members, reconciler, strange, formMeta } = composeService(db, engine, {
     campaignSchedule: schedule,
     // Ключ, провайдер и модель можно менять в «Настройки → Помощник»; пока там пусто, действует `.env`. Ключ в базе шифруется
     // секретом SETTINGS_SECRET, а если его нет — паролем полного входа (смена пароля потребует ввести ключ заново).
@@ -128,11 +129,16 @@ async function main(): Promise<void> {
   const auto = startAutoMatching({ intervalMs: autoSeconds * 1000, isEnabled: () => matching.isAuto(), run: (actor) => matching.run(actor),
     onError: (err) => reportError('подбор', err, 'автоматический запуск') });
 
+  // Координаты адресов нужны подбору «по близости». Без ключа геокодера ничего не запускается, и подбор сравнивает улицы по названию.
+  const geocoderKey = process.env['YANDEX_GEOCODER_KEY']?.trim();
+  const geocodeTimer = geocoderKey ? startGeocoding({ load, db, apiKey: geocoderKey, invalidate: () => views.invalidate() }) : null;
+
   server.listen(port, () => logger.info({ port, sessionDays: ttlDays, defaultCapacity }, 'домашние группы запущены'));
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, 'домашние группы останавливаются');
     auto.stop();
+    if (geocodeTimer) clearInterval(geocodeTimer);
     server.close();
     await store.close().catch(() => undefined);
     await db.end().catch(() => undefined);

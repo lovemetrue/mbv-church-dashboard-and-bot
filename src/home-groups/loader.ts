@@ -2,6 +2,7 @@ import type { AuditRepo } from '../db/repos/audit.repo.js';
 import type { CoordinatorsRepo } from '../db/repos/coordinators.repo.js';
 import type { HintsRepo } from '../db/repos/hints.repo.js';
 import type { MembersRepo } from '../db/repos/members.repo.js';
+import type { GeocodeRepo } from '../db/repos/geocode.repo.js';
 import type { GroupsRepo } from '../db/repos/groups.repo.js';
 import type { PlacementRepo } from '../db/repos/placement.repo.js';
 import type { SettingsRepo } from '../db/repos/settings.repo.js';
@@ -22,6 +23,8 @@ export interface LoaderRepos {
   members: Pick<MembersRepo, 'all' | 'allPersons'>;
   /** Метки «Странный человек»; без репозитория (в тестах) меток нет. */
   strange?: Pick<StrangeRepo, 'all'>;
+  /** Кэш координат адресов; без него (в тестах) подбор сравнивает улицы по названию. */
+  geocode?: Pick<GeocodeRepo, 'all'>;
 }
 
 /**
@@ -48,8 +51,9 @@ export function createLoader(repos: LoaderRepos, opts: { timeZone?: string; assi
       repos.members.allPersons(),
     ]);
     const strange = repos.strange ? await repos.strange.all() : undefined;
+    const geo = repos.geocode ? await repos.geocode.all() : undefined;
     return {
-      strange,
+      strange, geo,
       groups, requests, participants, coordinators, rejectedGroups, audit, activity, activeProposals, placedNew,
       matching: { auto: auto === true, lastRun: lastRun ?? null },
       hints,

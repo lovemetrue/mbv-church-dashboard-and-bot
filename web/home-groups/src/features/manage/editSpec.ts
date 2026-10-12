@@ -80,8 +80,8 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
     fields: [
       { name: 'leader', label: t.leader, kind: 'text', required: true, wide: true },
       { name: 'district', label: t.district, kind: 'select', required: true, options: withCurrent(meta.districts, g.district) },
-      // Район и метро — то, по чему автоподбор сопоставляет группу с ответом человека; поэтому метро видно и правится здесь,
-      // а закрытый «Новый адрес» в подборе не участвует.
+      // Подбор сопоставляет сначала по адресу, а если он пуст — по метро или ориентиру: оба поля видны и правятся здесь.
+      { name: 'address', label: t.address, kind: 'text', wide: true, hint: m.group.addressHint },
       { name: 'metro', label: t.metro, kind: 'text', wide: true, hint: m.group.metroHint },
       { name: 'format', label: t.format, kind: 'select', required: true, options: withCurrent(meta.groupFormats, g.format) },
       { name: 'status', label: t.status, kind: 'select', required: true, options: withCurrent(meta.groupStatuses, g.status) },
@@ -99,7 +99,7 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
       { name: 'coLeader', label: t.coLeader, kind: 'text' },
       { name: 'phone', label: t.newPhone, kind: 'text', inputMode: 'tel', hint: m.group.writeOnlyHint },
       { name: 'coLeaderPhone', label: t.newCoLeaderPhone, kind: 'text', inputMode: 'tel', hint: m.group.writeOnlyHint },
-      { name: 'address', label: t.newAddress, kind: 'text', wide: true, hint: `${m.group.addressHint} ${m.group.writeOnlyHint}` },
+      
       { name: 'feedbackAt', label: t.feedbackAt, kind: 'date', hint: `${feedbackNow(g.verifiedDaysAgo)} ${keep}` },
       { name: 'comment', label: t.comment, kind: 'textarea', wide: true },
       { name: 'doNotRefer', label: m.group.doNotRefer, kind: 'checkbox', wide: true, hint: m.group.doNotReferHint },
@@ -118,7 +118,7 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
       coLeader: g.coLeader ?? '',
       phone: '',
       coLeaderPhone: '',
-      address: '',
+      address: g.address ?? '',
       feedbackAt: '',
       comment: g.comment ?? '',
       doNotRefer: g.doNotRefer ? '1' : '',

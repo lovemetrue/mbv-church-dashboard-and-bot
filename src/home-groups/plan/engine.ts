@@ -1,4 +1,5 @@
 import type { Reason } from '../contracts.js';
+import { matchesMetro } from '../../core/matching.js';
 import { streetKey } from './street.js';
 import type {
   PlanEntry,
@@ -128,7 +129,14 @@ function slotPart(r: PlanRequest, g: PlanGroup, settings: PlanSettings, timeUnkn
 
 function streetPart(r: PlanRequest, g: PlanGroup, settings: PlanSettings): Part {
   const weight = settings.weights.street;
-  if (g.street === null) return { weight, share: 0.5, reason: { tone: 'neutral', text: 'у группы нет улицы' } };
+  if (g.street === null) {
+    // Адреса у группы нет — сверяем по метро или ориентиру. Человек мог назвать станцию и в «улице», и в «районе».
+    if (g.metro === null) return { weight, share: 0.5, reason: { tone: 'neutral', text: 'у группы нет адреса и метро' } };
+    const said = [r.street, r.place].filter(Boolean).join(' ');
+    if (matchesMetro(said, g.metro)) return { weight, share: 1, reason: { tone: 'good', text: `рядом: ${g.metro}` } };
+    // Улицу человека со станцией не сравнить, поэтому «не совпало» не штраф, а просто нет бонуса.
+    return { weight, share: 0.5, reason: { tone: 'neutral', text: `метро группы: ${g.metro}` } };
+  }
   // Человек пишет «ул. Рылеева, 32», у группы — «Рылеева»: сравниваем названия без типа, дома и падежа.
   const wanted = streetKey(r.street);
   const actual = streetKey(g.street);

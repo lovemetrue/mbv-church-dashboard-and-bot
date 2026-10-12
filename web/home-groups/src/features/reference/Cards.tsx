@@ -69,6 +69,8 @@ export function GroupCard({ g, onClose }: { g: GroupItem; onClose: () => void })
     { label: 'Состав', value: orNone(g.composition) },
     { label: 'Со-ведущий', value: orNone(g.coLeader) },
     { label: 'Телефон', value: g.phone ? <span className="num">{formatPhone(g.phone)}</span> : noValue },
+    { label: 'Адрес', value: orNone(g.address) },
+    { label: 'Метро или ориентир', value: orNone(g.metro) },
     { label: 'Статус', value: g.status },
     { label: 'Принимает новых', value: g.acceptsNew ? ru.reference.yes : ru.reference.no },
     ...(g.doNotRefer ? [{ label: 'Не направлять', value: <Pill tone="crit">{ru.reference.yes}</Pill> }] : []),

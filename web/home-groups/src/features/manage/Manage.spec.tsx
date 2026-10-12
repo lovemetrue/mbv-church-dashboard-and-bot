@@ -162,22 +162,26 @@ describe('правка группы', () => {
     expect(posts(fetchMock)).toHaveLength(0);
   });
 
-  test('поля «Новый телефон ведущего», «Новый телефон соведущего» и «Новый адрес» пустые и с подсказкой, как заменять', async () => {
+  test('поля нового телефона ведущего и соведущего пустые и с подсказкой, как заменять; адрес и метро показаны как есть', async () => {
     stubFetchWithFixtures();
     const user = userEvent.setup();
     const { dialog } = await openGroupEdit(user);
     const hint = 'Текущее значение не показывается. Впишите, чтобы заменить; оставьте пустым, чтобы не менять.';
-    for (const name of ['Новый телефон ведущего', 'Новый телефон соведущего', 'Новый адрес']) {
+    for (const name of ['Новый телефон ведущего', 'Новый телефон соведущего']) {
       const field = within(dialog).getByRole('textbox', { name });
       expect(field).toHaveValue('');
-      expect(field).toHaveAccessibleDescription(name === 'Новый адрес' ? `Хранится для координаторов и в подборе не участвует. ${hint}` : hint);
+      expect(field).toHaveAccessibleDescription(hint);
     }
-    // Старой пометки про другой дашборд нет, а телефон ведущего (79112003145) не показывается ни в каком виде.
+    // Адрес — обычное поле с текущим значением; подсказка говорит, что подбор идёт по нему, а при пустом — по метро.
+    const address = within(dialog).getByRole('textbox', { name: 'Адрес' });
+    expect(address).toHaveValue('Комендантский пр.');
+    expect(address).toHaveAccessibleDescription(/Автоподбор сопоставляет группу с адресом человека сначала по этому полю/);
+    expect(within(dialog).getByRole('textbox', { name: 'Метро или ориентир' })).toHaveAccessibleDescription(/Если адрес пуст/);
     expect(within(dialog).queryByText(/дашборд/i)).not.toBeInTheDocument();
     expect(dialog.textContent).not.toMatch(/9112003145|911.?200.?31.?45/);
   });
 
-  test('пустые поля телефонов и адреса в запрос не попадают: пустая строка стёрла бы значение в базе', async () => {
+  test('пустые поля телефонов и нетронутый адрес в запрос не попадают: пустая строка стёрла бы значение в базе', async () => {
     const fetchMock = stubFetchWithFixtures({ 'groups/1/update': () => json({ ok: true }) });
     const user = userEvent.setup();
     const { dialog } = await openGroupEdit(user);
@@ -209,7 +213,9 @@ describe('правка группы', () => {
     const { dialog } = await openGroupEdit(user);
     await user.type(within(dialog).getByRole('textbox', { name: 'Новый телефон ведущего' }), ' +7 911 111 22 33 ');
     await user.type(within(dialog).getByRole('textbox', { name: 'Новый телефон соведущего' }), '+7 922 333 44 55');
-    await user.type(within(dialog).getByRole('textbox', { name: 'Новый адрес' }), 'ул. Садовая, 5');
+    const address = within(dialog).getByRole('textbox', { name: 'Адрес' });
+    await user.clear(address);
+    await user.type(address, 'ул. Садовая, 5');
     await user.click(saveButton(dialog));
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
     expect(posts(fetchMock)[0]).toEqual({
@@ -218,18 +224,16 @@ describe('правка группы', () => {
     });
   });
 
-  test('«Сохранить» включается от одного нового адреса; поле, заполненное и снова очищенное, не отправляется', async () => {
-    stubFetchWithFixtures();
+  test('адрес можно очистить: пустая строка уходит на сервер, чтобы подбор откатился на метро', async () => {
+    const fetchMock = stubFetchWithFixtures({ 'groups/1/update': () => json({ ok: true }) });
     const user = userEvent.setup();
     const { dialog } = await openGroupEdit(user);
-    const address = within(dialog).getByRole('textbox', { name: 'Новый адрес' });
     expect(saveButton(dialog)).toBeDisabled();
-    await user.type(address, 'ул. Садовая, 5');
+    await user.clear(within(dialog).getByRole('textbox', { name: 'Адрес' }));
     expect(saveButton(dialog)).toBeEnabled();
-    await user.clear(address);
-    expect(saveButton(dialog)).toBeDisabled();
-    await user.type(address, '   ');
-    expect(saveButton(dialog)).toBeDisabled();
+    await user.click(saveButton(dialog));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect((posts(fetchMock)[0]!.body as { fields: Record<string, string> }).fields).toEqual({ address: '' });
   });
 
   test('успех закрывает окно, пишет подтверждение в карточке и перечитывает все списки', async () => {

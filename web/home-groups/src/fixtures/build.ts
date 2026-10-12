@@ -503,6 +503,7 @@ export function buildGroups(): GroupsView {
     members: members.get(g.id) ?? [],
     coLeader: g.coLeader,
     phone: g.phone,
+    address: g.street,
     ageText: g.ages.join(', '),
     day: g.day,
     slot: g.slot,

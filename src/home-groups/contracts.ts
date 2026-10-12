@@ -924,6 +924,8 @@ export interface GroupItem extends GroupBrief {
   members: GroupMember[];
   coLeader: string | null;
   phone: string | null;
+  /** Адрес группы (улица, дом) — как записал координатор. По нему подбор сопоставляет группу с адресом человека; если пусто, по `metro`. */
+  address: string | null;
   ageText: string | null;
   /** День недели («Пн»…«Вс») или null. */
   day: string | null;

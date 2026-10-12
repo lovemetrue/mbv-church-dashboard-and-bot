@@ -80,8 +80,6 @@ async function main(): Promise<void> {
     // Без подключённых ботов слать приглашения нечем: кнопка в «Настройках» покажет, что недоступна.
     ...(bots.deps.platforms.size > 0 ? { invites: createExtraInvites(bots.deps) } : {}),
     defaultCapacity, ttlMs: 10_000, timeZone: env('TIMEZONE', 'Europe/Moscow'),
-    // Необязательная: адрес группы закрытый, поэтому сравнение улиц включается только явно.
-    matchGroupStreet: process.env['HG_MATCH_GROUP_STREET']?.trim().toLowerCase() === 'on',
     store,
     // Почта и публичный адрес необязательны: без них ссылки на пароль показываются администратору на экране.
     mailer: mailerFromEnv(process.env),

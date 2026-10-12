@@ -65,12 +65,6 @@ export interface ViewsOptions {
   defaultCapacity?: number;
   /** Пояс, в котором считаются «сегодня» и «дней назад». */
   timeZone?: string;
-  /**
-   * Сравнивать улицу человека с улицей группы. Адрес группы закрытый (это дом ведущего), поэтому по умолчанию выключено:
-   * тогда у групп улицы нет и совпадение по улице нейтральное. Включённым в подбор попадает только название улицы без
-   * дома, и наружу оно не отдаётся — лишь причина «та же улица».
-   */
-  matchGroupStreet?: boolean;
 }
 
 /** Всё, что отдают ручки API, посчитанное за один проход по одному снимку данных. */
@@ -303,9 +297,9 @@ export function buildViewsWithPlan(
       ageRange: engine.parseAgeRange(g.age),
       day: when.day,
       slot: when.slot,
-      // Закрытый `address` в подбор не идёт, пока владелец не включил сравнение улиц (`matchGroupStreet`); и тогда —
-      // только название улицы без дома.
-      street: options.matchGroupStreet ? streetName(g.address) : null,
+      // В подбор идёт только название улицы без дома: «Рылеева 30» и «ул. Рылеева, 32» — одна улица. Пустой адрес —
+      // подбор откатывается на метро или ориентир (`metro`).
+      street: streetName(g.address),
       // Утверждённых сервисом после обратной связи ведущий в число ещё не внёс — добавляем сами.
       people: effectivePeople(g.people, input.placedNew?.get(g.id) ?? 0),
       capacity: defaultCapacity,
@@ -707,6 +701,7 @@ export function buildViewsWithPlan(
       ...b,
       coLeader: nonBlank(g.co_leader),
       phone: displayPhone(g.phones, g.phone),
+      address: nonBlank(g.address),
       ageText: nonBlank(g.age),
       day: p.day,
       slot: p.slot,
@@ -743,6 +738,8 @@ export function buildViewsWithPlan(
       phone: nonBlank(formatPhone(nonBlank(u.phone))),
       ageLabel: nonBlank(u.age),
       district: engine.resolveDistrict(nonBlank(u.location), metroIndex),
+      place: nonBlank(u.location),
+      address: nonBlank(u.address),
       // Заведённый служителем вручную: платформа в записи условная, чата с ботом нет.
       from: !u.has_chat ? 'Форма регистрации' : u.platform === 'max' ? 'Бот · MAX' : 'Бот · Telegram',
       userId: u.id,
@@ -764,6 +761,8 @@ export function buildViewsWithPlan(
       phone: displayPhone(r.phones, r.phone),
       ageLabel: nonBlank(r.age),
       district: pr.district,
+      place: nonBlank(r.place),
+      address: streetOf(r).text,
       from: sourceLabel(r.origin, r.source),
       userId: r.user_id,
       registrationNo: null,
@@ -783,6 +782,8 @@ export function buildViewsWithPlan(
       phone: nonBlank(formatPhone(nonBlank(p.phone))),
       ageLabel: nonBlank(p.age),
       district: engine.resolveDistrict(nonBlank(p.place), metroIndex),
+      place: nonBlank(p.place),
+      address: null,
       from: 'Внесён вручную',
       userId: null,
       registrationNo: null,

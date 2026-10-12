@@ -188,6 +188,8 @@ export interface RawPerson {
   phone: string | null;
   ageLabel: string | null;
   district: string | null;
+  place?: string | null;
+  address?: string | null;
   from: string;
   mdgLabel: string;
   date: string | null;

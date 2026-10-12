@@ -250,7 +250,19 @@ describe('оценка совпадения: считается только п�
     expect(scoreOf(r, group({ street: 'Дальняя ул.' }))).toBe(81); // 65 / 80
     const unknown = group({ street: null });
     expect(scoreOf(r, unknown)).toBe(Math.round(((65 + 7.5) / 80) * 100));
-    expect(reasonsOf(r, unknown)).toContain('у группы нет улицы');
+    expect(reasonsOf(r, unknown)).toContain('у группы нет адреса и метро');
+  });
+
+  test('адреса у группы нет → сверка по метро или ориентиру: совпало — полный вес, нет — нейтрально; адрес главнее метро', () => {
+    const r = request({ street: 'м. Старая Деревня', place: 'Приморский' });
+    const near = group({ street: null, metro: 'Старая Деревня, Беговая' });
+    expect(scoreOf(r, near)).toBe(100);
+    expect(reasonsOf(r, near)).toContain('рядом: Старая Деревня, Беговая');
+    const far = group({ street: null, metro: 'Лесная' });
+    expect(scoreOf(r, far)).toBe(Math.round(((65 + 7.5) / 80) * 100));
+    // Адрес заполнен — метро в расчёт не идёт, даже если оно совпало.
+    const withAddress = group({ street: 'Дальняя ул.', metro: 'Старая Деревня' });
+    expect(scoreOf(r, withAddress)).toBe(81);
   });
 
   test('возраст группы неизвестен → половина веса возраста и причина', () => {

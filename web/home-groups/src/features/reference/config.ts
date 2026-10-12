@@ -42,6 +42,7 @@ export const groupsConfig: EntityConfig<GroupItem> = {
     f('Телефон'),
     f('Район', { groupable: true }),
     f('Метро'),
+    f('Адрес'),
     f('Возраст', { multi: true }),
     f('Когда'),
     f('День', { groupable: true }),
@@ -62,7 +63,7 @@ export const groupsConfig: EntityConfig<GroupItem> = {
   ],
   columns: [
     '№', 'Ведущий', 'Район', 'Возраст', 'Когда', 'Места', 'Статус', 'Здоровье',
-    'Код', 'Со-ведущий', 'Телефон', 'Метро', 'День', 'Время', 'Мест свободно', 'Вместимость',
+    'Код', 'Со-ведущий', 'Телефон', 'Метро', 'Адрес', 'День', 'Время', 'Мест свободно', 'Вместимость',
     'Принимает новых', 'Не направлять', 'Формат', 'Состав', 'Координатор', 'Проверена, дн.', 'Комментарий', 'В составе',
   ],
   defaultColumns: ['№', 'Ведущий', 'Район', 'Возраст', 'Когда', 'Места', 'Статус', 'Здоровье'],
@@ -93,6 +94,7 @@ export const groupsConfig: EntityConfig<GroupItem> = {
     Телефон: g.phone ? formatPhone(g.phone) : null,
     Район: g.district,
     Метро: g.metro,
+    Адрес: g.address,
     Возраст: g.ageText,
     Когда: g.whenText,
     День: g.day,
@@ -130,6 +132,8 @@ export const peopleConfig: EntityConfig<PersonItem> = {
     f('Телефон'),
     f('Возраст', { groupable: true }),
     f('Район', { groupable: true }),
+    f('Район, метро, ориентир'),
+    f('Адрес'),
     f('Откуда', { groupable: true }),
     f('Малая группа', { groupable: true }),
     f('Дата', { kind: 'date' }),
@@ -141,7 +145,7 @@ export const peopleConfig: EntityConfig<PersonItem> = {
     // «Да» у людей с меткой «Странный человек»: по нему работает быстрый отбор «Странные».
     f(STRANGE_FIELD, { groupable: true }),
   ],
-  columns: ['ФИО', 'Телефон', 'Возраст', 'Район', 'Откуда', 'Малая группа', 'Дата', 'Заявка', '№', 'Группы', STRANGE_FIELD],
+  columns: ['ФИО', 'Телефон', 'Возраст', 'Район', 'Район, метро, ориентир', 'Адрес', 'Откуда', 'Малая группа', 'Дата', 'Заявка', '№', 'Группы', STRANGE_FIELD],
   // «№» стоит последним: первый столбец служит кнопкой открытия карточки, там должно быть имя.
   defaultColumns: ['ФИО', 'Телефон', 'Возраст', 'Район', 'Откуда', 'Малая группа', '№'],
   presets: [
@@ -158,6 +162,8 @@ export const peopleConfig: EntityConfig<PersonItem> = {
     Телефон: p.phone ? formatPhone(p.phone) : null,
     Возраст: p.ageLabel,
     Район: p.district,
+    'Район, метро, ориентир': p.place,
+    Адрес: p.address,
     Откуда: p.from,
     'Малая группа': p.mdgLabel,
     // ISO в ячейке (по нему сортируем и сравниваем), а показывается дата в «ДД.ММ.ГГГГ» (см. renderCell).

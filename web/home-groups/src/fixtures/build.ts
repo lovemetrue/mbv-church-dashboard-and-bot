@@ -503,6 +503,7 @@ export function buildGroups(): GroupsView {
     members: members.get(g.id) ?? [],
     coLeader: g.coLeader,
     phone: g.phone,
+    address: g.street,
     ageText: g.ages.join(', '),
     day: g.day,
     slot: g.slot,
@@ -547,6 +548,8 @@ export function buildPeople(): PeopleView {
       phone: raw.phone,
       ageLabel: raw.ageLabel || null,
       district: raw.district,
+      place: raw.place,
+      address: raw.street,
       from: raw.source,
       // Заявка без участника (пришла из таблицы): карточки и QR регистрации у неё нет.
       userId: null,
@@ -556,7 +559,7 @@ export function buildPeople(): PeopleView {
       requestId: raw.id,
     };
   });
-  const extras: PersonItem[] = RAW_EXTRA_PEOPLE.map((p) => ({ ...p, personId: p.personId ?? null, groups: groupsOf(p.key), requestId: null, strange: demoStrangeOf(p.phone, p.key) }));
+  const extras: PersonItem[] = RAW_EXTRA_PEOPLE.map((p) => ({ ...p, place: p.place ?? p.district, address: p.address ?? null, personId: p.personId ?? null, groups: groupsOf(p.key), requestId: null, strange: demoStrangeOf(p.phone, p.key) }));
   return { generatedAt: GENERATED_AT, items: [...fromRequests, ...extras] };
 }
 

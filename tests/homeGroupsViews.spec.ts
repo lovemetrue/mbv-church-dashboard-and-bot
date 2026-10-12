@@ -432,12 +432,12 @@ describe('экран «Сегодня»', () => {
 });
 
 describe('группы справочника', () => {
-  test('для движка: возраст и «когда» разобраны, улицы нет, вместимость по умолчанию', () => {
+  test('для движка: возраст и «когда» разобраны, улица из адреса, вместимость по умолчанию', () => {
     const { calls } = build({
       groups: [group({ id: 1, age: '25-40', day: 'Вторник', time: '19:00', people: 6, metro: ' Беговая ', address: 'ул. Закрытая, 5' })],
     });
     expect(calls.plan[0]!.groups[0]).toMatchObject({
-      id: 1, ageRange: [25, 40], day: 'Вт', slot: 'вечер', street: null, people: 6, capacity: 10, metro: 'Беговая',
+      id: 1, ageRange: [25, 40], day: 'Вт', slot: 'вечер', street: 'закрытая', people: 6, capacity: 10, metro: 'Беговая',
       status: 'Функционирует', doNotRefer: false,
     });
   });
@@ -529,29 +529,31 @@ describe('группы справочника', () => {
     ]);
   });
 
-  test('закрытый адрес и телефон второго ведущего в ответ не попадают', () => {
+  test('адрес группы в ответе есть, а телефон второго ведущего не попадает', () => {
     const { views } = build({
       groups: [group({ id: 1, address: 'ул. Секретная, 1, кв. 5', co_leader_phone: '+79990001122' })],
       requests: [request({ id: 1, address: 'ул. Анкетная, 2', schedule: 'по вечерам' })],
       participants: [participant({ id: 1 })],
     });
     const json = JSON.stringify(views);
-    expect(json).not.toContain('Секретная');
+    expect(views.groups.items[0]!.address).toBe('ул. Секретная, 1, кв. 5');
     expect(json).not.toContain('79990001122');
-    expect(json).not.toContain('"address"');
   });
 
-  test('улица из анкеты человека видна только в его заявке (координатору нужно сверить карточку), больше нигде', () => {
+  test('адрес из анкеты виден в заявке и в карточке человека (адрес и место как написал), но не уходит в группы и «сегодня»', () => {
     const { views } = build({
       groups: [group({ id: 1 })],
-      requests: [request({ id: 1, address: 'ул. Анкетная, 2', schedule: 'по вечерам' })],
-      participants: [participant({ id: 1 })],
+      requests: [request({ id: 1, address: 'ул. Анкетная, 2', place: 'Приморский', schedule: 'по вечерам' })],
+      participants: [participant({ id: 1, address: 'пр. Участников, 7', location: 'Беговая' })],
     });
-    const { requests, ...rest } = views;
+    const { requests, people, ...rest } = views;
     expect(JSON.stringify(rest)).not.toContain('Анкетная');
+    expect(JSON.stringify(rest)).not.toContain('Участников');
     const item = requests.items[0]!;
     expect(item.streetInfo).toEqual({ text: 'ул. Анкетная, 2', source: 'anketa' });
     expect(item.original).toContainEqual({ label: 'Улица и дом', value: 'ул. Анкетная, 2' });
+    expect(people.items.find((p) => p.key === 'u1')).toMatchObject({ address: 'пр. Участников, 7', place: 'Беговая' });
+    expect(people.items.find((p) => p.key === 'r1')).toMatchObject({ address: 'ул. Анкетная, 2', place: 'Приморский' });
   });
 });
 
@@ -616,7 +618,7 @@ describe('люди', () => {
     });
     expect(views.people.items).toEqual([{
       key: 'u12', strange: null, personId: null, groups: [], fio: 'Дарья Ефимова', phone: '+7 911 123-45-67', ageLabel: '26-35', district: 'Невский',
-      from: 'Бот · MAX', mdgLabel: 'Хочет в группу', date: '2026-09-12', requestId: 40, userId: 12, registrationNo: 12,
+      place: 'Ломоносовская', address: null, from: 'Бот · MAX', mdgLabel: 'Хочет в группу', date: '2026-09-12', requestId: 40, userId: 12, registrationNo: 12,
     }]);
   });
 
@@ -656,7 +658,7 @@ describe('люди', () => {
     const person = (key: string) => views.people.items.find((p) => p.key === key)!;
     expect(person('r7')).toEqual({
       key: 'r7', strange: null, personId: null, groups: [], fio: 'Станислав Ким', phone: '+7 904 123-45-67', ageLabel: '26-35', district: 'Приморский',
-      from: 'Таблица', mdgLabel: 'Заявка: готово к утверждению', date: '2026-10-02', requestId: 7, userId: null, registrationNo: null,
+      place: 'Приморский', address: null, from: 'Таблица', mdgLabel: 'Заявка: готово к утверждению', date: '2026-10-02', requestId: 7, userId: null, registrationNo: null,
     });
     expect(person('r8')).toMatchObject({ from: 'Дашборд · Звонок', mdgLabel: 'Заявка: нужна помощь в сопоставлении', district: null });
     expect(person('r9').mdgLabel).toBe('Заявка: утверждено');
@@ -1428,11 +1430,11 @@ describe('день недели, время и улица: что уходит �
     expect(unclear.assistantCandidates.map((c) => c.id)).toEqual([2]);
   });
 
-  test('улица группы в подбор не идёт, пока сравнение улиц не включено; включённое передаёт только название без дома', () => {
+  test('адрес группы идёт в подбор названием улицы без дома и виден в справочнике', () => {
     const input = { groups: [group({ id: 1, address: 'ул. Рылеева, д. 32, кв. 5' })], requests: [request({ id: 1, place: 'Приморский', address: 'Рылеева 30' })] };
-    expect(build(input).calls.plan[0]!.groups[0]!.street).toBeNull();
-    const on = build(input, {}, { matchGroupStreet: true });
-    expect(on.calls.plan[0]!.groups[0]!.street).toBe('рылеева');
-    expect(JSON.stringify(on.views)).not.toContain('Рылеева, д. 32');
+    const out = build(input);
+    expect(out.calls.plan[0]!.groups[0]!.street).toBe('рылеева');
+    expect(out.views.groups.items[0]!.address).toBe('ул. Рылеева, д. 32, кв. 5');
   });
+
 });

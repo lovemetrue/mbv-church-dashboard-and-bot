@@ -924,6 +924,8 @@ export interface GroupItem extends GroupBrief {
   members: GroupMember[];
   coLeader: string | null;
   phone: string | null;
+  /** Адрес группы (улица, дом) — как записал координатор. По нему подбор сопоставляет группу с адресом человека; если пусто, по `metro`. */
+  address: string | null;
   ageText: string | null;
   /** День недели («Пн»…«Вс») или null. */
   day: string | null;
@@ -970,6 +972,10 @@ export interface PersonItem {
   phone: string | null;
   ageLabel: string | null;
   district: string | null;
+  /** Район, метро или ориентир — как написал человек; по нему подбор идёт, если адрес не заполнен. */
+  place: string | null;
+  /** Улица и дом — как написал человек; подбор сопоставляет по нему в первую очередь. */
+  address: string | null;
   /** Откуда: «Бот · Telegram», «Таблица», «Форма регистрации». */
   from: string;
   /** id участника в боте/регистрации; null — запись только из таблицы (заявка без участника). */

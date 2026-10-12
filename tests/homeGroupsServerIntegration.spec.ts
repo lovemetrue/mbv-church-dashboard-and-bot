@@ -113,16 +113,14 @@ describe('представления из живых репозиториев', 
     expect(maria.health.score).toBe(100);
   });
 
-  test('закрытый адрес группы, второй телефон ведущего и ответы анкеты нигде не появляются', async () => {
+  test('адрес группы виден в справочнике, а второй телефон ведущего и ответы анкеты нигде не появляются', async () => {
     await seed();
     const views = await liveViews().get();
     const json = JSON.stringify(views);
-    expect(json).not.toContain(SECRET_ADDRESS);
-    expect(json).not.toContain('Секретная');
+    expect(JSON.stringify(views.groups.items.map((g) => g.address))).toContain(SECRET_ADDRESS);
     expect(json).not.toContain(SECRET_PHONE);
-    expect(json).not.toContain('address');
-    // Улица из анкеты человека видна координатору в его заявке (чтобы сверить карточку), но больше нигде.
-    const { requests, ...rest } = views;
+    // Улица из анкеты человека видна координатору в его заявке и в карточке человека, но больше нигде.
+    const { requests, people, ...rest } = views;
     expect(JSON.stringify(rest)).not.toContain(SECRET_SURVEY_ADDRESS);
     expect(JSON.stringify(requests)).toContain(SECRET_SURVEY_ADDRESS);
   });
@@ -216,7 +214,8 @@ describe('с настоящим движком на живой базе', () => 
     if (bot.proposal) expect(bot.proposal.main.group.id).toBe(s.maria.id);
     expect(views.today.counters.done).toBe(1);
     expect(views.today.ageColumns.length).toBeGreaterThan(0);
-    expect(JSON.stringify(views)).not.toContain(SECRET_ADDRESS);
+    expect(JSON.stringify(views.groups.items.map((g) => g.address))).toContain(SECRET_ADDRESS);
+    expect(JSON.stringify(views.today)).not.toContain(SECRET_ADDRESS);
   });
 });
 
@@ -249,13 +248,13 @@ describe('через HTTP на живой базе', () => {
         const r = await fetch(`${base}/api/v1/${name}`, { headers: { cookie } });
         expect(r.status, name).toBe(200);
         const text = await r.text();
-        // Улица из анкеты — только в заявках (координатору нужно сверить карточку).
+        // Улица из анкеты — только в заявках и в «Людях» (координатору нужно сверить карточку).
         if (name === 'requests') expect(text).toContain(SECRET_SURVEY_ADDRESS);
-        else all += text;
+        else all += name === 'people' ? text.replaceAll(SECRET_SURVEY_ADDRESS, '') : text;
       }
       expect(all).toContain('Мария Иванова');
       expect(all).toContain('Станислав Ким');
-      for (const secret of [SECRET_ADDRESS, 'Секретная', SECRET_PHONE, SECRET_SURVEY_ADDRESS, '"address"']) {
+      for (const secret of [SECRET_PHONE, SECRET_SURVEY_ADDRESS]) {
         expect(all).not.toContain(secret);
       }
     } finally { server.close(); }

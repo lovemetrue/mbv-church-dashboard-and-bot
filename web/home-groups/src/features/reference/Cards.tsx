@@ -69,6 +69,8 @@ export function GroupCard({ g, onClose }: { g: GroupItem; onClose: () => void })
     { label: 'Состав', value: orNone(g.composition) },
     { label: 'Со-ведущий', value: orNone(g.coLeader) },
     { label: 'Телефон', value: g.phone ? <span className="num">{formatPhone(g.phone)}</span> : noValue },
+    { label: 'Адрес', value: orNone(g.address) },
+    { label: 'Метро или ориентир', value: orNone(g.metro) },
     { label: 'Статус', value: g.status },
     { label: 'Принимает новых', value: g.acceptsNew ? ru.reference.yes : ru.reference.no },
     ...(g.doNotRefer ? [{ label: 'Не направлять', value: <Pill tone="crit">{ru.reference.yes}</Pill> }] : []),
@@ -155,6 +157,9 @@ export function PersonCard({ p, onClose }: { p: PersonItem; onClose: () => void 
     { label: 'Телефон', value: p.phone ? <span className="num">{formatPhone(p.phone)}</span> : noValue },
     { label: 'Возраст', value: orNone(p.ageLabel) },
     { label: 'Район', value: orNone(p.district) },
+    // Подбор идёт сначала по адресу, а если он не заполнен — по району, метро или ориентиру.
+    { label: 'Адрес', value: orNone(p.address) },
+    { label: 'Район, метро, ориентир', value: orNone(p.place) },
     { label: 'Откуда', value: p.from },
     { label: 'Малая группа', value: p.mdgLabel },
     { label: 'Дата', value: p.date ? formatDateFull(p.date) : noValue },

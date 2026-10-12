@@ -3,7 +3,7 @@
  *
  * Имена приходят свободным текстом («Малявин Павел», «Павел М.», «Артёмкин Константин (и Людмила)»), поэтому
  * сравниваем не строки, а наборы слов: без регистра, без «ё» и «й», в любом порядке. Совпадение бывает двух степеней:
- * точное (все слова человека нашлись у ведущего) и вероятное (фамилия и инициал). Точное система предлагает
+ * точное (все слова человека нашлись у ведущего) и вероятное (фамилия и инициал; номер ведущего при чужом имени). Точное система предлагает
  * подтвердить одной кнопкой, вероятное — только показывает: решает человек. Ошибочно записать человека в чужую группу
  * хуже, чем попросить нажать лишний раз.
  */
@@ -47,12 +47,14 @@ export function nameTokens(raw: string | null | undefined): string[] {
 
 /**
  * Одно и то же слово в разных формах: «Панов»/«Пановы», «Малявин»/«Малявина», «Дубовицкая»/«Дубовицкий».
- * Короткие слова (до четырёх букв) сравниваются целиком, а «Марина» и «Мария» не склеиваются.
+ * Короткие слова (до четырёх букв) сравниваются целиком, а «Марина» и «Мария» не склеиваются. Длины отличаются не больше
+ * чем на букву: окончание падежа или числа — одна-две буквы, но «Иван»/«Иванов», «Пётр»/«Петров», «Олег»/«Олегович» —
+ * имя и фамилия (отчество) от одного корня, то есть разные слова, и по ним человека записывали в чужую группу как «точно».
  */
 export function sameToken(a: string, b: string): boolean {
   if (a === b) return true;
   const min = Math.min(a.length, b.length);
-  if (min < 4) return false;
+  if (min < 4 || Math.abs(a.length - b.length) > 1) return false;
   let prefix = 0;
   while (prefix < min && a[prefix] === b[prefix]) prefix += 1;
   // До семи букв короткое слово должно целиком входить в длинное (отличается только окончание); у длинных фамилий допустимо
@@ -100,13 +102,21 @@ export function findGroups(subject: Subject, groups: readonly LeaderGroup[]): Ca
   };
 
   for (const g of groups) {
-    if (myPhones.size > 0) {
-      for (const k of phoneKeys(g.phones)) {
-        if (myPhones.has(k)) { offer({ groupId: g.id, tier: 'exact', by: 'phone', role: 'leader' }); break; }
-      }
-    }
     // Имя ведущего и «второго ведущего» сверяем отдельно: в скобках у ведущего тоже бывает супруг(а).
     const leaderTokens = nameTokens(g.leader);
+    if (myPhones.size > 0) {
+      for (const k of phoneKeys(g.phones)) {
+        if (myPhones.has(k)) {
+          // Номер один у всей семьи: жена с телефоном мужа делит с ним фамилию, а чужой человек с этим номером —
+          // нет. Если имя назвали и ни одного слова ведущего в нём нет, номер сам по себе не доказывает: решает человек.
+          const theirs = [...leaderTokens, ...nameTokens(g.coLeader)];
+          // Инициалы («П. М.») тоже имя: годится, если хоть одна буква открывает слово ведущего.
+          const sameFamily = mine.length === 0 || mine.some((t) => (t.length > 1 ? theirs.some((l) => sameToken(t, l)) : theirs.some((l) => l.startsWith(t))));
+          offer({ groupId: g.id, tier: sameFamily ? 'exact' : 'likely', by: 'phone', role: 'leader' });
+          break;
+        }
+      }
+    }
     const byLeader = matchName(mine, leaderTokens);
     if (byLeader) offer({ groupId: g.id, tier: byLeader, by: 'name', role: 'leader' });
     else if (g.coLeader) {

@@ -172,12 +172,15 @@ function auditText(a: AuditRow): string | null {
     case 'request.reopen':
       return `Возвращена в работу · ${a.actor}`;
     case 'request.reconcile': {
-      const id = Number(after['group_id']);
-      const code = Number.isFinite(id) ? groupCode(id) : '—';
+      // group_ids — все группы; у записей до «нескольких групп» только group_id.
+      const raw = Array.isArray(after['group_ids']) ? after['group_ids'] : [after['group_id']];
+      const ids = raw.map(Number).filter((n) => Number.isFinite(n));
+      const codes = ids.length ? ids.map((n) => groupCode(n)).join(', ') : '—';
+      const many = ids.length > 1;
       const already = after['already'] === true ? ' (уже было)' : '';
       return after['kind'] === 'leader'
-        ? `Разобрано: группа ${code} связана с этим ведущим${already} · ${a.actor}`
-        : `Разобрано: внесён в состав группы ${code}${already} · ${a.actor}`;
+        ? `Разобрано: ${many ? 'группы' : 'группа'} ${codes} ${many ? 'связаны' : 'связана'} с этим ведущим${already} · ${a.actor}`
+        : `Разобрано: внесён в состав ${many ? 'групп' : 'группы'} ${codes}${already} · ${a.actor}`;
     }
     default:
       return null;

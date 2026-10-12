@@ -5,6 +5,9 @@ import type {
   CreateStaffBody,
   DeliveryOk,
   ExtraQuestionsBody,
+  LlmConfigBody,
+  LlmTestBody,
+  LlmTestResult,
   PersonalModeBody,
   SavePromptBody,
   SendExtraInvitesBody,
@@ -216,6 +219,22 @@ export function useAssistantActions() {
         queryClient.invalidateQueries({ queryKey: settingsKeys.assistant }),
         queryClient.invalidateQueries({ queryKey: queryKeys.requests }),
       ]);
+    },
+    /**
+     * Сохранение подключения (провайдер, модель, ключ). Ключ уходит только в теле этого запроса: ни в кэш запросов, ни в
+     * хранилище браузера он не попадает (`apiPost` ничего не запоминает, мутации react-query здесь не используются). После
+     * успеха перечитываем настройку и «Заявки», как у переключателя: от подключения зависит, доступен ли помощник.
+     */
+    async saveLlm(body: LlmConfigBody): Promise<void> {
+      await apiPost('settings/assistant/llm', body);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: settingsKeys.assistant }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.requests }),
+      ]);
+    },
+    /** Проверка подключения: ничего не сохраняет, поэтому и перечитывать нечего. Отказ провайдера приходит обычным ответом `ok: false`. */
+    testLlm(body: LlmTestBody): Promise<LlmTestResult> {
+      return apiPost<LlmTestResult>('settings/assistant/llm-test', body);
     },
   };
 }

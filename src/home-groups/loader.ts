@@ -28,7 +28,7 @@ export interface LoaderRepos {
  * Читает всё нужное сервису одним заходом. SQL здесь нет: только существующие репозитории
  * (тот же слой, что у старого дашборда), поэтому архивные записи и закрытые поля отсекаются там же.
  */
-export function createLoader(repos: LoaderRepos, opts: { timeZone?: string; assistantAvailable?: boolean } = {}): () => Promise<ViewsInput> {
+export function createLoader(repos: LoaderRepos, opts: { timeZone?: string; assistantAvailable?: boolean | (() => Promise<boolean>) } = {}): () => Promise<ViewsInput> {
   return async () => {
     const [groups, requests, participants, coordinators, rejectedGroups, audit, activity, activeProposals, placedNew, auto, lastRun, hints, assistantEnabled, members, persons] = await Promise.all([
       repos.groups.forDashboard(),
@@ -55,7 +55,7 @@ export function createLoader(repos: LoaderRepos, opts: { timeZone?: string; assi
       hints,
       members,
       persons,
-      assistant: { available: opts.assistantAvailable === true, enabled: assistantEnabled === true },
+      assistant: { available: (typeof opts.assistantAvailable === 'function' ? await opts.assistantAvailable() : opts.assistantAvailable) === true, enabled: assistantEnabled === true },
     };
   };
 }

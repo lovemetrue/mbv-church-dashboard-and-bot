@@ -66,6 +66,9 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
   const matchingCalls: { name: string; actor: string; enabled?: boolean }[] = [];
   const settingsCalls: { name: string; actor?: string; body?: unknown }[] = [];
   const strangeCalls: { name: string; id?: number; body?: unknown; actor?: string }[] = [];
+  const llmCalls: { name: string; body?: unknown; actor?: string }[] = [];
+  let llmSaveOutcome: unknown = { ok: true };
+  let llmTestResult: unknown = { ok: true, provider: 'DeepSeek', model: 'deepseek-chat', ms: 700 };
   const reconcileCalls: { name: string; id?: number; actor?: string; body?: unknown }[] = [];
   const staffCalls: { name: string; args: unknown[] }[] = [];
   const createCalls: { what: string; body: unknown; actor: string }[] = [];
@@ -129,6 +132,11 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
       forRequest: async (id: number, body: unknown, actor: string) => { strangeCalls.push({ name: 'request', id, body, actor }); return { ok: true }; },
       forPerson: async (body: unknown, actor: string) => { strangeCalls.push({ name: 'person', body, actor }); return { ok: true }; },
     } as never,
+    llmConfig: {
+      view: async () => ({ provider: 'deepseek', baseUrl: null, model: 'deepseek-chat', keySet: true, keySource: 'settings', keyHint: 'ABCD', keyUnreadable: false, providers: [] }),
+      save: async (body: unknown, actor: string) => { llmCalls.push({ name: 'save', body, actor }); return llmSaveOutcome; },
+      test: async (body: unknown) => { llmCalls.push({ name: 'test', body }); return llmTestResult; },
+    } as never,
     reconciler: {
       apply: async (id: number, body: unknown, actor: string) => { reconcileCalls.push({ name: 'apply', id, body, actor }); return { ok: true, already: false }; },
       applyReady: async (body: unknown, actor: string) => { reconcileCalls.push({ name: 'ready', body, actor }); return { ok: true, applied: 2, skipped: 1 }; },
@@ -180,7 +188,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
     viewsCalls: () => calls,
     close: () => { server.close(); },
     setViews: (f) => { views = f; },
-    actionCalls, auditCalls, assistantCalls, chatCalls, setChatOutcome: (o: unknown) => { chatOutcome = o; }, setAssistantOutcome: (o: unknown) => { assistantOutcome = o; }, matchingCalls, settingsCalls, reconcileCalls, strangeCalls, reported, staffCalls, createCalls, setCreate: (o) => { createOutcome = o; }, setTokenInfo: (v) => { tokenInfo = v; }, setComplete: (v) => { complete = v; }, setSettingsOutcome: (o: ActionOutcome) => { settingsOutcome = o; }, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
+    actionCalls, auditCalls, assistantCalls, chatCalls, setChatOutcome: (o: unknown) => { chatOutcome = o; }, setAssistantOutcome: (o: unknown) => { assistantOutcome = o; }, matchingCalls, settingsCalls, reconcileCalls, strangeCalls, llmCalls, setLlmSave: (o: unknown) => { llmSaveOutcome = o; }, setLlmTest: (o: unknown) => { llmTestResult = o; }, reported, staffCalls, createCalls, setCreate: (o) => { createOutcome = o; }, setTokenInfo: (v) => { tokenInfo = v; }, setComplete: (v) => { complete = v; }, setSettingsOutcome: (o: ActionOutcome) => { settingsOutcome = o; }, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
   };
 }
 
@@ -1366,9 +1374,48 @@ describe('помощник по разбору заявок', () => {
     expect(app.assistantCalls.length).toBe(before);
   });
 
+  test('в обзоре помощника есть подключение (провайдер, модель, последние символы ключа), но самого ключа нет', async () => {
+    const view = await fetch(`${app.base}/api/v1/settings/assistant`, { headers: { cookie: await signIn(SUPER) } });
+    const body = await view.json();
+    expect(body).toMatchObject({ available: true, llm: { provider: 'deepseek', model: 'deepseek-chat', keySet: true, keyHint: 'ABCD' } });
+    expect(JSON.stringify(body)).not.toMatch(/apiKey|api_key/);
+  });
+
+  test('сохранить подключение и проверить его можно только с полного входа: без входа 401, обычному 403, и ничего не вызвано', async () => {
+    const before = app.llmCalls.length;
+    for (const path of ['settings/assistant/llm', 'settings/assistant/llm-test']) {
+      expect((await post(null, path, { provider: 'deepseek', model: 'm' })).status, path).toBe(401);
+      expect((await post(await signIn(REGULAR), path, { provider: 'deepseek', model: 'm', apiKey: 'sk-1234567890' })).status, path).toBe(403);
+    }
+    expect(app.llmCalls.length).toBe(before);
+  });
+
+  test('полный вход: тело и автор доходят до сохранения, ошибка проверки сервера возвращается кодом 400', async () => {
+    const sup = await signIn(SUPER);
+    const body = { provider: 'openai', model: 'gpt-4o-mini', apiKey: 'sk-1234567890' };
+    const saved = await post(sup, 'settings/assistant/llm', body);
+    expect(saved.status).toBe(200);
+    expect(app.llmCalls.at(-1)).toEqual({ name: 'save', body, actor: SUPER.login });
+    app.setLlmSave({ ok: false, error: 'bad_request', message: 'Выберите провайдера из списка.' });
+    const refused = await post(sup, 'settings/assistant/llm', { provider: 'x', model: 'm' });
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toMatchObject({ error: 'bad_request', message: 'Выберите провайдера из списка.' });
+  });
+
+  test('проверка подключения: отказ провайдера приходит обычным ответом 200 с причиной, а не ошибкой запроса', async () => {
+    const sup = await signIn(SUPER);
+    const ok = await post(sup, 'settings/assistant/llm-test', { provider: 'deepseek', model: 'deepseek-chat' });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ ok: true, provider: 'DeepSeek', model: 'deepseek-chat', ms: 700 });
+    app.setLlmTest({ ok: false, code: 'auth', message: 'Провайдер не принял ключ (код 401).', status: 401 });
+    const bad = await post(sup, 'settings/assistant/llm-test', { provider: 'deepseek', model: 'deepseek-chat', apiKey: 'sk-1234567890' });
+    expect(bad.status).toBe(200);
+    expect(await bad.json()).toMatchObject({ ok: false, code: 'auth', status: 401 });
+  });
+
   test('ключ и его значение в ответах настроек не встречаются', async () => {
     const view = await (await fetch(`${app.base}/api/v1/settings/assistant`, { headers: { cookie: await signIn(SUPER) } })).text();
-    expect(view).not.toMatch(/sk-|api_?key|DEEPSEEK/i);
+    expect(view).not.toMatch(/sk-|api_?key|DEEPSEEK_/i);
   });
 });
 

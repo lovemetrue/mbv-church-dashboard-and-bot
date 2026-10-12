@@ -31,7 +31,8 @@ import { createChat } from './assistant/chat.js';
 import { createReadonlyRunner } from './assistant/readonly.js';
 import { loadPseudonyms } from './assistant/pseudonyms.js';
 import { HintsRepo } from '../db/repos/hints.repo.js';
-import type { LlmClient } from '../platform/llm/deepseek.js';
+import type { LlmClient, LlmSource } from '../platform/llm/deepseek.js';
+import { createLlmConfig } from './assistant/llmConfig.js';
 import { requestsToCsv } from './export.js';
 import { usersToCsv } from '../core/csv.js';
 import { campaignStats } from '../dashboard/campaignStats.js';
@@ -62,8 +63,10 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     publicUrl?: string | null;
     /** Значение `EXTRA_QUESTIONS` из `.env`: показывается в настройках как «по умолчанию». */
     extraQuestionsEnv?: string;
-    /** Языковая модель помощника; null — ключ не задан, функция выключена. */
-    llm?: LlmClient | null;
+    /** Готовый клиент или источник вместо настроек из базы (тесты). Не задан — клиент собирается из настроек и `.env`. */
+    llm?: LlmClient | LlmSource | null;
+    /** Окружение и секрет сервера для подключения помощника (ключ в базе шифруется этим секретом). */
+    llmSettings?: { env: NodeJS.ProcessEnv; secret: string };
     /** Расписание кампании «40 дней»: без него вкладка кампании недоступна. */
     campaignSchedule?: ScheduleOptions;
     /** Уведомление служителю о новой заявке (необязательно: без него заявки заводятся молча). */
@@ -75,6 +78,15 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   }) {
   const placement = new PlacementRepo(db);
   const appSettings = new SettingsRepo(db);
+  // Подключение помощника (провайдер, модель, ключ) читается из настроек при каждом обращении; пока там пусто — из `.env`.
+  const llmConfig = createLlmConfig({
+    settings: appSettings, audit: new AuditRepo(db), env: opts.llmSettings?.env ?? {}, secret: opts.llmSettings?.secret ?? '',
+  });
+  const llm: LlmClient | LlmSource | null = opts.llm !== undefined ? opts.llm : llmConfig.source;
+  const assistantAvailable = async (): Promise<boolean> => {
+    if (llm === null) return false;
+    return 'current' in llm ? (await llm.current()) !== null : true;
+  };
   const load = createLoader({
     groups: new GroupsRepo(db),
     requests: new RequestsRepo(db),
@@ -86,7 +98,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     hints: new HintsRepo(db),
     members: new MembersRepo(db),
     strange: new StrangeRepo(db),
-  }, { ...(opts.timeZone ? { timeZone: opts.timeZone } : {}), assistantAvailable: (opts.llm ?? null) !== null });
+  }, { ...(opts.timeZone ? { timeZone: opts.timeZone } : {}), assistantAvailable: () => assistantAvailable() });
   const viewOptions = { defaultCapacity: opts.defaultCapacity, ...(opts.timeZone ? { timeZone: opts.timeZone } : {}), ...(opts.matchGroupStreet ? { matchGroupStreet: true } : {}) };
 
   const views = createViewsSource({ load, engine, ttlMs: opts.ttlMs, views: viewOptions });
@@ -95,7 +107,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   });
   const errors = new ErrorsRepo(db);
   const assistant = createAssistant({
-    load, engine, viewOptions, llm: opts.llm ?? null, hints: new HintsRepo(db), prompts: new PromptsRepo(db), settings: appSettings,
+    load, engine, viewOptions, llm, hints: new HintsRepo(db), prompts: new PromptsRepo(db), settings: appSettings,
     audit: new AuditRepo(db), matching, invalidate: () => views.invalidate(),
     reportError: (source, err, context) => { void errors.record(source, err instanceof Error ? err.message : String(err), context); },
     roleReady: async () => {
@@ -108,7 +120,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     },
   });
   const chat = createChat({
-    llm: opts.llm ?? null, settings: appSettings, audit: new AuditRepo(db), history: new ChatHistoryRepo(db), runQuery: createReadonlyRunner(db),
+    llm, settings: appSettings, audit: new AuditRepo(db), history: new ChatHistoryRepo(db), runQuery: createReadonlyRunner(db),
     pseudonyms: () => loadPseudonyms(db), capacity: opts.defaultCapacity,
     reportError: (source, err, context) => { void errors.record(source, err instanceof Error ? err.message : String(err), context); },
   });
@@ -154,7 +166,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   const auditRepo = new AuditRepo(db);
   const audit = (actor: string, action: string, after: unknown) => auditRepo.write(actor, action, 'export', null, after);
   const formMeta = createFormMeta(new CoordinatorsRepo(db));
-  return { views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, chat, members, reconciler, strange, formMeta };
+  return { views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, chat, members, reconciler, strange, formMeta };
 }
 
 export function composeViews(db: Pool, engine: PlanEngineApi, opts: ComposeOptions): ViewsSource {

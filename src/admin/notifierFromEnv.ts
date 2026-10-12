@@ -4,7 +4,7 @@ import { MaxAdapter } from '../adapters/max.adapter.js';
 import type { Platform, PlatformName } from '../core/platform.js';
 import type { ScheduleOptions } from '../broadcast/schedule.js';
 import type { RequestWithUser } from '../db/repos/requests.repo.js';
-import { createDeps } from '../deps.js';
+import { createDeps, type Deps } from '../deps.js';
 import { logger } from '../logger.js';
 import { splitAdminIds } from './access.js';
 import { dashboardLink, requestLinkBuilder } from './links.js';
@@ -28,6 +28,19 @@ export function notifierFromEnv(
   schedule: ScheduleOptions,
   service: string,
 ): (request: RequestWithUser) => Promise<void> {
+  return serviceFromEnv(db, env, schedule, service).notify;
+}
+
+/**
+ * То же, но вместе с собранными зависимостями: «Домашним группам» они нужны ещё и для кнопки «дослать вопросы»
+ * (те же платформы, та же отправка с ограничением частоты, что у бота), и второй набор клиентов строить незачем.
+ */
+export function serviceFromEnv(
+  db: Pool,
+  env: NodeJS.ProcessEnv,
+  schedule: ScheduleOptions,
+  service: string,
+): { notify: (request: RequestWithUser) => Promise<void>; deps: Deps } {
   const platforms = new Map<PlatformName, Platform>();
   const admins = new Map<PlatformName, string[]>();
   for (const name of readEnv(env, 'ENABLED_PLATFORMS', 'telegram').split(',').map((s) => s.trim().toLowerCase())) {
@@ -45,11 +58,13 @@ export function notifierFromEnv(
     admins.set(name, splitAdminIds(readEnv(env, name === 'telegram' ? 'ADMIN_IDS_TELEGRAM' : 'ADMIN_IDS_MAX', '').split(',')).ids);
   }
   const requestUrl = requestLinkBuilder(env['HG_PUBLIC_URL']);
-  const notifier = new AdminNotifier(createDeps({
+  const deps = createDeps({
     db, platforms, admins, schedule, broadcastRate: 20,
     dashboardUrl: dashboardLink(env['HG_PUBLIC_URL'], readEnv(env, 'DASHBOARD_URL', 'http://5.23.48.25:8090/groups')),
+    extraQuestions: readEnv(env, 'EXTRA_QUESTIONS', 'off'),
     ...(requestUrl ? { requestUrl } : {}),
-  }));
+  });
+  const notifier = new AdminNotifier(deps);
   // Без этой строки в логе не отличить «уведомления настроены, но не доходят» от
   // «сервис вообще не увидел токены/ADMIN_IDS» — второе тихо проходит мимо.
   if (notifier.hasAdmins()) {
@@ -58,11 +73,12 @@ export function notifierFromEnv(
     logger.warn(`${service}: ADMIN_IDS/токен платформы не заданы — заявки, заведённые здесь, никого не уведомят`);
   }
 
-  return async (request) => {
+  const notify = async (request: RequestWithUser): Promise<void> => {
     try {
       await notifier.notifyRequest(request);
     } catch (err) {
       logger.error({ err: (err as Error).message, requestId: request.id }, `${service}: не удалось уведомить служителя о заявке`);
     }
   };
+  return { notify, deps };
 }

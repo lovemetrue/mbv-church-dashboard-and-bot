@@ -11,7 +11,8 @@ import { composeService, engine } from './composition.js';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { llmFromEnv } from '../platform/llm/deepseek.js';
-import { notifierFromEnv } from '../admin/notifierFromEnv.js';
+import { serviceFromEnv } from '../admin/notifierFromEnv.js';
+import { createExtraInvites } from '../core/extraInvites.js';
 import { startAutoMatching } from './matching/scheduler.js';
 import { createHomeGroupsServer } from './server.js';
 
@@ -69,11 +70,14 @@ async function main(): Promise<void> {
     totalDays: Number(env('CAMPAIGN_DAYS', '40')),
     timezone: env('TIMEZONE', 'Europe/Moscow'),
   };
+  const bots = serviceFromEnv(db, process.env, schedule, 'домашние группы');
   const { views, matching, placement, settings, errors, staff, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, chat, members, formMeta } = composeService(db, engine, {
     campaignSchedule: schedule,
     llm: llmFromEnv(process.env),
     extraQuestionsEnv: env('EXTRA_QUESTIONS', 'off'),
-    notify: notifierFromEnv(db, process.env, schedule, 'домашние группы'),
+    notify: bots.notify,
+    // Без подключённых ботов слать приглашения нечем: кнопка в «Настройках» покажет, что недоступна.
+    ...(bots.deps.platforms.size > 0 ? { invites: createExtraInvites(bots.deps) } : {}),
     defaultCapacity, ttlMs: 10_000, timeZone: env('TIMEZONE', 'Europe/Moscow'),
     store,
     // Почта и публичный адрес необязательны: без них ссылки на пароль показываются администратору на экране.

@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { isAdmin } from '../../admin/access.js';
-import { MDG_SHORT, T, followUpKeyboard } from '../texts.js';
+import { MDG_SHORT, T } from '../texts.js';
+import { EXTRA_INVITE_TEXTS, createExtraInvites } from '../extraInvites.js';
 import { ADMIN_CB, CANCEL_MENU, adminMenu, isCancel } from '../../admin/menu.js';
 import { localDate } from '../../broadcast/schedule.js';
 import { formatDayRanges } from '../dayRanges.js';
 import { b, code, esc, i } from '../html.js';
 import { formatPhone } from '../phone.js';
 import { people, participants, toParticipants } from '../plural.js';
-import { extraQuestionsEnabled } from '../rollout.js';
 import type { AdminDialog } from '../../db/repos/adminSessions.repo.js';
 import type { UserRow } from '../../db/repos/users.repo.js';
 import type { Deps } from '../../deps.js';
@@ -576,29 +576,10 @@ export class AdminFlow {
     await this.runBroadcast(ctx, `day:${day}`, content.content, `Материал дня ${day}`, userId);
   }
 
-  /**
-   * Кому сейчас можно дослать вопросы: зарегистрированным с заявкой на посещение или открытие
-   * группы, кто ещё не отвечал и не получал приглашение, — и только тем, кому вопросы включены
-   * настройкой EXTRA_QUESTIONS. Так сначала приглашение уходит одному-двум людям на проверку.
-   */
-  private async extraRecipients(): Promise<{ join: number[]; lead: number[] }> {
-    const found = await this.deps.users.followUpCandidates([...this.deps.platforms.keys()]);
-    const setting = await this.deps.extraQuestionsNow();
-    const allowed = found.filter((c) =>
-      extraQuestionsEnabled(setting, c.platform, c.platform_user_id));
-    return {
-      join: allowed.filter((c) => c.mdg_status === 'join').map((c) => c.id),
-      lead: allowed.filter((c) => c.mdg_status !== 'join').map((c) => c.id),
-    };
-  }
-
   private async prepareExtra(ctx: UpdateCtx, userId: number): Promise<void> {
-    const { join, lead } = await this.extraRecipients();
-    const total = join.length + lead.length;
-    const setting = await this.deps.extraQuestionsNow();
+    const { join, lead, total, setting, off } = await createExtraInvites(this.deps).preview();
 
     if (total === 0) {
-      const off = ['', 'off'].includes((await this.deps.extraQuestionsNow()).trim().toLowerCase());
       await this.reply(
         ctx,
         off
@@ -615,14 +596,14 @@ export class AdminFlow {
       [
         `📝 Дослать два вопроса (время и адрес) — получат ${b(people(total))}?`,
         '',
-        `Хотят в группу: ${join.length}`,
-        `Готовы открыть: ${lead.length}`,
+        `Хотят в группу: ${join}`,
+        `Готовы открыть: ${lead}`,
         '',
         b('Приглашение хотящим в группу'),
-        esc(T.followUpInviteJoin),
+        esc(EXTRA_INVITE_TEXTS.join),
         '',
         b('Приглашение готовым открыть'),
-        esc(T.followUpInviteLead),
+        esc(EXTRA_INVITE_TEXTS.lead),
         '',
         `Кому писать, задаёт настройка «новые вопросы анкеты» в интерфейсе: сейчас ${code(setting)}.`,
         'Каждый получит приглашение один раз.',
@@ -633,26 +614,11 @@ export class AdminFlow {
 
   /** Рассылает приглашения по подтверждению: ищущим и открывающим — каждым своим текстом. */
   private async runExtra(ctx: UpdateCtx): Promise<void> {
-    // Список считаем заново: между вопросом и подтверждением кто-то мог ответить сам.
-    const { join, lead } = await this.extraRecipients();
-    if (join.length + lead.length === 0) {
+    // Список считается заново: между вопросом и подтверждением кто-то мог ответить сам.
+    const result = await createExtraInvites(this.deps).send();
+    if (result.status !== 'sent') {
       await this.reply(ctx, 'Некому отправлять: приглашения уже разосланы или все ответили.');
       return;
-    }
-
-    const base = `extra:${randomUUID()}`;
-    const totals = { sent: 0, failed: 0, blocked: 0 };
-    for (const [suffix, text, ids] of [
-      ['join', T.followUpInviteJoin, join],
-      ['lead', T.followUpInviteLead, lead],
-    ] as const) {
-      if (ids.length === 0) continue;
-      const key = `${base}:${suffix}`;
-      await this.deps.deliveries.openFor(key, text, followUpKeyboard(), ids);
-      const result = await this.deps.sender.run(key);
-      totals.sent += result.sent;
-      totals.failed += result.failed;
-      totals.blocked += result.blocked;
     }
 
     await this.reply(
@@ -660,9 +626,9 @@ export class AdminFlow {
       [
         `✅ ${b('Приглашения отправлены')}`,
         '',
-        `Доставлено: ${b(totals.sent)}`,
-        `Ошибок: ${b(totals.failed)}`,
-        `Заблокировали бота: ${b(totals.blocked)}`,
+        `Доставлено: ${b(result.sent)}`,
+        `Ошибок: ${b(result.failed)}`,
+        `Заблокировали бота: ${b(result.blocked)}`,
         '',
         'Ответы появятся в заявках в дашборде.',
       ].join('\n'),

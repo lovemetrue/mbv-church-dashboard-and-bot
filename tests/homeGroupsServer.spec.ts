@@ -124,6 +124,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
     botSettings: {
       view: async () => { settingsCalls.push({ name: 'bot.view' }); return { generatedAt: 'g', extraQuestions: { mode: 'off', ids: '', source: 'env', envValue: 'off' } }; },
       setExtraQuestions: async (body: unknown, actor: string) => { settingsCalls.push({ name: 'bot.save', actor, body }); return settingsOutcome; },
+      sendExtraInvites: async (body: unknown, actor: string) => { settingsCalls.push({ name: 'bot.invites', actor, body }); return { ok: true, sent: 2, failed: 0, blocked: 0 }; },
     } as never,
     exporter: { requests: async () => '\uFEFF№;ФИО\r\n1;Мария\r\n', people: async () => '\uFEFFномер\r\n' },
     audit: async (actor: string, action: string, after: unknown) => { auditCalls.push({ actor, action, after }); },
@@ -1356,6 +1357,32 @@ describe('настройка бота «новые вопросы анкеты»
     });
     expect(saved.status).toBe(200);
     expect(app.settingsCalls.slice(before)).toEqual([{ name: 'bot.save', actor: SUPER.login, body: { mode: 'all' } }]);
+  });
+});
+
+describe('досылка новых вопросов из «Настроек»', () => {
+  const send = (cookie: string | null, body: unknown) => fetch(`${app.base}/api/v1/settings/bot/send-extra-questions`, {
+    method: 'POST', headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body),
+  });
+
+  test('рассылка живым людям только с полного входа: без входа 401, обычному 403, и в обоих случаях ничего не отправлено', async () => {
+    const before = app.settingsCalls.length;
+    expect((await send(null, { expectedTotal: 2 })).status).toBe(401);
+    expect((await send(await signIn(REGULAR), { expectedTotal: 2 })).status).toBe(403);
+    expect(app.settingsCalls.length).toBe(before);
+  });
+
+  test('полный вход: тело и автор доходят до сервиса, ответ — итог доставки', async () => {
+    const before = app.settingsCalls.length;
+    const r = await send(await signIn(SUPER), { expectedTotal: 2 });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, sent: 2, failed: 0, blocked: 0 });
+    expect(app.settingsCalls.slice(before)).toEqual([{ name: 'bot.invites', actor: SUPER.login, body: { expectedTotal: 2 } }]);
+  });
+
+  test('рассылку нельзя вызвать запросом GET: изменяющие адреса отвечают 404', async () => {
+    const r = await fetch(`${app.base}/api/v1/settings/bot/send-extra-questions`, { headers: { cookie: await signIn(SUPER) } });
+    expect(r.status).toBe(404);
   });
 });
 

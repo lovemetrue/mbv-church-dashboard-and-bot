@@ -119,7 +119,7 @@ const CONTENT_TYPES: Record<string, string> = {
 
 class BodyTooLarge extends Error {}
 
-const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode|bot\/extra-questions|assistant\/enabled)$/;
+const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode|bot\/extra-questions|bot\/send-extra-questions|assistant\/enabled)$/;
 const CREATE_PATH = /^\/api\/v1\/(requests|groups|people|coordinators)\/create$/;
 /** `POST /api/v1/groups/5/update`: правка и удаление записей справочника. */
 const MANAGE_PATH = /^\/api\/v1\/(groups|coordinators|people)\/(\d{1,15})\/(update|delete)$/;
@@ -620,6 +620,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       'staff/reset': () => deps.staff.reset(call.body, call.actor),
       'staff/personal-mode': () => deps.staff.setPersonalMode(call.body, call.actor),
       'bot/extra-questions': () => deps.botSettings.setExtraQuestions(call.body, call.actor),
+      'bot/send-extra-questions': () => deps.botSettings.sendExtraInvites(call.body, call.actor),
       'assistant/enabled': async () => {
         const b = call.body as { enabled?: unknown } | null;
         if (typeof b !== 'object' || b === null || typeof b.enabled !== 'boolean') {

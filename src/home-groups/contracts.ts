@@ -48,6 +48,7 @@
  *   POST /api/v1/settings/assistant/enabled AssistantEnabledBody → ActionOk | ActionError (только super)
  *   GET  /api/v1/settings/bot           → SettingsBotView (только super)
  *   POST /api/v1/settings/bot/extra-questions ExtraQuestionsBody → ActionOk | ActionError (только super)
+ *   POST /api/v1/settings/bot/send-extra-questions SendExtraInvitesBody → SendExtraInvitesOk | ActionError (только super; пишет живым людям)
  *   POST /api/v1/requests/:id/close     CloseBody       → ActionOk | ActionError (обработано или аннулировать с причиной)
  *   POST /api/v1/requests/:id/reopen    (тело {})       → ActionOk | ActionError (вернуть закрытую заявку в работу)
  *   POST /api/v1/people/:id/delete      (тело {})       → ActionOk | ActionError (только super; стирает регистрацию с заявками)
@@ -534,6 +535,37 @@ export interface SettingsBotView {
     /** Значение из `.env`: показывается как «было по умолчанию». */
     envValue: string;
   };
+  /** Досылка двух новых вопросов тем, кто уже зарегистрирован (кнопка в «Настройках»). */
+  invites: ExtraInvitesView;
+}
+
+export interface ExtraInvitesView {
+  /** В сервисе подключён хотя бы один бот: без этого слать нечем. */
+  available: boolean;
+  /** Хотят в группу. */
+  join: number;
+  /** Готовы открыть группу или дать дом. */
+  lead: number;
+  /** Сколько человек получит приглашение при текущей настройке «кому задавать». */
+  total: number;
+  /** Новые вопросы выключены: слать некому. */
+  off: boolean;
+  /** Тексты приглашений, как их увидят люди. */
+  textJoin: string;
+  textLead: string;
+}
+
+export interface SendExtraInvitesBody {
+  /** Число получателей, которое человек видел и подтвердил: если оно успело измениться, рассылка не уходит. */
+  expectedTotal: number;
+}
+
+export interface SendExtraInvitesOk {
+  ok: true;
+  sent: number;
+  failed: number;
+  /** Заблокировали бота. */
+  blocked: number;
 }
 
 export interface ExtraQuestionsBody {

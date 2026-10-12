@@ -39,6 +39,7 @@ import type { RequestWithUser } from '../db/repos/requests.repo.js';
 import { createLoader } from './loader.js';
 import { createMatching } from './matching/run.js';
 import type { PlanEngineApi } from './plan/types.js';
+import type { ExtraInvites } from '../core/extraInvites.js';
 
 export interface ComposeOptions { defaultCapacity: number; ttlMs: number; timeZone?: string }
 
@@ -63,6 +64,8 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     campaignSchedule?: ScheduleOptions;
     /** Уведомление служителю о новой заявке (необязательно: без него заявки заводятся молча). */
     notify?: (request: RequestWithUser) => Promise<void>;
+    /** Досылка новых вопросов зарегистрированным; нет её (боты не подключены) — кнопка в «Настройках» недоступна. */
+    invites?: ExtraInvites;
     /** Сбросить кэш входа после изменения людей и режима. */
     onStaffChange?: () => void;
   }) {
@@ -138,7 +141,9 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     requests: async () => requestsToCsv((await views()).requests.items),
     people: async () => usersToCsv(await usersRepo.exportRows()),
   };
-  const botSettings = createBotSettings({ settings: appSettings, audit: new AuditRepo(db), envValue: opts.extraQuestionsEnv ?? 'off' });
+  const botSettings = createBotSettings({
+    settings: appSettings, audit: new AuditRepo(db), envValue: opts.extraQuestionsEnv ?? 'off', ...(opts.invites ? { invites: opts.invites } : {}),
+  });
   const auditRepo = new AuditRepo(db);
   const audit = (actor: string, action: string, after: unknown) => auditRepo.write(actor, action, 'export', null, after);
   const formMeta = createFormMeta(new CoordinatorsRepo(db));

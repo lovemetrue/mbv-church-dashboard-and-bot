@@ -21,6 +21,10 @@
 .scrim {
   display: none;
 }
+/* «Готово» нужна только шторке на телефоне: на широком экране окно закрывается кликом вне его. */
+.footer {
+  display: none;
+}
 @media (max-width: 700px) {
   .scrim {
     display: block;
@@ -39,6 +43,16 @@
     max-height: 82vh;
     z-index: 12;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: 0;
+  }
+  .footer {
+    display: flex;
+    justify-content: flex-end;
+    position: sticky;
+    bottom: 0;
+    margin: 12px -14px 0;
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px));
+    background: var(--surface);
+    border-top: 1px solid var(--line);
   }
 }

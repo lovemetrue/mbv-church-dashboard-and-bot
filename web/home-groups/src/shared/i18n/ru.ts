@@ -1593,6 +1593,7 @@ export const ru = {
 
   common: {
     close: 'Закрыть',
+    done: 'Готово',
     dataDots: ['Район', 'Возраст', 'День и время', 'Улица'] as const,
     dotYes: 'есть',
     dotNo: 'нет',

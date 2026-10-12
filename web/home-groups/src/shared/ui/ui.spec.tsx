@@ -156,3 +156,21 @@ describe('Modal', () => {
     expect(screen.queryByRole('dialog', { name: 'Выбор' })).not.toBeInTheDocument();
   });
 });
+
+describe('Popover на телефоне', () => {
+  test('кнопка «Готово» и клик по подложке закрывают окно', async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <Popover label="Фильтры" title="Фильтры">
+        <p>Внутри</p>
+      </Popover>,
+    );
+    await user.click(screen.getByRole('button', { name: /Фильтры/ }));
+    await user.click(screen.getByRole('button', { name: 'Готово' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Фильтры/ }));
+    const scrim = container.querySelector('[aria-hidden="true"]') as HTMLElement;
+    await user.click(scrim);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});

@@ -12,6 +12,12 @@
   border-top: 1px solid var(--line-soft);
   padding-top: 4px;
 }
+/* Блок «Странный человек» живёт в другом модуле, поэтому соседние `.block + .block` его линий не рисуют: границы ставит обёртка. */
+.slot {
+  min-width: 0;
+  border-top: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+}
 .h4 {
   margin: 12px 0 8px;
   font-size: 12px;

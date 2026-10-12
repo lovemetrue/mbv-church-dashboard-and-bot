@@ -70,7 +70,7 @@ async function main(): Promise<void> {
     timezone: env('TIMEZONE', 'Europe/Moscow'),
   };
   const bots = serviceFromEnv(db, process.env, schedule, 'домашние группы');
-  const { views, matching, placement, settings, errors, staff, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, chat, members, reconciler, formMeta } = composeService(db, engine, {
+  const { views, matching, placement, settings, errors, staff, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, chat, members, reconciler, strange, formMeta } = composeService(db, engine, {
     campaignSchedule: schedule,
     // Ключ, провайдер и модель можно менять в «Настройки → Помощник»; пока там пусто, действует `.env`. Ключ в базе шифруется
     // секретом SETTINGS_SECRET, а если его нет — паролем полного входа (смена пароля потребует ввести ключ заново).
@@ -80,6 +80,8 @@ async function main(): Promise<void> {
     // Без подключённых ботов слать приглашения нечем: кнопка в «Настройках» покажет, что недоступна.
     ...(bots.deps.platforms.size > 0 ? { invites: createExtraInvites(bots.deps) } : {}),
     defaultCapacity, ttlMs: 10_000, timeZone: env('TIMEZONE', 'Europe/Moscow'),
+    // Необязательная: адрес группы закрытый, поэтому сравнение улиц включается только явно.
+    matchGroupStreet: process.env['HG_MATCH_GROUP_STREET']?.trim().toLowerCase() === 'on',
     store,
     // Почта и публичный адрес необязательны: без них ссылки на пароль показываются администратору на экране.
     mailer: mailerFromEnv(process.env),
@@ -105,6 +107,7 @@ async function main(): Promise<void> {
     chat,
     members,
     reconciler,
+    strange,
     exporter,
     audit,
     logo: async () => readFile(join(env('HG_ASSETS_DIR', '/app/dashboard/assets'), 'church-logo.png')).catch(() => null),

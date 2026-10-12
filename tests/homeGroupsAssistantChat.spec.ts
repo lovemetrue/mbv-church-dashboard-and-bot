@@ -192,3 +192,111 @@ describe('чат помощника: вопросы по базе', () => {
     expect(await (await enabled(llm)).assistant.status()).toEqual({ available: true, enabled: true, chat: true });
   });
 });
+
+describe('чат помощника: история разговора на сервере', () => {
+  const said = (m: ChatMessage[]) => m.filter((x) => x.role !== 'system').map((x) => (x as { content: string }).content);
+
+  test('вопрос и ответ запоминаются, а следующий вопрос уходит модели вместе с прежними', async () => {
+    const llm = new FakeChatLlm((_r, n) => say(`ответ ${n}`));
+    const svc = await enabled(llm);
+    await svc.chat.ask({ message: 'Первый вопрос' }, 'anna');
+    await svc.chat.ask({ message: 'Второй вопрос' }, 'anna');
+    expect(said(llm.calls[1]!)).toEqual(['Первый вопрос', 'ответ 1', 'Второй вопрос']);
+    expect((await svc.chat.history('anna')).messages).toEqual([
+      { role: 'user', content: 'Первый вопрос' }, { role: 'assistant', content: 'ответ 1' },
+      { role: 'user', content: 'Второй вопрос' }, { role: 'assistant', content: 'ответ 2' },
+    ]);
+  });
+
+  test('в контекст попадают последние 6 сообщений истории и новый вопрос', async () => {
+    const llm = new FakeChatLlm((_r, n) => say(`а${n}`));
+    const svc = await enabled(llm);
+    for (let i = 1; i <= 5; i++) await svc.chat.ask({ message: `в${i}` }, 'anna');
+    // К шестому вопросу накопилось 10 сообщений: берём 6 последних (три пары) и сам вопрос.
+    await svc.chat.ask({ message: 'в6' }, 'anna');
+    expect(said(llm.calls[5]!)).toEqual(['в3', 'а3', 'в4', 'а4', 'в5', 'а5', 'в6']);
+  });
+
+  test('контекст не начинается с ответа без вопроса: оборванная пара отбрасывается', async () => {
+    const llm = new FakeChatLlm(() => say('ок'));
+    const svc = await enabled(llm);
+    await db.query(`INSERT INTO assistant_chat_messages (actor, role, content) VALUES ('anna', 'assistant', 'обрывок'), ('anna', 'user', 'в1'), ('anna', 'assistant', 'а1')`);
+    await svc.chat.ask({ message: 'в2' }, 'anna');
+    expect(said(llm.calls[0]!)).toEqual(['в1', 'а1', 'в2']);
+  });
+
+  test('у каждого входа своя история: чужие вопросы модели не уходят и в чате не показываются', async () => {
+    const llm = new FakeChatLlm(() => say('ок'));
+    const svc = await enabled(llm);
+    await svc.chat.ask({ message: 'Вопрос Анны' }, 'anna');
+    await svc.chat.ask({ message: 'Вопрос Бориса' }, 'boris');
+    expect(said(llm.calls[1]!)).toEqual(['Вопрос Бориса']);
+    expect((await svc.chat.history('boris')).messages.map((m) => m.content)).toEqual(['Вопрос Бориса', 'ок']);
+  });
+
+  test('имена из сохранённой истории модели не уходят: они превращаются в номера', async () => {
+    await seed();
+    const ref = await leaderRef();
+    const llm = new FakeChatLlm((_r, n) => say(n === 1 ? `${ref} ведёт две группы.` : 'ок'));
+    const svc = await enabled(llm);
+    const first = await svc.chat.ask({ message: 'Кто ведёт две группы?' }, 'anna');
+    expect(first).toMatchObject({ ok: true, answer: 'Иван Петров ведёт две группы.' });
+    await svc.chat.ask({ message: 'А сколько у Иван Петров людей?' }, 'anna');
+    expect(JSON.stringify(llm.calls[1])).not.toMatch(/Иван|Петров/);
+    // Служителю в истории показываются настоящие имена.
+    expect((await svc.chat.history('anna')).messages[1]!.content).toBe('Иван Петров ведёт две группы.');
+  });
+
+  test('неудачный вопрос (сбой модели, лимит) в историю не попадает', async () => {
+    const llm = new FakeChatLlm((_r, n) => (n === 1 ? new LlmError('network', 'нет связи') : say('ок')));
+    const svc = await enabled(llm);
+    expect(await svc.chat.ask({ message: 'Не дошёл' }, 'anna')).toMatchObject({ ok: false });
+    expect((await svc.chat.history('anna')).messages).toEqual([]);
+  });
+
+  test('«очистить» стирает историю только этого входа, и следующий вопрос идёт без прошлого', async () => {
+    const llm = new FakeChatLlm(() => say('ок'));
+    const svc = await enabled(llm);
+    await svc.chat.ask({ message: 'Анна 1' }, 'anna');
+    await svc.chat.ask({ message: 'Борис 1' }, 'boris');
+    await svc.chat.clear('anna');
+    expect((await svc.chat.history('anna')).messages).toEqual([]);
+    expect((await svc.chat.history('boris')).messages).toHaveLength(2);
+    await svc.chat.ask({ message: 'Анна 2' }, 'anna');
+    expect(said(llm.calls[2]!)).toEqual(['Анна 2']);
+  });
+
+  test('на одного человека хранится не больше двухсот сообщений, старые уходят', async () => {
+    const llm = new FakeChatLlm(() => say('ок'));
+    const svc = await enabled(llm);
+    await svc.chat.ask({ message: 'самый старый' }, 'anna');
+    await db.query(`INSERT INTO assistant_chat_messages (actor, role, content) SELECT 'anna', 'user', 'v' || g FROM generate_series(1, 199) g`);
+    await svc.chat.ask({ message: 'свежий' }, 'anna');
+    const { rows } = await db.query<{ n: string }>(`SELECT count(*) AS n FROM assistant_chat_messages WHERE actor = 'anna'`);
+    expect(Number(rows[0]!.n)).toBe(200);
+    expect(await db.query(`SELECT 1 FROM assistant_chat_messages WHERE content = 'самый старый'`)).toHaveProperty('rowCount', 0);
+  });
+
+  test('записи старше 30 дней вычищаются при следующей записи', async () => {
+    await db.query(`INSERT INTO assistant_chat_messages (actor, role, content, created_at) VALUES ('boris', 'user', 'давно', now() - interval '31 days')`);
+    const svc = await enabled(new FakeChatLlm(() => say('ок')));
+    await svc.chat.ask({ message: 'сейчас' }, 'anna');
+    expect(await db.query(`SELECT 1 FROM assistant_chat_messages WHERE content = 'давно'`)).toHaveProperty('rowCount', 0);
+  });
+
+  test('пустой или слишком длинный вопрос отклоняется, прежний вид тела {messages} работает и ничего не сохраняет', async () => {
+    const llm = new FakeChatLlm(() => say('ок'));
+    const svc = await enabled(llm);
+    expect(await svc.chat.ask({ message: '   ' }, 'anna')).toMatchObject({ ok: false, error: 'bad_request' });
+    expect(await svc.chat.ask({ message: 'я'.repeat(2001) }, 'anna')).toMatchObject({ ok: false, error: 'bad_request' });
+    expect(await svc.chat.ask(turn('по-старому'), 'anna')).toMatchObject({ ok: true });
+    expect((await svc.chat.history('anna')).messages).toEqual([]);
+  });
+
+  test('в журнал действий вопрос и ответ по-прежнему не попадают', async () => {
+    const svc = await enabled(new FakeChatLlm(() => say('Секретный ответ')));
+    await svc.chat.ask({ message: 'Секретный вопрос' }, 'anna');
+    const rows = (await db.query(`SELECT after::text AS after FROM audit_log`)).rows;
+    expect(JSON.stringify(rows)).not.toMatch(/Секретн/);
+  });
+});

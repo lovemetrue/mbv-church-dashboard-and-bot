@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useState, type FocusEvent, type ReactNode } from 'react';
-import styles from './Today.module.css';
+import styles from './Tip.module.css';
 
 export interface TipAria {
   'aria-describedby'?: string;
@@ -19,8 +19,9 @@ const MARGIN = 8;
  * Esc убирает её, не закрывая ничего другого: так требует WCAG 1.4.13. Окно позиционируется по
  * экрану (fixed), а не внутри таблицы: у строк и карточек бывает overflow, который его бы обрезал.
  * Через render-prop отдаём `aria-describedby` тому элементу, который получает фокус.
+ * `inline` — подсказка к значку в строке текста (по умолчанию блок на всю ширину, как у клеток матрицы).
  */
-export function Tip({ text, children }: { text: string; children: (aria: TipAria) => ReactNode }) {
+export function Tip({ text, inline = false, children }: { text: string; inline?: boolean; children: (aria: TipAria) => ReactNode }) {
   const id = useId();
   const [pos, setPos] = useState<Pos | null>(null);
   const open = pos !== null;
@@ -58,7 +59,7 @@ export function Tip({ text, children }: { text: string; children: (aria: TipAria
 
   return (
     <span
-      className={styles.tipRoot}
+      className={inline ? styles.tipInline : styles.tipRoot}
       onMouseEnter={(e) => show(e.currentTarget)}
       onMouseLeave={() => setPos(null)}
       onFocus={onFocus}

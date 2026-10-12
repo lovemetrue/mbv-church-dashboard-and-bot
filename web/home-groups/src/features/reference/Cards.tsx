@@ -4,8 +4,9 @@ import { registrationCardUrl, registrationQrUrl } from '../../shared/api/base';
 import { useGroups } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
 import { useAppNav } from '../../shared/nav';
-import { Button, Drawer, DrawerSection, KeyValue, LoadingState, Meter, NewGroupIcon, Pill, type KvRow } from '../../shared/ui';
+import { Button, Drawer, DrawerSection, KeyValue, LoadingState, Meter, NewGroupIcon, Pill, StrangeBadge, StrangeBanner, type KvRow } from '../../shared/ui';
 import { LinkButton } from '../create';
+import { StrangeSection } from '../strange';
 import { CoordinatorActions, DeletePersonSection, GroupActions, MembersSection, PersonActions, PersonGroups } from '../manage';
 import styles from './Reference.module.css';
 
@@ -163,10 +164,23 @@ export function PersonCard({ p, onClose }: { p: PersonItem; onClose: () => void 
   // и у участника без номера регистрации тоже (карточку нечем подписать).
   const registrationLinks = p.userId !== null && p.registrationNo !== null ? { card: registrationCardUrl(p.userId), qr: registrationQrUrl(p.userId) } : null;
   return (
-    <Drawer label={`Карточка человека: ${p.fio}`} title={p.fio} onClose={onClose}>
+    <Drawer
+      label={`Карточка человека: ${p.fio}`}
+      title={
+        <>
+          {p.fio}
+          <StrangeBadge mark={p.strange} size={18} />
+        </>
+      }
+      onClose={onClose}
+    >
+      <StrangeBanner mark={p.strange} />
       <DrawerSection>
         <KeyValue rows={rows} />
         <PersonActions key={p.key} p={p} onDeleted={onClose} />
+      </DrawerSection>
+      <DrawerSection>
+        <StrangeSection key={p.key} target={{ kind: 'person', key: p.key }} mark={p.strange} />
       </DrawerSection>
       <PersonGroups p={p} />
       {registrationLinks && (

@@ -47,4 +47,41 @@ export function needsOf(
   };
 }
 
+/**
+ * Что скрипт уже определил по записи: район, понят ли возраст, дни недели и время суток (в том числе названные
+ * неподходящими: «кроме воскресенья»). Только значения из справочников, никакого текста человека — поэтому это
+ * можно отдавать модели как есть. Она должна опираться на это и не разбирать то же самое заново.
+ */
+export interface ScriptFacts {
+  district: string | null;
+  ageKnown: boolean;
+  days: string[];
+  slot: string | null;
+  avoidDays: string[];
+  avoidSlots: string[];
+}
+
+export function scriptFactsOf(parsed: {
+  district: string | null;
+  ageKnown: boolean;
+  when: { days: readonly string[]; slot: string | null; avoidDays: readonly string[]; avoidSlots: readonly string[] };
+}): ScriptFacts {
+  return {
+    district: parsed.district,
+    ageKnown: parsed.ageKnown,
+    days: [...parsed.when.days],
+    slot: parsed.when.slot,
+    avoidDays: [...parsed.when.avoidDays],
+    avoidSlots: [...parsed.when.avoidSlots],
+  };
+}
+
+/** Запись для помощника: сам текст, что из него непонятно скрипту, и что скрипт уже знает. */
+export interface AssistantCandidate {
+  id: number;
+  brief: RawBrief;
+  needs: Needs;
+  script: ScriptFacts;
+}
+
 export const anyNeed = (n: Needs): boolean => n.district || n.age || n.time;

@@ -1,11 +1,13 @@
 import { useId, useState } from 'react';
-import type { AssistantStatus, MatchingStatus } from '@contracts';
+import type { AssistantStatus, MatchingStatus, RequestItem } from '@contracts';
 import { formatDateTime } from '../../entities/format';
 import { ru } from '../../shared/i18n/ru';
+import { useAppNav } from '../../shared/nav';
 import { Button, Modal } from '../../shared/ui';
 import styles from './Requests.module.css';
 import { AssistantRun } from './assistant/AssistantRun';
 import { useAssistantRun } from './assistant/useAssistantRun';
+import { ChangedRequests } from './ChangedRequests';
 import { useMatching } from './useMatching';
 
 const m = ru.requests.matching;
@@ -19,15 +21,18 @@ const m = ru.requests.matching;
 export function MatchingPanel({
   matching,
   assistant,
-  dataChanged = 0,
+  changed = [],
 }: {
   matching: MatchingStatus;
   assistant: AssistantStatus;
-  dataChanged?: number;
+  /** Открытые заявки, чьи данные изменились после закрепления предложения. */
+  changed?: readonly RequestItem[];
 }) {
+  const nav = useAppNav();
   const act = useMatching();
   const helper = useAssistantRun();
   const [confirming, setConfirming] = useState(false);
+  const [listing, setListing] = useState(false);
   const titleId = useId();
   const noteId = useId();
   const { lastRun } = matching;
@@ -43,7 +48,13 @@ export function MatchingPanel({
         <p>{m.saved(matching.saved, matching.waiting)}</p>
         <p>{lastRun ? m.lastRun(formatDateTime(lastRun.at), lastRun.created, lastRun.replaced) : m.neverRun}</p>
         {/* Заявки, чьи данные поправили после закрепления: их предложения устарели, но молча не меняются. */}
-        {dataChanged > 0 && <p className={styles.matchingWarn}>{m.dataChanged(dataChanged)}</p>}
+        {changed.length > 0 && (
+          <p className={styles.matchingWarn}>
+            <button type="button" className={styles.matchingWarnLink} title={m.dataChangedHint} onClick={() => setListing(true)}>
+              {m.dataChanged(changed.length)}
+            </button>
+          </p>
+        )}
       </div>
 
       <div className={styles.matchingControls}>
@@ -100,6 +111,17 @@ export function MatchingPanel({
           </p>
         ))}
       <p className={styles.matchingHint}>{m.hint}</p>
+      {listing && (
+        <ChangedRequests
+          items={changed}
+          onClose={() => setListing(false)}
+          onOpen={(id) => {
+            // Окно закрываем вместе с переходом: карточка открывается поверх списка, а не под окном.
+            setListing(false);
+            nav.selectRequest(id);
+          }}
+        />
+      )}
       {confirming && (
         <Modal title={m.rerunTitle} onClose={() => setConfirming(false)}>
           <p>{m.rerunQuestion}</p>

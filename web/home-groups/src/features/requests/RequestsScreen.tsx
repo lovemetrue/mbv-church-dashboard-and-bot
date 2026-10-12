@@ -75,8 +75,8 @@ function WaitingContent({
 
   const arrivals = useNewArrivals(data.items);
   // Заявки с изменившимися данными: их закреплённые предложения устарели. Утверждённых не считаем.
-  const dataChanged = useMemo(
-    () => data.items.filter((r) => r.bucket !== 'done' && r.bucket !== 'cancelled' && r.proposal?.dataChanged).length,
+  const changed = useMemo(
+    () => data.items.filter((r) => r.bucket !== 'done' && r.bucket !== 'cancelled' && r.proposal?.dataChanged),
     [data.items],
   );
 
@@ -89,7 +89,7 @@ function WaitingContent({
       <div className={styles.main}>
         <ViewSwitch view="wait" openOthers={openOthersCount(data.others)} onChange={nav.setView} />
         <ClosedNote note={note} onHide={onHideNote} />
-        <MatchingPanel matching={data.matching} assistant={data.assistant} dataChanged={dataChanged} />
+        <MatchingPanel matching={data.matching} assistant={data.assistant} changed={changed} />
         {/* Область живая и есть всегда: скринридер читает только то, что в неё добавили. */}
         <div role="status" className={arrivals.count > 0 ? styles.arrived : undefined}>
           {arrivals.count > 0 && (
@@ -113,6 +113,9 @@ function WaitingContent({
               {BUCKET_LABEL[b]}
             </Chip>
           ))}
+          <Chip pressed={nav.bucket === 'strange'} count={counts.strange} onClick={() => nav.setBucket('strange')}>
+            {ru.strange.chip}
+          </Chip>
         </div>
         <div className={styles.tools} role="group" aria-label={ru.requests.toolsLabel}>
           <ResponsibleSelect items={data.items} value={nav.responsible} onChange={nav.setResponsible} />

@@ -1,7 +1,8 @@
 import type { AuditRepo } from '../../db/repos/audit.repo.js';
+import type { ChatHistoryRepo } from '../../db/repos/chatHistory.repo.js';
 import type { SettingsRepo } from '../../db/repos/settings.repo.js';
 import { LlmError, resolveLlm, type ChatMessage, type LlmClient, type LlmSource, type ToolDef } from '../../platform/llm/deepseek.js';
-import type { ActionError, ChatOk, ChatQuery, ChatTable, ChatTurn } from '../contracts.js';
+import type { ActionError, ChatHistoryView, ChatOk, ChatQuery, ChatTable, ChatTurn } from '../contracts.js';
 import { ASSISTANT_ENABLED_KEY } from './service.js';
 import type { Pseudonyms } from './pseudonyms.js';
 import { QueryError, ReadonlyUnavailable, type QueryResult } from './readonly.js';
@@ -11,6 +12,14 @@ const fail = (error: ActionError['error'], message: string): Failure => ({ ok: f
 
 const MAX_TURNS = 12;
 const MAX_CONTENT = 2000;
+/**
+ * Сколько прежних сообщений (три вопроса с ответами) уходит модели вместе с новым вопросом. Больше — дороже и
+ * сбивает модель старыми темами; меньше — теряется «а сколько у него людей?». Число чётное, чтобы пары вопрос-ответ
+ * не рвались.
+ */
+export const CONTEXT_MESSAGES = 6;
+/** Сколько сообщений показываем при открытии чата: с запасом над контекстом, чтобы было видно, о чём говорили. */
+const VIEW_MESSAGES = 40;
 /** Сколько раз модель может обратиться к базе в одном ответе, и сколько строк результата ей отдаём (остальное видно в таблице). */
 const MAX_ROUNDS = 5;
 const MODEL_ROWS = 40;
@@ -53,6 +62,7 @@ interface Deps {
   llm: LlmClient | LlmSource | null;
   settings: Pick<SettingsRepo, 'get'>;
   audit: Pick<AuditRepo, 'write'>;
+  history: Pick<ChatHistoryRepo, 'recent' | 'append' | 'clear'>;
   runQuery: (sql: string) => Promise<QueryResult>;
   pseudonyms: () => Promise<Pseudonyms>;
   capacity: number;
@@ -87,15 +97,30 @@ export function createChat(deps: Deps) {
   }
 
   return {
+    /** Что показать при открытии чата: последние сообщения этого входа, старые первыми. */
+    async history(actor: string): Promise<ChatHistoryView> {
+      return { messages: await deps.history.recent(actor, VIEW_MESSAGES) };
+    },
+    async clear(actor: string): Promise<{ ok: true }> {
+      await deps.history.clear(actor);
+      return { ok: true };
+    },
     async ask(body: unknown, actor: string): Promise<ChatOk | Failure> {
       const llm = await resolveLlm(deps.llm);
       if (!llm) return fail('unavailable', 'Помощник не подключён: не задан ключ.');
       if ((await deps.settings.get<boolean>(ASSISTANT_ENABLED_KEY)) !== true) return fail('unavailable', 'Помощник выключен. Включить его можно в «Настройки → Помощник».');
 
-      const turns = parseTurns(body);
-      if (typeof turns === 'string') return fail('bad_request', turns);
+      const parsed = parseTurns(body);
+      if (typeof parsed === 'string') return fail('bad_request', parsed);
       const limited = allow(actor);
       if (limited) return fail('conflict', limited);
+      let turns = parsed.turns;
+      if (parsed.stored) {
+        const earlier = await deps.history.recent(actor, CONTEXT_MESSAGES);
+        // Контекст не должен начинаться с ответа без вопроса: очистка старых записей по сроку могла оставить половину пары.
+        while (earlier[0]?.role === 'assistant') earlier.shift();
+        turns = [...earlier, ...turns];
+      }
 
       const names = await deps.pseudonyms();
       const messages: ChatMessage[] = [
@@ -114,6 +139,10 @@ export function createChat(deps: Deps) {
             const answer = names.toReal(reply.content ?? '').trim();
             if (answer === '') return fail('unavailable', 'Помощник не смог составить ответ. Попробуйте переформулировать вопрос.');
             await deps.audit.write(actor, 'assistant.chat', 'assistant', null, { queries: queries.length, rows: rowsTotal });
+            if (parsed.stored) {
+              // Сбой записи истории не должен стоить человеку готового ответа.
+              await deps.history.append(actor, turns[turns.length - 1]!.content, answer).catch((e: unknown) => deps.reportError('помощник', e, 'чат: история не записана'));
+            }
             return { ok: true, answer, queries, tables: tables.slice(-2) };
           }
           messages.push({ role: 'assistant', content: reply.content, toolCalls: reply.toolCalls });
@@ -157,8 +186,13 @@ export function createChat(deps: Deps) {
   };
 }
 
-function parseTurns(body: unknown): ChatTurn[] | string {
-  const list = typeof body === 'object' && body !== null ? (body as { messages?: unknown }).messages : null;
+function parseTurns(body: unknown): { turns: ChatTurn[]; stored: boolean } | string {
+  const obj = typeof body === 'object' && body !== null ? (body as { message?: unknown; messages?: unknown }) : {};
+  if (obj.message !== undefined) {
+    if (typeof obj.message !== 'string' || obj.message.trim() === '' || obj.message.length > MAX_CONTENT) return `Вопрос должен быть не пустым и не длиннее ${MAX_CONTENT} знаков.`;
+    return { turns: [{ role: 'user', content: obj.message }], stored: true };
+  }
+  const list = obj.messages;
   if (!Array.isArray(list) || list.length === 0) return 'Нужно задать вопрос.';
   if (list.length > MAX_TURNS) return `История слишком длинная (до ${MAX_TURNS} сообщений).`;
   const out: ChatTurn[] = [];
@@ -170,7 +204,7 @@ function parseTurns(body: unknown): ChatTurn[] | string {
     out.push({ role, content });
   }
   if (out[out.length - 1]!.role !== 'user') return 'Последним должен быть вопрос.';
-  return out;
+  return { turns: out, stored: false };
 }
 
 function parseSql(args: string): string | null {

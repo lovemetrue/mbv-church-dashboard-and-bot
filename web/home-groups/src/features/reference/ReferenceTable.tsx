@@ -1,7 +1,8 @@
 import type { Row, RowGroup, SortState } from '../../shared/filters';
 import { healthTone } from '../../entities/format';
 import { ru } from '../../shared/i18n/ru';
-import { EmptyState, NewGroupIcon, TableScroll } from '../../shared/ui';
+import type { StrangeMark } from '@contracts';
+import { EmptyState, NewGroupIcon, StrangeBadge, TableScroll } from '../../shared/ui';
 import { displayCell } from './config';
 import styles from './Reference.module.css';
 
@@ -71,6 +72,15 @@ function Cell({ column, value, row }: { column: string; value: Row[string]; row:
     );
   }
   return <span className={styles.cellText} title={text.length > 24 ? text : undefined}>{text}</span>;
+}
+
+/** Метка человека из служебных ячеек строки (`_strangeBy`…): есть только у строк таблицы «Люди». */
+function strangeOf(row: Row): StrangeMark | null {
+  const by = row['_strangeBy'];
+  const at = row['_strangeAt'];
+  if (typeof by !== 'string' || typeof at !== 'string') return null;
+  const note = row['_strangeNote'];
+  return { by, at, note: typeof note === 'string' ? note : null };
 }
 
 const NUMERIC_ALIGN = new Set(['№', 'Мест свободно', 'Вместимость', 'Проверена, дн.', 'Здоровье', 'Групп', 'Участников', 'Подтверждено за 30 дн.', 'Заявка', 'В составе']);
@@ -153,18 +163,22 @@ function GroupRows({
             {columns.map((c, i) => (
               <td key={c} className={NUMERIC_ALIGN.has(c) ? styles.tdNum : undefined}>
                 {i === 0 ? (
-                  <button
-                    type="button"
-                    className={styles.openBtn}
-                    aria-label={`Открыть карточку: ${titleOf(key)}`}
-                    aria-current={selectedKey === key ? 'true' : undefined}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSelect(key);
-                    }}
-                  >
-                    <Cell column={c} value={row[c] ?? null} row={row} />
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      className={styles.openBtn}
+                      aria-label={`Открыть карточку: ${titleOf(key)}`}
+                      aria-current={selectedKey === key ? 'true' : undefined}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelect(key);
+                      }}
+                    >
+                      <Cell column={c} value={row[c] ?? null} row={row} />
+                    </button>
+                    {/* Рядом с кнопкой, а не внутри неё: фокусируемый значок в кнопке недопустим. */}
+                    <StrangeBadge mark={strangeOf(row)} />
+                  </>
                 ) : (
                   <Cell column={c} value={row[c] ?? null} row={row} />
                 )}

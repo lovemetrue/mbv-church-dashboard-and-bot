@@ -29,6 +29,8 @@
  *   POST /api/v1/requests/:id/call      CallBody        → ActionOk | ActionError (итог звонка)
  *   GET  /api/v1/team                   → TeamView (нагрузка, сроки ожидания, действия за неделю)
  *   POST /api/v1/requests/bulk          BulkBody → BulkOk | ActionError (передать или отметить «нужен звонок» сразу нескольким)
+ *   POST /api/v1/requests/:id/strange   StrangeBody → ActionOk | ActionError (метка «Странный человек» на человеке заявки; любой вход)
+ *   POST /api/v1/people/strange         PersonStrangeBody → ActionOk | ActionError (то же по ключу человека: u12, r345, p7)
  *   POST /api/v1/requests/:id/reconcile ReconcileBody → ReconcileOk | ActionError (разобрать «другое обращение»: в состав групп или ведущим групп)
  *   POST /api/v1/requests/reconcile-ready ReconcileReadyBody → ReconcileReadyOk | ActionError (разобрать сразу все с одной точно найденной группой)
  *   POST /api/v1/groups/:id/update      UpdateBody → ActionOk | ActionError (правка части полей группы; адрес и телефоны только записываются, обратно не отдаются)
@@ -45,6 +47,8 @@
  *   POST /api/v1/persons/:id/update     UpdateBody → ActionOk | ActionError (правка карточки, внесённой вручную: ключ p<id>)
  *   POST /api/v1/persons/:id/delete     (тело {})  → ActionOk | ActionError (только super; карточка скрывается)
  *   POST /api/v1/assistant/chat         ChatBody → ChatOk | ActionError (кнопка «✦ Помощник»: вопросы по базе, только чтение; имена модель не видит)
+ *   GET  /api/v1/assistant/chat/history  → ChatHistoryView (последние сообщения этого входа)
+ *   POST /api/v1/assistant/chat/clear   {} → { ok: true } (стереть историю этого входа)
  *   POST /api/v1/assistant/run          (тело {})       → AssistantRunOk | ActionError (помощник разбирает непонятные заявки)
  *   GET  /api/v1/settings/assistant     → SettingsAssistantView (только super)
  *   POST /api/v1/settings/assistant/enabled AssistantEnabledBody → ActionOk | ActionError (только super)
@@ -144,7 +148,20 @@ export interface Candidate {
   reasons: Reason[];
 }
 
+/** Что изменилось в данных заявки с тех пор, как предложили группу. */
+export interface DataChange {
+  /** «Район», «Возраст», «Дни», «Время суток», «Улица». */
+  field: string;
+  before: string | null;
+  after: string | null;
+}
+
 export interface Proposal {
+  /**
+   * Что именно изменилось (по снимку данных на момент предложения). null — снимка нет (предложение сохранено до того,
+   * как их стали хранить): известно лишь, что данные изменились. Пустой список бывает, если после изменения всё вернулось.
+   */
+  changes: DataChange[] | null;
   /** Данные заявки изменились после закрепления (район, возраст, время, улица): закреплённая группа ещё не пересчитана, нужно «подобрать заново». */
   dataChanged: boolean;
   /** Предложение закреплено: сохранено в «предварительно» и не изменится само, пока группа доступна. Иначе это свежий расчёт, он может поменяться при следующем показе. */
@@ -162,8 +179,32 @@ export interface Proposal {
 }
 
 /** Почему плана нет. place — район не определён; taken — места разобраны; nogroup — в районе нет групп. */
+/**
+ * Метка «Странный человек»: ставит координатор или распределитель после обзвона, когда у человека оказываются особенности и
+ * для него нужна отдельная группа. Видна везде, где виден человек; такие заявки не попадают в автоматический подбор.
+ */
+export interface StrangeMark {
+  /** Кто поставил (логин). */
+  by: string;
+  /** Когда (ISO). */
+  at: string;
+  /** Что заметили, для коллег; может быть пусто. */
+  note: string | null;
+}
+
+/** Поставить или снять метку. `note` только при установке. */
+export interface StrangeBody {
+  value: boolean;
+  note?: string | null;
+}
+
+export interface PersonStrangeBody extends StrangeBody {
+  /** Ключ человека в справочнике: «u12», «r345», «p7». */
+  key: string;
+}
+
 export interface NoPlan {
-  code: 'place' | 'taken' | 'nogroup';
+  code: 'place' | 'taken' | 'nogroup' | 'strange';
   reason: string;
 }
 
@@ -250,6 +291,8 @@ export interface TodayView {
 // ── Заявки ──────────────────────────────────────────────────────────────────
 
 export interface RequestItem {
+  /** Метка «Странный человек» (на человеке заявки); null — нет. */
+  strange: StrangeMark | null;
   id: number;
   fio: string;
   phone: string | null;
@@ -319,15 +362,23 @@ export interface AssistantNote {
   questions: string[];
 }
 
-/** Один ход разговора с помощником. Сервер историю не хранит: интерфейс присылает последние ходы целиком. */
+/** Один ход разговора с помощником. Разговор хранит сервер (по логину); модели уходят последние 6 сообщений. */
 export interface ChatTurn {
   role: 'user' | 'assistant';
   /** До 2000 знаков. */
   content: string;
 }
 
-export interface ChatBody {
-  /** От 1 до 12 ходов; последний — вопрос человека. */
+/** Обычно присылается только новый вопрос: историю сервер знает сам. `messages` — прежний вид, ничего не сохраняет. */
+export type ChatBody =
+  | { message: string }
+  | {
+      /** От 1 до 12 ходов; последний — вопрос человека. */
+      messages: ChatTurn[];
+    };
+
+/** Что показать при открытии чата: последние сообщения этого входа, старые первыми (с настоящими именами). */
+export interface ChatHistoryView {
   messages: ChatTurn[];
 }
 
@@ -676,6 +727,8 @@ export interface OtherReconcile {
 }
 
 export interface OtherItem {
+  /** Метка «Странный человек»; null — нет. */
+  strange: StrangeMark | null;
   id: number;
   type: 'join_group' | 'lead_group' | 'question' | 'already_member' | 'already_leader';
   /** «Хочет открыть группу», «Вопрос служителю» и т. д. */
@@ -833,6 +886,8 @@ export interface HealthItem {
  * правится заявкой), «вручную» — внесён служителем как уже ходящий в группу (правится и убирается здесь).
  */
 export interface GroupMember {
+  /** Метка «Странный человек»; null — нет. */
+  strange: StrangeMark | null;
   kind: 'placed' | 'manual';
   /** Ключ человека в справочнике («Люди»): u12, r345 или p7. Имя и телефон в составе читаются оттуда, а не копируются. */
   personKey: string;
@@ -903,6 +958,8 @@ export interface GroupsView {
 }
 
 export interface PersonItem {
+  /** Метка «Странный человек»; null — нет. */
+  strange: StrangeMark | null;
   /** Устойчивый ключ строки: «u12» (участник), «r345» (заявка без участника) или «p7» (карточка, внесённая вручную). */
   key: string;
   /** Номер карточки для ключа p<id> (правка и удаление через `/persons/:id/…`); у остальных null. */

@@ -4,8 +4,12 @@
  * Порядок как у сервера: открытые сверху (сначала «перезвонить», потом давно ждущие), затем закрытые.
  */
 import type { OtherItem } from '@contracts';
+import { demoStrangeOf } from './strange';
 
-function baseOthers(): OtherItem[] {
+/** Обращение без метки: метка накладывается при сборке (`buildOthers`), потому что её можно поставить в демо. */
+type BaseOther = Omit<OtherItem, 'strange'>;
+
+function baseOthers(): BaseOther[] {
   return [
     {
       id: 201,
@@ -344,7 +348,7 @@ export function resetDemoReconciled(): void {
 }
 
 /** Обращение, которое сервер разобрал бы по одной группе точно, как `reconcile-ready`. */
-const isReadyExactly = (o: OtherItem): boolean =>
+const isReadyExactly = (o: BaseOther): boolean =>
   o.state === 'open' && o.reconcile?.status === 'ready' && o.reconcile.candidates.filter((c) => c.tier === 'exact').length === 1;
 
 /** Разобрать одно обращение: оно уходит в закрытые. Возвращает false, если оно уже закрыто или не найдено. */
@@ -373,8 +377,9 @@ export function reconcileDemoReady(ids: readonly number[]): { applied: number; s
  * («свежие первыми»), и разбор у них уже снят.
  */
 export function buildOthers(): OtherItem[] {
-  const all = baseOthers().map<OtherItem>((o) =>
-    reconciledDemo.has(o.id)
+  const all = baseOthers().map<OtherItem>((base) => {
+    const o: OtherItem = { ...base, strange: demoStrangeOf(base.phone, `o${base.id}`) };
+    return reconciledDemo.has(o.id)
       ? {
           ...o,
           state: 'done',
@@ -382,8 +387,8 @@ export function buildOthers(): OtherItem[] {
           reconcile: null,
           log: [...o.log, { at: '2026-10-12', text: 'Закрыта: обработана (разобрано по справочникам).' }],
         }
-      : o,
-  );
+      : o;
+  });
   const open = all.filter((o) => o.state === 'open');
   const justDone = all.filter((o) => o.state !== 'open' && reconciledDemo.has(o.id));
   const rest = all.filter((o) => o.state !== 'open' && !reconciledDemo.has(o.id));

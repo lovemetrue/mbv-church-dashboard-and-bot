@@ -12,7 +12,7 @@ import type {
  */
 
 export const FAKE_SETTINGS: PlanSettings = {
-  weights: { district: 40, age: 25, time: 20, street: 15 },
+  weights: { district: 40, day: 40, age: 25, slot: 20, street: 15 },
   defaultCapacity: 10,
   humanThreshold: 60,
   staleDays: 30,

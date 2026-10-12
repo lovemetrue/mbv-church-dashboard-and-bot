@@ -72,6 +72,7 @@ describe('«Заявки»: экран', () => {
       `Перезвонить${c.callback}`,
       `Нужна помощь в сопоставлении${c.human}`,
       `Утверждено${c.done}`,
+      `Странные${c.strange}`,
     ]);
     expect(within(bar).getByRole('button', { name: /^Все/ })).toHaveAttribute('aria-pressed', 'true');
     expect(rowsOf()).toHaveLength(c.all);

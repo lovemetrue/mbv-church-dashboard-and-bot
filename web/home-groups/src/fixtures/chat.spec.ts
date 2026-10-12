@@ -1,8 +1,13 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
 import { ApiError } from '../shared/api/client';
+import { resetDemoChat } from './chat';
 import { fixtureActionResponse, fixtureResponse } from './index';
 
-const ask = (content: string) => ({ messages: [{ role: 'user', content }] });
+/** Новый вид тела: одно сообщение, историю сервер знает сам. */
+const ask = (message: string) => ({ message });
+const history = () => (fixtureResponse('assistant/chat/history') as { messages: { role: string; content: string }[] }).messages;
+
+afterEach(() => resetDemoChat());
 
 describe('фикстуры чата помощника', () => {
   test('в демо кнопка «Помощник» доступна', () => {
@@ -31,7 +36,7 @@ describe('фикстуры чата помощника', () => {
     expect(out.answer).not.toMatch(/перебор/i);
   });
 
-  test('смотрит на последний вопрос, а не на первый', () => {
+  test('прежний вид тела с messages тоже понимает: смотрит на последний вопрос', () => {
     const out = fixtureActionResponse('assistant/chat', {
       messages: [
         { role: 'user', content: 'перебор' },
@@ -51,5 +56,41 @@ describe('фикстуры чата помощника', () => {
       expect((e as ApiError).code).toBe('unavailable');
       expect((e as ApiError).message).toMatch(/недоступн/);
     }
+  });
+});
+
+describe('фикстуры чата помощника: история разговора', () => {
+  test('в демо при открытии уже есть две реплики: вопрос и ответ', () => {
+    expect(history().map((t) => t.role)).toEqual(['user', 'assistant']);
+    expect(history().every((t) => t.content.length > 0)).toBe(true);
+  });
+
+  test('ответ на вопрос дописывает в историю и вопрос, и ответ', () => {
+    const out = fixtureActionResponse('assistant/chat', ask('Где не хватает групп?')) as { answer: string };
+    const now = history();
+    expect(now).toHaveLength(4);
+    expect(now[2]).toEqual({ role: 'user', content: 'Где не хватает групп?' });
+    expect(now[3]).toEqual({ role: 'assistant', content: out.answer });
+  });
+
+  test('отказ («ошибка») в историю не попадает, как и на сервере', () => {
+    expect(() => fixtureActionResponse('assistant/chat', ask('ошибка'))).toThrowError(ApiError);
+    expect(history()).toHaveLength(2);
+  });
+
+  test('«очистить» пустит историю, а следующее чтение вернёт пустой список', () => {
+    expect(fixtureActionResponse('assistant/chat/clear', {})).toEqual({ ok: true });
+    expect(history()).toEqual([]);
+  });
+
+  test('история не растёт дальше 40 сообщений: старые отбрасываются', () => {
+    for (let i = 0; i < 30; i += 1) fixtureActionResponse('assistant/chat', ask(`вопрос ${i}`));
+    expect(history()).toHaveLength(40);
+    expect(history().at(-2)).toEqual({ role: 'user', content: 'вопрос 29' });
+  });
+
+  test('чтение отдаёт копию: правка ответа не портит демо-историю', () => {
+    (fixtureResponse('assistant/chat/history') as { messages: unknown[] }).messages.length = 0;
+    expect(history()).toHaveLength(2);
   });
 });

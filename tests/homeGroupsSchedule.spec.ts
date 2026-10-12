@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import { parseHumanSchedule } from '../src/home-groups/plan/parse.js';
 
+/** Нежелательные дни и время суток разбираются в `homeGroupsDays.spec.ts`; здесь их нет. */
+const NOTHING_AVOIDED = { avoidDays: [], avoidSlots: [] };
+
 /**
  * Удобное время, как его пишут люди: «пн, ср — с 17 до 22 часов». Разбор нужен подбору, но он
  * честно отвечает «не знаю» (дни пусты, время null), когда текст неоднозначен.
@@ -20,7 +23,7 @@ describe('удобные дни и время из свободного текс
     ['по вечерам', [], 'вечер'],
     ['с 8 до 11', [], 'утро'],
   ])('«%s» → дни %j, время %s', (text, days, slot) => {
-    expect(parseHumanSchedule(text)).toEqual({ days, slot });
+    expect(parseHumanSchedule(text)).toEqual({ days, slot, ...NOTHING_AVOIDED });
   });
 
   test.each([
@@ -41,16 +44,16 @@ describe('удобные дни и время из свободного текс
   });
 
   test.each(['', '   ', 'любое', 'любой день', 'в любое время', 'как получится', 'не знаю'])('«%s» — ничего не известно', (text) => {
-    expect(parseHumanSchedule(text)).toEqual({ days: [], slot: null });
+    expect(parseHumanSchedule(text)).toEqual({ days: [], slot: null, ...NOTHING_AVOIDED });
   });
 
   test('null и undefined не бросают', () => {
-    expect(parseHumanSchedule(null)).toEqual({ days: [], slot: null });
-    expect(parseHumanSchedule(undefined)).toEqual({ days: [], slot: null });
+    expect(parseHumanSchedule(null)).toEqual({ days: [], slot: null, ...NOTHING_AVOIDED });
+    expect(parseHumanSchedule(undefined)).toEqual({ days: [], slot: null, ...NOTHING_AVOIDED });
   });
 
   test('несколько разных времён суток — время неизвестно, а дни остаются', () => {
-    expect(parseHumanSchedule('вторник утром или вечером')).toEqual({ days: ['Вт'], slot: null });
+    expect(parseHumanSchedule('вторник утром или вечером')).toEqual({ days: ['Вт'], slot: null, ...NOTHING_AVOIDED });
   });
 
   test('«с 10 до 18»: середина диапазона — день; «с 17 до 22» — вечер; «с 9 до 21» — день', () => {

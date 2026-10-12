@@ -3,6 +3,7 @@ import type { RequestItem } from '@contracts';
 import { ru } from '../../shared/i18n/ru';
 import { Button, Modal } from '../../shared/ui';
 import { GroupPicker } from './GroupPicker';
+import { proposalOf } from './model';
 import { RejectForm } from './RejectForm';
 import styles from './Requests.module.css';
 import type { ActionNotice, RequestActionsState } from './useRequestActions';
@@ -34,11 +35,12 @@ export function ActionNoticeLine({ notice }: { notice: ActionNotice | null }) {
 export function RequestActions({ r, act }: { r: RequestItem; act: RequestActionsState }) {
   const hintId = useId();
   if (!isActionable(r)) return null;
-  const group = r.proposal?.main.group;
+  const proposal = proposalOf(r);
+  const group = proposal?.main.group;
   const weak = r.bucket === 'human';
   // Данные изменились после закрепления: группа считалась по старым, поэтому «Утвердить» —
   // не главное действие, пока предложение не пересчитано.
-  const stale = r.proposal?.dataChanged === true;
+  const stale = proposal?.dataChanged === true;
   const rematch = (
     <Button
       variant={stale ? 'primary' : 'default'}
@@ -136,13 +138,30 @@ export function ActionDialogs({ r, act }: { r: RequestItem; act: RequestActionsS
       </Modal>
     );
   }
+  if (dialog.kind === 'strange') {
+    const { group, force } = dialog;
+    return (
+      <Modal title={ru.strange.confirmTitle} onClose={act.close}>
+        <p>{ru.strange.confirmText}</p>
+        <p className={styles.note}>{ru.strange.confirmGroup(r.fio, group.code, group.leader)}</p>
+        {notice}
+        <div className={styles.dialogFoot}>
+          <Button onClick={act.close}>{ru.strange.confirmCancel}</Button>
+          <Button variant="primary" disabled={act.pending} onClick={() => void act.approve(group, force, true)}>
+            {ru.strange.confirmYes}
+          </Button>
+        </div>
+      </Modal>
+    );
+  }
   return (
     <Modal title={a.fullTitle} onClose={act.close}>
       <p>{a.fullQuestion}</p>
       {notice}
       <div className={styles.dialogFoot}>
         <Button onClick={act.close}>{a.cancel}</Button>
-        <Button variant="primary" disabled={act.pending} onClick={() => void act.approve(dialog.group, true)}>
+        {/* Про «странного человека» уже спросили: повторять вопрос из-за мест незачем. */}
+        <Button variant="primary" disabled={act.pending} onClick={() => void act.approve(dialog.group, true, true)}>
           {a.fullConfirm}
         </Button>
       </div>

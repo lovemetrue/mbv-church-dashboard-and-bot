@@ -100,7 +100,8 @@ describe('представления из живых репозиториев', 
     const s = await seed();
     const { groups: view } = await liveViews().get();
 
-    expect(view.items.map((g) => g.leader).sort()).toEqual(['Закрытый', 'Мария Иванова']);
+    // Заявка «хочу открыть группу» завела потенциальную группу (миграция 032).
+    expect(view.items.map((g) => g.leader).sort()).toEqual(['Закрытый', 'Мария Иванова', 'Хочет открыть']);
     const maria = view.items.find((g) => g.id === s.maria.id)!;
     expect(maria).toMatchObject({
       code: `ДГ-${String(s.maria.id).padStart(4, '0')}`, leader: 'Мария Иванова', coLeader: 'Пётр',
@@ -193,7 +194,7 @@ describe('представления из живых репозиториев', 
     await live.get();
     const input = live.calls.plan[0]!;
     expect(input.requests.map((r) => r.fio).sort()).toEqual(['Дарья Ефимова', 'Станислав Ким']);
-    expect(input.groups.map((g) => g.leader).sort()).toEqual(['Закрытый', 'Мария Иванова']);
+    expect(input.groups.map((g) => g.leader).sort()).toEqual(['Закрытый', 'Мария Иванова', 'Хочет открыть']);
     expect(input.groups.every((g) => g.capacity === 10)).toBe(true);
   });
 

@@ -25,7 +25,10 @@ export interface PlanGroup {
   /** Разобранные день и время суток; null, если не указаны или не разобрались. */
   day: Day | null;
   slot: Slot | null;
-  /** Улица для подбора рядом. В этапе A данных нет (закрытый адрес сюда не попадает), всегда null. */
+  /**
+   * Улица группы (только название, без дома) для подбора рядом. Адрес группы закрытый, поэтому по умолчанию null;
+   * заполняется только при включённом `HG_MATCH_GROUP_STREET` (см. `ViewsOptions.matchGroupStreet`).
+   */
   street: string | null;
   /** Участников сейчас; null — неизвестно (тогда считаем, что места есть, и ставим пометку). */
   people: number | null;
@@ -47,12 +50,16 @@ export interface PlanRequest {
   /** Нормализованный район; null — не определился (заявка уходит человеку на уточнение). */
   district: string | null;
   place: string | null;
-  /** Удобные дни и время суток; в этапе A из базы не берутся, всегда пусто. */
+  /** Удобные дни и время суток: разбор текста человека (`parseHumanSchedule`) или правка координатора. */
   days: Day[];
   slot: Slot | null;
   street: string | null;
-  /** Для этапа B (отказ из обзвона): сейчас всегда пусто. */
+  /** Для этапа B (отказ из обзвона): сейчас пусто. */
   rejectedGroupIds: number[];
+  /**
+   * Дни и время суток, которые не подходят: из текста человека («кроме воскресенья», «не утром») и из отказов.
+   * Группы с таким днём или временем суток в подбор не попадают.
+   */
   avoidDays: Day[];
   avoidSlots: Slot[];
   /** Выбор человека «вместо» предложенной группы; сейчас null. */
@@ -62,8 +69,12 @@ export interface PlanRequest {
 }
 
 export interface PlanSettings {
-  /** Веса параметров подбора: район, возраст, день и время, улица. */
-  weights: { district: number; age: number; time: number; street: number };
+  /**
+   * Веса параметров подбора: район, день недели, возраст, время суток, улица. День недели весит ровно столько же,
+   * сколько район (в `DEFAULT_SETTINGS` оба берутся из одной константы): человек не поедет через полгорода, но и
+   * в «не свой» день не придёт.
+   */
+  weights: { district: number; day: number; age: number; slot: number; street: number };
   defaultCapacity: number;
   /** Уверенность ниже этого порога — «нужна помощь» (60). */
   humanThreshold: number;
@@ -102,7 +113,8 @@ export interface PlanEntryProposal {
 
 export interface PlanEntryNone {
   kind: 'none';
-  code: 'place' | 'taken' | 'nogroup';
+  /** strange — человек отмечен как «странный»: в обычные группы не подбирается, нужна отдельная группа (решает человек). */
+  code: 'place' | 'taken' | 'nogroup' | 'strange';
   reason: string;
 }
 
@@ -167,8 +179,11 @@ export interface PlanEngineApi {
   parseAgeRange(text: string | null | undefined): AgeRange;
   /** День и время из колонок группы: «Четверг» + «19:00», «Среда, Четверг» + null, «Плавающий», «День»… */
   parseGroupWhen(day: string | null, time: string | null): { day: Day | null; slot: Slot | null };
-  /** «пн, ср — с 17 до 22 часов» → дни и время суток; неясное остаётся пустым / null. */
-  parseHumanSchedule(text: string | null | undefined): { days: Day[]; slot: Slot | null };
+  /**
+   * «пн, ср — с 17 до 22 часов» → дни и время суток; неясное остаётся пустым / null. Названное неподходящим
+   * («кроме воскресенья», «не утром») возвращается в `avoidDays` / `avoidSlots`.
+   */
+  parseHumanSchedule(text: string | null | undefined): { days: Day[]; slot: Slot | null; avoidDays: Day[]; avoidSlots: Slot[] };
   /** «Вт, вечер» / «Вт» / «вечер» / null. */
   formatWhen(day: Day | null, slot: Slot | null): string | null;
   /** Колонка возраста для матрицы «район × возраст» (по середине диапазона); null — возраст неизвестен. */

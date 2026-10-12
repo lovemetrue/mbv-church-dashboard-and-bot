@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { anyNeed, baseHash, needsOf, scrub } from '../src/home-groups/assistant/brief.js';
+import { anyNeed, baseHash, needsOf, scriptFactsOf, scrub } from '../src/home-groups/assistant/brief.js';
 
 describe('что уходит помощнику', () => {
   test.each([
@@ -40,3 +40,27 @@ describe('что уходит помощнику', () => {
     expect(anyNeed({ district: false, age: true, time: false })).toBe(true);
   });
 });
+
+describe('что скрипт уже определил и передаёт помощнику', () => {
+  const none = { district: null, ageKnown: false, when: { days: [], slot: null, avoidDays: [], avoidSlots: [] } };
+
+  test('факты — только перечисления из справочников: район, признак «возраст понят», дни, время суток', () => {
+    expect(scriptFactsOf({
+      district: 'Невский', ageKnown: true, when: { days: ['Ср', 'Пт'], slot: 'вечер', avoidDays: ['Вс'], avoidSlots: ['утро'] },
+    })).toEqual({ district: 'Невский', ageKnown: true, days: ['Ср', 'Пт'], slot: 'вечер', avoidDays: ['Вс'], avoidSlots: ['утро'] });
+    expect(scriptFactsOf(none)).toEqual({ district: null, ageKnown: false, days: [], slot: null, avoidDays: [], avoidSlots: [] });
+  });
+
+  test('факты не зависят от записи: копия, а не ссылка на изменяемые массивы разбора', () => {
+    const when = { days: ['Пн' as const], slot: null, avoidDays: [], avoidSlots: [] };
+    const facts = scriptFactsOf({ ...none, when });
+    when.days.push('Вт' as never);
+    expect(facts.days).toEqual(['Пн']);
+  });
+
+  test('«кроме воскресенья» — понятый скриптом ответ: помощнику время не нужно', () => {
+    const b = { place: 'Невский', age: '30', schedule: 'кроме воскресенья' };
+    expect(needsOf(b, { district: 'Невский', ageKnown: true, whenKnown: true })).toEqual({ district: false, age: false, time: false });
+  });
+});
+

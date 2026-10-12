@@ -316,3 +316,30 @@
     font-size: 16px;
   }
 }
+
+/* Не удалось прочитать прошлый разговор: рядом с приветствием, спросить всё равно можно. */
+.historyError {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius);
+  background: var(--warn-soft);
+  font-size: 13px;
+}
+
+/* Подпись под полем: ненавязчивая, но читается скринридером как описание поля. */
+.memory {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.clearError {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--warn);
+  overflow-wrap: anywhere;
+}

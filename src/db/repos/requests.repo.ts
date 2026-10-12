@@ -1,6 +1,7 @@
 import type { Pool } from 'pg';
 import type { MdgStatus, RequestType } from '../../core/fsm.js';
 import type { PlatformName } from '../../core/platform.js';
+import { logger } from '../../logger.js';
 
 /**
  * Статусы заявки — один набор и для того, что создаёт бот, и для того, что пришло
@@ -149,8 +150,63 @@ export class RequestsRepo {
       'INSERT INTO requests (user_id, type, text, origin) VALUES ($1, $2, $3, $4) RETURNING id',
       [userId, type, text ?? null, origin],
     );
+    await this.afterCreate(rows[0]!.id, type, true);
     const created = await this.findById(rows[0]!.id);
     return created!;
+  }
+
+  /**
+   * Что делается с только что созданной заявкой: «хочу в группу» получает распределителя (если ответственного не указали),
+   * «хочу открыть» — потенциальную группу в справочнике. Это дополнения: если они не удались (например, база отвечает
+   * ошибкой), заявка человека всё равно уже записана и не должна пропасть из-за них.
+   */
+  private async afterCreate(requestId: number, type: RequestType, mayAssign: boolean): Promise<void> {
+    try {
+      if (type === 'join_group' && mayAssign) await this.assignDistributor(requestId);
+      if (type === 'lead_group') await this.db.query('SELECT ensure_potential_group($1)', [requestId]);
+    } catch (err) {
+      logger.error({ err: (err as Error).message, requestId }, 'заявка создана, но автоматическое назначение или потенциальная группа не удались');
+    }
+  }
+
+  /**
+   * Новой заявке «хочу в группу» назначается ответственный из «Команды»: тот, у кого роль «Распределитель» и сейчас меньше
+   * всего открытых заявок. Так заявки раздаются поровну, а распределитель, зайдя под своим именем, сразу видит «свои».
+   * Распределителей нет — заявка остаётся без ответственного, как раньше. Выбор идёт под замком: две заявки, пришедшие
+   * одновременно, иначе достались бы одному и тому же человеку (оба видели бы его как «наименее загруженного»).
+   */
+  async assignDistributor(requestId: number): Promise<string | null> {
+    const c = await this.db.connect();
+    try {
+      await c.query('BEGIN');
+      await c.query(`SELECT pg_advisory_xact_lock(hashtext('hg_auto_assign'))`);
+      const { rows } = await c.query<{ name: string }>(
+        `SELECT c.name
+           FROM coordinators c
+          WHERE c.archived_at IS NULL AND lower(c.role) LIKE '%распределител%'
+          ORDER BY (SELECT count(*) FROM requests r
+                     WHERE r.responsible = c.name AND r.archived_at IS NULL AND r.status NOT IN ('Исполнена', 'Аннулирована')),
+                   c.id
+          LIMIT 1`,
+      );
+      const name = rows[0]?.name ?? null;
+      if (name === null) { await c.query('COMMIT'); return null; }
+      const done = await c.query(`UPDATE requests SET responsible = $2 WHERE id = $1 AND responsible IS NULL`, [requestId, name]);
+      if ((done.rowCount ?? 0) > 0) {
+        await c.query(
+          `INSERT INTO audit_log (actor, service, action, entity_type, entity_id, after)
+           VALUES ('авто-распределение', 'home-groups', 'request.assign', 'request', $1, $2::jsonb)`,
+          [requestId, JSON.stringify({ responsible: name, auto: true })],
+        );
+      }
+      await c.query('COMMIT');
+      return done.rowCount ? name : null;
+    } catch (err) {
+      await c.query('ROLLBACK').catch(() => undefined);
+      throw err;
+    } finally {
+      c.release();
+    }
   }
 
 
@@ -184,6 +240,7 @@ export class RequestsRepo {
         input.groupId ?? null,
       ],
     );
+    await this.afterCreate(rows[0]!.id, input.type, !input.responsible);
     return rows[0]!.id;
   }
 

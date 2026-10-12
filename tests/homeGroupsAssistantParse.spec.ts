@@ -48,4 +48,23 @@ describe('разбор ответа помощника', () => {
   test.each(['', 'не json', '[]', '{"items":"нет"}', '{"result":[]}', 'null'])('мусор %j даёт пустой результат, а не ошибку', (raw) => {
     expect(parseReply(raw, ctx)).toEqual([]);
   });
+
+  test('что скрипт уже определил, ответом модели не переопределяется: поля, которые ей не заказывали, отбрасываются', () => {
+    const needs = new Map([
+      ['r1', { district: false, age: true, time: false }],
+      ['r2', { district: true, age: false, time: true }],
+    ]);
+    const out = parseReply(reply([
+      { ref: 'r1', district: 'Невский', age: '25-40', days: ['Пн'], slot: 'вечер', questions: [] },
+      { ref: 'r2', district: 'Невский', age: '25-40', days: ['Пн'], slot: 'вечер', questions: [] },
+    ]), { ...ctx, needs });
+    expect(out[0]).toMatchObject({ district: null, age: '25-40', days: [], slot: null });
+    expect(out[1]).toMatchObject({ district: 'Невский', age: null, days: ['Пн'], slot: 'вечер' });
+  });
+
+  test('без списка заказанных полей (старый вызов) ответ принимается целиком', () => {
+    const [h] = parseReply(reply([{ ref: 'r1', district: 'Невский', days: ['Пн'] }]), ctx);
+    expect(h).toMatchObject({ district: 'Невский', days: ['Пн'] });
+  });
 });
+

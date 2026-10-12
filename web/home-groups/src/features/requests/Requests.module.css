@@ -537,6 +537,105 @@
   color: var(--warn);
   font-weight: 600;
 }
+/* Метка-кнопка: выглядит как прежняя метка, но с шевроном и нажимается. Сброс стилей кнопки — свой, шрифт тот же. */
+.changedToggle {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 22px;
+}
+.changedToggle:hover {
+  background: color-mix(in srgb, var(--warn) 18%, var(--warn-soft));
+}
+.changedCaret {
+  margin-left: 4px;
+  font-size: 9px;
+}
+/* Подробности под меткой: рамка слева в цвете предупреждения, как у пояснения. */
+.changesPanel {
+  margin: 6px 0 8px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius);
+  background: var(--warn-soft);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 400;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  cursor: auto;
+}
+.changesNote {
+  margin: 0;
+}
+.changesList {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.changesField {
+  font-weight: 600;
+}
+.changesWas {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+.changesNow {
+  font-weight: 600;
+}
+/* Пустое значение курсивом: «не указано» — не данные, а их отсутствие. */
+.changesEmpty {
+  color: var(--muted);
+  font-style: italic;
+}
+.changesArrow {
+  color: var(--muted);
+}
+.changesIntro {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.changedRequests {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.changedRequest {
+  display: grid;
+  gap: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 13px;
+}
+.changedRequest:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.changedRequestLink {
+  justify-self: start;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.changedRequestNo {
+  font-weight: 400;
+  color: var(--muted);
+}
 .changedNote {
   margin: 0 0 8px;
   padding: 8px 10px;
@@ -739,6 +838,22 @@
 .matchingStats .matchingWarn {
   color: var(--warn);
   font-weight: 600;
+}
+/* Надпись-кнопка: открывает список заявок с подробностями. Подчёркнута, чтобы читалась как нажимаемая. */
+.matchingWarnLink {
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.matchingWarnLink:hover {
+  text-decoration-thickness: 2px;
 }
 .matchingControls {
   display: flex;

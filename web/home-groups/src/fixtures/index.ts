@@ -14,9 +14,11 @@ import {
 } from './settings';
 import { buildFormMeta } from './formMeta';
 import { buildCoordinators, buildGroups, buildPeople, buildRequests, buildToday } from './build';
+import { RAW_REQUESTS } from './raw';
+import { setDemoStrange, strangeKey } from './strange';
 import { buildCampaign } from './campaign';
-import { fixtureChatReply } from './chat';
-import { reconcileDemoOther, reconcileDemoReady } from './others';
+import { fixtureChatClear, fixtureChatHistory, fixtureChatReply } from './chat';
+import { buildOthers, reconcileDemoOther, reconcileDemoReady } from './others';
 import { buildTeam } from './team';
 
 /** Ответ «сервера» в режиме фикстур. Путь — как в apiGet: «today», «requests»… */
@@ -42,6 +44,9 @@ export function fixtureResponse(path: string): unknown {
       return buildTeam();
     case 'campaign':
       return buildCampaign();
+    // История чата «Помощник»: в демо уже есть пара реплик (fixtures/chat.ts).
+    case 'assistant/chat/history':
+      return fixtureChatHistory();
     case 'settings/bot':
       return buildSettingsBot();
     case 'settings/assistant':
@@ -72,6 +77,7 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
   }
   // Чат «Помощник»: ответ зависит от последнего вопроса (fixtures/chat.ts), сами данные не меняются.
   if (clean === 'assistant/chat') return fixtureChatReply(body);
+  if (clean === 'assistant/chat/clear') return fixtureChatClear();
   // Помощник: в демо он «разобрал» все три заявки, которые ждали разбора; данные при этом не меняются.
   if (clean === 'assistant/run') return { ok: true, asked: 3, filled: 2, withQuestions: 2, proposals: 1 };
   // Пересчёт всех предложений: в демо сервера нет, поэтому «заменено» нулевое, а изменившиеся данные считаем обновлёнными.
@@ -82,6 +88,21 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
   }
   // Рабочее место координатора: правка данных, «в работе у», итог звонка, закрытие и возврат в работу. В демо данные не меняются, действие просто «получается».
   if (/^requests\/\d+\/(edit|assign|call|close|reopen)$/.test(clean)) return { ok: true };
+  // Метка «Странный человек»: в демо она ставится и снимается, и видна везде, где виден человек (fixtures/strange.ts).
+  if (/^requests\/\d+\/strange$/.test(clean)) {
+    const id = Number(clean.split('/')[1]);
+    const input = (body ?? {}) as { value?: boolean; note?: string | null };
+    const request = RAW_REQUESTS.find((r) => r.id === id);
+    const other = request ? undefined : buildOthers().find((o) => o.id === id);
+    setDemoStrange(request ? strangeKey(request.phone, `r${id}`) : strangeKey(other?.phone, `o${id}`), input.value === true, input.note);
+    return { ok: true };
+  }
+  if (clean === 'people/strange') {
+    const input = (body ?? {}) as { key?: string; value?: boolean; note?: string | null };
+    const person = buildPeople().items.find((p) => p.key === input.key);
+    setDemoStrange(strangeKey(person?.phone, input.key ?? ''), input.value === true, input.note);
+    return { ok: true };
+  }
   // Разбор «других обращений»: в демо обращение уходит в закрытые (fixtures/others.ts), а повторный разбор отвечает «уже было так».
   if (/^requests\/\d+\/reconcile$/.test(clean)) {
     const id = Number(clean.split('/')[1]);

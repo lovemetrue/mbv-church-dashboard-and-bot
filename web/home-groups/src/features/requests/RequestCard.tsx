@@ -4,10 +4,11 @@ import { BUCKET_LABEL } from '../../entities/buckets';
 import { formatDateShort, formatPhone, groupLabel } from '../../entities/format';
 import { useGroups } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
-import { AgeTag, Button, Drawer, DrawerSection, KeyValue, NewGroupIcon, Pill, type KvRow } from '../../shared/ui';
+import { AgeTag, Button, Drawer, DrawerSection, KeyValue, NewGroupIcon, Pill, StrangeBadge, StrangeBanner, type KvRow } from '../../shared/ui';
 import { CandidateCard } from './CandidateCard';
+import { DataChanges, useChangesDisclosure } from './DataChanges';
 import { SavedTag } from './SavedTag';
-import { isCreationEntry, knownParams, understoodTime, unavailableReason, type UnavailableReason } from './model';
+import { isCreationEntry, knownParams, proposalOf, understoodTime, unavailableReason, type UnavailableReason } from './model';
 import { ActionDialogs, ActionNoticeLine, isActionable, RequestActions } from './RequestActions';
 import styles from './Requests.module.css';
 import { useRequestActions, type RequestActionsState } from './useRequestActions';
@@ -27,19 +28,33 @@ function noPlanHint(code: NonNullable<RequestItem['noPlan']>['code']): string {
       return ru.requests.noPlanNogroup;
     case 'taken':
       return ru.requests.noPlanTaken;
+    case 'strange':
+      // Причина сервера уже говорит всё («подберите её вручную»): добавлять к ней нечего.
+      return '';
   }
 }
 
 /** Кто предложил группу и напоминание, что предложение ещё не решение. */
 function ProposalSource({ proposal }: { proposal: NonNullable<RequestItem['proposal']> }) {
+  const disclosure = useChangesDisclosure();
   return (
     <>
       <p className={styles.source}>
         <b>{proposal.source === 'agent' ? ru.requests.act.sourceAgent : ru.requests.act.sourceScript}</b>
-        <SavedTag saved={proposal.saved} dataChanged={proposal.dataChanged} explained />
+        <SavedTag
+          saved={proposal.saved}
+          dataChanged={proposal.dataChanged}
+          explained
+          changes={{ open: disclosure.open, onToggle: disclosure.toggle, panelId: disclosure.panelId }}
+        />
         <span className={styles.note}>{ru.requests.act.notApproved}</span>
       </p>
       {proposal.dataChanged && <p className={styles.changedNote}>{ru.requests.rematch.changedHint}</p>}
+      {proposal.dataChanged && disclosure.open && (
+        <div id={disclosure.panelId} className={styles.changesPanel}>
+          <DataChanges changes={proposal.changes} />
+        </div>
+      )}
     </>
   );
 }
@@ -118,7 +133,7 @@ function DisplacedVariant({
 /** «Другие варианты»: запасные группы и группа, место в которой отдано другим. У каждой своя кнопка. */
 function OtherVariants({ r, act }: { r: RequestItem; act: RequestActionsState }) {
   const groups = useGroups();
-  const p = r.proposal;
+  const p = proposalOf(r);
   if (!p) return null;
   const registry = new Map<number, GroupItem>((groups.data?.items ?? []).map((g) => [g.id, g]));
   const shown = new Set([p.main.group.id, ...p.alternatives.map((a) => a.group.id)]);
@@ -152,7 +167,7 @@ function Proposal({ r, act }: { r: RequestItem; act: RequestActionsState }) {
     );
   }
 
-  const p = r.proposal;
+  const p = proposalOf(r);
   const displaced = p?.displaced ? (
     <div className={styles.callout}>
       {ru.requests.displaced(
@@ -497,7 +512,12 @@ export function RequestCard({
     <Drawer
       docked
       label={`Карточка заявки: ${r.fio}`}
-      title={r.fio}
+      title={
+        <>
+          {r.fio}
+          <StrangeBadge mark={r.strange} size={18} />
+        </>
+      }
       subtitle={
         <>
           <Pill tone={r.bucket === 'cancelled' ? 'plain' : r.bucket}>{BUCKET_LABEL[r.bucket]}</Pill>
@@ -506,6 +526,7 @@ export function RequestCard({
       }
       onClose={onClose}
     >
+      <StrangeBanner mark={r.strange} />
       {neighbors && <NeighborsNav n={neighbors} closed={r.bucket === 'done' || neighbors.position === null} />}
       <DrawerSection title={ru.requests.proposalTitle}>
         {/* Пока открыто окно, ошибка показывается в нём. */}

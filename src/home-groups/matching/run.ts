@@ -31,7 +31,7 @@ export function createMatching(deps: MatchingDeps) {
     /** `scope` — только эти заявки («подобрать заново» одной): остальные закреплённые предложения не трогаются. */
     async run(actor: string, scope?: ReadonlySet<number>): Promise<MatchingRunOk> {
       const input = await deps.load();
-      const { plan, openRequestIds, signatures } = buildViewsWithPlan(input, deps.engine, now(), deps.options);
+      const { plan, openRequestIds, signatures, snapshots } = buildViewsWithPlan(input, deps.engine, now(), deps.options);
 
       const desired = [];
       for (const requestId of openRequestIds) {
@@ -44,6 +44,7 @@ export function createMatching(deps: MatchingDeps) {
           confidence: entry.confidence,
           rationale: entry.main.reasons,
           inputHash: signatures.get(requestId)!,
+          inputSnapshot: snapshots.get(requestId)!,
         });
       }
 

@@ -4,7 +4,7 @@ import { formatPhone } from '../../../entities/format';
 import { usePeople } from '../../../shared/api/queries';
 import { ru } from '../../../shared/i18n/ru';
 import { useAppNav } from '../../../shared/nav';
-import { Button, DrawerSection, Pill } from '../../../shared/ui';
+import { Button, DrawerSection, Pill, StrangeBadge } from '../../../shared/ui';
 import manage from '../Manage.module.css';
 import { AddMemberDialog } from './AddMemberDialog';
 import { MemberEditDialog, MemberRemoveDialog } from './MemberDialogs';
@@ -37,6 +37,7 @@ function MemberRow({
         ) : (
           <b className={styles.name}>{m.fio}</b>
         )}
+        <StrangeBadge mark={m.strange} />
         {m.alsoIn.length > 0 && (
           // Подсказка на обёртке: у плашки своего title нет. Метка — повод проверить, не дубль ли это.
           <span title={t.alsoInHint}>

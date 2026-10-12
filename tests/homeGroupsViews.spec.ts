@@ -54,8 +54,8 @@ const empty: ViewsInput = { groups: [], requests: [], participants: [], coordina
 
 function build(input: Partial<ViewsInput>, engineOptions: FakeEngineOptions = {}, options = {}) {
   const fake = createFakeEngine(engineOptions);
-  const { views, signatures } = buildViewsWithPlan({ ...empty, ...input }, fake.engine, NOW, options);
-  return { views, signatures, ...fake };
+  const { views, signatures, snapshots } = buildViewsWithPlan({ ...empty, ...input }, fake.engine, NOW, options);
+  return { views, signatures, snapshots, ...fake };
 }
 
 describe('какие заявки уходят в движок и на экран', () => {
@@ -615,7 +615,7 @@ describe('люди', () => {
       requests: [request({ id: 40, user_id: 12, place: 'Ломоносовская' })],
     });
     expect(views.people.items).toEqual([{
-      key: 'u12', personId: null, groups: [], fio: 'Дарья Ефимова', phone: '+7 911 123-45-67', ageLabel: '26-35', district: 'Невский',
+      key: 'u12', strange: null, personId: null, groups: [], fio: 'Дарья Ефимова', phone: '+7 911 123-45-67', ageLabel: '26-35', district: 'Невский',
       from: 'Бот · MAX', mdgLabel: 'Хочет в группу', date: '2026-09-12', requestId: 40, userId: 12, registrationNo: 12,
     }]);
   });
@@ -655,7 +655,7 @@ describe('люди', () => {
     });
     const person = (key: string) => views.people.items.find((p) => p.key === key)!;
     expect(person('r7')).toEqual({
-      key: 'r7', personId: null, groups: [], fio: 'Станислав Ким', phone: '+7 904 123-45-67', ageLabel: '26-35', district: 'Приморский',
+      key: 'r7', strange: null, personId: null, groups: [], fio: 'Станислав Ким', phone: '+7 904 123-45-67', ageLabel: '26-35', district: 'Приморский',
       from: 'Таблица', mdgLabel: 'Заявка: готово к утверждению', date: '2026-10-02', requestId: 7, userId: null, registrationNo: null,
     });
     expect(person('r8')).toMatchObject({ from: 'Дашборд · Звонок', mdgLabel: 'Заявка: нужна помощь в сопоставлении', district: null });
@@ -1042,6 +1042,30 @@ describe('закрепление и изменившиеся данные', () =
     expect(views.requests.items[0]!.proposal).toMatchObject({ saved: false, dataChanged: false });
   });
 
+  test('что изменилось: по снимку у предложения видно «было → стало» для каждого изменившегося поля', () => {
+    const first = build({ groups: [group({ id: 1 })], requests: [request({ id: 7, place: 'Приморский' })] });
+    const before = first.snapshots.get(7)!;
+    const { views } = build({
+      groups: [group({ id: 1 })],
+      requests: [request({ id: 7, place: 'Приморский', age: '40-55', schedule: null })],
+      // Снимок у предложения: район тот же, а возраст в заявке тогда не был известен — стал известен после правки.
+      activeProposals: new Map([[7, { groupId: 1, source: 'script', inputHash: 'устарел', inputSnapshot: { ...before, street: 'ул. Старая 1' } }]]),
+    });
+    const changes = views.requests.items[0]!.proposal!.changes!;
+    expect(changes.map((c) => [c.field, c.before])).toEqual(expect.arrayContaining([['Улица', 'ул. Старая 1']]));
+    expect(changes.every((c) => c.before !== c.after)).toBe(true);
+  });
+
+  test('если снимка нет (предложение сохранено раньше) или данные не менялись, список изменений — null', () => {
+    const noSnapshot = build({
+      groups: [group({ id: 1 })], requests: [request({ id: 7, place: 'Приморский' })],
+      activeProposals: new Map([[7, { groupId: 1, source: 'script', inputHash: 'устарел', inputSnapshot: null }]]),
+    });
+    expect(noSnapshot.views.requests.items[0]!.proposal).toMatchObject({ dataChanged: true, changes: null });
+    const same = build({ groups: [group({ id: 1 })], requests: [request({ id: 7, place: 'Приморский' })] });
+    expect(same.views.requests.items[0]!.proposal).toMatchObject({ dataChanged: false, changes: null });
+  });
+
   test('участник отдаёт id и номер регистрации; строка из заявки — только id участника', () => {
     const { views } = build({
       participants: [participant({ id: 3, registration_no: 41 })],
@@ -1060,6 +1084,87 @@ describe('сводка команды в представлениях', () => {
     });
     expect(views.team.totals).toMatchObject({ open: 2, unassigned: 1 });
     expect(views.team.activity).toEqual([{ actor: 'anna', calls: 2, approved: 0, rejected: 0, edits: 0, assigned: 0 }]);
+  });
+});
+
+describe('метка «Странный человек»', () => {
+  const mark = (by = 'anna', note: string | null = null) => ({ by, at: new Date('2026-10-12T08:00:00Z'), note });
+  const withMarks = (entries: [string, ReturnType<typeof mark>][]) => ({ strange: new Map(entries) });
+
+  test('метка регистрации видна на заявке, в «Людях» и в составе группы', () => {
+    const { views } = build({
+      groups: [group({ id: 5 })],
+      participants: [participant({ id: 9, full_name: 'Отмеченный' })],
+      requests: [request({ id: 1, user_id: 9, status: 'Исполнена', group_id: 5 })],
+      ...withMarks([['u9', mark('anna', 'говорит сам с собой')]]),
+    });
+    const expected = { by: 'anna', at: '2026-10-12T08:00:00.000Z', note: 'говорит сам с собой' };
+    expect(views.requests.items.find((i) => i.id === 1)!.strange).toEqual(expected);
+    expect(views.people.items.find((p) => p.key === 'u9')!.strange).toEqual(expected);
+    expect(views.groups.items.find((g) => g.id === 5)!.members[0]!.strange).toEqual(expected);
+  });
+
+  test('у заявки без регистрации метка лежит на самой заявке (ключ r<номер>), «Другие обращения» её тоже видят', () => {
+    const { views } = build({
+      requests: [request({ id: 3 }), request({ id: 4, type: 'question' })],
+      ...withMarks([['r3', mark()], ['r4', mark()]]),
+    });
+    expect(views.requests.items.find((i) => i.id === 3)!.strange).toMatchObject({ by: 'anna' });
+    expect(views.people.items.find((p) => p.key === 'r3')!.strange).toMatchObject({ by: 'anna' });
+    expect(views.requests.others.find((o) => o.id === 4)!.strange).toMatchObject({ by: 'anna' });
+  });
+
+  test('без метки поле пустое', () => {
+    const { views } = build({ requests: [request({ id: 1 })], participants: [participant({ id: 9 })] });
+    expect(views.requests.items[0]!.strange).toBeNull();
+    expect(views.people.items.find((p) => p.key === 'u9')!.strange).toBeNull();
+  });
+
+  test('метка действует и на тот же телефон в другой записи: человек один, а записей у него несколько', () => {
+    const { views } = build({
+      participants: [participant({ id: 9, phone: '+79111234567' })],
+      requests: [request({ id: 1, phone: '+7 911 123-45-67', phones: ['+7 911 123-45-67'] })],
+      ...withMarks([['u9', mark('boris')]]),
+    });
+    expect(views.requests.items.find((i) => i.id === 1)!.strange).toMatchObject({ by: 'boris' });
+  });
+
+  test('заявка с меткой не попадает в расчёт групп и не занимает места, ей показано «нужна отдельная группа»', () => {
+    const { views, calls } = build({
+      groups: [group({ id: 5, district: 'Приморский' })],
+      requests: [request({ id: 1, place: 'Приморский' }), request({ id: 2, place: 'Приморский' })],
+      ...withMarks([['r1', mark()]]),
+    });
+    expect(calls.plan[0]!.requests.map((r) => r.id)).toEqual([2]);
+    const marked = views.requests.items.find((i) => i.id === 1)!;
+    expect(marked.proposal).toBeNull();
+    expect(marked.noPlan).toMatchObject({ code: 'strange' });
+    expect(marked.noPlan!.reason).toMatch(/отдельная группа/);
+    expect(marked.bucket).toBe('human');
+    expect(views.requests.items.find((i) => i.id === 2)!.proposal).not.toBeNull();
+    // В сводку спроса по обычным группам тоже не попадает.
+    expect(calls.summary[0]!.requests.map((r) => r.id)).toEqual([2]);
+  });
+
+  test('закрытая заявка с меткой остаётся закрытой: метка не возвращает её в «нужна помощь»', () => {
+    const { views } = build({
+      requests: [request({ id: 1, status: 'Исполнена' })],
+      ...withMarks([['r1', mark()]]),
+    });
+    expect(views.requests.items.find((i) => i.id === 1)!.bucket).toBe('done');
+  });
+
+  test('в ленте заявки видно, кто и когда поставил или снял метку', () => {
+    const { views } = build({
+      requests: [request({ id: 1 })],
+      audit: [
+        { id: 1, actor: 'anna', action: 'request.strange', entity_type: 'request', entity_id: 1, at: new Date('2026-10-12T08:00:00Z'), before: null, after: { value: true }, note: null },
+        { id: 2, actor: 'boris', action: 'request.strange', entity_type: 'request', entity_id: 1, at: new Date('2026-10-12T09:00:00Z'), before: null, after: { value: false }, note: null },
+      ] as never,
+    });
+    const log = views.requests.items.find((i) => i.id === 1)!.log.map((l) => l.text);
+    expect(log).toContain('Отмечено «странный человек» · anna');
+    expect(log).toContain('Метка «странный человек» снята · boris');
   });
 });
 
@@ -1250,8 +1355,8 @@ describe('состав групп', () => {
       members: [manual(7, 1, 'u5', 'Борис Вручную', null, '2026-09-01')],
     });
     expect(views.groups.items[0]!.members).toEqual([
-      { kind: 'placed', id: 1, personKey: 'r1', fio: 'Анна Утверждённая', phone: '+7 921 555-00-11', date: '2026-10-09', note: null, alsoIn: [] },
-      { kind: 'manual', id: 7, personKey: 'u5', fio: 'Борис Вручную', phone: null, date: '2026-09-01', note: null, alsoIn: [] },
+      { kind: 'placed', id: 1, personKey: 'r1', fio: 'Анна Утверждённая', phone: '+7 921 555-00-11', date: '2026-10-09', note: null, alsoIn: [], strange: null },
+      { kind: 'manual', id: 7, personKey: 'u5', fio: 'Борис Вручную', phone: null, date: '2026-09-01', note: null, alsoIn: [], strange: null },
     ]);
   });
 
@@ -1298,5 +1403,36 @@ describe('состав групп', () => {
     expect(views.people.items.find((p) => p.key === 'p3')).toMatchObject({
       personId: 3, fio: 'Анна Новая', phone: '+7 921 555-00-11', ageLabel: '35', district: 'Приморский', from: 'Внесён вручную', groups: ['ДГ-0001'],
     });
+  });
+});
+
+describe('день недели, время и улица: что уходит в подбор', () => {
+  test('«по средам вечером» из анкеты становится днём и временем суток заявки', () => {
+    const { calls } = build({ requests: [request({ id: 1, place: 'Приморский', schedule: 'по средам вечером' })] });
+    expect(calls.plan[0]!.requests[0]).toMatchObject({ days: ['Ср'], slot: 'вечер', avoidDays: [], avoidSlots: [] });
+  });
+
+  test('«кроме воскресенья» уходит в подбор как неподходящий день, а не как удобный', () => {
+    const { calls, signatures } = build({ requests: [request({ id: 1, place: 'Приморский', schedule: 'кроме воскресенья, вечером' })] });
+    expect(calls.plan[0]!.requests[0]).toMatchObject({ days: [], slot: 'вечер', avoidDays: ['Вс'] });
+    const without = build({ requests: [request({ id: 1, place: 'Приморский', schedule: 'вечером' })] });
+    // Неподходящий день входит в отпечаток: заявка с другим «не подходит» пересчитывается.
+    expect(signatures.get(1)).not.toBe(without.signatures.get(1));
+  });
+
+  test('понятое скриптом («кроме воскресенья») помощнику не отдаётся: ему остаётся только непонятное', () => {
+    const fake = createFakeEngine();
+    const withAvoid = buildViewsWithPlan({ ...empty, requests: [request({ id: 1, schedule: 'кроме воскресенья' })] }, fake.engine, NOW);
+    expect(withAvoid.assistantCandidates).toEqual([]);
+    const unclear = buildViewsWithPlan({ ...empty, requests: [request({ id: 2, schedule: 'как получится, по настроению' })] }, fake.engine, NOW);
+    expect(unclear.assistantCandidates.map((c) => c.id)).toEqual([2]);
+  });
+
+  test('улица группы в подбор не идёт, пока сравнение улиц не включено; включённое передаёт только название без дома', () => {
+    const input = { groups: [group({ id: 1, address: 'ул. Рылеева, д. 32, кв. 5' })], requests: [request({ id: 1, place: 'Приморский', address: 'Рылеева 30' })] };
+    expect(build(input).calls.plan[0]!.groups[0]!.street).toBeNull();
+    const on = build(input, {}, { matchGroupStreet: true });
+    expect(on.calls.plan[0]!.groups[0]!.street).toBe('рылеева');
+    expect(JSON.stringify(on.views)).not.toContain('Рылеева, д. 32');
   });
 });

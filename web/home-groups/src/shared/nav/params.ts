@@ -7,7 +7,7 @@ import { isBucketFilter, type BucketFilter } from '../../entities/buckets';
  *
  *   tab     today (по умолчанию) | requests | team | reference | settings (только полный вход)
  *   q       поиск по заявкам (общий для шапки)
- *   bucket  all (по умолчанию) | queue (к обзвону: ready + callback) | ready | callback | human | done
+ *   bucket  all (по умолчанию) | queue (к обзвону: ready + callback) | strange (с меткой «Странный человек») | ready | callback | human | done
  *   view    others — «Другие обращения» вместо списка «Хотят в группу»; без параметра — обычный список
  *   ostate  чип списка обращений: done | cancelled | all; без параметра — открытые
  *   orec    отбор открытых обращений по разбору: ready | choose | missing | rest; без параметра — все открытые

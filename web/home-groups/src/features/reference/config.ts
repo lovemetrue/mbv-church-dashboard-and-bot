@@ -1,5 +1,6 @@
 import type { CoordinatorItem, GroupItem, PersonItem } from '@contracts';
 import { formatDateFull, formatPhone } from '../../entities/format';
+import { STRANGE_FIELD } from '../../entities/strange';
 import type { FieldDef, Filter, Preset, Row } from '../../shared/filters';
 import type { EntityId } from '../../shared/nav';
 import { ru } from '../../shared/i18n/ru';
@@ -137,8 +138,10 @@ export const peopleConfig: EntityConfig<PersonItem> = {
     f('Группы', { multi: true }),
     // Номер регистрации: по нему находят человека при выдаче набора и печатают карточку с QR.
     f('№', { kind: 'number' }),
+    // «Да» у людей с меткой «Странный человек»: по нему работает быстрый отбор «Странные».
+    f(STRANGE_FIELD, { groupable: true }),
   ],
-  columns: ['ФИО', 'Телефон', 'Возраст', 'Район', 'Откуда', 'Малая группа', 'Дата', 'Заявка', '№', 'Группы'],
+  columns: ['ФИО', 'Телефон', 'Возраст', 'Район', 'Откуда', 'Малая группа', 'Дата', 'Заявка', '№', 'Группы', STRANGE_FIELD],
   // «№» стоит последним: первый столбец служит кнопкой открытия карточки, там должно быть имя.
   defaultColumns: ['ФИО', 'Телефон', 'Возраст', 'Район', 'Откуда', 'Малая группа', '№'],
   presets: [
@@ -147,6 +150,7 @@ export const peopleConfig: EntityConfig<PersonItem> = {
     { name: 'Есть заявка', filters: [{ field: 'Заявка', op: 'filled', value: '' }] },
     { name: 'Район не указан', filters: [{ field: 'Район', op: 'empty', value: '' }] },
     { name: 'Нет телефона', filters: [{ field: 'Телефон', op: 'empty', value: '' }] },
+    { name: ru.strange.preset, filters: [{ field: STRANGE_FIELD, op: 'eq', value: ru.reference.yes }] },
   ],
   toRow: (p) => ({
     _key: p.key,
@@ -161,6 +165,11 @@ export const peopleConfig: EntityConfig<PersonItem> = {
     Заявка: p.requestId,
     '№': p.registrationNo,
     Группы: p.groups.length ? p.groups.join(', ') : null,
+    [STRANGE_FIELD]: p.strange ? ru.reference.yes : ru.reference.no,
+    // Служебное, как `_key`: метка целиком нужна таблице, чтобы нарисовать значок с подсказкой; в столбцы и отборы не попадает.
+    _strangeBy: p.strange?.by ?? null,
+    _strangeAt: p.strange?.at ?? null,
+    _strangeNote: p.strange?.note ?? null,
   }),
   keyOf: (p) => p.key,
   titleOf: (p) => p.fio,

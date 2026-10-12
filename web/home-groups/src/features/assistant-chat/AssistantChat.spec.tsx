@@ -29,8 +29,17 @@ const reply = (patch: Partial<ChatOk> = {}): ChatOk => ({
 
 type Overrides = Parameters<typeof stubFetchWithFixtures>[0];
 
+const noHistory = () => json({ messages: [] });
+const cleared = () => json({ ok: true });
+
+/** По умолчанию история пуста, а очистка удаётся: тесты про другое не должны зависеть от демо-разговора. */
 function open(overrides: Overrides = {}, me: unknown = CHAT_ME, url = '/') {
-  const fetchMock = stubFetchWithFixtures({ me: () => json(me), ...overrides });
+  const fetchMock = stubFetchWithFixtures({
+    me: () => json(me),
+    'assistant/chat/history': noHistory,
+    'assistant/chat/clear': cleared,
+    ...overrides,
+  });
   renderAt(<App />, url);
   return fetchMock;
 }
@@ -57,6 +66,9 @@ async function ask(user: ReturnType<typeof userEvent.setup>, text: string) {
 }
 
 const sentChat = (fetchMock: ReturnType<typeof stubFetchWithFixtures>) => posts(fetchMock).filter((p) => p.path === 'assistant/chat');
+const sentClear = (fetchMock: ReturnType<typeof stubFetchWithFixtures>) => posts(fetchMock).filter((p) => p.path === 'assistant/chat/clear');
+const historyGets = (fetchMock: ReturnType<typeof stubFetchWithFixtures>) =>
+  fetchMock.mock.calls.filter(([u]) => String(u).endsWith('/assistant/chat/history')).length;
 
 describe('кнопка «Помощник»', () => {
   test('показывается, когда сервер сказал, что чат доступен', async () => {
@@ -176,7 +188,7 @@ describe('вопросы и подсказки', () => {
     await user.click(screen.getByRole('button', { name: 'Где не хватает групп?' }));
     expect(await within(dialog()).findByText('В Приморском 7 групп при спросе на 4.')).toBeInTheDocument();
     expect(sentChat(fetchMock)).toEqual([
-      { path: 'assistant/chat', body: { messages: [{ role: 'user', content: 'Где не хватает групп?' }] } },
+      { path: 'assistant/chat', body: { message: 'Где не хватает групп?' } },
     ]);
     expect(screen.queryByRole('group', { name: 'Примеры вопросов' })).not.toBeInTheDocument();
     // Вопрос остался в разговоре.
@@ -350,10 +362,7 @@ describe('ошибки', () => {
     await within(dialog()).findByText('Слишком много вопросов, подождите минуту.');
     await user.click(within(dialog()).getByRole('button', { name: 'Повторить' }));
     await within(dialog()).findByText('В Приморском 7 групп при спросе на 4.');
-    expect(sentChat(fetchMock).map((p) => p.body)).toEqual([
-      { messages: [{ role: 'user', content: 'Что с группами?' }] },
-      { messages: [{ role: 'user', content: 'Что с группами?' }] },
-    ]);
+    expect(sentChat(fetchMock).map((p) => p.body)).toEqual([{ message: 'Что с группами?' }, { message: 'Что с группами?' }]);
     expect(within(dialog()).queryByText('Слишком много вопросов, подождите минуту.')).not.toBeInTheDocument();
     expect(within(dialog()).queryByRole('button', { name: 'Повторить' })).not.toBeInTheDocument();
     expect(within(dialog()).getAllByText('Что с группами?')).toHaveLength(1);
@@ -395,35 +404,14 @@ describe('ошибки', () => {
 });
 
 describe('разговор', () => {
-  test('второй вопрос уходит вместе с прошлыми ходами, но без таблиц и запросов', async () => {
+  test('каждый вопрос уходит один, без прошлых ходов: историю сервер знает сам', async () => {
     const fetchMock = open({ 'assistant/chat': () => json(reply()) });
     const user = await openPanel();
     await ask(user, 'Первый');
     await within(dialog()).findByText('В Приморском 7 групп при спросе на 4.');
     await ask(user, 'Второй');
     await waitFor(() => expect(sentChat(fetchMock)).toHaveLength(2));
-    expect(sentChat(fetchMock)[1]!.body).toEqual({
-      messages: [
-        { role: 'user', content: 'Первый' },
-        { role: 'assistant', content: 'В Приморском 7 групп при спросе на 4.' },
-        { role: 'user', content: 'Второй' },
-      ],
-    });
-  });
-
-  test('уходят не больше 12 последних ходов', async () => {
-    const fetchMock = open({ 'assistant/chat': () => json(reply()) });
-    const user = await openPanel();
-    for (let i = 1; i <= 8; i += 1) {
-      await ask(user, `Вопрос ${i}`);
-      await waitFor(() => expect(within(dialog()).getAllByText('В Приморском 7 групп при спросе на 4.')).toHaveLength(i));
-    }
-    const last = sentChat(fetchMock)[7]!.body.messages as { role: string; content: string }[];
-    expect(last).toHaveLength(12);
-    expect(last[11]).toEqual({ role: 'user', content: 'Вопрос 8' });
-    // Пятнадцать ходов минус три самых старых: окно начинается с ответа на второй вопрос.
-    expect(last[0]).toEqual({ role: 'assistant', content: 'В Приморском 7 групп при спросе на 4.' });
-    expect(last[1]).toEqual({ role: 'user', content: 'Вопрос 3' });
+    expect(sentChat(fetchMock).map((p) => p.body)).toEqual([{ message: 'Первый' }, { message: 'Второй' }]);
   });
 
   test('разговор живёт в памяти страницы: закрыли и открыли окно — он на месте', async () => {
@@ -451,18 +439,66 @@ describe('разговор', () => {
     setLocal.mockRestore();
   });
 
-  test('«Очистить разговор» убирает ходы, возвращает подсказки и начинает историю заново', async () => {
+  test('«Очистить разговор» шлёт clear с пустым телом, убирает ходы и возвращает подсказки', async () => {
     const fetchMock = open({ 'assistant/chat': () => json(reply()) });
     const user = await openPanel();
     expect(within(dialog()).queryByRole('button', { name: 'Очистить разговор' })).not.toBeInTheDocument();
     await ask(user, 'Старое');
     await within(dialog()).findByText('В Приморском 7 групп при спросе на 4.');
     await user.click(within(dialog()).getByRole('button', { name: 'Очистить разговор' }));
-    expect(within(dialog()).queryByText('Старое')).not.toBeInTheDocument();
+    await waitFor(() => expect(within(dialog()).queryByText('Старое')).not.toBeInTheDocument());
+    expect(sentClear(fetchMock)).toEqual([{ path: 'assistant/chat/clear', body: {} }]);
     expect(within(dialog()).getByRole('group', { name: 'Примеры вопросов' })).toBeInTheDocument();
     await ask(user, 'Новое');
     await waitFor(() => expect(sentChat(fetchMock)).toHaveLength(2));
-    expect(sentChat(fetchMock)[1]!.body).toEqual({ messages: [{ role: 'user', content: 'Новое' }] });
+    expect(sentChat(fetchMock)[1]!.body).toEqual({ message: 'Новое' });
+  });
+
+  test('пока clear в пути, разговор на экране остаётся, а второй клик ничего не шлёт', async () => {
+    let release: (r: Response) => void = () => {};
+    const fetchMock = open({
+      'assistant/chat': () => json(reply()),
+      'assistant/chat/clear': () => new Promise<Response>((resolve) => (release = resolve)),
+    });
+    const user = await openPanel();
+    await ask(user, 'Старое');
+    await within(dialog()).findByText('В Приморском 7 групп при спросе на 4.');
+    const clear = within(dialog()).getByRole('button', { name: 'Очистить разговор' });
+    await user.click(clear);
+    await user.click(clear);
+    expect(within(dialog()).getByText('Старое')).toBeInTheDocument();
+    expect(sentClear(fetchMock)).toHaveLength(1);
+    await act(async () => release(json({ ok: true })));
+    await waitFor(() => expect(within(dialog()).queryByText('Старое')).not.toBeInTheDocument());
+  });
+
+  test('если очистка не удалась, пишется ошибка, а разговор на экране остаётся нетронутым', async () => {
+    const fetchMock = open({
+      'assistant/chat': () => json(reply()),
+      'assistant/chat/clear': () => json({ ok: false, error: 'unavailable', message: 'служебный текст' }, 503),
+    });
+    const user = await openPanel();
+    await ask(user, 'Остаётся');
+    await within(dialog()).findByText('В Приморском 7 групп при спросе на 4.');
+    await user.click(within(dialog()).getByRole('button', { name: 'Очистить разговор' }));
+    const alert = await within(dialog()).findByRole('alert');
+    expect(alert).toHaveTextContent('Не получилось очистить разговор');
+    expect(within(dialog()).getByText('Остаётся')).toBeInTheDocument();
+    expect(within(dialog()).getByText('В Приморском 7 групп при спросе на 4.')).toBeInTheDocument();
+    expect(within(dialog()).queryByRole('group', { name: 'Примеры вопросов' })).not.toBeInTheDocument();
+    // можно повторить, и тогда ошибка уходит
+    expect(within(dialog()).getByRole('button', { name: 'Очистить разговор' })).toBeEnabled();
+    expect(sentClear(fetchMock)).toHaveLength(1);
+  });
+
+  test('при обрыве связи на очистке говорится про связь, разговор остаётся', async () => {
+    open({ 'assistant/chat': () => json(reply()), 'assistant/chat/clear': () => Promise.reject(new TypeError('fail')) });
+    const user = await openPanel();
+    await ask(user, 'Остаётся');
+    await within(dialog()).findByText('В Приморском 7 групп при спросе на 4.');
+    await user.click(within(dialog()).getByRole('button', { name: 'Очистить разговор' }));
+    expect(await within(dialog()).findByRole('alert')).toHaveTextContent('Нет связи с сервером');
+    expect(within(dialog()).getByText('Остаётся')).toBeInTheDocument();
   });
 
   test('ответ, пришедший после «Очистить разговор», в пустой разговор не попадает', async () => {
@@ -471,8 +507,133 @@ describe('разговор', () => {
     const user = await openPanel();
     await ask(user, 'Долгий');
     await user.click(within(dialog()).getByRole('button', { name: 'Очистить разговор' }));
+    await waitFor(() => expect(within(dialog()).queryByText('Долгий')).not.toBeInTheDocument());
     await act(async () => release(json(reply())));
     expect(within(dialog()).queryByText('В Приморском 7 групп при спросе на 4.')).not.toBeInTheDocument();
     expect(field()).toBeEnabled();
+  });
+});
+
+describe('история разговора с сервера', () => {
+  const HISTORY = {
+    messages: [
+      { role: 'user', content: 'Сколько групп у Ивановой?' },
+      { role: 'assistant', content: 'У Ивановой А. две группы: №12 и №27.' },
+    ],
+  };
+
+  test('при открытии окна читается история и показывается: вопросы справа, ответы слева, без таблиц и запросов', async () => {
+    const fetchMock = open({ 'assistant/chat/history': () => json(HISTORY) });
+    expect(historyGets(fetchMock)).toBe(0);
+    await openPanel();
+    expect(await within(dialog()).findByText('Сколько групп у Ивановой?')).toBeInTheDocument();
+    expect(within(dialog()).getByText('У Ивановой А. две группы: №12 и №27.')).toBeInTheDocument();
+    expect(historyGets(fetchMock)).toBe(1);
+    expect(within(dialog()).queryByRole('table')).not.toBeInTheDocument();
+    expect(within(dialog()).queryByText('Как посмотрел')).not.toBeInTheDocument();
+    // разговор уже идёт: подсказки не нужны
+    expect(within(dialog()).queryByRole('group', { name: 'Примеры вопросов' })).not.toBeInTheDocument();
+  });
+
+  test('пока история грузится, видно «Загружаю прошлый разговор…», подсказок ещё нет', async () => {
+    let release: (r: Response) => void = () => {};
+    open({ 'assistant/chat/history': () => new Promise<Response>((resolve) => (release = resolve)) });
+    await openPanel();
+    expect(within(dialog()).getByRole('status')).toHaveTextContent('Загружаю прошлый разговор…');
+    expect(within(dialog()).queryByRole('group', { name: 'Примеры вопросов' })).not.toBeInTheDocument();
+    await act(async () => release(json(HISTORY)));
+    await within(dialog()).findByText('Сколько групп у Ивановой?');
+    expect(within(dialog()).getByRole('status')).toBeEmptyDOMElement();
+  });
+
+  test('пустая история: обычное приветствие с подсказками', async () => {
+    open();
+    await openPanel();
+    expect(await within(dialog()).findByRole('group', { name: 'Примеры вопросов' })).toBeInTheDocument();
+  });
+
+  test('история читается один раз за сеанс: закрыли и открыли окно — повторного запроса нет, разговор на месте', async () => {
+    const fetchMock = open({ 'assistant/chat/history': () => json(HISTORY) });
+    const user = await openPanel();
+    await within(dialog()).findByText('Сколько групп у Ивановой?');
+    await user.keyboard('{Escape}');
+    await user.click(await fab());
+    expect(within(dialog()).getByText('Сколько групп у Ивановой?')).toBeInTheDocument();
+    expect(historyGets(fetchMock)).toBe(1);
+  });
+
+  test('ошибка истории: сказано словами, подсказки на месте, вопрос задать можно', async () => {
+    const fetchMock = open({
+      'assistant/chat/history': () => json({ ok: false, error: 'unavailable', message: 'служебный текст' }, 500),
+      'assistant/chat': () => json(reply()),
+    });
+    const user = await openPanel();
+    const alert = await within(dialog()).findByRole('alert');
+    expect(alert).toHaveTextContent('Не удалось загрузить прошлый разговор');
+    expect(alert).not.toHaveTextContent('служебный текст');
+    expect(within(dialog()).getByRole('group', { name: 'Примеры вопросов' })).toBeInTheDocument();
+    await ask(user, 'Всё равно спрошу');
+    expect(await within(dialog()).findByText('В Приморском 7 групп при спросе на 4.')).toBeInTheDocument();
+    expect(sentChat(fetchMock)).toHaveLength(1);
+    // вопрос уже в разговоре: предложение загрузить старое больше не нужно
+    expect(within(dialog()).queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  test('«Загрузить ещё раз» повторяет чтение истории и показывает её', async () => {
+    let calls = 0;
+    const fetchMock = open({
+      'assistant/chat/history': () => (++calls === 1 ? json({ error: 'unavailable' }, 500) : json(HISTORY)),
+    });
+    const user = await openPanel();
+    await user.click(await within(dialog()).findByRole('button', { name: 'Загрузить ещё раз' }));
+    expect(await within(dialog()).findByText('Сколько групп у Ивановой?')).toBeInTheDocument();
+    expect(historyGets(fetchMock)).toBe(2);
+    expect(within(dialog()).queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  test('если вопрос задан раньше, чем пришла история, запоздавшая история разговор не дублирует', async () => {
+    let release: (r: Response) => void = () => {};
+    open({
+      'assistant/chat/history': () => new Promise<Response>((resolve) => (release = resolve)),
+      'assistant/chat': () => json(reply()),
+    });
+    const user = await openPanel();
+    await ask(user, 'Не стал ждать');
+    await within(dialog()).findByText('В Приморском 7 групп при спросе на 4.');
+    await act(async () => release(json({ messages: [{ role: 'user', content: 'Не стал ждать' }, { role: 'assistant', content: 'старый ответ' }] })));
+    expect(within(dialog()).getAllByText('Не стал ждать')).toHaveLength(1);
+    expect(within(dialog()).queryByText('старый ответ')).not.toBeInTheDocument();
+  });
+
+  test('история, пришедшая после «Очистить разговор», разговор не оживляет', async () => {
+    let release: (r: Response) => void = () => {};
+    const fetchMock = open({
+      'assistant/chat/history': () => new Promise<Response>((resolve) => (release = resolve)),
+      'assistant/chat': () => json(reply()),
+    });
+    const user = await openPanel();
+    await ask(user, 'Вопрос');
+    await within(dialog()).findByText('В Приморском 7 групп при спросе на 4.');
+    await user.click(within(dialog()).getByRole('button', { name: 'Очистить разговор' }));
+    await waitFor(() => expect(sentClear(fetchMock)).toHaveLength(1));
+    await act(async () => release(json(HISTORY)));
+    expect(within(dialog()).queryByText('Сколько групп у Ивановой?')).not.toBeInTheDocument();
+  });
+
+  test('подпись «Помощник помнит последние 6 сообщений» привязана к полю вопроса', async () => {
+    open();
+    await openPanel();
+    const note = within(dialog()).getByText('Помощник помнит последние 6 сообщений');
+    expect(field().getAttribute('aria-describedby')).toContain(note.id);
+  });
+
+  test('история с настоящими именами не записывается в хранилище браузера', async () => {
+    const setLocal = vi.spyOn(Storage.prototype, 'setItem');
+    open({ 'assistant/chat/history': () => json(HISTORY) });
+    await openPanel();
+    await within(dialog()).findByText('Сколько групп у Ивановой?');
+    const written = setLocal.mock.calls.map((c) => `${c[0]} ${c[1]}`).join('\n');
+    expect(written).not.toMatch(/Иванов/);
+    setLocal.mockRestore();
   });
 });

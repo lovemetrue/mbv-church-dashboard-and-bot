@@ -3,6 +3,7 @@ import type { GroupBrief, GroupItem, RequestItem } from '@contracts';
 import { useGroups } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
 import { Button, ErrorState, LoadingState, NewGroupIcon } from '../../shared/ui';
+import { proposalOf } from './model';
 import styles from './Requests.module.css';
 
 const a = ru.requests.act;
@@ -29,8 +30,9 @@ const blockedReason = (g: Pick<GroupItem, 'doNotRefer' | 'acceptsNew'> | undefin
  */
 export function buildOptions(r: RequestItem, groups: readonly GroupItem[]): { alternatives: Option[]; others: Option[] } {
   const byId = new Map(groups.map((g) => [g.id, g]));
-  const mainId = r.proposal?.main.group.id;
-  const alternatives: Option[] = (r.proposal?.alternatives ?? [])
+  const proposal = proposalOf(r);
+  const mainId = proposal?.main.group.id;
+  const alternatives: Option[] = (proposal?.alternatives ?? [])
     .filter((c) => c.group.id !== mainId)
     .map((c) => ({ group: c.group, blocked: blockedReason(byId.get(c.group.id)) }));
   const taken = new Set([mainId, ...alternatives.map((o) => o.group.id)]);

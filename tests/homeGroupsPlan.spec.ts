@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { DEFAULT_SETTINGS } from '../src/home-groups/plan/settings.js';
+import { DEFAULT_SETTINGS, DISTRICT_WEIGHT } from '../src/home-groups/plan/settings.js';
 import { NEIGHBORS } from '../src/home-groups/plan/geo.js';
 import { bucketOf, buildPlan, exclusionReason, match } from '../src/home-groups/plan/engine.js';
 import type {
@@ -151,37 +151,97 @@ describe('оценка совпадения: считается только п�
     expect(scoreOf(r, group({ day: 'Сб', slot: 'утро', street: 'Невский пр.' }))).toBe(100);
   });
 
-  test('соседний район даёт половину веса района, остальное совпало → 80 при всех четырёх известных', () => {
+  test('соседний район даёт половину веса района, остальное совпало → 86 при всех четырёх известных', () => {
     const r = request({ district: 'Красногвардейский', days: ['Чт'], slot: 'вечер', street: 'Индустриальный пр.' });
     const g = group({ district: 'Невский', street: 'Индустриальный пр.' });
-    // (40×0,5 + 25 + 20 + 15) / 100
-    expect(scoreOf(r, g)).toBe(80);
+    // (40×0,5 + 25 + 40 + 20 + 15) / (40 + 25 + 40 + 20 + 15)
+    expect(scoreOf(r, g)).toBe(86);
   });
 
-  test('время: совпал день, но не время суток → половина веса времени', () => {
+  test('день недели: совпал день, но не время суток → теряется только вес времени суток', () => {
     const r = request({ days: ['Чт'], slot: 'вечер' });
-    // (40 + 25 + 20×0,5) / (40 + 25 + 20) × 100 = 88,2
-    expect(scoreOf(r, group({ day: 'Чт', slot: 'день' }))).toBe(88);
+    // (40 + 25 + 40 + 0) / (40 + 25 + 40 + 20) × 100 = 84
+    expect(scoreOf(r, group({ day: 'Чт', slot: 'день' }))).toBe(84);
   });
 
-  test('время: не совпало ничего → вес времени теряется целиком', () => {
+  test('день недели: не совпал день — теряется вес дня, равный весу района', () => {
     const r = request({ days: ['Пн'], slot: 'утро' });
-    // (40 + 25) / 85 × 100 = 76,5
-    expect(scoreOf(r, group({ day: 'Чт', slot: 'вечер' }))).toBe(76);
+    // (40 + 25) / 125 × 100 = 52
+    expect(scoreOf(r, group({ day: 'Чт', slot: 'вечер' }))).toBe(52);
+    // Время суток совпало, а день нет: 85 / 125 × 100 = 68 — день важнее времени суток.
+    expect(scoreOf(r, group({ day: 'Чт', slot: 'утро' }))).toBe(68);
+    expect(scoreOf(r, group({ day: 'Пн', slot: 'вечер' }))).toBe(84);
   });
 
-  test('время: у группы времени нет вообще → нейтральные 0,5 и причина «уточнить»', () => {
+  test('день недели весит как район: не тот день стоит ровно столько же очков, сколько чужой (не соседний) район', () => {
+    // Район неизвестной группы не отсеивает только соседний; для сравнения берём «соседний» (0,5 веса) и «день мимо» (0 веса).
+    const base = request({ days: ['Чт'] });
+    const sameDistrictWrongDay = scoreOf(base, group({ day: 'Пн' }));
+    const neighborRightDay = scoreOf({ ...base, district: 'Красногвардейский' }, group({ district: 'Невский', day: 'Чт' }));
+    // (40 + 25 + 0) / 105 = 61,9 против (20 + 25 + 40) / 105 = 81 — потеря дня вдвое больше потери «соседнего» района:
+    // полный вес дня (40) против половины веса района (20).
+    expect(sameDistrictWrongDay).toBe(62);
+    expect(neighborRightDay).toBe(81);
+    expect(100 - sameDistrictWrongDay).toBeGreaterThan(100 - neighborRightDay);
+  });
+
+  test('человек назвал только день: время суток в оценку не входит', () => {
     const r = request({ days: ['Чт'] });
+    expect(scoreOf(r, group({ day: 'Чт', slot: 'утро' }))).toBe(100);
+    expect(scoreOf(r, group({ day: 'Чт', slot: null }))).toBe(100);
+  });
+
+  test('человек назвал только время суток: день группы в оценку не входит', () => {
+    const r = request({ slot: 'вечер' });
+    expect(scoreOf(r, group({ day: 'Пн', slot: 'вечер' }))).toBe(100);
+    expect(scoreOf(r, group({ day: 'Пн', slot: 'утро' }))).toBe(Math.round((65 / 85) * 100));
+  });
+
+  test('день: из нескольких удобных дней достаточно, чтобы совпал любой', () => {
+    const r = request({ days: ['Вт', 'Чт'] });
+    expect(scoreOf(r, group({ day: 'Чт' }))).toBe(100);
+    expect(scoreOf(r, group({ day: 'Вт' }))).toBe(100);
+    expect(scoreOf(r, group({ day: 'Пт' }))).toBe(62);
+  });
+
+  test('причины: день и время суток объясняются по отдельности', () => {
+    const r = request({ days: ['Чт'], slot: 'вечер' });
+    expect(reasonsOf(r, group({ day: 'Чт', slot: 'вечер' }))).toEqual(expect.arrayContaining(['день совпал: Чт', 'время суток совпало: вечер']));
+    expect(reasonsOf(r, group({ day: 'Пн', slot: 'день' }))).toEqual(expect.arrayContaining(['день не совпал: Пн', 'время суток не совпало: день']));
+    const tones = match(r, [group({ day: 'Пн', slot: 'вечер' })], SETTINGS).ranked[0]!.reasons;
+    expect(tones).toContainEqual({ tone: 'bad', text: 'день не совпал: Пн' });
+    expect(tones).toContainEqual({ tone: 'good', text: 'время суток совпало: вечер' });
+  });
+
+  test('время: у группы времени нет вообще → нейтральные 0,5 и одна причина «уточнить»', () => {
+    const r = request({ days: ['Чт'], slot: 'вечер' });
     const g = group({ day: null, slot: null });
-    expect(scoreOf(r, g)).toBe(88);
-    expect(reasonsOf(r, g)).toContain('у группы не указано время');
+    // (40 + 25 + 20 + 10) / 125 × 100 = 76
+    expect(scoreOf(r, g)).toBe(76);
+    expect(reasonsOf(r, g).filter((x) => x === 'у группы не указано время')).toHaveLength(1);
   });
 
   test('время: у группы несколько дней (day = null), но вечер известен → день не штрафуется, вечер совпал', () => {
     const r = request({ days: ['Чт'], slot: 'вечер' });
     const g = group({ day: null, slot: 'вечер' });
-    // день неизвестен (0,5), время суток совпало (1) → 0,75 от веса 20
-    expect(scoreOf(r, g)).toBe(Math.round(((40 + 25 + 20 * 0.75) / 85) * 100));
+    // день неизвестен (0,5 от 40), время суток совпало (полные 20)
+    expect(scoreOf(r, g)).toBe(Math.round(((40 + 25 + 20 + 20) / 125) * 100));
+    expect(reasonsOf(r, g)).toContain('день группы не указан');
+  });
+
+  test('улица: человек пишет улицу с домом и типом, у группы — только название: это одна улица', () => {
+    const r = request({ street: 'ул. Рылеева, д. 32, кв. 5' });
+    expect(scoreOf(r, group({ street: 'Рылеева' }))).toBe(100);
+    expect(scoreOf(r, group({ street: 'улица Рылеева 34' }))).toBe(100);
+    expect(scoreOf(r, group({ street: 'ул. Рылеева' }))).toBe(100);
+    expect(scoreOf(r, group({ street: 'Литейный пр.' }))).toBe(81);
+  });
+
+  test('улица: человек написал не улицу (метро) — сравнить нельзя, нейтральные 0,5 и причина', () => {
+    const r = request({ street: 'д. 5' });
+    const g = group({ street: 'Рылеева' });
+    expect(reasonsOf(r, g)).toContain('улицу не удалось сравнить');
+    expect(scoreOf(r, g)).toBe(Math.round(((65 + 7.5) / 80) * 100));
   });
 
   test('улица: совпала → полный вес, другая → ноль, у группы нет → 0,5 с причиной', () => {
@@ -235,9 +295,36 @@ describe('оценка совпадения: считается только п�
   });
 
   test('веса берутся из настроек: обнулив вес района, получаем оценку только по возрасту', () => {
-    const custom: PlanSettings = { ...SETTINGS, weights: { district: 0, age: 10, time: 0, street: 0 } };
+    const custom: PlanSettings = { ...SETTINGS, weights: { district: 0, day: 0, age: 10, slot: 0, street: 0 } };
     const r = request({ district: 'Красногвардейский' });
     expect(scoreOf(r, group({ district: 'Невский' }), custom)).toBe(100);
+  });
+});
+
+describe('вес дня недели', () => {
+  test('вес дня — ровно вес района, и оба берутся из одной константы', () => {
+    expect(DEFAULT_SETTINGS.weights.day).toBe(DEFAULT_SETTINGS.weights.district);
+    expect(DEFAULT_SETTINGS.weights.day).toBe(DISTRICT_WEIGHT);
+  });
+
+  test('движок берёт вес дня из настроек: обнулив его, получаем оценку без дня', () => {
+    const custom: PlanSettings = { ...SETTINGS, weights: { ...SETTINGS.weights, day: 0 } };
+    const r = request({ days: ['Пн'] });
+    expect(scoreOf(r, group({ day: 'Чт' }), custom)).toBe(100);
+    expect(scoreOf(r, group({ day: 'Чт' }))).toBeLessThan(100);
+  });
+
+  test('район и день считаются по настройкам, а не по зашитым числам: при равных весах день мимо стоит столько же, сколько и район мимо', () => {
+    const only: PlanSettings = { ...SETTINGS, weights: { district: 10, day: 10, age: 0, slot: 0, street: 0 } };
+    const r = request({ district: 'Красногвардейский', days: ['Чт'], ageRange: null });
+    // Район «Онлайн» не совпадает с районом заявки и даёт половину веса, день мимо — ноль: 10 + 0 против 5 + 10.
+    const wrongDay = scoreOf(r, group({ district: 'Красногвардейский', day: 'Пн' }), only);
+    const wrongDistrict = scoreOf(r, group({ district: 'Онлайн', day: 'Чт' }), only);
+    expect(wrongDay).toBe(50);
+    expect(wrongDistrict).toBe(75);
+    // Меняем местами веса — результат зеркален: значит, влияют именно настройки, а не зашитые числа.
+    const swapped: PlanSettings = { ...only, weights: { ...only.weights, district: 10, day: 30 } };
+    expect(scoreOf(r, group({ district: 'Красногвардейский', day: 'Пн' }), swapped)).toBe(25);
   });
 });
 

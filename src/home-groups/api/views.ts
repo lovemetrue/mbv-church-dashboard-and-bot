@@ -1,9 +1,12 @@
 import type { DashboardGroup } from '../../db/repos/groups.repo.js';
 import type { MemberRow, PersonRow } from '../../db/repos/members.repo.js';
 import type { StoredHint } from '../../db/repos/hints.repo.js';
+import type { StrangeMarkRow } from '../../db/repos/strange.repo.js';
+import { diffSnapshots, inputSnapshot, type InputSnapshot } from '../plan/signature.js';
+import { streetName } from '../plan/street.js';
 import { gistOf } from '../reconcile/gist.js';
 import { reconcileOf } from '../reconcile/plan.js';
-import { baseHash, needsOf, anyNeed, type RawBrief } from '../assistant/brief.js';
+import { baseHash, needsOf, anyNeed, scriptFactsOf, type AssistantCandidate, type RawBrief } from '../assistant/brief.js';
 import type { ActivityRow, AuditRow } from '../../db/repos/audit.repo.js';
 import type { DashboardRequest } from '../../db/repos/requests.repo.js';
 import type { RegisteredParticipant } from '../../db/repos/users.repo.js';
@@ -13,7 +16,7 @@ import { inputSignature } from '../plan/signature.js';
 import { formatPhone } from '../../core/phone.js';
 import type {
   Bucket, Candidate, Counters, CoordinatorItem, CoordinatorsView, GroupBrief, GroupItem, GroupsView,
-  HealthItem, LogEntry, MatchingStatus, NoPlan, OriginalField, ParamInfo, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, GroupMember, OtherItem, RequestsView, TeamView, TodayView,
+  HealthItem, LogEntry, MatchingStatus, NoPlan, StrangeMark, DataChange, OriginalField, ParamInfo, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, GroupMember, OtherItem, RequestsView, TeamView, TodayView,
 } from '../contracts.js';
 import type {
   Day, PlanEngineApi, PlanEntry, PlanEntryProposal, PlanGroup, PlanOutput, PlanRequest, ScoredGroup, Slot,
@@ -35,6 +38,8 @@ export interface ViewsInput {
   activity?: readonly ActivityRow[];
   /** Разбор помощника по заявкам (см. `request_hints`): подставляется там, где скрипт ничего не понял. */
   hints?: ReadonlyMap<number, StoredHint>;
+  /** Метки «Странный человек»: ключ человека (u12, r345, p7) → кто и когда поставил. */
+  strange?: ReadonlyMap<string, StrangeMarkRow>;
   /** Состав групп, внесённый вручную. */
   members?: readonly MemberRow[];
   /** Карточки людей, внесённые вручную. */
@@ -45,18 +50,27 @@ export interface ViewsInput {
    * Накопленные предложения (заявка → группа и кто предложил). Они закрепляют выбор: движок
    * сохраняет группу, пока она остаётся доступной, и подбирает новые заявки вокруг неё.
    */
-  activeProposals?: ReadonlyMap<number, { groupId: number | null; source: 'script' | 'agent' | 'manual'; inputHash?: string | null }>;
+  activeProposals?: ReadonlyMap<number, { groupId: number | null; source: 'script' | 'agent' | 'manual'; inputHash?: string | null; inputSnapshot?: InputSnapshot | null }>;
   /** Сколько человек утвердил сервис в группу после последней обратной связи ведущего. */
   placedNew?: ReadonlyMap<number, number>;
   /** Настройки подбора: автоматический ли он и когда запускали в последний раз. */
   matching?: { auto: boolean; lastRun: MatchingStatus['lastRun'] };
 }
 
+/** Разбор удобного времени человека: что подходит и что нет. */
+interface HumanWhen { days: Day[]; slot: Slot | null; avoidDays: Day[]; avoidSlots: Slot[] }
+
 export interface ViewsOptions {
   /** Вместимость группы, пока в базе нет такой колонки (этап A). */
   defaultCapacity?: number;
   /** Пояс, в котором считаются «сегодня» и «дней назад». */
   timeZone?: string;
+  /**
+   * Сравнивать улицу человека с улицей группы. Адрес группы закрытый (это дом ведущего), поэтому по умолчанию выключено:
+   * тогда у групп улицы нет и совпадение по улице нейтральное. Включённым в подбор попадает только название улицы без
+   * дома, и наружу оно не отдаётся — лишь причина «та же улица».
+   */
+  matchGroupStreet?: boolean;
 }
 
 /** Всё, что отдают ручки API, посчитанное за один проход по одному снимку данных. */
@@ -171,6 +185,12 @@ function auditText(a: AuditRow): string | null {
     }
     case 'request.reopen':
       return `Возвращена в работу · ${a.actor}`;
+    case 'request.data_changed': {
+      const fields = Array.isArray(after['fields']) ? (after['fields'] as unknown[]).map(String).filter(Boolean) : [];
+      return fields.length > 0 ? `Данные для подбора изменились: ${fields.join(', ').toLowerCase()}` : 'Данные для подбора изменились';
+    }
+    case 'request.strange':
+      return after['value'] === true ? `Отмечено «странный человек» · ${a.actor}` : `Метка «странный человек» снята · ${a.actor}`;
     case 'request.reconcile': {
       // group_ids — все группы; у записей до «нескольких групп» только group_id.
       const raw = Array.isArray(after['group_ids']) ? after['group_ids'] : [after['group_id']];
@@ -264,7 +284,7 @@ export function buildViews(input: ViewsInput, engine: PlanEngineApi, now: Date, 
 /** Представления и сам план: автоматический подбор берёт из плана то, что нужно сохранить. */
 export function buildViewsWithPlan(
   input: ViewsInput, engine: PlanEngineApi, now: Date, options: ViewsOptions = {},
-): { views: Views; plan: PlanOutput; openRequestIds: number[]; signatures: Map<number, string>; assistantCandidates: { id: number; brief: RawBrief }[] } {
+): { views: Views; plan: PlanOutput; openRequestIds: number[]; signatures: Map<number, string>; snapshots: Map<number, InputSnapshot>; assistantCandidates: AssistantCandidate[] } {
   const defaultCapacity = options.defaultCapacity ?? DEFAULT_CAPACITY;
   const timeZone = options.timeZone ?? DEFAULT_TIME_ZONE;
   const today = localIsoDate(now, timeZone);
@@ -283,8 +303,9 @@ export function buildViewsWithPlan(
       ageRange: engine.parseAgeRange(g.age),
       day: when.day,
       slot: when.slot,
-      // Улицу для подбора отдельной колонкой ещё не завели, а закрытый `address` сюда нельзя ни при каких условиях.
-      street: null,
+      // Закрытый `address` в подбор не идёт, пока владелец не включил сравнение улиц (`matchGroupStreet`); и тогда —
+      // только название улицы без дома.
+      street: options.matchGroupStreet ? streetName(g.address) : null,
       // Утверждённых сервисом после обратной связи ведущий в число ещё не внёс — добавляем сами.
       people: effectivePeople(g.people, input.placedNew?.get(g.id) ?? 0),
       capacity: defaultCapacity,
@@ -323,9 +344,10 @@ export function buildViewsWithPlan(
   // ── заявки ────────────────────────────────────────────────────────────────
   const joinRequests = input.requests.filter((r) => r.type === 'join_group');
 
-  const humanWhen = (text: string | null): { days: Day[]; slot: Slot | null } => {
+  /** Удобное время человека: подходящие дни и время суток и то, что он назвал неподходящим («кроме воскресенья»). */
+  const humanWhen = (text: string | null): HumanWhen => {
     const w = engine.parseHumanSchedule(text);
-    return { days: w.days, slot: w.slot };
+    return { days: w.days, slot: w.slot, avoidDays: w.avoidDays, avoidSlots: w.avoidSlots };
   };
 
   /** Удобное время и улица: правка координатора важнее ответа из анкеты. */
@@ -347,7 +369,8 @@ export function buildViewsWithPlan(
     const scriptDistrict = engine.resolveDistrict(b.place, metroIndex);
     const scriptAge = engine.parseAgeRange(r.age);
     const scriptWhen = humanWhen(b.schedule);
-    const whenKnown = scriptWhen.days.length > 0 || scriptWhen.slot !== null;
+    // «Кроме воскресенья» — тоже понятый ответ: помощника из-за него звать не нужно.
+    const whenKnown = scriptWhen.days.length > 0 || scriptWhen.slot !== null || scriptWhen.avoidDays.length > 0 || scriptWhen.avoidSlots.length > 0;
     const filled: ('район' | 'возраст' | 'время')[] = [];
     let district = scriptDistrict;
     let ageRange = scriptAge;
@@ -357,11 +380,16 @@ export function buildViewsWithPlan(
       const hintAge = hint.age ? engine.parseAgeRange(hint.age) : null;
       if (ageRange === null && hintAge) { ageRange = hintAge; filled.push('возраст'); }
       if (!whenKnown && (hint.days.length > 0 || hint.slot)) {
-        when = { days: hint.days as Day[], slot: (hint.slot as Slot | null) ?? null };
+        when = { days: hint.days as Day[], slot: (hint.slot as Slot | null) ?? null, avoidDays: [], avoidSlots: [] };
         filled.push('время');
       }
     }
-    return { district, ageRange, when, filled, hint, needs: needsOf(b, { district: scriptDistrict, ageKnown: scriptAge !== null, whenKnown }) };
+    return {
+      district, ageRange, when, filled, hint,
+      needs: needsOf(b, { district: scriptDistrict, ageKnown: scriptAge !== null, whenKnown }),
+      // Что понял скрипт сам (без подстановок помощника) — это и уходит помощнику как уже известное.
+      script: { district: scriptDistrict, ageKnown: scriptAge !== null, when: scriptWhen },
+    };
   };
 
   const planRequestOf = (r: DashboardRequest): PlanRequest => {
@@ -374,35 +402,75 @@ export function buildViewsWithPlan(
       place: nonBlank(r.place),
       // Удобные дни и время — свободный текст человека или правка координатора; разбираем его честно:
       // что неясно, остаётся пустым (или берётся из разбора помощника, если он есть).
-      ...resolved.when,
+      days: resolved.when.days,
+      slot: resolved.when.slot,
       street: streetOf(r).text,
       rejectedGroupIds: [...(input.rejectedGroups?.get(r.id) ?? [])],
-      avoidDays: [],
-      avoidSlots: [],
+      avoidDays: resolved.when.avoidDays,
+      avoidSlots: resolved.when.avoidSlots,
       pinnedGroupId: null,
       waitingDays: daysSince(validIsoDate(r.date), today),
     };
   };
 
+  // ── метка «Странный человек» ──────────────────────────────────────────────
+  // Метка лежит на ключе человека (u12, r345, p7), а записей на одного человека бывает несколько (регистрация, заявка из
+  // таблицы, карточка): поэтому метка действует и на тот же телефон. Так её не потерять, если заявку завели по-другому.
+  const strangeMarks = input.strange ?? new Map<string, StrangeMarkRow>();
+  const phoneIdent = (phone: string | null | undefined): string | null => {
+    const digits = (phone ?? '').replace(/\D/g, '');
+    return digits.length >= 10 ? digits.slice(-10) : null;
+  };
+  const phonesOfKey = new Map<string, string[]>();
+  const addPhones = (key: string, phones: readonly (string | null | undefined)[]) => {
+    const idents = phones.map(phoneIdent).filter((x): x is string => x !== null);
+    if (idents.length > 0) phonesOfKey.set(key, [...(phonesOfKey.get(key) ?? []), ...idents]);
+  };
+  for (const u of input.participants) addPhones(`u${u.id}`, [u.phone]);
+  for (const p of input.persons ?? []) addPhones(`p${p.id}`, [p.phone]);
+  for (const r of input.requests) addPhones(r.user_id !== null ? `u${r.user_id}` : `r${r.id}`, [r.phone, ...r.phones]);
+  const strangeByPhone = new Map<string, StrangeMarkRow>();
+  for (const [key, row] of strangeMarks) for (const ident of phonesOfKey.get(key) ?? []) strangeByPhone.set(ident, row);
+  const toStrange = (row: StrangeMarkRow): StrangeMark => ({ by: row.by, at: new Date(row.at).toISOString(), note: row.note });
+  const strangeOf = (key: string, phones: readonly (string | null | undefined)[]): StrangeMark | null => {
+    const own = strangeMarks.get(key);
+    if (own) return toStrange(own);
+    for (const phone of phones) {
+      const ident = phoneIdent(phone);
+      const byPhone = ident !== null ? strangeByPhone.get(ident) : undefined;
+      if (byPhone) return toStrange(byPhone);
+    }
+    return null;
+  };
+  const strangeOfRequest = (r: DashboardRequest): StrangeMark | null =>
+    strangeOf(r.user_id !== null ? `u${r.user_id}` : `r${r.id}`, [r.phone, ...r.phones]);
+
   const joinById = new Map(joinRequests.map((r) => [r.id, r]));
   // Отпечаток данных заявки и закрепление: предложение, полученное по другим данным, устарело —
   // его группа не закрепляется, заявку пересчитает следующий «Закрепить подбор» или «Подобрать заново».
   const signatures = new Map<number, string>();
+  const snapshots = new Map<number, InputSnapshot>();
   const dataChanged = new Set<number>();
   const planRequests = new Map<number, PlanRequest>();
   for (const r of joinRequests) {
     const base = planRequestOf(r);
     const signature = inputSignature(base);
     signatures.set(r.id, signature);
+    snapshots.set(r.id, inputSnapshot(base));
     const stored = input.activeProposals?.get(r.id);
     const changed = stored !== undefined && stored.groupId !== null && stored.inputHash != null && stored.inputHash !== signature;
     if (changed) dataChanged.add(r.id);
     planRequests.set(r.id, { ...base, pinnedGroupId: changed ? null : (stored?.groupId ?? null) });
   }
   const openRequests = joinRequests.filter((r) => r.status !== DONE && r.status !== CANCELLED);
-  const openPlanRequests = openRequests.map((r) => planRequests.get(r.id)!);
+  // Отмеченные «странными» в подбор обычных групп не идут и мест не занимают: для них нужна отдельная группа, и решает человек.
+  const strangeIds = new Set(openRequests.filter((r) => strangeOfRequest(r) !== null).map((r) => r.id));
+  const openPlanRequests = openRequests.filter((r) => !strangeIds.has(r.id)).map((r) => planRequests.get(r.id)!);
 
   const plan: PlanOutput = engine.buildPlan({ requests: openPlanRequests, groups: planGroups, settings });
+  for (const id of strangeIds) {
+    plan.entries.set(id, { kind: 'none', code: 'strange', reason: 'Отмечен как «странный человек»: нужна отдельная группа, подберите её вручную' });
+  }
 
   const bucketById = new Map<number, Bucket>();
   for (const r of joinRequests) {
@@ -423,6 +491,14 @@ export function buildViewsWithPlan(
     return group ? { group, score: s.score, confidence, reasons: s.reasons } : null;
   };
 
+  // Что изменилось у заявки с тех пор, как предложили группу: разница между снимком у предложения и текущими данными.
+  const changesOf = (requestId: number): DataChange[] | null => {
+    if (!dataChanged.has(requestId)) return null;
+    const before = input.activeProposals?.get(requestId)?.inputSnapshot;
+    const now = snapshots.get(requestId);
+    return before && now ? diffSnapshots(before, now) : null;
+  };
+
   const proposalOf = (e: PlanEntryProposal, requestId: number): Proposal | null => {
     const main = candidate(e.main, e.confidence);
     if (!main) return null;
@@ -431,6 +507,7 @@ export function buildViewsWithPlan(
       // Закреплено, если в «предварительно» уже лежит предложение именно на эту группу.
       saved: input.activeProposals?.get(requestId)?.groupId === main.group.id && !dataChanged.has(requestId),
       dataChanged: dataChanged.has(requestId),
+      changes: changesOf(requestId),
       // Источник — тот, кто предложил эту группу и сохранил предложение; иначе это свежий расчёт.
       source: sourceOfProposal(input.activeProposals?.get(requestId), main.group.id),
       main,
@@ -481,10 +558,13 @@ export function buildViewsWithPlan(
   };
 
   // Что помощник может разобрать сейчас: открытые заявки, где в записи есть текст, а скрипт его не понял, и разбора ещё нет.
-  const assistantCandidates: { id: number; brief: RawBrief }[] = [];
+  const assistantCandidates: AssistantCandidate[] = [];
   for (const r of openRequests) {
     const resolved = resolveWithHint(r);
-    if (!resolved.hint && anyNeed(resolved.needs)) assistantCandidates.push({ id: r.id, brief: briefOf(r) });
+    // Помощнику уходит и то, что скрипт уже понял (район, дни, время суток), чтобы он не разбирал это заново.
+    if (!resolved.hint && anyNeed(resolved.needs)) {
+      assistantCandidates.push({ id: r.id, brief: briefOf(r), needs: resolved.needs, script: scriptFactsOf(resolved.script) });
+    }
   }
 
   const requestItems: RequestItem[] = [];
@@ -496,6 +576,7 @@ export function buildViewsWithPlan(
     const finalBrief = bucket === 'done' && r.group_id !== null ? brief(r.group_id) : null;
     requestItems.push({
       id: r.id,
+      strange: strangeOfRequest(r),
       fio: pr.fio,
       phone: displayPhone(r.phones, r.phone),
       ageLabel: nonBlank(r.age),
@@ -528,6 +609,7 @@ export function buildViewsWithPlan(
   const otherState = (r: DashboardRequest): OtherItem['state'] => (r.status === DONE ? 'done' : r.status === CANCELLED ? 'cancelled' : 'open');
   const otherItem = (r: DashboardRequest): OtherItem => ({
     id: r.id,
+    strange: strangeOfRequest(r),
     type: r.type as OtherItem['type'],
     typeLabel: TYPE_LABEL[r.type as OtherItem['type']] ?? 'Обращение',
     gist: gistOf(r),
@@ -582,6 +664,7 @@ export function buildViewsWithPlan(
     addMember(m.group_id, {
       kind: 'manual', id: m.id, personKey: m.personKey, fio: nonBlank(m.full_name) ?? 'Без имени',
       phone: nonBlank(formatPhone(nonBlank(m.phone))), date: validIsoDate(m.joined_on), note: nonBlank(m.note), alsoIn: [],
+      strange: strangeOf(m.personKey, [m.phone]),
     });
   }
   for (const r of joinRequests) {
@@ -593,6 +676,7 @@ export function buildViewsWithPlan(
     addMember(r.group_id, {
       kind: 'placed', id: r.id, personKey: key, fio: nonBlank(r.fio) ?? 'Без имени', phone: displayPhone(r.phones, r.phone),
       date: approved?.at ? localIsoDate(approved.at, timeZone) : null, note: null, alsoIn: [],
+      strange: strangeOf(key, [r.phone, ...r.phones]),
     });
   }
   // «Есть и в другой группе»: тот же человек по телефону, а без телефона — по ключу справочника.
@@ -652,6 +736,7 @@ export function buildViewsWithPlan(
   for (const u of input.participants) {
     people.push({
       key: `u${u.id}`,
+      strange: strangeOf(`u${u.id}`, [u.phone]),
       personId: null,
       groups: groupCodesOf(`u${u.id}`),
       fio: nonBlank(u.full_name) ?? 'Без имени',
@@ -672,6 +757,7 @@ export function buildViewsWithPlan(
     const pr = planRequests.get(r.id)!;
     people.push({
       key: `r${r.id}`,
+      strange: strangeOfRequest(r),
       personId: null,
       groups: groupCodesOf(`r${r.id}`),
       fio: pr.fio,
@@ -690,6 +776,7 @@ export function buildViewsWithPlan(
   for (const p of input.persons ?? []) {
     people.push({
       key: `p${p.id}`,
+      strange: strangeOf(`p${p.id}`, [p.phone]),
       personId: p.id,
       groups: groupCodesOf(`p${p.id}`),
       fio: nonBlank(p.full_name) ?? 'Без имени',
@@ -761,7 +848,7 @@ export function buildViewsWithPlan(
     people: { generatedAt, items: people },
     coordinators: { generatedAt, items: coordinatorItems },
   };
-  return { views, plan, openRequestIds: openRequests.map((r) => r.id), signatures, assistantCandidates };
+  return { views, plan, openRequestIds: openRequests.map((r) => r.id), signatures, snapshots, assistantCandidates };
 }
 
 /**

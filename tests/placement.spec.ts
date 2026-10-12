@@ -285,7 +285,7 @@ describe('накопленные предложения', () => {
     const g = await group();
     const r = await request();
     await repo.syncProposals([desired(r, g)], 'a');
-    expect((await repo.activeProposals()).get(r)).toEqual({ groupId: g, source: 'script', inputHash: null });
+    expect((await repo.activeProposals()).get(r)).toEqual({ groupId: g, source: 'script', inputHash: null, inputSnapshot: null });
   });
 
   test('утверждение без сохранённого предложения по-прежнему работает рядом с накопленными', async () => {
@@ -406,7 +406,7 @@ describe('«подобрать заново» и отпечаток данных
     const r = await request();
     await repo.syncProposals([d(r, g, 'abc')], 'a');
     expect(await hashOf(r)).toBe('abc');
-    expect((await repo.activeProposals()).get(r)).toEqual({ groupId: g, source: 'script', inputHash: 'abc' });
+    expect((await repo.activeProposals()).get(r)).toEqual({ groupId: g, source: 'script', inputHash: 'abc', inputSnapshot: null });
   });
 
   test('та же группа по новым данным: предложение остаётся, отпечаток обновляется, замены нет', async () => {

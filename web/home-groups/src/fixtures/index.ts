@@ -8,11 +8,13 @@ import {
   buildSettingsStaff,
   fixtureStaffDelivery,
   fixtureSuggestLogin,
+  sendDemoInvites,
 } from './settings';
 import { buildFormMeta } from './formMeta';
 import { buildCoordinators, buildGroups, buildPeople, buildRequests, buildToday } from './build';
 import { buildCampaign } from './campaign';
 import { fixtureChatReply } from './chat';
+import { reconcileDemoOther, reconcileDemoReady } from './others';
 import { buildTeam } from './team';
 
 /** Ответ «сервера» в режиме фикстур. Путь — как в apiGet: «today», «requests»… */
@@ -78,6 +80,15 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
   }
   // Рабочее место координатора: правка данных, «в работе у», итог звонка, закрытие и возврат в работу. В демо данные не меняются, действие просто «получается».
   if (/^requests\/\d+\/(edit|assign|call|close|reopen)$/.test(clean)) return { ok: true };
+  // Разбор «других обращений»: в демо обращение уходит в закрытые (fixtures/others.ts), а повторный разбор отвечает «уже было так».
+  if (/^requests\/\d+\/reconcile$/.test(clean)) {
+    const id = Number(clean.split('/')[1]);
+    return { ok: true, already: !reconcileDemoOther(id) };
+  }
+  if (clean === 'requests/reconcile-ready') {
+    const ids = ((body ?? {}) as { ids?: number[] }).ids ?? [];
+    return { ok: true, ...reconcileDemoReady(ids) };
+  }
   // Правка и удаление записей справочника и заявок: в демо данные не меняются, действие просто «получается».
   if (/^(groups|coordinators|requests)\/\d+\/(update|delete)$/.test(clean)) return { ok: true };
   // Состав группы: «Добавить человека» отвечает номером строки и ключом (у нового человека это карточка p…), остальное «получается».
@@ -88,6 +99,8 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
   if (/^(members|persons)\/\d+\/(update|delete)$/.test(clean)) return { ok: true };
   // Удаление регистрации и настройка бота: в демо ничего не меняется, действие просто «получается».
   if (/^people\/\d+\/delete$/.test(clean) || clean === 'settings/bot/extra-questions') return { ok: true };
+  // Рассылка доп. вопросов: в демо она «уходит» всем текущим получателям, после чего их не остаётся.
+  if (clean === 'settings/bot/send-extra-questions') return { ok: true, sent: sendDemoInvites(), failed: 0, blocked: 0 };
   // Переключатель помощника: в демо ничего не меняется, действие просто «получается».
   if (clean === 'settings/assistant/enabled') return { ok: true };
   // Массовое действие: в демо все выбранные «обработаны», ничего не пропущено.

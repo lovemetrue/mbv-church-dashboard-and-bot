@@ -493,6 +493,7 @@ export function buildGroups(): GroupsView {
     comment: g.comment,
     health: healthOf(g),
     placedNew: 0,
+    leaderKey: g.leaderKey,
     plannedRequests: (plan.takenBy.get(g.id) ?? []).map((id) => {
       const req = requests.find((x) => x.id === id)!;
       return {

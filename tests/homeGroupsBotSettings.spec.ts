@@ -3,7 +3,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { AuditRepo } from '../src/db/repos/audit.repo.js';
 import { SettingsRepo } from '../src/db/repos/settings.repo.js';
 import { createBotSettings } from '../src/home-groups/botSettings.js';
-import { setupTestDb, truncateAll } from './helpers/testDb.js';
+import { createExtraInvites } from '../src/core/extraInvites.js';
+import { createDeps } from '../src/deps.js';
+import type { Platform, PlatformName } from '../src/core/platform.js';
+import { T } from '../src/core/texts.js';
+import { FakePlatform } from './helpers/fakePlatform.js';
+import { seedUser, setupTestDb, truncateAll } from './helpers/testDb.js';
 
 let db: Pool;
 beforeAll(async () => { db = await setupTestDb(); });
@@ -48,5 +53,74 @@ describe('настройка бота «новые вопросы анкеты»
     const [e] = (await db.query(`SELECT actor, action, after::text AS after FROM audit_log`)).rows;
     expect(e).toMatchObject({ actor: 'boss', action: 'settings.extra_questions' });
     expect(JSON.parse(e.after)).toEqual({ mode: 'list', count: 2 });
+  });
+});
+
+describe('досылка новых вопросов из «Настроек»', () => {
+  let tg: FakePlatform;
+  /** Настоящая досылка на поддельной платформе; режим вопросов — как в `.env`, пока настройку не меняли. */
+  const withInvites = (env = 'all') => {
+    tg = new FakePlatform('telegram');
+    const deps = createDeps({
+      db, platforms: new Map<PlatformName, Platform>([['telegram', tg]]), admins: new Map(),
+      schedule: { startDate: '2026-09-01', broadcastTime: '07:00', totalDays: 40, timezone: 'Europe/Moscow' },
+      broadcastRate: 1000, extraQuestions: env,
+    });
+    return createBotSettings({ settings: new SettingsRepo(db), audit: new AuditRepo(db), envValue: env, invites: createExtraInvites(deps) });
+  };
+  const audit = async () => (await db.query(`SELECT actor, action, after::text AS after FROM audit_log ORDER BY id`)).rows;
+
+  test('в обзоре видно, сколько человек получит приглашение, и сами тексты', async () => {
+    await seedUser(db, { id: '1', mdgStatus: 'join' });
+    await seedUser(db, { id: '2', mdgStatus: 'open' });
+    expect((await withInvites().view()).invites).toEqual({
+      available: true, join: 1, lead: 1, total: 2, off: false, textJoin: T.followUpInviteJoin, textLead: T.followUpInviteLead,
+    });
+  });
+
+  test('без подключённых платформ досылка недоступна и отправить нечем', async () => {
+    const s = make('all');
+    expect((await s.view()).invites).toMatchObject({ available: false, total: 0 });
+    expect(await s.sendExtraInvites({ expectedTotal: 1 }, 'boss')).toMatchObject({ ok: false, error: 'unavailable' });
+  });
+
+  test('отправка шлёт приглашения подтверждённому числу людей, в журнал идут числа, а не люди', async () => {
+    await seedUser(db, { id: '1', mdgStatus: 'join' });
+    await seedUser(db, { id: '2', mdgStatus: 'open' });
+    const s = withInvites();
+    expect(await s.sendExtraInvites({ expectedTotal: 2 }, 'boss')).toEqual({ ok: true, sent: 2, failed: 0, blocked: 0 });
+    expect(tg.sent.map((m) => m.chatId).sort()).toEqual(['1', '2']);
+    const [e] = await audit();
+    expect(e).toMatchObject({ actor: 'boss', action: 'settings.extra_invites' });
+    expect(JSON.parse(e.after)).toEqual({ join: 1, lead: 1, sent: 2, failed: 0, blocked: 0 });
+    expect((await s.view()).invites).toMatchObject({ total: 0 });
+  });
+
+  test('число изменилось с момента показа — ничего не уходит и сказано, сколько стало', async () => {
+    await seedUser(db, { id: '1', mdgStatus: 'join' });
+    await seedUser(db, { id: '2', mdgStatus: 'join' });
+    const r = await withInvites().sendExtraInvites({ expectedTotal: 1 }, 'boss');
+    expect(r).toMatchObject({ ok: false, error: 'conflict' });
+    expect((r as { message: string }).message).toContain('2');
+    expect(tg.sent).toEqual([]);
+    expect(await audit()).toEqual([]);
+  });
+
+  test('когда вопросы выключены, отправка отказывает и объясняет почему', async () => {
+    await seedUser(db, { id: '1', mdgStatus: 'join' });
+    const r = await withInvites('off').sendExtraInvites({ expectedTotal: 0 }, 'boss');
+    expect(r).toMatchObject({ ok: false, error: 'bad_request' });
+    expect((r as { message: string }).message).toContain('выключены');
+    expect(tg.sent).toEqual([]);
+  });
+
+  test('получателей нет — отказ без отправки', async () => {
+    expect(await withInvites().sendExtraInvites({ expectedTotal: 0 }, 'boss')).toMatchObject({ ok: false, error: 'bad_request' });
+  });
+
+  test.each([[{}], [null], [{ expectedTotal: '2' }], [{ expectedTotal: -1 }], [{ expectedTotal: 1.5 }]])('неверное тело %j отклоняется', async (body) => {
+    await seedUser(db, { id: '1', mdgStatus: 'join' });
+    expect(await withInvites().sendExtraInvites(body, 'boss')).toMatchObject({ ok: false, error: 'bad_request' });
+    expect(tg.sent).toEqual([]);
   });
 });

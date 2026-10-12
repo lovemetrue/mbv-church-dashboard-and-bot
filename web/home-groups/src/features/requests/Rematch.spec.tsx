@@ -181,11 +181,11 @@ describe('«Заявки»: данные изменились после зак�
     expect(await within(card).findByText('Данные изменились')).toBeInTheDocument();
     expect(
       within(card).getByText(
-        'Район, возраст, время или улица изменились после закрепления. Нажмите «Подобрать заново» — или запустите «Закрепить подбор», он обновит такие заявки сам',
+        'Район, возраст, время или улица изменились после того, как группа была предложена. Нажмите «Подобрать заново» — или запустите «Предложить группы новым заявкам», он обновит такие заявки сам',
       ),
     ).toBeInTheDocument();
-    expect(within(card).queryByText('Закреплено')).not.toBeInTheDocument();
-    expect(within(card).queryByText('Расчёт, не закреплено')).not.toBeInTheDocument();
+    expect(within(card).queryByText('Предложена автоматически')).not.toBeInTheDocument();
+    expect(within(card).queryByText('Предварительный расчёт')).not.toBeInTheDocument();
   });
 
   test('метка окрашена цветом предупреждения и подписана словами, а не только цветом', async () => {
@@ -208,7 +208,7 @@ describe('«Заявки»: данные изменились после зак�
     const group = fixtureItem(1).proposal!.main.group;
     stubFetchWithFixtures({ requests: () => json(viewWith(1, { proposal: changedProposal(1, false) })) });
     const card = await openCard(1);
-    await within(card).findByText('Закреплено');
+    await within(card).findByText('Предложена автоматически');
     expect(within(card).queryByText('Данные изменились')).not.toBeInTheDocument();
     expect(within(card).getByRole('button', { name: REMATCH }).className).not.toMatch(/primary/);
     expect(within(card).getByRole('button', { name: `Утвердить в группу ${group.code}` }).className).toMatch(/primary/);
@@ -223,7 +223,7 @@ describe('«Заявки»: данные изменились после зак�
     const saved = items.filter((r) => r.proposal!.saved && !r.proposal!.dataChanged).length;
     expect(changed).toBeGreaterThan(0);
     expect(within(list).getAllByText('Данные изменились')).toHaveLength(changed);
-    expect(within(list).getAllByText('Закреплено')).toHaveLength(saved);
+    expect(within(list).getAllByText('Предложена автоматически')).toHaveLength(saved);
   });
 });
 
@@ -238,7 +238,7 @@ describe('«Заявки»: после правки времени или ули
     expect(await within(card).findByText('Сохранено: улица и дом.')).toBeInTheDocument();
     expect(
       within(card).getByText(
-        'Параметры изменились — группа пересчитается при следующем закреплении подбора или по кнопке «Подобрать заново»',
+        'Параметры изменились — группа пересчитается при следующем запуске подбора или по кнопке «Подобрать заново»',
       ),
     ).toBeInTheDocument();
   });

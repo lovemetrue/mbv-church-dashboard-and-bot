@@ -15,7 +15,8 @@ export const STATE_LABEL: Record<OtherItem['state'], string> = {
 export const STATE_TONE: Record<OtherItem['state'], PillTone> = { open: 'warn', done: 'ok', cancelled: 'plain' };
 
 /**
- * Список «Других обращений». Строка: человек, тип с меткой состояния, телефон и срок ожидания.
+ * Список «Других обращений». Строка: человек, тип с меткой состояния, телефон и срок ожидания; второй строкой — суть
+ * обращения (не больше двух строк, остальное обрезается: целиком она в карточке).
  * Флажков для массовых действий нет: обращений мало, и каждое требует отдельного решения.
  */
 export function OtherList({
@@ -68,6 +69,7 @@ export function OtherList({
               {it.phone ? <span className="num">{formatPhone(it.phone)}</span> : <span className={styles.note}>{o.noPhone}</span>}
               {it.state === 'open' && it.waitingDays != null && <span className={styles.note}>{o.waits(it.waitingDays)}</span>}
             </div>
+            {it.gist && <p className={styles.gist}>{it.gist}</p>}
           </li>
         ))}
       </ul>

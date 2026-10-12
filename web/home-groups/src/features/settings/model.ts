@@ -189,3 +189,25 @@ export function botErrorText(error: unknown): string {
   if (error.code === 'bad_request') return error.message && !GENERIC_MESSAGE.test(error.message) ? error.message : e.badRequest;
   return e.other;
 }
+
+/**
+ * Текст ошибки рассылки доп. вопросов. Слова сервера показываем там, где он пишет для людей: при `conflict` в сообщении
+ * новое число получателей, при `bad_request` и `unavailable` — причина. Обрыв связи отдельно: неизвестно, ушла ли
+ * рассылка, и совет «попробуйте ещё раз» здесь опасен — люди получили бы вопросы дважды.
+ */
+export function inviteErrorText(error: unknown): string {
+  const e = t.bot.invites.errors;
+  if (!(error instanceof ApiError)) return e.other;
+  if (error.status === 0) return e.network;
+  if (error.status === 403 || error.code === 'forbidden') return e.forbidden;
+  const own = error.message && !GENERIC_MESSAGE.test(error.message) ? error.message : null;
+  switch (error.code) {
+    case 'conflict':
+      return own ?? e.conflict;
+    case 'bad_request':
+    case 'unavailable':
+      return own ?? e.badRequest;
+    default:
+      return e.other;
+  }
+}

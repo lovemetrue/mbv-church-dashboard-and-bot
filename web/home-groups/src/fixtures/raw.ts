@@ -31,6 +31,8 @@ export interface RawGroup {
   comment: string | null;
   /** Новая группа (заведена под кампанию); в контракте — `GroupBrief.isNew`. */
   isNew: boolean;
+  /** Ключ регистрации ведущего («u2»), если группа связана с ним; в контракте — `GroupItem.leaderKey`. */
+  leaderKey: string | null;
 }
 
 export interface RawRequest {
@@ -101,12 +103,13 @@ const g = (x: Partial<RawGroup> & Pick<RawGroup, 'id' | 'leader' | 'district' | 
   coordinator: null,
   comment: null,
   isNew: false,
+  leaderKey: null,
   ...x,
 });
 
 export const RAW_GROUPS: RawGroup[] = [
   g({ id: 1, no: 12, leader: 'Ольга К.', phone: '79112003145', district: 'Приморский', metro: 'Комендантский пр.', street: 'Комендантский пр.', ages: ['18–25', '26–35'], day: 'Вт', slot: 'вечер', people: 8, capacity: 12, verifiedDaysAgo: 6, format: 'Смешанная', composition: 'Студенты и молодые специалисты', coordinator: 'Трофимова С.' }),
-  g({ id: 2, no: 27, leader: 'Андрей М.', coLeader: 'Наталья М.', phone: '79212004477', district: 'Приморский', metro: 'Беговая', street: 'ул. Шаврова', ages: ['26–35', '36–45'], day: 'Чт', slot: 'вечер', people: 11, capacity: 12, verifiedDaysAgo: 14, format: 'Семейная', composition: 'Семьи с детьми', coordinator: 'Петров Г.' }),
+  g({ id: 2, no: 27, leaderKey: 'u2', leader: 'Андрей М.', coLeader: 'Наталья М.', phone: '79212004477', district: 'Приморский', metro: 'Беговая', street: 'ул. Шаврова', ages: ['26–35', '36–45'], day: 'Чт', slot: 'вечер', people: 11, capacity: 12, verifiedDaysAgo: 14, format: 'Семейная', composition: 'Семьи с детьми', coordinator: 'Петров Г.' }),
   g({ id: 3, no: 31, leader: 'Марина Л.', phone: '79052006612', district: 'Выборгский', metro: 'Озерки', street: 'пр. Просвещения', ages: ['36–45', '46+'], day: 'Пн', slot: 'день', people: 6, capacity: 14, verifiedDaysAgo: 41, format: 'Женская', composition: 'Женщины', coordinator: 'Трофимова С.', comment: 'Просила не присылать новых до конца месяца, но места есть.' }),
   g({ id: 4, no: 8, leader: 'Игорь Т.', phone: '79312003390', district: 'Центральный', metro: 'Лиговский пр.', street: 'Лиговский пр.', ages: ['18–25'], day: 'Ср', slot: 'вечер', people: 9, capacity: 10, verifiedDaysAgo: 3, format: 'Молодёжная', composition: 'Молодёжь', coordinator: 'Лебедева А.' }),
   g({ id: 5, isNew: true, no: 15, leader: 'Светлана Р.', phone: '79112008851', district: 'Калининский', metro: 'Академическая', street: 'Гражданский пр.', ages: ['26–35', '36–45'], day: 'Сб', slot: 'утро', people: 5, capacity: 12, verifiedDaysAgo: 9, format: 'Смешанная', coordinator: 'Морозов Д.' }),

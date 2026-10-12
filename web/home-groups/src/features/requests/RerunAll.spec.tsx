@@ -19,11 +19,11 @@ async function openRequests(overrides: Parameters<typeof stubFetchWithFixtures>[
 }
 
 describe('«Заявки»: пересчитать все предложения', () => {
-  test('кнопка видна в блоке подбора и подписана как второстепенная: главная там «Закрепить подбор»', async () => {
+  test('кнопка видна в блоке подбора и подписана как второстепенная: главная там «Предложить группы новым заявкам»', async () => {
     const { block } = await openRequests();
     const rerun = within(block).getByRole('button', { name: RERUN });
     expect(rerun.className).not.toMatch(/primary/);
-    expect(within(block).getByRole('button', { name: 'Закрепить подбор для новых заявок' }).className).toMatch(/primary/);
+    expect(within(block).getByRole('button', { name: 'Предложить группы новым заявкам' }).className).toMatch(/primary/);
   });
 
   test('нажатие не шлёт запрос сразу, а спрашивает подтверждение с предупреждением', async () => {
@@ -31,7 +31,7 @@ describe('«Заявки»: пересчитать все предложения
     await userEvent.setup().click(within(block).getByRole('button', { name: RERUN }));
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent(
-      'Пересчитать закреплённые предложения всех открытых заявок заново? Утверждённые заявки не меняются, отклонённые вами группы не вернутся. Некоторые предложения могут измениться',
+      'Пересчитать предложения всех открытых заявок заново? Утверждённые заявки не меняются, отклонённые вами группы не вернутся. Некоторые предложения могут измениться',
     );
     expect(posts(fetchMock)).toHaveLength(0);
   });
@@ -79,9 +79,9 @@ describe('«Заявки»: пересчитать все предложения
       confirm.click();
     });
     expect(posts(fetchMock)).toHaveLength(1);
-    // пока считается, обе кнопки блока отключены: параллельный «Закрепить подбор» испортил бы итог
+    // пока считается, обе кнопки блока отключены: параллельный «Предложить группы новым заявкам» испортил бы итог
     expect(within(block).getByRole('button', { name: 'Пересчитываем…' })).toBeDisabled();
-    expect(within(block).getByRole('button', { name: 'Закрепить подбор для новых заявок' })).toBeDisabled();
+    expect(within(block).getByRole('button', { name: 'Предложить группы новым заявкам' })).toBeDisabled();
     release();
     await within(block).findByText(/^Готово: предложений создано/);
     expect(posts(fetchMock)).toHaveLength(1);

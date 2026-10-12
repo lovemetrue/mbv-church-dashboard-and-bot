@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
+import { AGE_GROUPS } from '../src/core/texts.js';
 import {
   AGE_COLUMNS,
   AGE_COLUMN_RANGES,
@@ -167,28 +168,40 @@ describe('formatWhen', () => {
 });
 
 describe('колонки возраста', () => {
-  test('колонки заданы в порядке возрастания и покрывают всё без дыр', () => {
-    expect([...AGE_COLUMNS]).toEqual(['до 18', '18–25', '26–35', '36–45', '46+']);
+  test('колонки — те же возрастные категории, что и в кампании, в порядке возрастания и без дыр', () => {
+    expect([...AGE_COLUMNS]).toEqual(['до 18', '18–25', '25–40', '40–55', '55–65', '65+']);
     expect(AGE_COLUMN_RANGES).toHaveLength(AGE_COLUMNS.length);
     for (let i = 1; i < AGE_COLUMN_RANGES.length; i++) {
       expect(AGE_COLUMN_RANGES[i]![0]).toBe(AGE_COLUMN_RANGES[i - 1]![1] + 1);
     }
   });
 
+  test('каждая категория анкеты бота попадает в свою колонку', () => {
+    // Иначе спрос от ответов бота окажется не в той колонке, что подписана так же.
+    const expected = ['до 18', '18–25', '25–40', '40–55', '55–65', '65+'];
+    AGE_GROUPS.forEach((label, i) => expect(ageColumnOf(parseAgeRange(label)), label).toBe(expected[i]));
+  });
+
   test('колонка определяется по середине диапазона', () => {
     expect(ageColumnOf([12, 17])).toBe('до 18');
     expect(ageColumnOf([18, 25])).toBe('18–25');
-    expect(ageColumnOf([25, 35])).toBe('26–35');
-    expect(ageColumnOf([35, 45])).toBe('36–45');
-    expect(ageColumnOf([45, 55])).toBe('46+');
-    expect(ageColumnOf([65, 120])).toBe('46+');
-    expect(ageColumnOf([37, 37])).toBe('36–45');
+    expect(ageColumnOf([25, 40])).toBe('25–40');
+    expect(ageColumnOf([35, 45])).toBe('25–40');
+    expect(ageColumnOf([40, 55])).toBe('40–55');
+    expect(ageColumnOf([55, 65])).toBe('55–65');
+    expect(ageColumnOf([65, 120])).toBe('65+');
+    expect(ageColumnOf([47, 47])).toBe('40–55');
   });
 
-  test('середина ровно на границе колонок относится к нижней колонке', () => {
+  test('возраст ровно на границе относится к нижней колонке', () => {
+    expect(ageColumnOf([25, 25])).toBe('18–25');
+    expect(ageColumnOf([26, 26])).toBe('25–40');
+    expect(ageColumnOf([40, 40])).toBe('25–40');
+    expect(ageColumnOf([41, 41])).toBe('40–55');
+    expect(ageColumnOf([65, 65])).toBe('55–65');
+    expect(ageColumnOf([66, 66])).toBe('65+');
     // [17, 34]: середина 25,5 — ещё «18–25»; иначе человек перескакивал бы колонку из-за округления.
     expect(ageColumnOf([17, 34])).toBe('18–25');
-    expect(ageColumnOf([26, 26])).toBe('26–35');
   });
 
   test('неизвестный возраст не попадает ни в одну колонку', () => {
@@ -196,9 +209,21 @@ describe('колонки возраста', () => {
   });
 
   test('диапазон группы пересекает все колонки, которые он задевает; неизвестный — все', () => {
-    expect(ageColumnsOverlapping([35, 50])).toEqual(['26–35', '36–45', '46+']);
+    expect(ageColumnsOverlapping([35, 50])).toEqual(['25–40', '40–55']);
     expect(ageColumnsOverlapping([16, 25])).toEqual(['до 18', '18–25']);
-    expect(ageColumnsOverlapping([65, 120])).toEqual(['46+']);
+    expect(ageColumnsOverlapping([65, 120])).toEqual(['65+']);
     expect(ageColumnsOverlapping(null)).toEqual([...AGE_COLUMNS]);
+  });
+
+  test('группа, подписанная границами категории, не заходит в соседнюю колонку', () => {
+    // «40-55» в таблице церкви — это колонка «40–55»; общая цифра 40 не должна давать места ещё и в «25–40».
+    AGE_GROUPS.forEach((label, i) => {
+      expect(ageColumnsOverlapping(parseAgeRange(label)), label).toEqual([AGE_COLUMNS[i]]);
+    });
+  });
+
+  test('группа на одну цифру (например «40») относится к одной колонке', () => {
+    expect(ageColumnsOverlapping([40, 40])).toEqual(['25–40']);
+    expect(ageColumnsOverlapping([41, 41])).toEqual(['40–55']);
   });
 });

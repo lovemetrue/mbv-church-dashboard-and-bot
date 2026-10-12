@@ -7,6 +7,8 @@ import type {
   ExtraQuestionsBody,
   PersonalModeBody,
   SavePromptBody,
+  SendExtraInvitesBody,
+  SendExtraInvitesOk,
   AssistantEnabledBody,
   SettingsAssistantView,
   SettingsAuditView,
@@ -166,6 +168,22 @@ export function useBotActions() {
     async saveExtraQuestions(body: ExtraQuestionsBody): Promise<void> {
       await apiPost('settings/bot/extra-questions', body);
       await queryClient.invalidateQueries({ queryKey: settingsKeys.bot });
+    },
+    /**
+     * Рассылка доп. вопросов тем, кто уже зарегистрирован. Уходит живым людям, поэтому без повторов: apiPost их не делает,
+     * и здесь их добавлять нельзя. Обзор перечитываем после успеха (получателей станет меньше) и после `conflict`
+     * (число изменилось, человек должен увидеть новое). При обрыве связи не перечитываем: сервер, скорее всего, недоступен,
+     * а о том, ушла ли рассылка, скажет человек, обновив обзор сам.
+     */
+    async sendExtraQuestions(body: SendExtraInvitesBody): Promise<SendExtraInvitesOk> {
+      try {
+        const result = await apiPost<SendExtraInvitesOk>('settings/bot/send-extra-questions', body);
+        await queryClient.invalidateQueries({ queryKey: settingsKeys.bot });
+        return result;
+      } catch (e) {
+        if (e instanceof ApiError && e.code === 'conflict') await queryClient.invalidateQueries({ queryKey: settingsKeys.bot });
+        throw e;
+      }
     },
   };
 }

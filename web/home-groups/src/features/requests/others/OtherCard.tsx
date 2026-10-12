@@ -7,13 +7,15 @@ import { subjectOfOther } from '../work/subject';
 import { WorkPlace } from '../work/WorkPlace';
 import { STATE_LABEL, STATE_TONE } from './OtherList';
 import styles from './Others.module.css';
+import { ReconcileBlock } from './ReconcileBlock';
 
 const o = ru.requests.others;
 
 const noValue = <span className={styles.note}>{ru.reference.notSpecified}</span>;
 
 /**
- * Карточка обращения: заголовок с типом, контакты, блок «Работа с заявкой», как пришла и лента.
+ * Карточка обращения: заголовок с типом, суть обращения, «Разбор» (если сервер сверил человека со справочником
+ * групп), контакты, блок «Работа с заявкой», как пришла и лента.
  * Предложений группы и кнопок «Утвердить» здесь нет: такие обращения в подбор не идут.
  * Закрыть или вернуть в работу — в блоке работы, как у заявки.
  */
@@ -41,8 +43,14 @@ export function OtherCard({ item, onClose, onClosed }: { item: OtherItem; onClos
       }
       onClose={onClose}
     >
+      {item.gist && (
+        <DrawerSection title={o.gistTitle}>
+          <p className={styles.gistBig}>{item.gist}</p>
+        </DrawerSection>
+      )}
       {item.state === 'open' && item.callback && <div className={styles.callout}>{o.callbackMark}</div>}
       {item.state === 'cancelled' && item.cancelReason && <div className={styles.callout}>{o.cancelReason(item.cancelReason)}</div>}
+      {item.reconcile && <ReconcileBlock key={item.id} item={item} rec={item.reconcile} onClosed={onClosed} />}
       <DrawerSection title={ru.requests.contacts}>
         <KeyValue rows={contacts} />
       </DrawerSection>

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import type { RequestsView as RequestsData } from '@contracts';
-import { OTHER_FILTERS, type OtherFilter } from '../../../entities/others';
+import { OTHER_FILTERS, RECONCILE_FILTERS, type OtherFilter, type ReconcileFilter } from '../../../entities/others';
 import { ru } from '../../../shared/i18n/ru';
 import { useAppNav } from '../../../shared/nav';
 import { Chip, EmptyState } from '../../../shared/ui';
@@ -9,9 +9,19 @@ import { filterByResponsible } from '../model';
 import { ResponsibleSelect } from '../ResponsibleSelect';
 import styles from '../Requests.module.css';
 import { ViewSwitch } from '../ViewSwitch';
-import { countOthers, filterOthers, matchesOtherSearch, openOthersCount } from './model';
+import {
+  countOthers,
+  countReconcile,
+  filterByReconcile,
+  filterOthers,
+  matchesOtherSearch,
+  openOthersCount,
+  readyToReconcile,
+} from './model';
 import { OtherCard } from './OtherCard';
 import { OtherList } from './OtherList';
+import { ReadyBulk } from './ReadyBulk';
+import { useReconcileReady } from './useReconcile';
 
 const t = ru.requests.others;
 
@@ -22,10 +32,21 @@ const FILTER_LABEL: Record<OtherFilter, string> = {
   all: t.filterAll,
 };
 
+const RECONCILE_LABEL: Record<ReconcileFilter, string> = {
+  all: t.reconcileAll,
+  ready: t.reconcileReady,
+  choose: t.reconcileChoose,
+  missing: t.reconcileMissing,
+  rest: t.reconcileRest,
+};
+
 /**
  * Режим «Другие обращения»: обращения, которые не идут в подбор группы. Поиск шапки и «В работе у»
  * общие с заявками и сужают список до чипов, как там. Открытая карточка ищется среди всех обращений,
  * а не среди показанных: ссылка на закрытое обращение работает и при чипе «Открытые».
+ *
+ * Под чипами состояния, пока выбраны «Открытые», стоит вторая строка чипов по разбору (что сервер нашёл в справочниках
+ * групп), а над списком — «Разобрать все готовые»: он берёт номера из показанного списка, а не из всех обращений.
  */
 export function OthersContent({
   data,
@@ -45,7 +66,16 @@ export function OthersContent({
     [all, nav.search, nav.responsible],
   );
   const counts = useMemo(() => countOthers(found), [found]);
-  const visible = useMemo(() => filterOthers(found, nav.otherFilter), [found, nav.otherFilter]);
+  const recCounts = useMemo(() => countReconcile(found), [found]);
+  // Отбор по разбору есть только у «Открытых»: в адресе он мог остаться от прежней ссылки, а строки чипов при других
+  // состояниях нет, и скрытый отбор прятал бы обращения без объяснений.
+  const recFilter: ReconcileFilter = nav.otherFilter === 'open' ? nav.reconcileFilter : 'all';
+  const visible = useMemo(
+    () => filterByReconcile(filterOthers(found, nav.otherFilter), recFilter),
+    [found, nav.otherFilter, recFilter],
+  );
+  const ready = useMemo(() => readyToReconcile(visible), [visible]);
+  const readyBulk = useReconcileReady();
   const selected = nav.requestId != null ? all.find((o) => o.id === nav.requestId) : undefined;
 
   return (
@@ -60,9 +90,19 @@ export function OthersContent({
             </Chip>
           ))}
         </div>
+        {nav.otherFilter === 'open' && (
+          <div className={styles.bar} role="group" aria-label={t.reconcileChipsLabel}>
+            {RECONCILE_FILTERS.map((f) => (
+              <Chip key={f} pressed={recFilter === f} count={recCounts[f]} onClick={() => nav.setReconcileFilter(f)}>
+                {RECONCILE_LABEL[f]}
+              </Chip>
+            ))}
+          </div>
+        )}
         <div className={styles.tools} role="group" aria-label={ru.requests.toolsLabel}>
           <ResponsibleSelect items={all} value={nav.responsible} onChange={nav.setResponsible} />
         </div>
+        <ReadyBulk ready={ready} bulk={readyBulk} onDone={onClosed} />
         {visible.length ? (
           <OtherList items={visible} selectedId={nav.requestId} onSelect={nav.selectRequest} />
         ) : (

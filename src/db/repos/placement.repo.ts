@@ -37,7 +37,7 @@ export const CANCEL_REASONS = {
 } as const;
 export type CancelReason = keyof typeof CANCEL_REASONS;
 
-export type ActionFailure = 'bad_request' | 'not_found' | 'already_closed' | 'group_unavailable' | 'group_full';
+export type ActionFailure = 'bad_request' | 'not_found' | 'already_closed' | 'group_unavailable' | 'group_full' | 'conflict';
 export type ActionOutcome = { ok: true } | { ok: false; error: ActionFailure; message: string };
 
 type Failure = Extract<ActionOutcome, { ok: false }>;
@@ -329,6 +329,64 @@ export class PlacementRepo {
       await this.audit(c, actor, 'request.close', requestId,
         { status: state.status, callback: state.callback }, outcome === 'cancel' ? { outcome, status, reason } : { outcome, status }, note);
       return { ok: true } as const;
+    });
+  }
+
+  /**
+   * Разбор «другого обращения» по справочникам: «уже состою в группе» — человек вносится в состав группы ссылкой на свою
+   * регистрацию, «уже веду группу» — группа получает ссылку на регистрацию ведущего. В обоих случаях обращение закрывается
+   * как обработанное: звонить незачем, данные легли в справочники. Всё в одной транзакции, с записью в журнал.
+   *
+   * Группу выбирает вызывающий (предложение расчёта по имени ведущего или выбор человека): здесь проверяется только,
+   * что она есть. Чужую связь «ведущий» не перезаписываем — это решает человек.
+   */
+  async reconcile(requestId: number, kind: 'member' | 'leader', groupId: number, actor: string): Promise<ActionOutcome & { already?: boolean }> {
+    return this.tx(async (c) => {
+      const { rows } = await c.query<{ status: string; type: string; user_id: number | null; callback: boolean }>(
+        `SELECT status, type, user_id::int AS user_id, callback FROM requests WHERE id = $1 AND archived_at IS NULL FOR UPDATE`,
+        [requestId],
+      );
+      const req = rows[0];
+      if (!req) return fail('not_found', 'Обращение не найдено.');
+      if (CLOSED.includes(req.status)) return fail('already_closed', 'Обращение уже обработали.');
+      if (req.type !== (kind === 'member' ? 'already_member' : 'already_leader')) return fail('bad_request', 'Это обращение другого вида.');
+      if (req.user_id === null) return fail('bad_request', 'У обращения нет регистрации человека: внесите его в справочник вручную.');
+      const registered = await c.query('SELECT 1 FROM users WHERE id = $1 AND registration_no IS NOT NULL', [req.user_id]);
+      if ((registered.rowCount ?? 0) === 0) return fail('bad_request', 'Человек не завершил регистрацию.');
+      const g = await c.query<{ leader_user_id: number | null }>(
+        'SELECT leader_user_id::int AS leader_user_id FROM groups WHERE id = $1 AND archived_at IS NULL FOR UPDATE', [groupId],
+      );
+      if (!g.rows[0]) return fail('group_unavailable', 'Группа не найдена или в архиве.');
+
+      let already = false;
+      if (kind === 'member') {
+        // Утверждённый сервисом в эту группу уже виден в составе сам (по заявке «Исполнена»): второй записи не нужно.
+        const placed = await c.query(
+          `SELECT 1 FROM requests WHERE group_id = $1 AND user_id = $2 AND type = 'join_group' AND status = 'Исполнена' AND archived_at IS NULL`,
+          [groupId, req.user_id],
+        );
+        const inserted = (placed.rowCount ?? 0) > 0 ? null : await c.query(
+          `INSERT INTO group_members (group_id, user_id, created_by) SELECT $1, $2, $3
+            WHERE NOT EXISTS (SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2 AND archived_at IS NULL)`,
+          [groupId, req.user_id, actor],
+        );
+        already = inserted === null || (inserted.rowCount ?? 0) === 0;
+      } else {
+        const current = g.rows[0].leader_user_id;
+        if (current !== null && current !== req.user_id) return fail('conflict', 'У этой группы уже связан другой ведущий.');
+        already = current === req.user_id;
+        // Запись из таблицы после правки в интерфейсе — «ui»: повторный перенос таблицы её не затрёт (см. CLAUDE.md).
+        if (!already) await c.query(`UPDATE groups SET leader_user_id = $2, source = CASE WHEN source = 'таблица' THEN 'ui' ELSE source END WHERE id = $1`, [groupId, req.user_id]);
+      }
+
+      await c.query(
+        `UPDATE requests SET status = 'Исполнена', callback = false, handled_by = $2, handled_at = now(),
+                origin = CASE WHEN origin = 'таблица' THEN 'ui' ELSE origin END
+          WHERE id = $1`,
+        [requestId, actor],
+      );
+      await this.audit(c, actor, 'request.reconcile', requestId, { status: req.status, callback: req.callback }, { kind, group_id: groupId, already }, null);
+      return { ok: true, already } as const;
     });
   }
 

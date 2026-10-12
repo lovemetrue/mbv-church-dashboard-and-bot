@@ -1,6 +1,8 @@
 import type { DashboardGroup } from '../../db/repos/groups.repo.js';
 import type { MemberRow, PersonRow } from '../../db/repos/members.repo.js';
 import type { StoredHint } from '../../db/repos/hints.repo.js';
+import { gistOf } from '../reconcile/gist.js';
+import { reconcileOf } from '../reconcile/plan.js';
 import { baseHash, needsOf, anyNeed, type RawBrief } from '../assistant/brief.js';
 import type { ActivityRow, AuditRow } from '../../db/repos/audit.repo.js';
 import type { DashboardRequest } from '../../db/repos/requests.repo.js';
@@ -169,6 +171,14 @@ function auditText(a: AuditRow): string | null {
     }
     case 'request.reopen':
       return `Возвращена в работу · ${a.actor}`;
+    case 'request.reconcile': {
+      const id = Number(after['group_id']);
+      const code = Number.isFinite(id) ? groupCode(id) : '—';
+      const already = after['already'] === true ? ' (уже было)' : '';
+      return after['kind'] === 'leader'
+        ? `Разобрано: группа ${code} связана с этим ведущим${already} · ${a.actor}`
+        : `Разобрано: внесён в состав группы ${code}${already} · ${a.actor}`;
+    }
     default:
       return null;
   }
@@ -517,6 +527,9 @@ export function buildViewsWithPlan(
     id: r.id,
     type: r.type as OtherItem['type'],
     typeLabel: TYPE_LABEL[r.type as OtherItem['type']] ?? 'Обращение',
+    gist: gistOf(r),
+    // Разбор по справочникам нужен только открытым: закрытое уже разобрано или отложено людьми.
+    reconcile: otherState(r) === 'open' ? reconcileOf(r, input.groups) : null,
     state: otherState(r),
     fio: nonBlank(r.fio) ?? 'Без имени',
     phone: displayPhone(r.phones, r.phone),
@@ -619,6 +632,7 @@ export function buildViewsWithPlan(
       comment: nonBlank(g.comment),
       health: groupHealth(g, p),
       placedNew: input.placedNew?.get(g.id) ?? 0,
+      leaderKey: g.leader_user_id ? `u${g.leader_user_id}` : null,
       plannedRequests: plannedByGroup.get(g.id) ?? [],
       members: [...(membersByGroup.get(g.id) ?? [])].sort((a, b) => memberOrder(a) - memberOrder(b)),
     };

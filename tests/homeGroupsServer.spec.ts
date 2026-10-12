@@ -65,6 +65,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
   const auditCalls: { actor: string; action: string; after: unknown }[] = [];
   const matchingCalls: { name: string; actor: string; enabled?: boolean }[] = [];
   const settingsCalls: { name: string; actor?: string; body?: unknown }[] = [];
+  const reconcileCalls: { name: string; id?: number; actor?: string; body?: unknown }[] = [];
   const staffCalls: { name: string; args: unknown[] }[] = [];
   const createCalls: { what: string; body: unknown; actor: string }[] = [];
   let createOutcome: { ok: true; id: number } | { ok: false; error: string; message: string } = { ok: true, id: 77 };
@@ -121,9 +122,14 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
       setEnabled: async (enabled: boolean, actor: string) => { assistantCalls.push({ name: 'enabled', actor, enabled }); },
       view: async () => ({ generatedAt: 'g', available: true, enabled: false, model: 'fake', lastRun: null }),
     } as never,
+    reconciler: {
+      apply: async (id: number, body: unknown, actor: string) => { reconcileCalls.push({ name: 'apply', id, body, actor }); return { ok: true, already: false }; },
+      applyReady: async (body: unknown, actor: string) => { reconcileCalls.push({ name: 'ready', body, actor }); return { ok: true, applied: 2, skipped: 1 }; },
+    } as never,
     botSettings: {
       view: async () => { settingsCalls.push({ name: 'bot.view' }); return { generatedAt: 'g', extraQuestions: { mode: 'off', ids: '', source: 'env', envValue: 'off' } }; },
       setExtraQuestions: async (body: unknown, actor: string) => { settingsCalls.push({ name: 'bot.save', actor, body }); return settingsOutcome; },
+      sendExtraInvites: async (body: unknown, actor: string) => { settingsCalls.push({ name: 'bot.invites', actor, body }); return { ok: true, sent: 2, failed: 0, blocked: 0 }; },
     } as never,
     exporter: { requests: async () => '\uFEFF№;ФИО\r\n1;Мария\r\n', people: async () => '\uFEFFномер\r\n' },
     audit: async (actor: string, action: string, after: unknown) => { auditCalls.push({ actor, action, after }); },
@@ -167,7 +173,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
     viewsCalls: () => calls,
     close: () => { server.close(); },
     setViews: (f) => { views = f; },
-    actionCalls, auditCalls, assistantCalls, chatCalls, setChatOutcome: (o: unknown) => { chatOutcome = o; }, setAssistantOutcome: (o: unknown) => { assistantOutcome = o; }, matchingCalls, settingsCalls, reported, staffCalls, createCalls, setCreate: (o) => { createOutcome = o; }, setTokenInfo: (v) => { tokenInfo = v; }, setComplete: (v) => { complete = v; }, setSettingsOutcome: (o: ActionOutcome) => { settingsOutcome = o; }, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
+    actionCalls, auditCalls, assistantCalls, chatCalls, setChatOutcome: (o: unknown) => { chatOutcome = o; }, setAssistantOutcome: (o: unknown) => { assistantOutcome = o; }, matchingCalls, settingsCalls, reconcileCalls, reported, staffCalls, createCalls, setCreate: (o) => { createOutcome = o; }, setTokenInfo: (v) => { tokenInfo = v; }, setComplete: (v) => { complete = v; }, setSettingsOutcome: (o: ActionOutcome) => { settingsOutcome = o; }, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
   };
 }
 
@@ -1356,6 +1362,64 @@ describe('настройка бота «новые вопросы анкеты»
     });
     expect(saved.status).toBe(200);
     expect(app.settingsCalls.slice(before)).toEqual([{ name: 'bot.save', actor: SUPER.login, body: { mode: 'all' } }]);
+  });
+});
+
+describe('досылка новых вопросов из «Настроек»', () => {
+  const send = (cookie: string | null, body: unknown) => fetch(`${app.base}/api/v1/settings/bot/send-extra-questions`, {
+    method: 'POST', headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body),
+  });
+
+  test('рассылка живым людям только с полного входа: без входа 401, обычному 403, и в обоих случаях ничего не отправлено', async () => {
+    const before = app.settingsCalls.length;
+    expect((await send(null, { expectedTotal: 2 })).status).toBe(401);
+    expect((await send(await signIn(REGULAR), { expectedTotal: 2 })).status).toBe(403);
+    expect(app.settingsCalls.length).toBe(before);
+  });
+
+  test('полный вход: тело и автор доходят до сервиса, ответ — итог доставки', async () => {
+    const before = app.settingsCalls.length;
+    const r = await send(await signIn(SUPER), { expectedTotal: 2 });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, sent: 2, failed: 0, blocked: 0 });
+    expect(app.settingsCalls.slice(before)).toEqual([{ name: 'bot.invites', actor: SUPER.login, body: { expectedTotal: 2 } }]);
+  });
+
+  test('рассылку нельзя вызвать запросом GET: изменяющие адреса отвечают 404', async () => {
+    const r = await fetch(`${app.base}/api/v1/settings/bot/send-extra-questions`, { headers: { cookie: await signIn(SUPER) } });
+    expect(r.status).toBe(404);
+  });
+});
+
+describe('разбор «других обращений» по справочникам', () => {
+  const post = (cookie: string | null, path: string, body: unknown) => fetch(`${app.base}/api/v1/${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body),
+  });
+
+  test('разобрать одно обращение: без входа 401, обычному входу можно, тело и автор доходят, снимок сбрасывается', async () => {
+    const inv = app.invalidations();
+    expect((await post(null, 'requests/9/reconcile', { groupId: 5 })).status).toBe(401);
+    const r = await post(await signIn(REGULAR), 'requests/9/reconcile', { groupId: 5 });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, already: false });
+    expect(app.reconcileCalls.at(-1)).toEqual({ name: 'apply', id: 9, body: { groupId: 5 }, actor: REGULAR.login });
+    expect(app.invalidations()).toBe(inv + 1);
+  });
+
+  test('разобрать всё готовое: тот же доступ, ответ с числами, снимок сбрасывается', async () => {
+    const inv = app.invalidations();
+    expect((await post(null, 'requests/reconcile-ready', { ids: [1] })).status).toBe(401);
+    const r = await post(await signIn(REGULAR), 'requests/reconcile-ready', { ids: [1, 2, 3] });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, applied: 2, skipped: 1 });
+    expect(app.reconcileCalls.at(-1)).toEqual({ name: 'ready', body: { ids: [1, 2, 3] }, actor: REGULAR.login });
+    expect(app.invalidations()).toBe(inv + 1);
+  });
+
+  test('изменяющие адреса не отвечают на GET', async () => {
+    const cookie = await signIn(REGULAR);
+    expect((await fetch(`${app.base}/api/v1/requests/9/reconcile`, { headers: { cookie } })).status).toBe(404);
+    expect((await fetch(`${app.base}/api/v1/requests/reconcile-ready`, { headers: { cookie } })).status).toBe(404);
   });
 });
 

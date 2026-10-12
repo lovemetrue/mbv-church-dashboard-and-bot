@@ -34,7 +34,7 @@ async function openRequests(overrides: Parameters<typeof stubFetchWithFixtures>[
 }
 
 const helperButton = (block: HTMLElement, name = BUTTON) => within(block).getByRole('button', { name });
-const matchButton = (block: HTMLElement) => within(block).getByRole('button', { name: 'Закрепить подбор для новых заявок' });
+const matchButton = (block: HTMLElement) => within(block).getByRole('button', { name: 'Предложить группы новым заявкам' });
 
 describe('«Заявки»: помощник в блоке подбора', () => {
   test('когда помощник подключён и включён, есть вторичная кнопка с числом заявок, которые он может разобрать', async () => {
@@ -194,7 +194,7 @@ describe('«Заявки»: помощник в блоке подбора', () =
     await user.click(matchButton(block));
     expect(helperButton(block)).toBeDisabled();
     release();
-    await within(block).findByText(/^Готово: закреплено/);
+    await within(block).findByText(/^Готово: группы предложены/);
     expect(helperButton(block)).toBeEnabled();
   });
 

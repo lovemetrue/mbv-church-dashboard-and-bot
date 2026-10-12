@@ -384,3 +384,12 @@
   margin-left: 0;
   white-space: normal;
 }
+
+/* Ведущий, связанный с регистрацией: имя, пояснение и переход к человеку в одну строку, на телефоне переносятся. */
+.leaderLinked {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  min-width: 0;
+}

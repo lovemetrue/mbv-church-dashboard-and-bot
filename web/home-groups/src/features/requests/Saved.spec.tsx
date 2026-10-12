@@ -12,17 +12,17 @@ describe('«Заявки»: закреплено или свежий расчё�
     const base = fixtureItem(1);
     stubFetchWithFixtures({ requests: () => json(viewWith(1, { proposal: { ...base.proposal!, saved: true } })) });
     const card = await openCard(1);
-    const tag = await within(card).findByText('Закреплено');
+    const tag = await within(card).findByText('Предложена автоматически');
     expect(tag).toHaveAttribute('title', 'Не изменится само, пока группа подходит');
-    expect(within(card).queryByText('Расчёт, не закреплено')).not.toBeInTheDocument();
+    expect(within(card).queryByText('Предварительный расчёт')).not.toBeInTheDocument();
   });
 
   test('свежий расчёт подписан «Расчёт, не закреплено»', async () => {
     const base = fixtureItem(1);
     stubFetchWithFixtures({ requests: () => json(viewWith(1, { proposal: { ...base.proposal!, saved: false } })) });
     const card = await openCard(1);
-    expect(await within(card).findByText('Расчёт, не закреплено')).toBeInTheDocument();
-    expect(within(card).queryByText('Закреплено')).not.toBeInTheDocument();
+    expect(await within(card).findByText('Предварительный расчёт')).toBeInTheDocument();
+    expect(within(card).queryByText('Предложена автоматически')).not.toBeInTheDocument();
   });
 
   test('в списке у каждого предложения своя метка, и закреплённых в фикстурах часть', async () => {
@@ -35,13 +35,13 @@ describe('«Заявки»: закреплено или свежий расчё�
     const unsavedCount = withPlan.filter((r) => !r.proposal!.saved).length;
     expect(savedCount).toBeGreaterThan(0);
     expect(unsavedCount).toBeGreaterThan(0);
-    expect(within(list).getAllByText('Закреплено')).toHaveLength(savedCount);
-    expect(within(list).getAllByText('Расчёт, не закреплено')).toHaveLength(unsavedCount);
+    expect(within(list).getAllByText('Предложена автоматически')).toHaveLength(savedCount);
+    expect(within(list).getAllByText('Предварительный расчёт')).toHaveLength(unsavedCount);
   });
 
   test('у утверждённой заявки метки нет', async () => {
     const card = await openCard(10);
-    expect(within(card).queryByText('Закреплено')).not.toBeInTheDocument();
-    expect(within(card).queryByText('Расчёт, не закреплено')).not.toBeInTheDocument();
+    expect(within(card).queryByText('Предложена автоматически')).not.toBeInTheDocument();
+    expect(within(card).queryByText('Предварительный расчёт')).not.toBeInTheDocument();
   });
 });

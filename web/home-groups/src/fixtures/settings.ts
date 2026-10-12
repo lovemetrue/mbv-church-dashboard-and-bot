@@ -372,11 +372,42 @@ export function fixtureStaffDelivery(email: string, id?: number): DeliveryOk {
   return { ok: true, delivery: 'link', email, path: '/set-password?token=demo-d41d8cd98f00b204e9800998ecf8427e', ...(id ? { id } : {}) };
 }
 
+/**
+ * Рассылка «дослать вопросы» в демо ушли или нет. Единственное изменяемое состояние фикстур: без него после
+ * нажатия кнопки число получателей осталось бы прежним, и на экране выглядело бы, что рассылка не сработала.
+ */
+const DEMO_INVITES_JOIN = 4;
+const DEMO_INVITES_LEAD = 2;
+let demoInvitesSent = false;
+
+/** Для тестов: вернуть демо в состояние «доп. вопросы ещё не отправляли». */
+export function resetDemoInvites(): void {
+  demoInvitesSent = false;
+}
+
+/** Рассылка «ушла»: в демо сервера нет, поэтому получатели просто обнуляются. Возвращает, скольким «отправлено». */
+export function sendDemoInvites(): number {
+  const total = demoInvitesSent ? 0 : DEMO_INVITES_JOIN + DEMO_INVITES_LEAD;
+  demoInvitesSent = true;
+  return total;
+}
+
 /** Настройка «новые вопросы анкеты» в демо: значение пока из файла `.env`, в настройках его не меняли. */
 export function buildSettingsBot(): SettingsBotView {
+  const join = demoInvitesSent ? 0 : DEMO_INVITES_JOIN;
+  const lead = demoInvitesSent ? 0 : DEMO_INVITES_LEAD;
   return {
     generatedAt: GENERATED_AT,
     extraQuestions: { mode: 'off', ids: '', source: 'env', envValue: 'off' },
+    invites: {
+      available: true,
+      join,
+      lead,
+      total: join + lead,
+      off: false,
+      textJoin: 'Чтобы подобрать вам группу, ответьте ещё на два вопроса: в какое время вам удобно и в каком районе вы живёте.',
+      textLead: 'Чтобы помочь вам открыть группу, ответьте ещё на два вопроса: в какое время удобно собираться и где это может быть.',
+    },
   };
 }
 

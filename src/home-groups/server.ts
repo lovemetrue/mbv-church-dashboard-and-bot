@@ -13,6 +13,7 @@ import type { Manager } from './manage.js';
 import type { BotSettings } from './botSettings.js';
 import type { Assistant } from './assistant/service.js';
 import type { Chat } from './assistant/chat.js';
+import type { LlmConfig } from './assistant/llmConfig.js';
 import type { Members } from './members.js';
 import type { Reconciler } from './reconcile/service.js';
 import { registrationCardPage } from '../dashboard/registrationCard.js';
@@ -66,6 +67,8 @@ export interface HomeGroupsDeps {
   reconciler: Reconciler;
   /** Помощник по разбору заявок (языковая модель). */
   assistant: Assistant;
+  /** Подключение помощника: провайдер, модель, ключ (только полный вход). */
+  llmConfig: LlmConfig;
   /** Чат помощника: вопросы по базе, только чтение. */
   chat: Chat;
   /** Настройки бота из интерфейса (только полный вход). */
@@ -122,7 +125,7 @@ const CONTENT_TYPES: Record<string, string> = {
 
 class BodyTooLarge extends Error {}
 
-const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode|bot\/extra-questions|bot\/send-extra-questions|assistant\/enabled)$/;
+const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode|bot\/extra-questions|bot\/send-extra-questions|assistant\/enabled|assistant\/llm|assistant\/llm-test)$/;
 const CREATE_PATH = /^\/api\/v1\/(requests|groups|people|coordinators)\/create$/;
 /** `POST /api/v1/groups/5/update`: правка и удаление записей справочника. */
 const MANAGE_PATH = /^\/api\/v1\/(groups|coordinators|people)\/(\d{1,15})\/(update|delete)$/;
@@ -640,6 +643,13 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       sendJson(res, 403, { error: 'forbidden', message: 'Раздел «Настройки» доступен только полному входу.' } satisfies ActionError);
       return;
     }
+    if (action === 'assistant/llm-test') {
+      // Отказ провайдера — обычный результат проверки, а не ошибка запроса: отвечаем 200 и показываем причину словами.
+      const result = await deps.llmConfig.test(call.body);
+      logger.info({ actor: call.actor, ok: result.ok, ...(result.ok ? {} : { code: result.code, status: result.status }) }, 'домашние группы: проверка подключения помощника');
+      sendJson(res, 200, result);
+      return;
+    }
     const handlers: Record<string, () => Promise<{ ok: true } | { ok: false; error: ActionError['error']; message: string }>> = {
       'prompts/save': () => deps.settings.savePrompt(call.body, call.actor),
       'prompts/activate': () => deps.settings.activatePrompt(call.body, call.actor),
@@ -651,6 +661,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       'staff/personal-mode': () => deps.staff.setPersonalMode(call.body, call.actor),
       'bot/extra-questions': () => deps.botSettings.setExtraQuestions(call.body, call.actor),
       'bot/send-extra-questions': () => deps.botSettings.sendExtraInvites(call.body, call.actor),
+      'assistant/llm': () => deps.llmConfig.save(call.body, call.actor),
       'assistant/enabled': async () => {
         const b = call.body as { enabled?: unknown } | null;
         if (typeof b !== 'object' || b === null || typeof b.enabled !== 'boolean') {
@@ -713,7 +724,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       '/api/v1/settings/prompts': () => deps.settings.prompts(),
       '/api/v1/settings/staff': () => deps.staff.view(),
       '/api/v1/settings/bot': () => deps.botSettings.view(),
-      '/api/v1/settings/assistant': () => deps.assistant.view(),
+      '/api/v1/settings/assistant': async () => ({ ...(await deps.assistant.view()), llm: await deps.llmConfig.view() }),
     };
     const settingsRoute = Object.hasOwn(settingsRead, path) ? settingsRead[path] : undefined;
     if (settingsRoute) {

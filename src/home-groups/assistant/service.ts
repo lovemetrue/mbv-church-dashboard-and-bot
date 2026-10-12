@@ -4,7 +4,7 @@ import type { AuditRepo } from '../../db/repos/audit.repo.js';
 import type { HintsRepo } from '../../db/repos/hints.repo.js';
 import type { PromptsRepo } from '../../db/repos/prompts.repo.js';
 import type { SettingsRepo } from '../../db/repos/settings.repo.js';
-import { LlmError, type LlmClient } from '../../platform/llm/deepseek.js';
+import { LlmError, resolveLlm, type LlmClient, type LlmSource } from '../../platform/llm/deepseek.js';
 import { buildViewsWithPlan, type ViewsInput, type ViewsOptions } from '../api/views.js';
 import type { ActionError, AssistantRunOk, MatchingRunOk, SettingsAssistantView } from '../contracts.js';
 import type { PlanEngineApi } from '../plan/types.js';
@@ -34,7 +34,8 @@ export function createAssistant(deps: {
   load: () => Promise<ViewsInput>;
   engine: PlanEngineApi;
   viewOptions: ViewsOptions;
-  llm: LlmClient | null;
+  /** Готовый клиент (тесты) или источник, который читает подключение при каждом обращении (бой). */
+  llm: LlmClient | LlmSource | null;
   hints: Pick<HintsRepo, 'upsertMany'>;
   prompts: Pick<PromptsRepo, 'all'>;
   settings: Pick<SettingsRepo, 'get' | 'set'>;
@@ -50,13 +51,14 @@ export function createAssistant(deps: {
   const districts = ALL_DISTRICTS.filter((d) => d !== 'Не указан');
 
   return {
-    available: (): boolean => deps.llm !== null,
+    available: async (): Promise<boolean> => (await resolveLlm(deps.llm)) !== null,
 
     /** Для кнопки «✦ Помощник»: показывать её, только когда всё готово. */
     async status(): Promise<{ available: boolean; enabled: boolean; chat: boolean }> {
       const enabled = (await deps.settings.get<boolean>(ASSISTANT_ENABLED_KEY)) === true;
-      const chat = deps.llm !== null && enabled && (await (deps.roleReady?.() ?? Promise.resolve(false)));
-      return { available: deps.llm !== null, enabled, chat };
+      const available = (await resolveLlm(deps.llm)) !== null;
+      const chat = available && enabled && (await (deps.roleReady?.() ?? Promise.resolve(false)));
+      return { available, enabled, chat };
     },
     isEnabled: async (): Promise<boolean> => (await deps.settings.get<boolean>(ASSISTANT_ENABLED_KEY)) === true,
 
@@ -65,19 +67,22 @@ export function createAssistant(deps: {
       await deps.audit.write(actor, 'settings.assistant', 'settings', null, { enabled });
     },
 
-    async view(): Promise<SettingsAssistantView> {
+    /** Без `llm`: подключение (провайдер, модель, ключ) в обзор добавляет `createLlmConfig`. */
+    async view(): Promise<Omit<SettingsAssistantView, 'llm'>> {
       const last = await deps.settings.get<NonNullable<SettingsAssistantView['lastRun']>>(ASSISTANT_LAST_RUN_KEY);
+      const llm = await resolveLlm(deps.llm);
       return {
         generatedAt: new Date().toISOString(),
-        available: deps.llm !== null,
+        available: llm !== null,
         enabled: (await deps.settings.get<boolean>(ASSISTANT_ENABLED_KEY)) === true,
-        model: deps.llm?.model ?? null,
+        model: llm?.model ?? null,
         lastRun: last ?? null,
       };
     },
 
     async run(actor: string): Promise<Outcome> {
-      if (!deps.llm) return fail('unavailable', 'Помощник не подключён: на сервере не задан ключ. Подробности — в «Настройки → Помощник».');
+      const llm = await resolveLlm(deps.llm);
+      if (!llm) return fail('unavailable', 'Помощник не подключён: не задан ключ. Подробности — в «Настройки → Помощник».');
       if ((await deps.settings.get<boolean>(ASSISTANT_ENABLED_KEY)) !== true) {
         return fail('unavailable', 'Помощник выключен. Включить его можно в «Настройки → Помощник».');
       }
@@ -93,7 +98,7 @@ export function createAssistant(deps: {
         let withQuestions = 0;
         for (let i = 0; i < picked.length; i += BATCH) {
           const batch = picked.slice(i, i + BATCH).map((c, j) => ({ ...c, ref: `r${i + j + 1}` }));
-          const reply = await deps.llm.complete({
+          const reply = await llm.complete({
             system,
             user: buildUserMessage(batch, { districts, ages }),
           });
@@ -104,7 +109,7 @@ export function createAssistant(deps: {
             const p = byRef.get(b.ref);
             return {
               requestId: b.id, district: p?.district ?? null, age: p?.age ?? null, days: p?.days ?? [], slot: p?.slot ?? null,
-              questions: p?.questions ?? [], baseHash: baseHash(b.brief), model: deps.llm!.model,
+              questions: p?.questions ?? [], baseHash: baseHash(b.brief), model: llm.model,
             };
           }));
           for (const p of parsed) {
@@ -119,7 +124,7 @@ export function createAssistant(deps: {
         const record = { at: new Date().toISOString(), actor, asked: result.asked, filled, withQuestions, proposals: matching.created };
         await deps.settings.set(ASSISTANT_LAST_RUN_KEY, record, actor);
         // В журнал — только числа и модель: ни записей людей, ни ответов модели.
-        await deps.audit.write(actor, 'assistant.run', 'assistant', null, { ...result, model: deps.llm.model });
+        await deps.audit.write(actor, 'assistant.run', 'assistant', null, { ...result, model: llm.model });
         return result;
       } catch (err) {
         if (err instanceof LlmError) {

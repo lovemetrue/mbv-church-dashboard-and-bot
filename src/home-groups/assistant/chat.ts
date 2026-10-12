@@ -1,6 +1,6 @@
 import type { AuditRepo } from '../../db/repos/audit.repo.js';
 import type { SettingsRepo } from '../../db/repos/settings.repo.js';
-import { LlmError, type ChatMessage, type LlmClient, type ToolDef } from '../../platform/llm/deepseek.js';
+import { LlmError, resolveLlm, type ChatMessage, type LlmClient, type LlmSource, type ToolDef } from '../../platform/llm/deepseek.js';
 import type { ActionError, ChatOk, ChatQuery, ChatTable, ChatTurn } from '../contracts.js';
 import { ASSISTANT_ENABLED_KEY } from './service.js';
 import type { Pseudonyms } from './pseudonyms.js';
@@ -50,7 +50,7 @@ ${SCHEMA_DOC}`;
 }
 
 interface Deps {
-  llm: LlmClient | null;
+  llm: LlmClient | LlmSource | null;
   settings: Pick<SettingsRepo, 'get'>;
   audit: Pick<AuditRepo, 'write'>;
   runQuery: (sql: string) => Promise<QueryResult>;
@@ -88,7 +88,8 @@ export function createChat(deps: Deps) {
 
   return {
     async ask(body: unknown, actor: string): Promise<ChatOk | Failure> {
-      if (!deps.llm) return fail('unavailable', 'Помощник не подключён: на сервере не задан ключ.');
+      const llm = await resolveLlm(deps.llm);
+      if (!llm) return fail('unavailable', 'Помощник не подключён: не задан ключ.');
       if ((await deps.settings.get<boolean>(ASSISTANT_ENABLED_KEY)) !== true) return fail('unavailable', 'Помощник выключен. Включить его можно в «Настройки → Помощник».');
 
       const turns = parseTurns(body);
@@ -108,7 +109,7 @@ export function createChat(deps: Deps) {
       let rowsTotal = 0;
       try {
         for (let round = 0; round < MAX_ROUNDS; round++) {
-          const reply = await deps.llm.chat({ messages, tools: [QUERY_TOOL] });
+          const reply = await llm.chat({ messages, tools: [QUERY_TOOL] });
           if (reply.toolCalls.length === 0) {
             const answer = names.toReal(reply.content ?? '').trim();
             if (answer === '') return fail('unavailable', 'Помощник не смог составить ответ. Попробуйте переформулировать вопрос.');

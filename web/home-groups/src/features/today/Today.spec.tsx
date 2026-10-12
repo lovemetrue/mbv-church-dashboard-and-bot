@@ -91,7 +91,7 @@ describe('«Сегодня»: счётчики и обзвон', () => {
     stubFetchWithFixtures({ requests: () => json({ ...view, matching: { ...view.matching, saved: 3 } }) });
     const user = userEvent.setup();
     renderAt(<TodayContent data={buildToday()} now={NOW} />);
-    await screen.findByText(/Закреплено предложений/); // заявки загружены
+    await screen.findByText(/Предложено автоматически/); // заявки загружены
     await user.click(screen.getByRole('button', { name: /Начать обзвон \(\d+\)/ }));
     expect(currentSearch().get('tab')).toBe('requests');
     expect(currentSearch().get('bucket')).toBe('queue');
@@ -156,24 +156,24 @@ describe('«Сегодня»: виджеты верхнего ряда', () => {
     expect(screen.getByText('сегодня пока никого')).toBeInTheDocument();
   });
 
-  test('показатель «Закреплено предложений» берёт данные из «Заявок», а пока они не пришли — не рисуется', async () => {
+  test('показатель «Предложено автоматически» берёт данные из «Заявок», а пока они не пришли — не рисуется', async () => {
     const view = buildRequests();
     stubFetchWithFixtures({ requests: () => json({ ...view, matching: { ...view.matching, saved: 7 } }) });
     renderAt(<TodayContent data={buildToday()} now={NOW} />);
-    expect(screen.queryByText(/Закреплено предложений/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Предложено автоматически/)).not.toBeInTheDocument();
     const c = view.counters;
-    expect(await screen.findByText(`Закреплено предложений: 7 из ${c.ready + c.callback + c.human}`)).toBeInTheDocument();
+    expect(await screen.findByText(`Предложено автоматически: 7 из ${c.ready + c.callback + c.human}`)).toBeInTheDocument();
   });
 
-  test('показатель «Закреплено» объясняет себя подсказкой при фокусе с клавиатуры', async () => {
+  test('показатель «Предложено автоматически» объясняет себя подсказкой при фокусе с клавиатуры', async () => {
     const view = buildRequests();
     stubFetchWithFixtures({ requests: () => json({ ...view, matching: { ...view.matching, saved: 7 } }) });
     const user = userEvent.setup();
     renderAt(<TodayContent data={buildToday()} now={NOW} />);
-    const saved = await screen.findByText(/Закреплено предложений/);
+    const saved = await screen.findByText(/Предложено автоматически/);
     await user.tab(); // доходим до первой фокусируемой кнопки; показатель — после неё
     saved.closest<HTMLElement>('[tabindex]')!.focus();
-    expect(await screen.findByRole('tooltip')).toHaveTextContent('Закреплённое предложение не меняется само, пока группа подходит');
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Предложенная группа не меняется сама, пока подходит');
   });
 });
 

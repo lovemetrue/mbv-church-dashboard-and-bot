@@ -10,7 +10,6 @@ import { mailerFromEnv } from '../platform/mail/mailer.js';
 import { composeService, engine } from './composition.js';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { llmFromEnv } from '../platform/llm/deepseek.js';
 import { serviceFromEnv } from '../admin/notifierFromEnv.js';
 import { createExtraInvites } from '../core/extraInvites.js';
 import { startAutoMatching } from './matching/scheduler.js';
@@ -71,9 +70,11 @@ async function main(): Promise<void> {
     timezone: env('TIMEZONE', 'Europe/Moscow'),
   };
   const bots = serviceFromEnv(db, process.env, schedule, 'домашние группы');
-  const { views, matching, placement, settings, errors, staff, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, chat, members, reconciler, strange, formMeta } = composeService(db, engine, {
+  const { views, matching, placement, settings, errors, staff, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, chat, members, reconciler, strange, formMeta } = composeService(db, engine, {
     campaignSchedule: schedule,
-    llm: llmFromEnv(process.env),
+    // Ключ, провайдер и модель можно менять в «Настройки → Помощник»; пока там пусто, действует `.env`. Ключ в базе шифруется
+    // секретом SETTINGS_SECRET, а если его нет — паролем полного входа (смена пароля потребует ввести ключ заново).
+    llmSettings: { env: process.env, secret: process.env['SETTINGS_SECRET']?.trim() || superPassword },
     extraQuestionsEnv: env('EXTRA_QUESTIONS', 'off'),
     notify: bots.notify,
     // Без подключённых ботов слать приглашения нечем: кнопка в «Настройках» покажет, что недоступна.
@@ -102,6 +103,7 @@ async function main(): Promise<void> {
     campaign,
     botSettings,
     assistant,
+    llmConfig,
     chat,
     members,
     reconciler,

@@ -211,3 +211,24 @@ export function inviteErrorText(error: unknown): string {
       return e.other;
   }
 }
+
+// ── помощник: подключение ────────────────────────────────────────────────────
+
+/**
+ * Открыт ли сайт без шифрования. Вынесено отдельно, чтобы тест мог подменить протокол: в jsdom адрес страницы не сменить.
+ * Предупреждение только показывается, ввод ключа не запрещён (так решил заказчик).
+ */
+export function isInsecurePage(): boolean {
+  return typeof window !== 'undefined' && window.location.protocol === 'http:';
+}
+
+/**
+ * Текст ошибки сохранения, проверки или удаления ключа. Отказ проверки (400) и «нет секрета шифрования на сервере» (503) сервер пишет
+ * по-русски и для людей, их показываем как есть; сеть и права — отдельными фразами.
+ */
+export function llmErrorText(error: unknown, texts: { network: string; forbidden: string; other: string }): string {
+  if (!(error instanceof ApiError)) return texts.other;
+  if (error.status === 0) return texts.network;
+  if (error.status === 403 || error.code === 'forbidden') return texts.forbidden;
+  return error.message && !GENERIC_MESSAGE.test(error.message) ? error.message : texts.other;
+}

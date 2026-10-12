@@ -3,6 +3,7 @@ import type { SettingsAssistantView } from '@contracts';
 import { serverText } from '../../shared/api/serverText';
 import { ru } from '../../shared/i18n/ru';
 import { Button } from '../../shared/ui';
+import { LlmConnectionForm } from './LlmConnectionForm';
 import { formatWhen } from './model';
 import { QueryBoundary } from './QueryBoundary';
 import { RefreshButton } from './RefreshButton';
@@ -96,8 +97,8 @@ function LastRun({ run }: { run: SettingsAssistantView['lastRun'] }) {
 }
 
 /**
- * «Помощник»: состояние ключа, переключатель, последний запуск и что уходит к модели. Самого ключа здесь нет
- * и быть не должно: сервер его не отдаёт, интерфейс не рисует полей для него (ключ лежит в `.env` на сервере).
+ * «Помощник»: подключение (провайдер, модель, ключ), переключатель, последний запуск и что уходит к модели. Ключ можно
+ * ввести, но показать его обратно нельзя: сервер отдаёт лишь последние четыре символа (см. LlmConnectionForm).
  */
 export function AssistantSection() {
   const query = useSettingsAssistant();
@@ -111,14 +112,7 @@ export function AssistantSection() {
       <QueryBoundary query={query}>
         {(data) => (
           <div className={styles.block}>
-            <p>
-              <span className={styles.muted}>{t.keyLabel}: </span>
-              <b>{data.available ? t.keyOk : t.keyMissing}</b>
-            </p>
-            <p>
-              <span className={styles.muted}>{t.modelLabel}: </span>
-              <b>{data.model ?? t.modelNone}</b>
-            </p>
+            <LlmConnectionForm llm={data.llm} />
             <div className={styles.stackTop}>
               <EnabledForm current={data.enabled} />
             </div>

@@ -587,3 +587,18 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* Подключение помощника: поля внутри fieldset без рамки (он нужен лишь затем, чтобы запереть поля на время сохранения). */
+.plainFieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+/* Мелкие строки внутри плашки отказа проверки: ответ провайдера и код ответа. */
+.noticeSub {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 400;
+}

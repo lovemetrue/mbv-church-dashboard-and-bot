@@ -517,8 +517,8 @@ export function RequestCard({
       <DrawerSection title={ru.requests.contacts}>
         <KeyValue rows={contacts} />
       </DrawerSection>
-      <AssistantNoteBlock key={r.id} note={r.assistant} />
-      <WorkPlace key={r.id} subject={subjectOfRequest(r)} onClosed={onClosed} />
+      <AssistantNoteBlock key={`assistant-${r.id}`} note={r.assistant} />
+      <WorkPlace key={`work-${r.id}`} subject={subjectOfRequest(r)} onClosed={onClosed} />
       <DrawerSection>
         <Params key={r.id} r={r} />
       </DrawerSection>

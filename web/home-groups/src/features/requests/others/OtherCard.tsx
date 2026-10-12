@@ -18,6 +18,8 @@ const noValue = <span className={styles.note}>{ru.reference.notSpecified}</span>
  * групп), контакты, блок «Работа с заявкой», как пришла и лента.
  * Предложений группы и кнопок «Утвердить» здесь нет: такие обращения в подбор не идут.
  * Закрыть или вернуть в работу — в блоке работы, как у заявки.
+ * Ключи блоков с состоянием у каждого свои (не просто id обращения): одинаковые у соседей React путает, оставляет блоки
+ * прежнего обращения, и их кнопки действуют на то обращение, а не на открытое.
  */
 export function OtherCard({ item, onClose, onClosed }: { item: OtherItem; onClose: () => void; onClosed: (text: string) => void }) {
   const contacts: KvRow[] = [
@@ -50,11 +52,11 @@ export function OtherCard({ item, onClose, onClosed }: { item: OtherItem; onClos
       )}
       {item.state === 'open' && item.callback && <div className={styles.callout}>{o.callbackMark}</div>}
       {item.state === 'cancelled' && item.cancelReason && <div className={styles.callout}>{o.cancelReason(item.cancelReason)}</div>}
-      {item.reconcile && <ReconcileBlock key={item.id} item={item} rec={item.reconcile} onClosed={onClosed} />}
+      {item.reconcile && <ReconcileBlock key={`reconcile-${item.id}`} item={item} rec={item.reconcile} onClosed={onClosed} />}
       <DrawerSection title={ru.requests.contacts}>
         <KeyValue rows={contacts} />
       </DrawerSection>
-      <WorkPlace key={item.id} subject={subjectOfOther(item)} onClosed={onClosed} />
+      <WorkPlace key={`work-${item.id}`} subject={subjectOfOther(item)} onClosed={onClosed} />
       <DrawerSection title={o.original}>
         {item.original.length ? (
           <KeyValue rows={item.original.map((f) => ({ label: f.label, value: f.value }))} />

@@ -387,6 +387,30 @@ describe('«Другие обращения»: суть в карточке', ()
 });
 
 describe('«Другие обращения»: блок «Разбор»', () => {
+  // Раньше у «Разбора» и «Работы с заявкой» стоял один и тот же key={item.id}: React при смене карточки оставлял старые блоки,
+  // и кнопка «Внести в состав и закрыть» в чужом блоке разбирала прежнее обращение, а не открытое.
+  test('при переходе к другому обращению в карточке один «Разбор», а кнопка относится к открытому обращению', async () => {
+    const user = userEvent.setup();
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { fetchMock } = await openOthers('&req=206');
+    await screen.findByRole('dialog', { name: /Карточка обращения/ });
+    for (const name of ['Сергей Волков', 'Анастасия Орлова', 'Дмитрий Воронин']) {
+      await user.click(within(listEl()).getByRole('button', { name }));
+    }
+    const card = screen.getByRole('dialog', { name: /Карточка обращения/ });
+    expect(within(card).getAllByRole('heading', { name: 'Разбор' })).toHaveLength(1);
+    expect(within(card).getAllByRole('heading', { name: 'Работа с заявкой' })).toHaveLength(1);
+    expect(within(recBlock(card)).getByText(fixtureOther(208).reconcile!.text)).toBeInTheDocument();
+    expect(errors.mock.calls.filter((c) => String(c[0]).includes('same key'))).toEqual([]);
+    errors.mockRestore();
+
+    await user.click(within(recBlock(card)).getAllByRole('radio')[0]!);
+    await user.click(within(recBlock(card)).getByRole('button', { name: /Связать с группой и закрыть/ }));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    // запрос ушёл по открытому обращению (208), а не по тем, что открывали до него
+    expect(posts(fetchMock)[0]!.path).toBe('requests/208/reconcile');
+  });
+
   test('ready: текст сервера, единственная группа выбрана заранее с меткой «точно», кнопка активна', async () => {
     const { card } = await openOtherCard(206);
     const block = recBlock(card);

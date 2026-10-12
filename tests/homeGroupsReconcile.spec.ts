@@ -27,7 +27,7 @@ async function person(uid: string, type: 'already_member' | 'already_leader', op
   const userId = await seedUser(db, { id: uid, mdgStatus: type === 'already_member' ? 'member' : 'leader', ...(opts.fio ? { fio: opts.fio } : {}), ...(opts.phone ? { phone: opts.phone } : {}) });
   if (opts.leader) await db.query('UPDATE users SET leader_name = $2 WHERE id = $1', [userId, opts.leader]);
   const { rows } = await db.query<{ id: number }>(
-    `INSERT INTO requests (type, user_id, fio, status, origin) VALUES ($1, $2, 'Из заявки', 'Новая', 'бот') RETURNING id`, [type, userId],
+    `INSERT INTO requests (type, user_id, fio, status, origin) VALUES ($1, $2, $3, 'Новая', 'бот') RETURNING id`, [type, userId, opts.fio ?? 'Из заявки'],
   );
   return { requestId: rows[0]!.id, userId };
 }
@@ -98,5 +98,89 @@ describe('«уже веду группу»', () => {
     expect(await s.reconciler.apply(a.requestId, { groupId: g }, 'boss')).toEqual({ ok: true, already: false });
     const card = (await s.views()).groups.items.find((x) => x.id === g)!;
     expect(card.leaderKey).toBe(`u${a.userId}`);
+  });
+});
+
+describe('несколько групп сразу', () => {
+  const membersOf = async (userId: number) =>
+    (await db.query<{ g: number }>('SELECT group_id::int AS g FROM group_members WHERE user_id = $1 AND archived_at IS NULL ORDER BY group_id', [userId])).rows.map((r) => r.g);
+  const statusOf = async (requestId: number) => (await db.query<{ status: string }>('SELECT status FROM requests WHERE id = $1', [requestId])).rows[0]!.status;
+
+  test('«уже состою»: человек вносится в состав каждой отмеченной группы, обращение закрывается один раз', async () => {
+    const a = await group('Малявин Павел');
+    const b = await group('Родионов Давид');
+    const p = await person('1', 'already_member', { leader: 'Павел Малявин' });
+    expect(await service().reconciler.apply(p.requestId, { groupIds: [b, a] }, 'boss')).toEqual({ ok: true, already: false });
+    expect(await membersOf(p.userId)).toEqual([a, b]);
+    expect(await statusOf(p.requestId)).toBe('Исполнена');
+    const entry = (await db.query<{ after: { group_id: number; group_ids: number[] } }>(`SELECT after FROM audit_log WHERE action = 'request.reconcile'`)).rows;
+    expect(entry).toHaveLength(1);
+    expect(entry[0]!.after).toMatchObject({ group_id: a, group_ids: [a, b] });
+  });
+
+  test('«уже состою»: «уже было» только когда человек уже был во всех отмеченных', async () => {
+    const a = await group('Малявин Павел');
+    const b = await group('Родионов Давид');
+    const p = await person('1', 'already_member', { leader: 'Павел Малявин' });
+    await db.query(`INSERT INTO group_members (group_id, user_id, created_by) VALUES ($1, $2, 'boss')`, [a, p.userId]);
+    expect(await service().reconciler.apply(p.requestId, { groupIds: [a, b] }, 'boss')).toEqual({ ok: true, already: false });
+    expect(await membersOf(p.userId)).toEqual([a, b]);
+    const q = await person('2', 'already_member', { leader: 'Павел Малявин' });
+    await db.query(`INSERT INTO group_members (group_id, user_id, created_by) VALUES ($1, $2, 'boss')`, [a, q.userId]);
+    expect(await service().reconciler.apply(q.requestId, { groupIds: [a] }, 'boss')).toEqual({ ok: true, already: true });
+  });
+
+  test('«уже веду»: каждая отмеченная группа получает ссылку на ведущего', async () => {
+    const a = await group('Артёмкин Константин');
+    const b = await group('Артёмкин Константин');
+    const p = await person('3', 'already_leader', { fio: 'Артёмкин Константин' });
+    expect(await service().reconciler.apply(p.requestId, { groupIds: [a, b] }, 'boss')).toEqual({ ok: true, already: false });
+    const rows = (await db.query<{ id: number; leader_user_id: number }>('SELECT id::int AS id, leader_user_id::int AS leader_user_id FROM groups ORDER BY id')).rows;
+    expect(rows).toEqual([{ id: a, leader_user_id: p.userId }, { id: b, leader_user_id: p.userId }]);
+  });
+
+  test('«уже веду»: если у одной из групп уже другой ведущий, не записывается ничего и обращение остаётся открытым', async () => {
+    const a = await group('Артёмкин Константин');
+    const b = await group('Артёмкин Константин');
+    const other = await seedUser(db, { id: '9', mdgStatus: 'leader' });
+    await db.query('UPDATE groups SET leader_user_id = $2 WHERE id = $1', [b, other]);
+    const p = await person('3', 'already_leader', { fio: 'Артёмкин Константин' });
+    expect(await service().reconciler.apply(p.requestId, { groupIds: [a, b] }, 'boss')).toMatchObject({ ok: false, error: 'conflict' });
+    expect((await db.query('SELECT 1 FROM groups WHERE leader_user_id = $1', [p.userId])).rowCount).toBe(0);
+    expect(await statusOf(p.requestId)).toBe('Новая');
+  });
+
+  test('одна из групп в архиве или не существует: не записывается ничего', async () => {
+    const a = await group('Малявин Павел');
+    const b = await group('Родионов Давид');
+    await db.query('UPDATE groups SET archived_at = now() WHERE id = $1', [b]);
+    const p = await person('1', 'already_member', { leader: 'Павел Малявин' });
+    expect(await service().reconciler.apply(p.requestId, { groupIds: [a, b] }, 'boss')).toMatchObject({ ok: false, error: 'group_unavailable' });
+    expect(await service().reconciler.apply(p.requestId, { groupIds: [a, 999999] }, 'boss')).toMatchObject({ ok: false, error: 'group_unavailable' });
+    expect(await membersOf(p.userId)).toEqual([]);
+    expect(await statusOf(p.requestId)).toBe('Новая');
+  });
+
+  test('повторы в списке схлопываются, а старое тело {groupId} по-прежнему работает', async () => {
+    const a = await group('Малявин Павел');
+    const p = await person('1', 'already_member', { leader: 'Павел Малявин' });
+    expect(await service().reconciler.apply(p.requestId, { groupIds: [a, a] }, 'boss')).toEqual({ ok: true, already: false });
+    expect(await membersOf(p.userId)).toEqual([a]);
+    const q = await person('2', 'already_member', { leader: 'Павел Малявин' });
+    expect(await service().reconciler.apply(q.requestId, { groupId: a }, 'boss')).toEqual({ ok: true, already: false });
+  });
+
+  test.each([[{ groupIds: [] }], [{ groupIds: 'x' }], [{ groupIds: [1, 'x'] }], [{ groupIds: [0] }], [{ groupIds: Array.from({ length: 21 }, (_, i) => i + 1) }], [{ groupIds: [1], groupId: 1 }]])('неверный список групп %j отклоняется', async (body) => {
+    expect(await service().reconciler.apply(1, body, 'boss')).toMatchObject({ ok: false, error: 'bad_request' });
+  });
+
+  test('в ленте обращения и в журнале перечислены все группы', async () => {
+    const a = await group('Малявин Павел');
+    const b = await group('Родионов Давид');
+    const p = await person('1', 'already_member', { leader: 'Павел Малявин' });
+    const s = service();
+    await s.reconciler.apply(p.requestId, { groupIds: [a, b] }, 'boss');
+    const done = (await s.views()).requests.others.find((o) => o.id === p.requestId)!;
+    expect(done.log.map((l) => l.text).join('\n')).toContain(`внесён в состав групп ДГ-${String(a).padStart(4, '0')}, ДГ-${String(b).padStart(4, '0')}`);
   });
 });

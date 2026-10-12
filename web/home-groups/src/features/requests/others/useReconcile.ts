@@ -9,7 +9,7 @@ import { reconcileErrorText, reconcileReadyErrorText } from './reconcileErrors';
 const r = ru.requests.others.reconcile;
 
 /**
- * Разбор одного обращения: `POST requests/:id/reconcile {groupId}`. Возвращает текст итога, если сервер принял,
+ * Разбор одного обращения: `POST requests/:id/reconcile {groupIds}`. Возвращает текст итога, если сервер принял,
  * и null, если нет (ошибка остаётся в `error`). Запрос в каждый момент один: два нажатия приходят раньше
  * перерисовки, поэтому одного `pending` мало, флаг ещё и в `ref` (как в `useRequestWork`).
  * Повторов нет намеренно: после обрыва связи неизвестно, записалось ли, и слепой повтор внёс бы человека дважды.
@@ -20,17 +20,18 @@ export function useReconcile(item: Pick<OtherItem, 'id'>, kind: 'member' | 'lead
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function submit(group: { id: number; code: string }): Promise<string | null> {
+  async function submit(groups: readonly { id: number; code: string }[]): Promise<string | null> {
     if (inFlight.current) return null;
     inFlight.current = true;
     setPending(true);
     setError(null);
     try {
-      const body: ReconcileBody = { groupId: group.id };
+      const body: ReconcileBody = { groupIds: groups.map((g) => g.id) };
       const out = await apiPost<ReconcileOk>(`requests/${item.id}/reconcile`, body);
       // Ждём перечитывания: пока список показывает старое, карточка закрылась бы над устаревшим.
       await refreshAfterReconcile(queryClient);
-      return kind === 'member' ? r.doneMember(group.code, out.already) : r.doneLeader(group.code, out.already);
+      const codes = groups.map((g) => g.code);
+      return kind === 'member' ? r.doneMember(codes, out.already) : r.doneLeader(codes, out.already);
     } catch (e) {
       setError(reconcileErrorText(e));
       // Обращение закрыли без нас: список устарел, показываем актуальный.

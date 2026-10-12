@@ -206,3 +206,22 @@ describe('«Заявки»: экран', () => {
     expect(await screen.findByText(/Заявка не найдена/)).toBeInTheDocument();
   });
 });
+
+describe('«Заявки»: смена карточки', () => {
+  // Блоки «Помощник» и «Работа с заявкой» стояли рядом с одним и тем же key={r.id}: React оставлял прежние, и кнопки
+  // закрытия в чужом блоке действовали на прежнюю заявку.
+  test('при переходе к другой заявке в карточке один блок «Работа с заявкой», дублей ключей нет', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    stubFetchWithFixtures();
+    const user = userEvent.setup();
+    renderAt(<App />, '/?tab=requests');
+    await screen.findByRole('list', { name: 'Список заявок' });
+    for (const name of ['Алексей Орлов', 'Мария Соколова', 'Наталья Белова']) {
+      await user.click(screen.getByRole('button', { name }));
+    }
+    const card = screen.getByRole('dialog', { name: /Карточка заявки/ });
+    expect(within(card).getAllByRole('heading', { name: 'Работа с заявкой' })).toHaveLength(1);
+    expect(errors.mock.calls.filter((c) => String(c[0]).includes('same key'))).toEqual([]);
+    errors.mockRestore();
+  });
+});

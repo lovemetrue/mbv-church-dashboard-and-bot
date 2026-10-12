@@ -31,7 +31,7 @@
  *   POST /api/v1/requests/bulk          BulkBody → BulkOk | ActionError (передать или отметить «нужен звонок» сразу нескольким)
  *   POST /api/v1/requests/:id/strange   StrangeBody → ActionOk | ActionError (метка «Странный человек» на человеке заявки; любой вход)
  *   POST /api/v1/people/strange         PersonStrangeBody → ActionOk | ActionError (то же по ключу человека: u12, r345, p7)
- *   POST /api/v1/requests/:id/reconcile ReconcileBody → ReconcileOk | ActionError (разобрать «другое обращение»: в состав группы или ведущим группы)
+ *   POST /api/v1/requests/:id/reconcile ReconcileBody → ReconcileOk | ActionError (разобрать «другое обращение»: в состав групп или ведущим групп)
  *   POST /api/v1/requests/reconcile-ready ReconcileReadyBody → ReconcileReadyOk | ActionError (разобрать сразу все с одной точно найденной группой)
  *   POST /api/v1/groups/:id/update      UpdateBody → ActionOk | ActionError (правка части полей группы; адрес и телефоны только записываются, обратно не отдаются)
  *   POST /api/v1/groups/:id/delete      (тело {})  → ActionOk | ActionError (только super; скрывает, а не стирает)
@@ -753,14 +753,18 @@ export interface OtherItem {
   log: LogEntry[];
 }
 
-/** Разобрать обращение: человек вносится в состав группы или группа получает ведущего (вид выводит сервер по типу обращения). */
+/**
+ * Разобрать обращение: человек вносится в состав групп или группы получают ведущего (вид выводит сервер по типу
+ * обращения). Групп одна или несколько (до 20): человек ходит в две группы или ведёт две. Записывается всё или ничего.
+ * Прежнее тело `{groupId}` сервер принимает, пока открыты старые вкладки.
+ */
 export interface ReconcileBody {
-  groupId: number;
+  groupIds: number[];
 }
 
 export interface ReconcileOk {
   ok: true;
-  /** Уже было так: состав или ведущий не менялись, обращение закрыто. */
+  /** Уже было так во всех отмеченных группах: состав или ведущий не менялись, обращение закрыто. */
   already: boolean;
 }
 

@@ -34,7 +34,7 @@ describe('разбор обращения «уже состою в группе�
   test('человек попадает в состав группы ссылкой на свою регистрацию, обращение закрывается как обработанное', async () => {
     const g = await group();
     const { requestId, userId } = await other('already_member');
-    expect(await repo.reconcile(requestId, 'member', g, 'boss')).toEqual({ ok: true, already: false });
+    expect(await repo.reconcile(requestId, 'member', [g], 'boss')).toEqual({ ok: true, already: false });
     expect(await members(g)).toEqual([{ user_id: userId, created_by: 'boss', source: 'ui' }]);
     expect(await status(requestId)).toEqual({ status: 'Исполнена', handled_by: 'boss' });
   });
@@ -42,17 +42,17 @@ describe('разбор обращения «уже состою в группе�
   test('в журнал идут вид, группа и число, без имён и телефонов', async () => {
     const g = await group();
     const { requestId } = await other('already_member');
-    await repo.reconcile(requestId, 'member', g, 'boss');
+    await repo.reconcile(requestId, 'member', [g], 'boss');
     const [e] = await audits();
     expect(e).toMatchObject({ actor: 'boss', action: 'request.reconcile', entity_type: 'request', entity_id: requestId });
-    expect(e.after).toEqual({ kind: 'member', group_id: g, already: false });
+    expect(e.after).toEqual({ kind: 'member', group_id: g, group_ids: [g], already: false });
   });
 
   test('уже стоит в составе этой группы — второй записи не создаётся, обращение всё равно закрывается', async () => {
     const g = await group();
     const { requestId, userId } = await other('already_member');
     await db.query('INSERT INTO group_members (group_id, user_id, created_by) VALUES ($1, $2, $3)', [g, userId, 'ранее']);
-    expect(await repo.reconcile(requestId, 'member', g, 'boss')).toEqual({ ok: true, already: true });
+    expect(await repo.reconcile(requestId, 'member', [g], 'boss')).toEqual({ ok: true, already: true });
     expect(await members(g)).toHaveLength(1);
     expect((await status(requestId))!.status).toBe('Исполнена');
   });
@@ -61,7 +61,7 @@ describe('разбор обращения «уже состою в группе�
     const g = await group();
     const { requestId, userId } = await other('already_member');
     await db.query(`INSERT INTO requests (type, user_id, fio, status, group_id, origin) VALUES ('join_group', $1, 'Иванов Иван', 'Исполнена', $2, 'бот')`, [userId, g]);
-    expect(await repo.reconcile(requestId, 'member', g, 'boss')).toEqual({ ok: true, already: true });
+    expect(await repo.reconcile(requestId, 'member', [g], 'boss')).toEqual({ ok: true, already: true });
     expect(await members(g)).toEqual([]);
   });
 
@@ -70,14 +70,14 @@ describe('разбор обращения «уже состою в группе�
     const g2 = await group('Два Пётр');
     const { requestId, userId } = await other('already_member');
     await db.query('INSERT INTO group_members (group_id, user_id) VALUES ($1, $2)', [g1, userId]);
-    expect(await repo.reconcile(requestId, 'member', g2, 'boss')).toEqual({ ok: true, already: false });
+    expect(await repo.reconcile(requestId, 'member', [g2], 'boss')).toEqual({ ok: true, already: false });
     expect(await members(g2)).toHaveLength(1);
   });
 
   test('закрытое обращение не разбирается повторно, и ничего не записывается', async () => {
     const g = await group();
     const { requestId } = await other('already_member', { status: 'Исполнена' });
-    expect(await repo.reconcile(requestId, 'member', g, 'boss')).toMatchObject({ ok: false, error: 'already_closed' });
+    expect(await repo.reconcile(requestId, 'member', [g], 'boss')).toMatchObject({ ok: false, error: 'already_closed' });
     expect(await members(g)).toEqual([]);
   });
 
@@ -85,18 +85,18 @@ describe('разбор обращения «уже состою в группе�
     const g = await group();
     await db.query('UPDATE groups SET archived_at = now() WHERE id = $1', [g]);
     const { requestId } = await other('already_member');
-    expect(await repo.reconcile(requestId, 'member', g, 'boss')).toMatchObject({ ok: false, error: 'group_unavailable' });
-    expect(await repo.reconcile(requestId, 'member', 999999, 'boss')).toMatchObject({ ok: false, error: 'group_unavailable' });
+    expect(await repo.reconcile(requestId, 'member', [g], 'boss')).toMatchObject({ ok: false, error: 'group_unavailable' });
+    expect(await repo.reconcile(requestId, 'member', [999999], 'boss')).toMatchObject({ ok: false, error: 'group_unavailable' });
     expect((await status(requestId))!.status).toBe('Новая');
   });
 
   test('обращение другого вида или без регистрации человека отклоняется', async () => {
     const g = await group();
     const lead = await other('already_leader', { uid: '502' });
-    expect(await repo.reconcile(lead.requestId, 'member', g, 'boss')).toMatchObject({ ok: false, error: 'bad_request' });
+    expect(await repo.reconcile(lead.requestId, 'member', [g], 'boss')).toMatchObject({ ok: false, error: 'bad_request' });
     const { rows } = await db.query<{ id: number }>(`INSERT INTO requests (type, fio, status, origin) VALUES ('already_member', 'Без регистрации', 'Новая', 'ui') RETURNING id`);
-    expect(await repo.reconcile(rows[0]!.id, 'member', g, 'boss')).toMatchObject({ ok: false, error: 'bad_request' });
-    expect(await repo.reconcile(999999, 'member', g, 'boss')).toMatchObject({ ok: false, error: 'not_found' });
+    expect(await repo.reconcile(rows[0]!.id, 'member', [g], 'boss')).toMatchObject({ ok: false, error: 'bad_request' });
+    expect(await repo.reconcile(999999, 'member', [g], 'boss')).toMatchObject({ ok: false, error: 'not_found' });
   });
 });
 
@@ -104,16 +104,16 @@ describe('разбор обращения «уже веду группу»', () 
   test('группа получает ссылку на регистрацию ведущего, обращение закрывается', async () => {
     const g = await group();
     const { requestId, userId } = await other('already_leader');
-    expect(await repo.reconcile(requestId, 'leader', g, 'boss')).toEqual({ ok: true, already: false });
+    expect(await repo.reconcile(requestId, 'leader', [g], 'boss')).toEqual({ ok: true, already: false });
     expect((await db.query('SELECT leader_user_id::int AS u FROM groups WHERE id = $1', [g])).rows[0]!.u).toBe(userId);
     expect((await status(requestId))!.status).toBe('Исполнена');
-    expect((await audits())[0]!.after).toEqual({ kind: 'leader', group_id: g, already: false });
+    expect((await audits())[0]!.after).toEqual({ kind: 'leader', group_id: g, group_ids: [g], already: false });
   });
 
   test('запись из таблицы после связывания считается правленной в интерфейсе, чтобы повторный перенос её не затёр', async () => {
     const g = await group('Малявин Павел', 'таблица');
     const { requestId } = await other('already_leader');
-    await repo.reconcile(requestId, 'leader', g, 'boss');
+    await repo.reconcile(requestId, 'leader', [g], 'boss');
     expect((await db.query('SELECT source FROM groups WHERE id = $1', [g])).rows[0]!.source).toBe('ui');
   });
 
@@ -121,7 +121,7 @@ describe('разбор обращения «уже веду группу»', () 
     const g = await group();
     const { requestId, userId } = await other('already_leader');
     await db.query('UPDATE groups SET leader_user_id = $2 WHERE id = $1', [g, userId]);
-    expect(await repo.reconcile(requestId, 'leader', g, 'boss')).toEqual({ ok: true, already: true });
+    expect(await repo.reconcile(requestId, 'leader', [g], 'boss')).toEqual({ ok: true, already: true });
   });
 
   test('у группы уже связан другой ведущий — отказ: чужую связь молча не перезаписываем', async () => {
@@ -129,7 +129,7 @@ describe('разбор обращения «уже веду группу»', () 
     const other1 = await seedUser(db, { id: '700', mdgStatus: 'leader' });
     await db.query('UPDATE groups SET leader_user_id = $2 WHERE id = $1', [g, other1]);
     const { requestId } = await other('already_leader');
-    expect(await repo.reconcile(requestId, 'leader', g, 'boss')).toMatchObject({ ok: false, error: 'conflict' });
+    expect(await repo.reconcile(requestId, 'leader', [g], 'boss')).toMatchObject({ ok: false, error: 'conflict' });
     expect((await status(requestId))!.status).toBe('Новая');
     expect((await db.query('SELECT leader_user_id::int AS u FROM groups WHERE id = $1', [g])).rows[0]!.u).toBe(other1);
   });
@@ -137,7 +137,7 @@ describe('разбор обращения «уже веду группу»', () 
   test('удаление регистрации ведущего снимает ссылку, группа остаётся', async () => {
     const g = await group();
     const { requestId, userId } = await other('already_leader');
-    await repo.reconcile(requestId, 'leader', g, 'boss');
+    await repo.reconcile(requestId, 'leader', [g], 'boss');
     await db.query('DELETE FROM users WHERE id = $1', [userId]);
     expect((await db.query('SELECT leader_user_id FROM groups WHERE id = $1', [g])).rows[0]!.leader_user_id).toBeNull();
   });

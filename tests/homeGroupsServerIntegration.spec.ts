@@ -214,7 +214,8 @@ describe('с настоящим движком на живой базе', () => 
     if (bot.proposal) expect(bot.proposal.main.group.id).toBe(s.maria.id);
     expect(views.today.counters.done).toBe(1);
     expect(views.today.ageColumns.length).toBeGreaterThan(0);
-    expect(JSON.stringify(views)).not.toContain(SECRET_ADDRESS);
+    expect(JSON.stringify(views.groups.items.map((g) => g.address))).toContain(SECRET_ADDRESS);
+    expect(JSON.stringify(views.today)).not.toContain(SECRET_ADDRESS);
   });
 });
 

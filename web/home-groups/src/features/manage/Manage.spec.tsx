@@ -170,7 +170,7 @@ describe('правка группы', () => {
     for (const name of ['Новый телефон ведущего', 'Новый телефон соведущего', 'Новый адрес']) {
       const field = within(dialog).getByRole('textbox', { name });
       expect(field).toHaveValue('');
-      expect(field).toHaveAccessibleDescription(hint);
+      expect(field).toHaveAccessibleDescription(name === 'Новый адрес' ? `Хранится для координаторов и в подборе не участвует. ${hint}` : hint);
     }
     // Старой пометки про другой дашборд нет, а телефон ведущего (79112003145) не показывается ни в каком виде.
     expect(within(dialog).queryByText(/дашборд/i)).not.toBeInTheDocument();
@@ -189,6 +189,18 @@ describe('правка группы', () => {
     expect(fields).not.toHaveProperty('phone');
     expect(fields).not.toHaveProperty('coLeaderPhone');
     expect(fields).not.toHaveProperty('address');
+  });
+
+  test('в форме правки группы видно и правится поле, по которому идёт автоподбор (метро), и оно уходит как metro', async () => {
+    const fetchMock = stubFetchWithFixtures({ 'groups/1/update': () => json({ ok: true }) });
+    const user = userEvent.setup();
+    const { dialog } = await openGroupEdit(user);
+    const metro = within(dialog).getByRole('textbox', { name: 'Метро или ориентир' });
+    await user.clear(metro);
+    await user.type(metro, 'Парк Победы');
+    await user.click(saveButton(dialog));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect((posts(fetchMock)[0]!.body as { fields: Record<string, string> }).fields).toEqual({ metro: 'Парк Победы' });
   });
 
   test('заполненные поля уходят под именами phone, coLeaderPhone и address, остальное не трогается', async () => {

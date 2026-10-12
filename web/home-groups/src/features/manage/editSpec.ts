@@ -80,6 +80,9 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
     fields: [
       { name: 'leader', label: t.leader, kind: 'text', required: true, wide: true },
       { name: 'district', label: t.district, kind: 'select', required: true, options: withCurrent(meta.districts, g.district) },
+      // Район и метро — то, по чему автоподбор сопоставляет группу с ответом человека; поэтому метро видно и правится здесь,
+      // а закрытый «Новый адрес» в подборе не участвует.
+      { name: 'metro', label: t.metro, kind: 'text', wide: true, hint: m.group.metroHint },
       { name: 'format', label: t.format, kind: 'select', required: true, options: withCurrent(meta.groupFormats, g.format) },
       { name: 'status', label: t.status, kind: 'select', required: true, options: withCurrent(meta.groupStatuses, g.status) },
       { name: 'people', label: t.people, kind: 'text', inputMode: 'numeric', placeholder: m.group.peoplePlaceholder },
@@ -96,7 +99,7 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
       { name: 'coLeader', label: t.coLeader, kind: 'text' },
       { name: 'phone', label: t.newPhone, kind: 'text', inputMode: 'tel', hint: m.group.writeOnlyHint },
       { name: 'coLeaderPhone', label: t.newCoLeaderPhone, kind: 'text', inputMode: 'tel', hint: m.group.writeOnlyHint },
-      { name: 'address', label: t.newAddress, kind: 'text', wide: true, hint: m.group.writeOnlyHint },
+      { name: 'address', label: t.newAddress, kind: 'text', wide: true, hint: `${m.group.addressHint} ${m.group.writeOnlyHint}` },
       { name: 'feedbackAt', label: t.feedbackAt, kind: 'date', hint: `${feedbackNow(g.verifiedDaysAgo)} ${keep}` },
       { name: 'comment', label: t.comment, kind: 'textarea', wide: true },
       { name: 'doNotRefer', label: m.group.doNotRefer, kind: 'checkbox', wide: true, hint: m.group.doNotReferHint },
@@ -104,6 +107,7 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
     initial: {
       leader: g.leader,
       district: g.district,
+      metro: g.metro ?? '',
       format: g.format ?? '',
       status: g.status,
       people: g.people === null ? '' : String(g.people),

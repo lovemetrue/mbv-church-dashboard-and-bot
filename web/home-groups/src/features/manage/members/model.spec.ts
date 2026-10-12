@@ -6,6 +6,8 @@ const person = (over: Partial<PersonItem>): PersonItem => ({
   strange: null,
   key: 'u1',
   personId: null,
+  place: null,
+  address: null,
   groups: [],
   fio: 'Дарья Ефимова',
   phone: '79110004002',

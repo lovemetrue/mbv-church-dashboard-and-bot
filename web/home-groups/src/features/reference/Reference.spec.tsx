@@ -331,6 +331,14 @@ describe('«Справочник»: экран', () => {
     expect(lines).toHaveLength(shownRows + 1);
   });
 
+  test('в карточке человека видны адрес (улица и дом) и «район, метро, ориентир», по которым идёт подбор', async () => {
+    stubFetchWithFixtures();
+    renderAt(<App />, '/?tab=reference&ent=people&rec=r1');
+    const card = await screen.findByRole('dialog', { name: /Карточка/ });
+    await waitFor(() => expect(within(card).getByText('Адрес')).toBeInTheDocument());
+    expect(within(card).getByText('Район, метро, ориентир')).toBeInTheDocument();
+  });
+
   test('смена сущности сбрасывает отборы прежней: поля у людей другие', async () => {
     stubFetchWithFixtures();
     const user = userEvent.setup();

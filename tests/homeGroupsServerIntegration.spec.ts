@@ -119,8 +119,8 @@ describe('представления из живых репозиториев', 
     const json = JSON.stringify(views);
     expect(JSON.stringify(views.groups.items.map((g) => g.address))).toContain(SECRET_ADDRESS);
     expect(json).not.toContain(SECRET_PHONE);
-    // Улица из анкеты человека видна координатору в его заявке (чтобы сверить карточку), но больше нигде.
-    const { requests, ...rest } = views;
+    // Улица из анкеты человека видна координатору в его заявке и в карточке человека, но больше нигде.
+    const { requests, people, ...rest } = views;
     expect(JSON.stringify(rest)).not.toContain(SECRET_SURVEY_ADDRESS);
     expect(JSON.stringify(requests)).toContain(SECRET_SURVEY_ADDRESS);
   });
@@ -247,9 +247,9 @@ describe('через HTTP на живой базе', () => {
         const r = await fetch(`${base}/api/v1/${name}`, { headers: { cookie } });
         expect(r.status, name).toBe(200);
         const text = await r.text();
-        // Улица из анкеты — только в заявках (координатору нужно сверить карточку).
+        // Улица из анкеты — только в заявках и в «Людях» (координатору нужно сверить карточку).
         if (name === 'requests') expect(text).toContain(SECRET_SURVEY_ADDRESS);
-        else all += text;
+        else all += name === 'people' ? text.replaceAll(SECRET_SURVEY_ADDRESS, '') : text;
       }
       expect(all).toContain('Мария Иванова');
       expect(all).toContain('Станислав Ким');

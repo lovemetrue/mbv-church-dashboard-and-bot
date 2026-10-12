@@ -157,6 +157,9 @@ export function PersonCard({ p, onClose }: { p: PersonItem; onClose: () => void 
     { label: 'Телефон', value: p.phone ? <span className="num">{formatPhone(p.phone)}</span> : noValue },
     { label: 'Возраст', value: orNone(p.ageLabel) },
     { label: 'Район', value: orNone(p.district) },
+    // Подбор идёт сначала по адресу, а если он не заполнен — по району, метро или ориентиру.
+    { label: 'Адрес', value: orNone(p.address) },
+    { label: 'Район, метро, ориентир', value: orNone(p.place) },
     { label: 'Откуда', value: p.from },
     { label: 'Малая группа', value: p.mdgLabel },
     { label: 'Дата', value: p.date ? formatDateFull(p.date) : noValue },

@@ -540,17 +540,20 @@ describe('группы справочника', () => {
     expect(json).not.toContain('79990001122');
   });
 
-  test('улица из анкеты человека видна только в его заявке (координатору нужно сверить карточку), больше нигде', () => {
+  test('адрес из анкеты виден в заявке и в карточке человека (адрес и место как написал), но не уходит в группы и «сегодня»', () => {
     const { views } = build({
       groups: [group({ id: 1 })],
-      requests: [request({ id: 1, address: 'ул. Анкетная, 2', schedule: 'по вечерам' })],
-      participants: [participant({ id: 1 })],
+      requests: [request({ id: 1, address: 'ул. Анкетная, 2', place: 'Приморский', schedule: 'по вечерам' })],
+      participants: [participant({ id: 1, address: 'пр. Участников, 7', location: 'Беговая' })],
     });
-    const { requests, ...rest } = views;
+    const { requests, people, ...rest } = views;
     expect(JSON.stringify(rest)).not.toContain('Анкетная');
+    expect(JSON.stringify(rest)).not.toContain('Участников');
     const item = requests.items[0]!;
     expect(item.streetInfo).toEqual({ text: 'ул. Анкетная, 2', source: 'anketa' });
     expect(item.original).toContainEqual({ label: 'Улица и дом', value: 'ул. Анкетная, 2' });
+    expect(people.items.find((p) => p.key === 'u1')).toMatchObject({ address: 'пр. Участников, 7', place: 'Беговая' });
+    expect(people.items.find((p) => p.key === 'r1')).toMatchObject({ address: 'ул. Анкетная, 2', place: 'Приморский' });
   });
 });
 
@@ -615,7 +618,7 @@ describe('люди', () => {
     });
     expect(views.people.items).toEqual([{
       key: 'u12', strange: null, personId: null, groups: [], fio: 'Дарья Ефимова', phone: '+7 911 123-45-67', ageLabel: '26-35', district: 'Невский',
-      from: 'Бот · MAX', mdgLabel: 'Хочет в группу', date: '2026-09-12', requestId: 40, userId: 12, registrationNo: 12,
+      place: 'Ломоносовская', address: null, from: 'Бот · MAX', mdgLabel: 'Хочет в группу', date: '2026-09-12', requestId: 40, userId: 12, registrationNo: 12,
     }]);
   });
 
@@ -655,7 +658,7 @@ describe('люди', () => {
     const person = (key: string) => views.people.items.find((p) => p.key === key)!;
     expect(person('r7')).toEqual({
       key: 'r7', strange: null, personId: null, groups: [], fio: 'Станислав Ким', phone: '+7 904 123-45-67', ageLabel: '26-35', district: 'Приморский',
-      from: 'Таблица', mdgLabel: 'Заявка: готово к утверждению', date: '2026-10-02', requestId: 7, userId: null, registrationNo: null,
+      place: 'Приморский', address: null, from: 'Таблица', mdgLabel: 'Заявка: готово к утверждению', date: '2026-10-02', requestId: 7, userId: null, registrationNo: null,
     });
     expect(person('r8')).toMatchObject({ from: 'Дашборд · Звонок', mdgLabel: 'Заявка: нужна помощь в сопоставлении', district: null });
     expect(person('r9').mdgLabel).toBe('Заявка: утверждено');

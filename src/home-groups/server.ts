@@ -14,6 +14,7 @@ import type { BotSettings } from './botSettings.js';
 import type { Assistant } from './assistant/service.js';
 import type { Chat } from './assistant/chat.js';
 import type { Members } from './members.js';
+import type { Reconciler } from './reconcile/service.js';
 import { registrationCardPage } from '../dashboard/registrationCard.js';
 import type { Settings } from '../platform/settings/service.js';
 import type { ActionError, ActionOk, MatchingRunOk, Me, Role } from './contracts.js';
@@ -61,6 +62,8 @@ export interface HomeGroupsDeps {
   manager: Manager;
   /** Состав групп вручную. */
   members: Members;
+  /** Разбор «других обращений» по справочникам групп и людей. */
+  reconciler: Reconciler;
   /** Помощник по разбору заявок (языковая модель). */
   assistant: Assistant;
   /** Чат помощника: вопросы по базе, только чтение. */
@@ -131,6 +134,7 @@ const MEMBER_PATH = /^\/api\/v1\/members\/(\d{1,15})\/(update|delete)$/;
 /** Карточка человека, внесённая вручную: правка любым входом, удаление только полным. */
 const PERSON_EDIT_PATH = /^\/api\/v1\/persons\/(\d{1,15})\/(update|delete)$/;
 const BULK_PATH = '/api/v1/requests/bulk';
+const RECONCILE_READY_PATH = '/api/v1/requests/reconcile-ready';
 const ASSISTANT_RUN_PATH = '/api/v1/assistant/run';
 const ASSISTANT_CHAT_PATH = '/api/v1/assistant/chat';
 const EXPORT_PATH = /^\/api\/v1\/export\/(requests|people)\.csv$/;
@@ -140,7 +144,7 @@ const LOGO_PATH = '/api/v1/assets/church-logo.png';
 const MATCHING_PATH = /^\/api\/v1\/matching\/(run|auto|rerun-all)$/;
 
 /** `POST /api/v1/requests/12/approve`: номер заявки — цифры, длиннее пятнадцати не бывает (Number безопасен). */
-const ACTION_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/(approve|reject|need-call|params|rematch|edit|assign|call|delete|close|reopen)$/;
+const ACTION_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/(approve|reject|need-call|params|rematch|edit|assign|call|delete|close|reopen|reconcile)$/;
 
 /** Адрес клиента: за nginx настоящий адрес приходит заголовком (как в старом дашборде). */
 function clientIp(req: IncomingMessage): string {
@@ -394,6 +398,18 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       sendJson(res, 403, { error: 'forbidden', message: 'Удалять может только полный вход.' } satisfies ActionError);
       return;
     }
+    if (action === 'reconcile') {
+      const done = await deps.reconciler.apply(requestId, body, actor);
+      if (!done.ok) {
+        sendJson(res, ACTION_STATUS[done.error], { error: done.error, message: done.message } satisfies ActionError);
+        return;
+      }
+      deps.invalidateViews();
+      // В журнал сервис пишет сам (вид, группа, «уже было»); здесь только след в логе процесса, без имён.
+      logger.info({ requestId, action, actor, already: done.already }, 'домашние группы: обращение разобрано по справочникам');
+      sendJson(res, 200, done);
+      return;
+    }
     const outcome = action === 'approve' ? await deps.actions.approve(requestId, body, actor)
       : action === 'reject' ? await deps.actions.reject(requestId, body, actor)
       : action === 'params' ? await deps.actions.setParams(requestId, body, actor)
@@ -565,6 +581,20 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     sendJson(res, 200, outcome);
   }
 
+  /** Разобрать сразу все обращения, у которых сервер находит ровно одну группу точно. */
+  async function handleReconcileReady(req: IncomingMessage, res: ServerResponse, sid: string | undefined): Promise<void> {
+    const call = await readAuthedJson(req, res, sid);
+    if (!call) return;
+    const outcome = await deps.reconciler.applyReady(call.body, call.actor);
+    if (!outcome.ok) {
+      sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
+      return;
+    }
+    deps.invalidateViews();
+    logger.info({ actor: call.actor, applied: outcome.applied, skipped: outcome.skipped }, 'домашние группы: обращения разобраны разом');
+    sendJson(res, 200, outcome);
+  }
+
   /** Выгрузка с телефонами: только полный вход, и каждая выгрузка остаётся в журнале. */
   async function handleExport(res: ServerResponse, what: string, sid: string | undefined): Promise<void> {
     const role = await deps.auth.roleOf(sid);
@@ -654,6 +684,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     const personEdit = req.method === 'POST' ? PERSON_EDIT_PATH.exec(path) : null;
     if (personEdit) { await handlePersonCard(req, res, Number(personEdit[1]), personEdit[2]!, sid); return; }
     if (req.method === 'POST' && path === BULK_PATH) { await handleBulk(req, res, sid); return; }
+    if (req.method === 'POST' && path === RECONCILE_READY_PATH) { await handleReconcileReady(req, res, sid); return; }
     if (req.method === 'POST' && path === ASSISTANT_CHAT_PATH) { await handleAssistantChat(req, res, sid); return; }
     if (req.method === 'POST' && path === ASSISTANT_RUN_PATH) { await handleAssistantRun(req, res, sid); return; }
     const manage = req.method === 'POST' ? MANAGE_PATH.exec(path) : null;

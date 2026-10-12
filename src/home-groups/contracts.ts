@@ -29,6 +29,8 @@
  *   POST /api/v1/requests/:id/call      CallBody        → ActionOk | ActionError (итог звонка)
  *   GET  /api/v1/team                   → TeamView (нагрузка, сроки ожидания, действия за неделю)
  *   POST /api/v1/requests/bulk          BulkBody → BulkOk | ActionError (передать или отметить «нужен звонок» сразу нескольким)
+ *   POST /api/v1/requests/:id/reconcile ReconcileBody → ReconcileOk | ActionError (разобрать «другое обращение»: в состав группы или ведущим группы)
+ *   POST /api/v1/requests/reconcile-ready ReconcileReadyBody → ReconcileReadyOk | ActionError (разобрать сразу все с одной точно найденной группой)
  *   POST /api/v1/groups/:id/update      UpdateBody → ActionOk | ActionError (правка части полей группы; адрес и телефоны только записываются, обратно не отдаются)
  *   POST /api/v1/groups/:id/delete      (тело {})  → ActionOk | ActionError (только super; скрывает, а не стирает)
  *   POST /api/v1/coordinators/create    CreateRecordBody → CreateRecordOk | ActionError
@@ -589,11 +591,41 @@ export interface CloseBody {
  * в группе» — и закрытые заявки «хочу в группу» (аннулированные), чтобы их можно было вернуть в работу.
  * Работают с ним теми же действиями, что и с заявкой, кроме подбора и утверждения.
  */
+/** Группа, найденная по ведущему, для разбора «другого обращения». */
+export interface ReconcileCandidate {
+  groupId: number;
+  /** «ДГ-0012». */
+  code: string;
+  leader: string;
+  district: string;
+  /** exact — имя (или телефон) совпало полностью; likely — похоже (фамилия и инициал), выбирает человек. */
+  tier: 'exact' | 'likely';
+  by: 'name' | 'phone';
+}
+
+/**
+ * Что делать с обращением по справочникам. member — «уже состою в группе» (внести в состав), leader — «уже веду
+ * группу» (связать группу с ведущим). status: ready — найдена одна группа, достаточно подтвердить; choose — выбрать
+ * из найденных или указать другую; none — ведущего нет в справочнике групп; noleader — ведущий не указан; nouser —
+ * у обращения нет регистрации человека (заведено вручную), справочник пополняется только руками.
+ */
+export interface OtherReconcile {
+  kind: 'member' | 'leader';
+  status: 'ready' | 'choose' | 'none' | 'noleader' | 'nouser';
+  /** Что нашли и что делать, словами. */
+  text: string;
+  candidates: ReconcileCandidate[];
+}
+
 export interface OtherItem {
   id: number;
   type: 'join_group' | 'lead_group' | 'question' | 'already_member' | 'already_leader';
   /** «Хочет открыть группу», «Вопрос служителю» и т. д. */
   typeLabel: string;
+  /** Суть обращения одной фразой: что человек сообщил (в боте или в форме), чтобы не искать это в «Как пришла». */
+  gist: string;
+  /** Разбор по справочникам; null — вид обращения не разбирается или оно уже закрыто. */
+  reconcile: OtherReconcile | null;
   state: 'open' | 'done' | 'cancelled';
   fio: string;
   phone: string | null;
@@ -608,6 +640,29 @@ export interface OtherItem {
   cancelReason: string | null;
   original: OriginalField[];
   log: LogEntry[];
+}
+
+/** Разобрать обращение: человек вносится в состав группы или группа получает ведущего (вид выводит сервер по типу обращения). */
+export interface ReconcileBody {
+  groupId: number;
+}
+
+export interface ReconcileOk {
+  ok: true;
+  /** Уже было так: состав или ведущий не менялись, обращение закрыто. */
+  already: boolean;
+}
+
+/** Разобрать сразу все обращения, у которых сервер находит ровно одну группу точно. Список — то, что человек видел. */
+export interface ReconcileReadyBody {
+  ids: number[];
+}
+
+export interface ReconcileReadyOk {
+  ok: true;
+  applied: number;
+  /** Не разобраны: изменились с момента показа, закрыты или группа уже не одна. */
+  skipped: number;
 }
 
 export interface RequestsView {
@@ -771,6 +826,11 @@ export interface GroupItem extends GroupBrief {
    * `people`: ведущий обновит число сам, и счётчик обнулится (считаем только утверждённых позже).
    */
   placedNew: number;
+  /**
+   * Ведущий как ссылка на человека («u12»): появляется, когда обращение «уже веду группу» сверено со справочником.
+   * null — ведущий записан только именем. По ключу в «Людях» находится его регистрация.
+   */
+  leaderKey: string | null;
   /** Кого план направляет в эту группу сейчас. */
   plannedRequests: { id: number; fio: string; ageLabel: string | null; place: string | null; confidence: number }[];
 }

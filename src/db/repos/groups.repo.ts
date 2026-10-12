@@ -68,6 +68,8 @@ export interface GroupRow {
   checked: boolean | null;
   campaign_registered: boolean;
   do_not_refer: boolean;
+  /** Регистрация ведущего (users.id), если обращение «уже веду группу» сверено со справочником. */
+  leader_user_id: number | null;
   source: GroupSource;
   added_by: string | null;
   added_platform: string | null;
@@ -107,6 +109,8 @@ export interface DashboardGroup {
   campaign_registered: boolean;
   /** «Не направлять»: из подбора такая группа скрыта. */
   do_not_refer: boolean;
+  /** Регистрация ведущего (users.id): связь появляется при разборе обращения «уже веду группу». */
+  leader_user_id: number | null;
 }
 
 const COLUMNS = `no, leader, open_to_new, phone, phones, age, district, metro, address,
@@ -346,6 +350,7 @@ export class GroupsRepo {
       source: r.source,
       campaign_registered: r.campaign_registered,
       do_not_refer: r.do_not_refer,
+      leader_user_id: r.leader_user_id === null || r.leader_user_id === undefined ? null : Number(r.leader_user_id),
     }));
   }
 }

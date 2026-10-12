@@ -22,7 +22,7 @@ function group(over: Partial<DashboardGroup> & { id: number }): DashboardGroup {
     district: 'Приморский', metro: null, address: null, composition: null, day: null, time: null, people: null,
     coordinator: null, co_leader: null, co_leader_phone: null, feedback_at: null, comment: null, training: null,
     format: 'Молодежная', status: 'Функционирует', checked: null, source: 'таблица', campaign_registered: false,
-    do_not_refer: false,
+    do_not_refer: false, leader_user_id: null,
     ...over,
   };
 }
@@ -1060,6 +1060,55 @@ describe('сводка команды в представлениях', () => {
     });
     expect(views.team.totals).toMatchObject({ open: 2, unassigned: 1 });
     expect(views.team.activity).toEqual([{ actor: 'anna', calls: 2, approved: 0, rejected: 0, edits: 0, assigned: 0 }]);
+  });
+});
+
+describe('остальные обращения: суть и разбор по справочникам', () => {
+  const groups = [group({ id: 5, leader: 'Малявин Павел' }), group({ id: 6, leader: 'Родионов Давид' }), group({ id: 7, leader: 'Родионов Давид' })];
+
+  test('у каждого обращения есть суть одной фразой', () => {
+    const { views } = build({ requests: [request({ id: 1, type: 'already_member', user_id: 9, leader_name: 'Малявин Павел', church: 'МБВ Колизей' })], groups });
+    expect(views.requests.others[0]!.gist).toBe('Говорит, что уже состоит в Малой группе. Ведущий: Малявин Павел. Церковь: МБВ Колизей.');
+  });
+
+  test('«уже состоит»: группа по ведущему найдена, у ведущего с двумя группами нужен выбор, чужого ведущего нет', () => {
+    const { views } = build({
+      groups,
+      requests: [
+        request({ id: 1, type: 'already_member', user_id: 9, leader_name: 'Павел Малявин' }),
+        request({ id: 2, type: 'already_member', user_id: 10, leader_name: 'Родионов Давид' }),
+        request({ id: 3, type: 'already_member', user_id: 11, leader_name: 'Никто Неизвестный' }),
+        request({ id: 4, type: 'already_member', user_id: 12 }),
+      ],
+    });
+    const by = (id: number) => views.requests.others.find((o) => o.id === id)!.reconcile!;
+    expect(by(1)).toMatchObject({ kind: 'member', status: 'ready', candidates: [{ groupId: 5, code: 'ДГ-0005' }] });
+    expect(by(2)).toMatchObject({ status: 'choose', candidates: [{ groupId: 6 }, { groupId: 7 }] });
+    expect(by(3).status).toBe('none');
+    expect(by(4).status).toBe('noleader');
+  });
+
+  test('разбора нет у вопросов и «хочет открыть», у закрытых и у людей без регистрации он «нет регистрации»', () => {
+    const { views } = build({
+      groups,
+      requests: [
+        request({ id: 1, type: 'question' }),
+        request({ id: 2, type: 'lead_group', user_id: 3 }),
+        request({ id: 3, type: 'already_member', user_id: 9, leader_name: 'Павел Малявин', status: 'Исполнена' }),
+        request({ id: 4, type: 'already_member', user_id: null, leader_name: 'Павел Малявин' }),
+      ],
+    });
+    const by = (id: number) => views.requests.others.find((o) => o.id === id)!.reconcile;
+    expect(by(1)).toBeNull();
+    expect(by(2)).toBeNull();
+    expect(by(3)).toBeNull();
+    expect(by(4)!.status).toBe('nouser');
+  });
+
+  test('в карточке группы виден ведущий как ссылка на человека', () => {
+    const { views } = build({ groups: [group({ id: 5, leader_user_id: 12 }), group({ id: 6 })] });
+    expect(views.groups.items.find((g) => g.id === 5)!.leaderKey).toBe('u12');
+    expect(views.groups.items.find((g) => g.id === 6)!.leaderKey).toBeNull();
   });
 });
 

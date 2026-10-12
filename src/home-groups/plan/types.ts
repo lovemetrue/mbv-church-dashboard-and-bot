@@ -102,7 +102,8 @@ export interface PlanEntryProposal {
 
 export interface PlanEntryNone {
   kind: 'none';
-  code: 'place' | 'taken' | 'nogroup';
+  /** strange — человек отмечен как «странный»: в обычные группы не подбирается, нужна отдельная группа (решает человек). */
+  code: 'place' | 'taken' | 'nogroup' | 'strange';
   reason: string;
 }
 

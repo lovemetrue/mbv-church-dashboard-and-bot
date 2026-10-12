@@ -65,6 +65,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
   const auditCalls: { actor: string; action: string; after: unknown }[] = [];
   const matchingCalls: { name: string; actor: string; enabled?: boolean }[] = [];
   const settingsCalls: { name: string; actor?: string; body?: unknown }[] = [];
+  const strangeCalls: { name: string; id?: number; body?: unknown; actor?: string }[] = [];
   const reconcileCalls: { name: string; id?: number; actor?: string; body?: unknown }[] = [];
   const staffCalls: { name: string; args: unknown[] }[] = [];
   const createCalls: { what: string; body: unknown; actor: string }[] = [];
@@ -122,6 +123,10 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
       setEnabled: async (enabled: boolean, actor: string) => { assistantCalls.push({ name: 'enabled', actor, enabled }); },
       view: async () => ({ generatedAt: 'g', available: true, enabled: false, model: 'fake', lastRun: null }),
     } as never,
+    strange: {
+      forRequest: async (id: number, body: unknown, actor: string) => { strangeCalls.push({ name: 'request', id, body, actor }); return { ok: true }; },
+      forPerson: async (body: unknown, actor: string) => { strangeCalls.push({ name: 'person', body, actor }); return { ok: true }; },
+    } as never,
     reconciler: {
       apply: async (id: number, body: unknown, actor: string) => { reconcileCalls.push({ name: 'apply', id, body, actor }); return { ok: true, already: false }; },
       applyReady: async (body: unknown, actor: string) => { reconcileCalls.push({ name: 'ready', body, actor }); return { ok: true, applied: 2, skipped: 1 }; },
@@ -173,7 +178,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
     viewsCalls: () => calls,
     close: () => { server.close(); },
     setViews: (f) => { views = f; },
-    actionCalls, auditCalls, assistantCalls, chatCalls, setChatOutcome: (o: unknown) => { chatOutcome = o; }, setAssistantOutcome: (o: unknown) => { assistantOutcome = o; }, matchingCalls, settingsCalls, reconcileCalls, reported, staffCalls, createCalls, setCreate: (o) => { createOutcome = o; }, setTokenInfo: (v) => { tokenInfo = v; }, setComplete: (v) => { complete = v; }, setSettingsOutcome: (o: ActionOutcome) => { settingsOutcome = o; }, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
+    actionCalls, auditCalls, assistantCalls, chatCalls, setChatOutcome: (o: unknown) => { chatOutcome = o; }, setAssistantOutcome: (o: unknown) => { assistantOutcome = o; }, matchingCalls, settingsCalls, reconcileCalls, strangeCalls, reported, staffCalls, createCalls, setCreate: (o) => { createOutcome = o; }, setTokenInfo: (v) => { tokenInfo = v; }, setComplete: (v) => { complete = v; }, setSettingsOutcome: (o: ActionOutcome) => { settingsOutcome = o; }, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
   };
 }
 
@@ -1388,6 +1393,34 @@ describe('досылка новых вопросов из «Настроек»',
   test('рассылку нельзя вызвать запросом GET: изменяющие адреса отвечают 404', async () => {
     const r = await fetch(`${app.base}/api/v1/settings/bot/send-extra-questions`, { headers: { cookie: await signIn(SUPER) } });
     expect(r.status).toBe(404);
+  });
+});
+
+describe('метка «Странный человек»', () => {
+  const post = (cookie: string | null, path: string, body: unknown) => fetch(`${app.base}/api/v1/${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body),
+  });
+
+  test('на заявке: без входа 401, любой вход ставит метку, тело и автор доходят, снимок сбрасывается', async () => {
+    const inv = app.invalidations();
+    expect((await post(null, 'requests/9/strange', { value: true })).status).toBe(401);
+    const r = await post(await signIn(REGULAR), 'requests/9/strange', { value: true, note: 'заметка' });
+    expect(r.status).toBe(200);
+    expect(app.strangeCalls.at(-1)).toEqual({ name: 'request', id: 9, body: { value: true, note: 'заметка' }, actor: REGULAR.login });
+    expect(app.invalidations()).toBe(inv + 1);
+  });
+
+  test('по ключу человека: тот же доступ, тело доходит как есть', async () => {
+    expect((await post(null, 'people/strange', { key: 'u1', value: true })).status).toBe(401);
+    const r = await post(await signIn(REGULAR), 'people/strange', { key: 'u12', value: false });
+    expect(r.status).toBe(200);
+    expect(app.strangeCalls.at(-1)).toEqual({ name: 'person', body: { key: 'u12', value: false }, actor: REGULAR.login });
+  });
+
+  test('изменяющие адреса не отвечают на GET', async () => {
+    const cookie = await signIn(REGULAR);
+    expect((await fetch(`${app.base}/api/v1/requests/9/strange`, { headers: { cookie } })).status).toBe(404);
+    expect((await fetch(`${app.base}/api/v1/people/strange`, { headers: { cookie } })).status).toBe(404);
   });
 });
 

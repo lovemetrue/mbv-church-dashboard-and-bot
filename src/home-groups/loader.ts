@@ -6,6 +6,7 @@ import type { GroupsRepo } from '../db/repos/groups.repo.js';
 import type { PlacementRepo } from '../db/repos/placement.repo.js';
 import type { SettingsRepo } from '../db/repos/settings.repo.js';
 import type { RequestsRepo } from '../db/repos/requests.repo.js';
+import type { StrangeRepo } from '../db/repos/strange.repo.js';
 import type { UsersRepo } from '../db/repos/users.repo.js';
 import type { ViewsInput } from './api/views.js';
 
@@ -19,6 +20,8 @@ export interface LoaderRepos {
   audit: Pick<AuditRepo, 'requestEntries' | 'activitySince'>;
   hints: Pick<HintsRepo, 'all'>;
   members: Pick<MembersRepo, 'all' | 'allPersons'>;
+  /** Метки «Странный человек»; без репозитория (в тестах) меток нет. */
+  strange?: Pick<StrangeRepo, 'all'>;
 }
 
 /**
@@ -44,7 +47,9 @@ export function createLoader(repos: LoaderRepos, opts: { timeZone?: string; assi
       repos.members.all(),
       repos.members.allPersons(),
     ]);
+    const strange = repos.strange ? await repos.strange.all() : undefined;
     return {
+      strange,
       groups, requests, participants, coordinators, rejectedGroups, audit, activity, activeProposals, placedNew,
       matching: { auto: auto === true, lastRun: lastRun ?? null },
       hints,

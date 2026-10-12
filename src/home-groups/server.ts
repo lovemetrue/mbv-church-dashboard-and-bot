@@ -14,6 +14,7 @@ import type { BotSettings } from './botSettings.js';
 import type { Assistant } from './assistant/service.js';
 import type { Chat } from './assistant/chat.js';
 import type { Members } from './members.js';
+import type { Strange } from './strange.js';
 import type { Reconciler } from './reconcile/service.js';
 import { registrationCardPage } from '../dashboard/registrationCard.js';
 import type { Settings } from '../platform/settings/service.js';
@@ -62,6 +63,8 @@ export interface HomeGroupsDeps {
   manager: Manager;
   /** Состав групп вручную. */
   members: Members;
+  /** Метка «Странный человек». */
+  strange: Strange;
   /** Разбор «других обращений» по справочникам групп и людей. */
   reconciler: Reconciler;
   /** Помощник по разбору заявок (языковая модель). */
@@ -134,6 +137,7 @@ const MEMBER_PATH = /^\/api\/v1\/members\/(\d{1,15})\/(update|delete)$/;
 /** Карточка человека, внесённая вручную: правка любым входом, удаление только полным. */
 const PERSON_EDIT_PATH = /^\/api\/v1\/persons\/(\d{1,15})\/(update|delete)$/;
 const BULK_PATH = '/api/v1/requests/bulk';
+const PERSON_STRANGE_PATH = '/api/v1/people/strange';
 const RECONCILE_READY_PATH = '/api/v1/requests/reconcile-ready';
 const ASSISTANT_RUN_PATH = '/api/v1/assistant/run';
 const ASSISTANT_CHAT_PATH = '/api/v1/assistant/chat';
@@ -144,7 +148,7 @@ const LOGO_PATH = '/api/v1/assets/church-logo.png';
 const MATCHING_PATH = /^\/api\/v1\/matching\/(run|auto|rerun-all)$/;
 
 /** `POST /api/v1/requests/12/approve`: номер заявки — цифры, длиннее пятнадцати не бывает (Number безопасен). */
-const ACTION_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/(approve|reject|need-call|params|rematch|edit|assign|call|delete|close|reopen|reconcile)$/;
+const ACTION_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/(approve|reject|need-call|params|rematch|edit|assign|call|delete|close|reopen|reconcile|strange)$/;
 
 /** Адрес клиента: за nginx настоящий адрес приходит заголовком (как в старом дашборде). */
 function clientIp(req: IncomingMessage): string {
@@ -398,6 +402,17 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       sendJson(res, 403, { error: 'forbidden', message: 'Удалять может только полный вход.' } satisfies ActionError);
       return;
     }
+    if (action === 'strange') {
+      const done = await deps.strange.forRequest(requestId, body, actor);
+      if (!done.ok) {
+        sendJson(res, ACTION_STATUS[done.error], { error: done.error, message: done.message } satisfies ActionError);
+        return;
+      }
+      deps.invalidateViews();
+      logger.info({ requestId, action, actor }, 'домашние группы: метка «странный человек» на заявке');
+      sendJson(res, 200, { ok: true } satisfies ActionOk);
+      return;
+    }
     if (action === 'reconcile') {
       const done = await deps.reconciler.apply(requestId, body, actor);
       if (!done.ok) {
@@ -581,6 +596,20 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     sendJson(res, 200, outcome);
   }
 
+  /** Метка «Странный человек» по ключу человека из справочника. Доступна любому входу: ставит координатор или распределитель. */
+  async function handlePersonStrange(req: IncomingMessage, res: ServerResponse, sid: string | undefined): Promise<void> {
+    const call = await readAuthedJson(req, res, sid);
+    if (!call) return;
+    const done = await deps.strange.forPerson(call.body, call.actor);
+    if (!done.ok) {
+      sendJson(res, ACTION_STATUS[done.error], { error: done.error, message: done.message } satisfies ActionError);
+      return;
+    }
+    deps.invalidateViews();
+    logger.info({ actor: call.actor }, 'домашние группы: метка «странный человек» у человека');
+    sendJson(res, 200, { ok: true } satisfies ActionOk);
+  }
+
   /** Разобрать сразу все обращения, у которых сервер находит ровно одну группу точно. */
   async function handleReconcileReady(req: IncomingMessage, res: ServerResponse, sid: string | undefined): Promise<void> {
     const call = await readAuthedJson(req, res, sid);
@@ -684,6 +713,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     const personEdit = req.method === 'POST' ? PERSON_EDIT_PATH.exec(path) : null;
     if (personEdit) { await handlePersonCard(req, res, Number(personEdit[1]), personEdit[2]!, sid); return; }
     if (req.method === 'POST' && path === BULK_PATH) { await handleBulk(req, res, sid); return; }
+    if (req.method === 'POST' && path === PERSON_STRANGE_PATH) { await handlePersonStrange(req, res, sid); return; }
     if (req.method === 'POST' && path === RECONCILE_READY_PATH) { await handleReconcileReady(req, res, sid); return; }
     if (req.method === 'POST' && path === ASSISTANT_CHAT_PATH) { await handleAssistantChat(req, res, sid); return; }
     if (req.method === 'POST' && path === ASSISTANT_RUN_PATH) { await handleAssistantRun(req, res, sid); return; }

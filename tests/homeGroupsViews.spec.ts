@@ -615,7 +615,7 @@ describe('люди', () => {
       requests: [request({ id: 40, user_id: 12, place: 'Ломоносовская' })],
     });
     expect(views.people.items).toEqual([{
-      key: 'u12', personId: null, groups: [], fio: 'Дарья Ефимова', phone: '+7 911 123-45-67', ageLabel: '26-35', district: 'Невский',
+      key: 'u12', strange: null, personId: null, groups: [], fio: 'Дарья Ефимова', phone: '+7 911 123-45-67', ageLabel: '26-35', district: 'Невский',
       from: 'Бот · MAX', mdgLabel: 'Хочет в группу', date: '2026-09-12', requestId: 40, userId: 12, registrationNo: 12,
     }]);
   });
@@ -655,7 +655,7 @@ describe('люди', () => {
     });
     const person = (key: string) => views.people.items.find((p) => p.key === key)!;
     expect(person('r7')).toEqual({
-      key: 'r7', personId: null, groups: [], fio: 'Станислав Ким', phone: '+7 904 123-45-67', ageLabel: '26-35', district: 'Приморский',
+      key: 'r7', strange: null, personId: null, groups: [], fio: 'Станислав Ким', phone: '+7 904 123-45-67', ageLabel: '26-35', district: 'Приморский',
       from: 'Таблица', mdgLabel: 'Заявка: готово к утверждению', date: '2026-10-02', requestId: 7, userId: null, registrationNo: null,
     });
     expect(person('r8')).toMatchObject({ from: 'Дашборд · Звонок', mdgLabel: 'Заявка: нужна помощь в сопоставлении', district: null });
@@ -1063,6 +1063,87 @@ describe('сводка команды в представлениях', () => {
   });
 });
 
+describe('метка «Странный человек»', () => {
+  const mark = (by = 'anna', note: string | null = null) => ({ by, at: new Date('2026-10-12T08:00:00Z'), note });
+  const withMarks = (entries: [string, ReturnType<typeof mark>][]) => ({ strange: new Map(entries) });
+
+  test('метка регистрации видна на заявке, в «Людях» и в составе группы', () => {
+    const { views } = build({
+      groups: [group({ id: 5 })],
+      participants: [participant({ id: 9, full_name: 'Отмеченный' })],
+      requests: [request({ id: 1, user_id: 9, status: 'Исполнена', group_id: 5 })],
+      ...withMarks([['u9', mark('anna', 'говорит сам с собой')]]),
+    });
+    const expected = { by: 'anna', at: '2026-10-12T08:00:00.000Z', note: 'говорит сам с собой' };
+    expect(views.requests.items.find((i) => i.id === 1)!.strange).toEqual(expected);
+    expect(views.people.items.find((p) => p.key === 'u9')!.strange).toEqual(expected);
+    expect(views.groups.items.find((g) => g.id === 5)!.members[0]!.strange).toEqual(expected);
+  });
+
+  test('у заявки без регистрации метка лежит на самой заявке (ключ r<номер>), «Другие обращения» её тоже видят', () => {
+    const { views } = build({
+      requests: [request({ id: 3 }), request({ id: 4, type: 'question' })],
+      ...withMarks([['r3', mark()], ['r4', mark()]]),
+    });
+    expect(views.requests.items.find((i) => i.id === 3)!.strange).toMatchObject({ by: 'anna' });
+    expect(views.people.items.find((p) => p.key === 'r3')!.strange).toMatchObject({ by: 'anna' });
+    expect(views.requests.others.find((o) => o.id === 4)!.strange).toMatchObject({ by: 'anna' });
+  });
+
+  test('без метки поле пустое', () => {
+    const { views } = build({ requests: [request({ id: 1 })], participants: [participant({ id: 9 })] });
+    expect(views.requests.items[0]!.strange).toBeNull();
+    expect(views.people.items.find((p) => p.key === 'u9')!.strange).toBeNull();
+  });
+
+  test('метка действует и на тот же телефон в другой записи: человек один, а записей у него несколько', () => {
+    const { views } = build({
+      participants: [participant({ id: 9, phone: '+79111234567' })],
+      requests: [request({ id: 1, phone: '+7 911 123-45-67', phones: ['+7 911 123-45-67'] })],
+      ...withMarks([['u9', mark('boris')]]),
+    });
+    expect(views.requests.items.find((i) => i.id === 1)!.strange).toMatchObject({ by: 'boris' });
+  });
+
+  test('заявка с меткой не попадает в расчёт групп и не занимает места, ей показано «нужна отдельная группа»', () => {
+    const { views, calls } = build({
+      groups: [group({ id: 5, district: 'Приморский' })],
+      requests: [request({ id: 1, place: 'Приморский' }), request({ id: 2, place: 'Приморский' })],
+      ...withMarks([['r1', mark()]]),
+    });
+    expect(calls.plan[0]!.requests.map((r) => r.id)).toEqual([2]);
+    const marked = views.requests.items.find((i) => i.id === 1)!;
+    expect(marked.proposal).toBeNull();
+    expect(marked.noPlan).toMatchObject({ code: 'strange' });
+    expect(marked.noPlan!.reason).toMatch(/отдельная группа/);
+    expect(marked.bucket).toBe('human');
+    expect(views.requests.items.find((i) => i.id === 2)!.proposal).not.toBeNull();
+    // В сводку спроса по обычным группам тоже не попадает.
+    expect(calls.summary[0]!.requests.map((r) => r.id)).toEqual([2]);
+  });
+
+  test('закрытая заявка с меткой остаётся закрытой: метка не возвращает её в «нужна помощь»', () => {
+    const { views } = build({
+      requests: [request({ id: 1, status: 'Исполнена' })],
+      ...withMarks([['r1', mark()]]),
+    });
+    expect(views.requests.items.find((i) => i.id === 1)!.bucket).toBe('done');
+  });
+
+  test('в ленте заявки видно, кто и когда поставил или снял метку', () => {
+    const { views } = build({
+      requests: [request({ id: 1 })],
+      audit: [
+        { id: 1, actor: 'anna', action: 'request.strange', entity_type: 'request', entity_id: 1, at: new Date('2026-10-12T08:00:00Z'), before: null, after: { value: true }, note: null },
+        { id: 2, actor: 'boris', action: 'request.strange', entity_type: 'request', entity_id: 1, at: new Date('2026-10-12T09:00:00Z'), before: null, after: { value: false }, note: null },
+      ] as never,
+    });
+    const log = views.requests.items.find((i) => i.id === 1)!.log.map((l) => l.text);
+    expect(log).toContain('Отмечено «странный человек» · anna');
+    expect(log).toContain('Метка «странный человек» снята · boris');
+  });
+});
+
 describe('остальные обращения: суть и разбор по справочникам', () => {
   const groups = [group({ id: 5, leader: 'Малявин Павел' }), group({ id: 6, leader: 'Родионов Давид' }), group({ id: 7, leader: 'Родионов Давид' })];
 
@@ -1250,8 +1331,8 @@ describe('состав групп', () => {
       members: [manual(7, 1, 'u5', 'Борис Вручную', null, '2026-09-01')],
     });
     expect(views.groups.items[0]!.members).toEqual([
-      { kind: 'placed', id: 1, personKey: 'r1', fio: 'Анна Утверждённая', phone: '+7 921 555-00-11', date: '2026-10-09', note: null, alsoIn: [] },
-      { kind: 'manual', id: 7, personKey: 'u5', fio: 'Борис Вручную', phone: null, date: '2026-09-01', note: null, alsoIn: [] },
+      { kind: 'placed', id: 1, personKey: 'r1', fio: 'Анна Утверждённая', phone: '+7 921 555-00-11', date: '2026-10-09', note: null, alsoIn: [], strange: null },
+      { kind: 'manual', id: 7, personKey: 'u5', fio: 'Борис Вручную', phone: null, date: '2026-09-01', note: null, alsoIn: [], strange: null },
     ]);
   });
 

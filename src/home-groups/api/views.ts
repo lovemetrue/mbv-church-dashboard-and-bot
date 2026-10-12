@@ -1,6 +1,7 @@
 import type { DashboardGroup } from '../../db/repos/groups.repo.js';
 import type { MemberRow, PersonRow } from '../../db/repos/members.repo.js';
 import type { StoredHint } from '../../db/repos/hints.repo.js';
+import type { StrangeMarkRow } from '../../db/repos/strange.repo.js';
 import { gistOf } from '../reconcile/gist.js';
 import { reconcileOf } from '../reconcile/plan.js';
 import { baseHash, needsOf, anyNeed, type RawBrief } from '../assistant/brief.js';
@@ -13,7 +14,7 @@ import { inputSignature } from '../plan/signature.js';
 import { formatPhone } from '../../core/phone.js';
 import type {
   Bucket, Candidate, Counters, CoordinatorItem, CoordinatorsView, GroupBrief, GroupItem, GroupsView,
-  HealthItem, LogEntry, MatchingStatus, NoPlan, OriginalField, ParamInfo, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, GroupMember, OtherItem, RequestsView, TeamView, TodayView,
+  HealthItem, LogEntry, MatchingStatus, NoPlan, StrangeMark, OriginalField, ParamInfo, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, GroupMember, OtherItem, RequestsView, TeamView, TodayView,
 } from '../contracts.js';
 import type {
   Day, PlanEngineApi, PlanEntry, PlanEntryProposal, PlanGroup, PlanOutput, PlanRequest, ScoredGroup, Slot,
@@ -35,6 +36,8 @@ export interface ViewsInput {
   activity?: readonly ActivityRow[];
   /** Разбор помощника по заявкам (см. `request_hints`): подставляется там, где скрипт ничего не понял. */
   hints?: ReadonlyMap<number, StoredHint>;
+  /** Метки «Странный человек»: ключ человека (u12, r345, p7) → кто и когда поставил. */
+  strange?: ReadonlyMap<string, StrangeMarkRow>;
   /** Состав групп, внесённый вручную. */
   members?: readonly MemberRow[];
   /** Карточки людей, внесённые вручную. */
@@ -171,6 +174,8 @@ function auditText(a: AuditRow): string | null {
     }
     case 'request.reopen':
       return `Возвращена в работу · ${a.actor}`;
+    case 'request.strange':
+      return after['value'] === true ? `Отмечено «странный человек» · ${a.actor}` : `Метка «странный человек» снята · ${a.actor}`;
     case 'request.reconcile': {
       const id = Number(after['group_id']);
       const code = Number.isFinite(id) ? groupCode(id) : '—';
@@ -381,6 +386,38 @@ export function buildViewsWithPlan(
     };
   };
 
+  // ── метка «Странный человек» ──────────────────────────────────────────────
+  // Метка лежит на ключе человека (u12, r345, p7), а записей на одного человека бывает несколько (регистрация, заявка из
+  // таблицы, карточка): поэтому метка действует и на тот же телефон. Так её не потерять, если заявку завели по-другому.
+  const strangeMarks = input.strange ?? new Map<string, StrangeMarkRow>();
+  const phoneIdent = (phone: string | null | undefined): string | null => {
+    const digits = (phone ?? '').replace(/\D/g, '');
+    return digits.length >= 10 ? digits.slice(-10) : null;
+  };
+  const phonesOfKey = new Map<string, string[]>();
+  const addPhones = (key: string, phones: readonly (string | null | undefined)[]) => {
+    const idents = phones.map(phoneIdent).filter((x): x is string => x !== null);
+    if (idents.length > 0) phonesOfKey.set(key, [...(phonesOfKey.get(key) ?? []), ...idents]);
+  };
+  for (const u of input.participants) addPhones(`u${u.id}`, [u.phone]);
+  for (const p of input.persons ?? []) addPhones(`p${p.id}`, [p.phone]);
+  for (const r of input.requests) addPhones(r.user_id !== null ? `u${r.user_id}` : `r${r.id}`, [r.phone, ...r.phones]);
+  const strangeByPhone = new Map<string, StrangeMarkRow>();
+  for (const [key, row] of strangeMarks) for (const ident of phonesOfKey.get(key) ?? []) strangeByPhone.set(ident, row);
+  const toStrange = (row: StrangeMarkRow): StrangeMark => ({ by: row.by, at: new Date(row.at).toISOString(), note: row.note });
+  const strangeOf = (key: string, phones: readonly (string | null | undefined)[]): StrangeMark | null => {
+    const own = strangeMarks.get(key);
+    if (own) return toStrange(own);
+    for (const phone of phones) {
+      const ident = phoneIdent(phone);
+      const byPhone = ident !== null ? strangeByPhone.get(ident) : undefined;
+      if (byPhone) return toStrange(byPhone);
+    }
+    return null;
+  };
+  const strangeOfRequest = (r: DashboardRequest): StrangeMark | null =>
+    strangeOf(r.user_id !== null ? `u${r.user_id}` : `r${r.id}`, [r.phone, ...r.phones]);
+
   const joinById = new Map(joinRequests.map((r) => [r.id, r]));
   // Отпечаток данных заявки и закрепление: предложение, полученное по другим данным, устарело —
   // его группа не закрепляется, заявку пересчитает следующий «Закрепить подбор» или «Подобрать заново».
@@ -397,9 +434,14 @@ export function buildViewsWithPlan(
     planRequests.set(r.id, { ...base, pinnedGroupId: changed ? null : (stored?.groupId ?? null) });
   }
   const openRequests = joinRequests.filter((r) => r.status !== DONE && r.status !== CANCELLED);
-  const openPlanRequests = openRequests.map((r) => planRequests.get(r.id)!);
+  // Отмеченные «странными» в подбор обычных групп не идут и мест не занимают: для них нужна отдельная группа, и решает человек.
+  const strangeIds = new Set(openRequests.filter((r) => strangeOfRequest(r) !== null).map((r) => r.id));
+  const openPlanRequests = openRequests.filter((r) => !strangeIds.has(r.id)).map((r) => planRequests.get(r.id)!);
 
   const plan: PlanOutput = engine.buildPlan({ requests: openPlanRequests, groups: planGroups, settings });
+  for (const id of strangeIds) {
+    plan.entries.set(id, { kind: 'none', code: 'strange', reason: 'Отмечен как «странный человек»: нужна отдельная группа, подберите её вручную' });
+  }
 
   const bucketById = new Map<number, Bucket>();
   for (const r of joinRequests) {
@@ -493,6 +535,7 @@ export function buildViewsWithPlan(
     const finalBrief = bucket === 'done' && r.group_id !== null ? brief(r.group_id) : null;
     requestItems.push({
       id: r.id,
+      strange: strangeOfRequest(r),
       fio: pr.fio,
       phone: displayPhone(r.phones, r.phone),
       ageLabel: nonBlank(r.age),
@@ -525,6 +568,7 @@ export function buildViewsWithPlan(
   const otherState = (r: DashboardRequest): OtherItem['state'] => (r.status === DONE ? 'done' : r.status === CANCELLED ? 'cancelled' : 'open');
   const otherItem = (r: DashboardRequest): OtherItem => ({
     id: r.id,
+    strange: strangeOfRequest(r),
     type: r.type as OtherItem['type'],
     typeLabel: TYPE_LABEL[r.type as OtherItem['type']] ?? 'Обращение',
     gist: gistOf(r),
@@ -579,6 +623,7 @@ export function buildViewsWithPlan(
     addMember(m.group_id, {
       kind: 'manual', id: m.id, personKey: m.personKey, fio: nonBlank(m.full_name) ?? 'Без имени',
       phone: nonBlank(formatPhone(nonBlank(m.phone))), date: validIsoDate(m.joined_on), note: nonBlank(m.note), alsoIn: [],
+      strange: strangeOf(m.personKey, [m.phone]),
     });
   }
   for (const r of joinRequests) {
@@ -590,6 +635,7 @@ export function buildViewsWithPlan(
     addMember(r.group_id, {
       kind: 'placed', id: r.id, personKey: key, fio: nonBlank(r.fio) ?? 'Без имени', phone: displayPhone(r.phones, r.phone),
       date: approved?.at ? localIsoDate(approved.at, timeZone) : null, note: null, alsoIn: [],
+      strange: strangeOf(key, [r.phone, ...r.phones]),
     });
   }
   // «Есть и в другой группе»: тот же человек по телефону, а без телефона — по ключу справочника.
@@ -649,6 +695,7 @@ export function buildViewsWithPlan(
   for (const u of input.participants) {
     people.push({
       key: `u${u.id}`,
+      strange: strangeOf(`u${u.id}`, [u.phone]),
       personId: null,
       groups: groupCodesOf(`u${u.id}`),
       fio: nonBlank(u.full_name) ?? 'Без имени',
@@ -669,6 +716,7 @@ export function buildViewsWithPlan(
     const pr = planRequests.get(r.id)!;
     people.push({
       key: `r${r.id}`,
+      strange: strangeOfRequest(r),
       personId: null,
       groups: groupCodesOf(`r${r.id}`),
       fio: pr.fio,
@@ -687,6 +735,7 @@ export function buildViewsWithPlan(
   for (const p of input.persons ?? []) {
     people.push({
       key: `p${p.id}`,
+      strange: strangeOf(`p${p.id}`, [p.phone]),
       personId: p.id,
       groups: groupCodesOf(`p${p.id}`),
       fio: nonBlank(p.full_name) ?? 'Без имени',

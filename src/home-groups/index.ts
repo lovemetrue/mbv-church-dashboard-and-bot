@@ -71,7 +71,7 @@ async function main(): Promise<void> {
     timezone: env('TIMEZONE', 'Europe/Moscow'),
   };
   const bots = serviceFromEnv(db, process.env, schedule, 'домашние группы');
-  const { views, matching, placement, settings, errors, staff, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, chat, members, reconciler, formMeta } = composeService(db, engine, {
+  const { views, matching, placement, settings, errors, staff, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, chat, members, reconciler, strange, formMeta } = composeService(db, engine, {
     campaignSchedule: schedule,
     llm: llmFromEnv(process.env),
     extraQuestionsEnv: env('EXTRA_QUESTIONS', 'off'),
@@ -103,6 +103,7 @@ async function main(): Promise<void> {
     chat,
     members,
     reconciler,
+    strange,
     exporter,
     audit,
     logo: async () => readFile(join(env('HG_ASSETS_DIR', '/app/dashboard/assets'), 'church-logo.png')).catch(() => null),

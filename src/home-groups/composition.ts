@@ -22,7 +22,9 @@ import { createManager } from './manage.js';
 import { createBotSettings } from './botSettings.js';
 import { createMembers } from './members.js';
 import { createReconciler } from './reconcile/service.js';
+import { createStrange } from './strange.js';
 import { MembersRepo } from '../db/repos/members.repo.js';
+import { StrangeRepo } from '../db/repos/strange.repo.js';
 import { createAssistant } from './assistant/service.js';
 import { createChat } from './assistant/chat.js';
 import { createReadonlyRunner } from './assistant/readonly.js';
@@ -82,6 +84,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     settings: appSettings,
     hints: new HintsRepo(db),
     members: new MembersRepo(db),
+    strange: new StrangeRepo(db),
   }, { ...(opts.timeZone ? { timeZone: opts.timeZone } : {}), assistantAvailable: (opts.llm ?? null) !== null });
   const viewOptions = { defaultCapacity: opts.defaultCapacity, ...(opts.timeZone ? { timeZone: opts.timeZone } : {}) };
 
@@ -130,6 +133,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   const creator = createRecordCreator({ requests: requestsRepo, groups: new GroupsRepo(db), audit: new AuditRepo(db), notify });
   const registrar = createRegistrar({ users: new UsersRepo(db), requests: requestsRepo, audit: new AuditRepo(db), notify });
   const reconciler = createReconciler({ load, placement });
+  const strange = createStrange({ repo: new StrangeRepo(db) });
   const members = createMembers({ members: new MembersRepo(db), audit: new AuditRepo(db) });
   const usersRepo = new UsersRepo(db);
   const manager = createManager({
@@ -149,7 +153,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   const auditRepo = new AuditRepo(db);
   const audit = (actor: string, action: string, after: unknown) => auditRepo.write(actor, action, 'export', null, after);
   const formMeta = createFormMeta(new CoordinatorsRepo(db));
-  return { views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, chat, members, reconciler, formMeta };
+  return { views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, chat, members, reconciler, strange, formMeta };
 }
 
 export function composeViews(db: Pool, engine: PlanEngineApi, opts: ComposeOptions): ViewsSource {

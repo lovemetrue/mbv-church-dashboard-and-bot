@@ -50,6 +50,8 @@ export class MaintenanceRepo {
     // Участников удаляем, а не опустошаем: DELETE снимает только те связи,
     // которые действительно есть, и не задевает заявки из выгрузки.
     await this.db.query('DELETE FROM users');
+    // Метки «странный человек» регистраций (ключ u<номер>) без самих регистраций бессмысленны.
+    await this.db.query("DELETE FROM strange_marks WHERE person_key LIKE 'u%'");
     await this.db.query('ALTER SEQUENCE registration_no_seq RESTART WITH 1');
   }
 }

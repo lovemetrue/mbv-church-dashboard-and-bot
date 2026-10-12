@@ -29,6 +29,8 @@
  *   POST /api/v1/requests/:id/call      CallBody        → ActionOk | ActionError (итог звонка)
  *   GET  /api/v1/team                   → TeamView (нагрузка, сроки ожидания, действия за неделю)
  *   POST /api/v1/requests/bulk          BulkBody → BulkOk | ActionError (передать или отметить «нужен звонок» сразу нескольким)
+ *   POST /api/v1/requests/:id/strange   StrangeBody → ActionOk | ActionError (метка «Странный человек» на человеке заявки; любой вход)
+ *   POST /api/v1/people/strange         PersonStrangeBody → ActionOk | ActionError (то же по ключу человека: u12, r345, p7)
  *   POST /api/v1/requests/:id/reconcile ReconcileBody → ReconcileOk | ActionError (разобрать «другое обращение»: в состав группы или ведущим группы)
  *   POST /api/v1/requests/reconcile-ready ReconcileReadyBody → ReconcileReadyOk | ActionError (разобрать сразу все с одной точно найденной группой)
  *   POST /api/v1/groups/:id/update      UpdateBody → ActionOk | ActionError (правка части полей группы; адрес и телефоны только записываются, обратно не отдаются)
@@ -160,8 +162,32 @@ export interface Proposal {
 }
 
 /** Почему плана нет. place — район не определён; taken — места разобраны; nogroup — в районе нет групп. */
+/**
+ * Метка «Странный человек»: ставит координатор или распределитель после обзвона, когда у человека оказываются особенности и
+ * для него нужна отдельная группа. Видна везде, где виден человек; такие заявки не попадают в автоматический подбор.
+ */
+export interface StrangeMark {
+  /** Кто поставил (логин). */
+  by: string;
+  /** Когда (ISO). */
+  at: string;
+  /** Что заметили, для коллег; может быть пусто. */
+  note: string | null;
+}
+
+/** Поставить или снять метку. `note` только при установке. */
+export interface StrangeBody {
+  value: boolean;
+  note?: string | null;
+}
+
+export interface PersonStrangeBody extends StrangeBody {
+  /** Ключ человека в справочнике: «u12», «r345», «p7». */
+  key: string;
+}
+
 export interface NoPlan {
-  code: 'place' | 'taken' | 'nogroup';
+  code: 'place' | 'taken' | 'nogroup' | 'strange';
   reason: string;
 }
 
@@ -248,6 +274,8 @@ export interface TodayView {
 // ── Заявки ──────────────────────────────────────────────────────────────────
 
 export interface RequestItem {
+  /** Метка «Странный человек» (на человеке заявки); null — нет. */
+  strange: StrangeMark | null;
   id: number;
   fio: string;
   phone: string | null;
@@ -618,6 +646,8 @@ export interface OtherReconcile {
 }
 
 export interface OtherItem {
+  /** Метка «Странный человек»; null — нет. */
+  strange: StrangeMark | null;
   id: number;
   type: 'join_group' | 'lead_group' | 'question' | 'already_member' | 'already_leader';
   /** «Хочет открыть группу», «Вопрос служителю» и т. д. */
@@ -771,6 +801,8 @@ export interface HealthItem {
  * правится заявкой), «вручную» — внесён служителем как уже ходящий в группу (правится и убирается здесь).
  */
 export interface GroupMember {
+  /** Метка «Странный человек»; null — нет. */
+  strange: StrangeMark | null;
   kind: 'placed' | 'manual';
   /** Ключ человека в справочнике («Люди»): u12, r345 или p7. Имя и телефон в составе читаются оттуда, а не копируются. */
   personKey: string;
@@ -841,6 +873,8 @@ export interface GroupsView {
 }
 
 export interface PersonItem {
+  /** Метка «Странный человек»; null — нет. */
+  strange: StrangeMark | null;
   /** Устойчивый ключ строки: «u12» (участник), «r345» (заявка без участника) или «p7» (карточка, внесённая вручную). */
   key: string;
   /** Номер карточки для ключа p<id> (правка и удаление через `/persons/:id/…`); у остальных null. */

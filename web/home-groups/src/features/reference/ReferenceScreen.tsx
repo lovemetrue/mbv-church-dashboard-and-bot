@@ -15,6 +15,7 @@ import {
   type SavedView,
   type TableState,
 } from '../../shared/filters';
+import { downloadCsv, toCsv } from '../../shared/csv';
 import { ru } from '../../shared/i18n/ru';
 import { ENTITY_IDS, useAppNav, type EntityId } from '../../shared/nav';
 import { Button, Chip, ErrorState, LoadingState, Popover } from '../../shared/ui';
@@ -123,6 +124,16 @@ function EntityView<T>({ config, query, items, renderCard }: EntityViewProps<T>)
     setState({ ...state, sort: next });
   };
 
+  // Выгружаем то, что человек видит: после отборов, поиска и сортировки, в порядке и составе столбцов таблицы.
+  const exportCsv = () => {
+    const cols = config.columns.filter((c) => columns.includes(c));
+    const date = new Date().toLocaleDateString('sv-SE');
+    downloadCsv(
+      `${config.id}-${date}.csv`,
+      toCsv(cols, groups.flatMap((g) => g.rows).map((r) => cols.map((c) => r[c] ?? null))),
+    );
+  };
+
   return (
     <>
       <div className={styles.toolbar}>
@@ -157,7 +168,7 @@ function EntityView<T>({ config, query, items, renderCard }: EntityViewProps<T>)
         <span className={`${styles.shown} num`} role="status">
           {ru.reference.shown(shown, allRows.length)}
         </span>
-        <Button size="sm" soon>
+        <Button size="sm" onClick={exportCsv} disabled={shown === 0}>
           {ru.reference.exportCsv}
         </Button>
       </div>

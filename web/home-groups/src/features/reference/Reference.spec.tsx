@@ -310,11 +310,25 @@ describe('«Справочник»: экран', () => {
     expect(within(dataRows()[0]!).getByText('Юлия Орлова')).toBeInTheDocument();
   });
 
-  test('«Выгрузить CSV» показана, но отключена', async () => {
+  test('«Выгрузить CSV» скачивает видимые строки и столбцы с учётом отбора', async () => {
     stubFetchWithFixtures();
-    renderAt(<App />, '/?tab=reference');
+    const user = userEvent.setup();
+    const blobs: Blob[] = [];
+    URL.createObjectURL = (b: Blob | MediaSource) => (blobs.push(b as Blob), 'blob:test');
+    URL.revokeObjectURL = () => {};
+    renderAt(<App />, '/?tab=reference&ent=people');
     await screen.findByRole('table');
-    expect(screen.getByRole('button', { name: 'Выгрузить CSV' })).toBeDisabled();
+    const shownRows = dataRows().length;
+    await user.click(screen.getByRole('button', { name: 'Выгрузить CSV' }));
+    expect(blobs).toHaveLength(1);
+    const text = await new Promise<string>((res) => {
+      const r = new FileReader();
+      r.onload = () => res(String(r.result));
+      r.readAsText(blobs[0]!);
+    });
+    const lines = text.replace(/^\uFEFF/, '').trim().split('\r\n');
+    expect(lines[0]).toMatch(/^ФИО;Телефон;/);
+    expect(lines).toHaveLength(shownRows + 1);
   });
 
   test('смена сущности сбрасывает отборы прежней: поля у людей другие', async () => {

@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { ru } from '../i18n/ru';
 import { Button } from './Button';
 import styles from './Popover.module.css';
 
@@ -23,6 +24,10 @@ export function Popover({ label, badge, title, children }: PopoverProps) {
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const id = useId();
+  const close = () => {
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -62,9 +67,16 @@ export function Popover({ label, badge, title, children }: PopoverProps) {
       </Button>
       {open && (
         <>
-          <div className={styles.scrim} aria-hidden="true" />
+          {/* Подложка лежит внутри root, поэтому «клик вне окна» её не видит: закрываем явно. Без этого
+              на телефоне она перекрывала экран, а закрыть шторку было нечем. */}
+          <div className={styles.scrim} aria-hidden="true" onClick={close} />
           <div ref={panelRef} id={id} className={styles.panel} role="dialog" aria-label={title} tabIndex={-1}>
             {children}
+            <div className={styles.footer}>
+              <Button size="sm" variant="primary" onClick={close}>
+                {ru.common.done}
+              </Button>
+            </div>
           </div>
         </>
       )}

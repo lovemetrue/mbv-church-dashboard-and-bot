@@ -3,10 +3,11 @@ import { buildCoordinators, buildGroups, buildPeople, buildRequests, buildToday 
 import { buildFormMeta } from './formMeta';
 import { fixtureActionResponse, fixtureResponse } from './index';
 import { buildOthers, resetDemoReconciled } from './others';
-import { resetDemoInvites } from './settings';
+import { DEMO_BAD_KEY, resetDemoInvites, resetDemoLlm } from './settings';
 
 afterEach(() => {
   resetDemoInvites();
+  resetDemoLlm();
   resetDemoReconciled();
 });
 
@@ -156,8 +157,9 @@ describe('фикстуры', () => {
   test('демо-маршруты помощника: настройка без ключа, запуск разбора и переключатель «получаются»', () => {
     const settings = fixtureResponse('settings/assistant') as Record<string, unknown>;
     expect(settings).toMatchObject({ available: true, enabled: true, model: 'deepseek-chat' });
-    // Самого ключа в данных быть не должно ни под каким именем.
-    expect(JSON.stringify(settings)).not.toMatch(/sk-|key/i);
+    // Самого ключа в данных быть не должно: есть лишь признак и последние четыре символа.
+    expect(JSON.stringify(settings)).not.toMatch(/sk-|apiKey/);
+    expect(settings.llm).toMatchObject({ provider: 'deepseek', model: 'deepseek-chat', keySet: true, keySource: 'settings', keyHint: 'ABCD', keyUnreadable: false });
     expect(fixtureActionResponse('assistant/run', {})).toMatchObject({ ok: true, asked: 3 });
     expect(fixtureActionResponse('settings/assistant/enabled', { enabled: false })).toEqual({ ok: true });
   });
@@ -217,5 +219,42 @@ describe('фикстуры: разбор «других обращений»', (
     expect(open().filter((o) => o.reconcile?.status === 'ready')).toHaveLength(0);
     expect(open().some((o) => o.id === 207)).toBe(true);
     expect(fixtureActionResponse('requests/reconcile-ready', { ids: [206, 210] })).toEqual({ ok: true, applied: 0, skipped: 2 });
+  });
+});
+
+describe('фикстуры: подключение помощника', () => {
+  const llmOf = () => (fixtureResponse('settings/assistant') as { llm: { provider: string; model: string; baseUrl: string | null; keySource: string | null; keyHint: string | null; providers: { id: string; baseUrl: string | null; models: string[]; defaultModel: string | null }[] } }).llm;
+
+  test('провайдеров четыре, как на сервере: у «другого» нет ни адреса, ни моделей', () => {
+    const providers = llmOf().providers;
+    expect(providers.map((p) => p.id)).toEqual(['deepseek', 'openai', 'openrouter', 'custom']);
+    expect(providers.map((p) => p.baseUrl)).toEqual(['https://api.deepseek.com', 'https://api.openai.com/v1', 'https://openrouter.ai/api/v1', null]);
+    expect(providers[1]!.models).toEqual(['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini']);
+    expect(providers[3]).toMatchObject({ models: [], defaultModel: null });
+  });
+
+  test('сохранение подключения меняет демо-состояние, а ключ запоминается только последними четырьмя символами', () => {
+    expect(fixtureActionResponse('settings/assistant/llm', { provider: 'openai', model: 'gpt-4o', apiKey: 'sk-секрет-WXYZ' })).toEqual({ ok: true });
+    expect(llmOf()).toMatchObject({ provider: 'openai', model: 'gpt-4o', keySource: 'settings', keyHint: 'WXYZ' });
+    expect(JSON.stringify(fixtureResponse('settings/assistant'))).not.toContain('секрет');
+  });
+
+  test('без поля apiKey прежний ключ остаётся, а null возвращает ключ из файла .env', () => {
+    fixtureActionResponse('settings/assistant/llm', { provider: 'deepseek', model: 'deepseek-chat' });
+    expect(llmOf()).toMatchObject({ keySource: 'settings', keyHint: 'ABCD' });
+    fixtureActionResponse('settings/assistant/llm', { provider: 'deepseek', model: 'deepseek-chat', apiKey: null });
+    expect(llmOf().keySource).toBe('env');
+  });
+
+  test('проверка подключения успешна и ничего не меняет, а ключ-образец даёт отказ с кодом и пояснением', () => {
+    expect(fixtureActionResponse('settings/assistant/llm-test', { provider: 'openai', model: 'gpt-4o' })).toMatchObject({ ok: true, provider: 'openai', model: 'gpt-4o' });
+    expect(llmOf().provider).toBe('deepseek');
+    expect(fixtureActionResponse('settings/assistant/llm-test', { provider: 'deepseek', model: 'deepseek-chat', apiKey: DEMO_BAD_KEY })).toMatchObject({
+      ok: false,
+      code: 'auth',
+      status: 401,
+      detail: 'Authentication Fails',
+      message: expect.stringContaining('Провайдер не принял ключ (код 401)'),
+    });
   });
 });

@@ -104,3 +104,52 @@ describe('разговор с вызовом инструментов', () => {
     await expect(client.chat({ messages: [{ role: 'user', content: 'в' }] })).rejects.toMatchObject({ code: 'format' });
   });
 });
+
+describe('что сервис помощника ответил на ошибку (для проверки ключа в «Настройках»)', () => {
+  const failing = (status: number, body: string, apiKey = 'sk-very-secret') =>
+    createDeepSeekClient({ apiKey, model: 'm', retryDelayMs: 0, maxAttempts: 1, fetch: async () => new Response(body, { status }) });
+
+  test('у ошибки есть код ответа и короткое пояснение провайдера из поля error.message', async () => {
+    const err = await failing(401, JSON.stringify({ error: { message: 'Authentication Fails (auth header format should be Bearer sk-...)' } }))
+      .complete({ system: 's', user: 'u' }).catch((e: unknown) => e as LlmError);
+    expect(err).toMatchObject({ code: 'auth', status: 401 });
+    expect(err.detail).toBe('Authentication Fails (auth header format should be Bearer sk-...)');
+  });
+
+  test('неверное имя модели (400) тоже объясняется словами провайдера', async () => {
+    const err = await failing(400, JSON.stringify({ error: { message: 'Model Not Exist' } })).complete({ system: 's', user: 'u' }).catch((e: unknown) => e as LlmError);
+    expect(err).toMatchObject({ code: 'format', status: 400, detail: 'Model Not Exist' });
+  });
+
+  test('если провайдер вернул в ошибке наш ключ, в пояснении он закрыт', async () => {
+    const err = await failing(401, JSON.stringify({ error: { message: 'Incorrect API key provided: sk-very-secret. Also sk-other1234567890abcdef' } }))
+      .complete({ system: 's', user: 'u' }).catch((e: unknown) => e as LlmError);
+    expect(err.detail).not.toContain('sk-very-secret');
+    expect(err.detail).not.toContain('sk-other1234567890abcdef');
+    expect(err.detail).toContain('Incorrect API key provided');
+  });
+
+  test('ключ без привычной приставки (его точное значение) тоже закрыт, если провайдер его процитировал', async () => {
+    const key = 'zq7Xk29PwLm4Rt81';
+    const err = await failing(401, JSON.stringify({ error: { message: `Invalid key ${key} supplied` } }), key).complete({ system: 's', user: 'u' }).catch((e: unknown) => e as LlmError);
+    expect(err.detail).toBe('Invalid key *** supplied');
+  });
+
+  test('пояснение обрезается, а тело, которое не разобрать как JSON, не показывается вовсе', async () => {
+    const long = await failing(400, JSON.stringify({ error: { message: 'x'.repeat(1000) } })).complete({ system: 's', user: 'u' }).catch((e: unknown) => e as LlmError);
+    expect(long.detail!.length).toBeLessThanOrEqual(300);
+    const html = await failing(401, '<html>Иванов 89110000000</html>').complete({ system: 's', user: 'u' }).catch((e: unknown) => e as LlmError);
+    expect(html.detail).toBeUndefined();
+  });
+
+  test('обычное сообщение ошибки по-прежнему без пояснения провайдера и без имени переменной окружения', async () => {
+    const err = await failing(401, JSON.stringify({ error: { message: 'секретная подробность' } })).complete({ system: 's', user: 'u' }).catch((e: unknown) => e as LlmError);
+    expect(err.message).not.toContain('секретная подробность');
+    expect(err.message).not.toContain('DEEPSEEK_API_KEY');
+  });
+
+  test('при 402 говорится про счёт, при 429 после повторов — про лимит', async () => {
+    expect(await failing(402, '{}').complete({ system: 's', user: 'u' }).catch((e: unknown) => e as LlmError)).toMatchObject({ code: 'auth', status: 402 });
+    expect(await failing(429, '{}').complete({ system: 's', user: 'u' }).catch((e: unknown) => e as LlmError)).toMatchObject({ code: 'rate', status: 429 });
+  });
+});

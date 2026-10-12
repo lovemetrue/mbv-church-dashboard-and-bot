@@ -48,6 +48,8 @@
  *   POST /api/v1/assistant/run          (тело {})       → AssistantRunOk | ActionError (помощник разбирает непонятные заявки)
  *   GET  /api/v1/settings/assistant     → SettingsAssistantView (только super)
  *   POST /api/v1/settings/assistant/enabled AssistantEnabledBody → ActionOk | ActionError (только super)
+ *   POST /api/v1/settings/assistant/llm LlmConfigBody → ActionOk | ActionError (только super; ключ шифруется, обратно не отдаётся)
+ *   POST /api/v1/settings/assistant/llm-test LlmTestBody → LlmTestResult (только super; ничего не сохраняет)
  *   GET  /api/v1/settings/bot           → SettingsBotView (только super)
  *   POST /api/v1/settings/bot/extra-questions ExtraQuestionsBody → ActionOk | ActionError (только super)
  *   POST /api/v1/settings/bot/send-extra-questions SendExtraInvitesBody → SendExtraInvitesOk | ActionError (только super; пишет живым людям)
@@ -370,12 +372,68 @@ export interface AssistantRunOk {
 
 export interface AssistantEnabledBody { enabled: boolean }
 
+/** Провайдер языковой модели, которого можно выбрать. */
+export interface LlmProviderOption {
+  id: 'deepseek' | 'openai' | 'openrouter' | 'custom';
+  label: string;
+  /** Адрес готового провайдера; null у «другого» — его вводит человек. */
+  baseUrl: string | null;
+  /** Подсказки названий моделей; название можно вписать своё. */
+  models: string[];
+  defaultModel: string | null;
+  /** Что важно знать, выбирая этого провайдера. */
+  note: string;
+}
+
+/** Подключение помощника: провайдер, модель и ключ. Самого ключа в ответе нет никогда. */
+export interface LlmConfigView {
+  provider: LlmProviderOption['id'];
+  /** Адрес «другого» провайдера; у остальных null. */
+  baseUrl: string | null;
+  model: string;
+  /** Ключ есть (сохранён в настройках или задан в `.env` сервера). */
+  keySet: boolean;
+  keySource: 'settings' | 'env' | null;
+  /** Последние четыре символа ключа, чтобы видеть, какой именно задан. */
+  keyHint: string | null;
+  /** Сохранённый в настройках ключ не читается (сменился секрет сервера): введите его заново. */
+  keyUnreadable: boolean;
+  providers: LlmProviderOption[];
+}
+
+/** Сохранить подключение. `apiKey`: не указан — прежний остаётся, строка — новый ключ, null — убрать сохранённый (вернётся `.env`). */
+export interface LlmConfigBody {
+  provider: LlmProviderOption['id'];
+  model: string;
+  /** Для «другого» провайдера: адрес https. */
+  baseUrl?: string | null;
+  apiKey?: string | null;
+}
+
+/** Проверка подключения тем же телом: ничего не сохраняет. */
+export type LlmTestBody = LlmConfigBody;
+
+export type LlmTestResult =
+  | { ok: true; provider: string; model: string; ms: number }
+  | {
+      ok: false;
+      code: 'bad_request' | 'nokey' | 'auth' | 'rate' | 'server' | 'network' | 'format';
+      /** Что произошло и что делать, словами. */
+      message: string;
+      /** Код ответа провайдера, если он был. */
+      status?: number;
+      /** Короткое пояснение провайдера (ключи в нём закрыты). */
+      detail?: string;
+    };
+
 export interface SettingsAssistantView {
   generatedAt: string;
   available: boolean;
   enabled: boolean;
   /** Название модели, например `deepseek-chat`. */
   model: string | null;
+  /** Подключение: провайдер, модель и ключ (только для полного входа). */
+  llm: LlmConfigView;
   lastRun: { at: string; actor: string; asked: number; filled: number; withQuestions: number; proposals: number } | null;
 }
 

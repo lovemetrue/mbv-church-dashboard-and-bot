@@ -4,6 +4,9 @@
  */
 import type {
   DeliveryOk,
+  LlmConfigView,
+  LlmProviderOption,
+  LlmTestResult,
   SettingsAssistantView,
   SettingsAuditView,
   SettingsBotView,
@@ -411,13 +414,103 @@ export function buildSettingsBot(): SettingsBotView {
   };
 }
 
+/** Провайдеры, как их отдаёт сервер: четыре, у «другого» адреса и моделей нет — их вписывает человек. */
+export function buildLlmProviders(): LlmProviderOption[] {
+  return [
+    {
+      id: 'deepseek',
+      label: 'DeepSeek',
+      baseUrl: 'https://api.deepseek.com',
+      models: ['deepseek-chat'],
+      defaultModel: 'deepseek-chat',
+      note: 'Сервис в Китае: данные обрабатываются за рубежом.',
+    },
+    {
+      id: 'openai',
+      label: 'OpenAI',
+      baseUrl: 'https://api.openai.com/v1',
+      models: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini'],
+      defaultModel: 'gpt-4o-mini',
+      note: 'Сервис в США: данные обрабатываются за рубежом.',
+    },
+    {
+      id: 'openrouter',
+      label: 'OpenRouter',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      models: ['deepseek/deepseek-chat', 'openai/gpt-4o-mini'],
+      defaultModel: 'deepseek/deepseek-chat',
+      note: 'Посредник: запрос пересылается выбранной модели другого сервиса.',
+    },
+    {
+      id: 'custom',
+      label: 'Другой (свой адрес)',
+      baseUrl: null,
+      models: [],
+      defaultModel: null,
+      note: 'Любой сервис, совместимый с OpenAI: адрес и модель вписываются вручную.',
+    },
+  ];
+}
+
+type DemoLlm = Pick<LlmConfigView, 'provider' | 'baseUrl' | 'model' | 'keySource' | 'keyHint'>;
+const DEMO_LLM_START: DemoLlm = { provider: 'deepseek', baseUrl: null, model: 'deepseek-chat', keySource: 'settings', keyHint: 'ABCD' };
+let demoLlm: DemoLlm = DEMO_LLM_START;
+
+/** Для тестов: вернуть демо в исходное подключение. */
+export function resetDemoLlm(): void {
+  demoLlm = DEMO_LLM_START;
+}
+
+/**
+ * Сохранение подключения в демо: провайдер, модель и адрес запоминаются до перезагрузки страницы, чтобы после «Сохранить» было видно
+ * действующее значение. Ключ не хранится вовсе, остаются лишь последние четыре символа, как на сервере.
+ */
+export function saveDemoLlm(body: { provider?: LlmConfigView['provider']; model?: string; baseUrl?: string | null; apiKey?: string | null }): void {
+  const next: DemoLlm = { ...demoLlm };
+  if (body.provider) next.provider = body.provider;
+  if (typeof body.model === 'string') next.model = body.model;
+  next.baseUrl = next.provider === 'custom' ? (body.baseUrl ?? null) : null;
+  if (typeof body.apiKey === 'string') {
+    next.keySource = 'settings';
+    next.keyHint = body.apiKey.slice(-4);
+  } else if (body.apiKey === null) {
+    // Сохранённый ключ убрали: действует тот, что в файле `.env` сервера.
+    next.keySource = 'env';
+    next.keyHint = 'WXYZ';
+  }
+  demoLlm = next;
+}
+
+/** Подключение в демо: по умолчанию ключ сохранён в настройках (видны лишь последние четыре символа). Самого ключа в данных нет и быть не может. */
+export function buildLlmConfig(): LlmConfigView {
+  return { ...demoLlm, keySet: true, keyUnreadable: false, providers: buildLlmProviders() };
+}
+
 /** Помощник в демо: ключ «задан», включён, один запуск в прошлом. Самого ключа в данных нет и быть не может. */
 export function buildSettingsAssistant(): SettingsAssistantView {
   return {
     generatedAt: GENERATED_AT,
     available: true,
     enabled: true,
-    model: 'deepseek-chat',
+    model: demoLlm.model,
+    llm: buildLlmConfig(),
     lastRun: { at: '2026-10-09T09:30:00+03:00', actor: 'Трофимова С.', asked: 6, filled: 4, withQuestions: 3, proposals: 2 },
   };
+}
+
+/** Ключ, на который демо-проверка отвечает отказом: так можно посмотреть, как выглядит ошибка. */
+export const DEMO_BAD_KEY = 'bad-key-00000';
+
+/** Проверка подключения в демо: всегда успех, кроме ключа DEMO_BAD_KEY. Ничего не сохраняется. */
+export function buildLlmTestResult(body: { provider?: string; model?: string; apiKey?: string | null }): LlmTestResult {
+  if (body.apiKey === DEMO_BAD_KEY) {
+    return {
+      ok: false,
+      code: 'auth',
+      message: 'Провайдер не принял ключ (код 401). Проверьте, что ключ скопирован целиком и не отозван.',
+      status: 401,
+      detail: 'Authentication Fails',
+    };
+  }
+  return { ok: true, provider: body.provider ?? 'deepseek', model: body.model ?? 'deepseek-chat', ms: 840 };
 }

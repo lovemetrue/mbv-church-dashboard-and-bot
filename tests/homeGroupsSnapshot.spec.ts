@@ -145,10 +145,10 @@ describe('движок на настоящей выгрузке таблицы �
 
   test('сводка «Сегодня» строится без исключений и согласована с планом', () => {
     const summary = buildTodaySummary({ requests, entries: plan.entries, groups, settings: DEFAULT_SETTINGS });
-    // Пять возрастов и особая колонка «Возраст не указан».
-    expect(summary.ageColumns).toHaveLength(6);
+    // Шесть возрастных категорий кампании и особая колонка «Возраст не указан».
+    expect(summary.ageColumns).toHaveLength(7);
     for (const row of summary.matrix) {
-      expect(row.cells).toHaveLength(6);
+      expect(row.cells).toHaveLength(7);
       for (const cell of row.cells) expect(cell.net).toBe(cell.supply - cell.demand);
     }
     const clustered = summary.clusters.flatMap((c) => c.requestIds);

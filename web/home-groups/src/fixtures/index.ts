@@ -8,6 +8,7 @@ import {
   buildSettingsStaff,
   fixtureStaffDelivery,
   fixtureSuggestLogin,
+  sendDemoInvites,
 } from './settings';
 import { buildFormMeta } from './formMeta';
 import { buildCoordinators, buildGroups, buildPeople, buildRequests, buildToday } from './build';
@@ -88,6 +89,8 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
   if (/^(members|persons)\/\d+\/(update|delete)$/.test(clean)) return { ok: true };
   // Удаление регистрации и настройка бота: в демо ничего не меняется, действие просто «получается».
   if (/^people\/\d+\/delete$/.test(clean) || clean === 'settings/bot/extra-questions') return { ok: true };
+  // Рассылка доп. вопросов: в демо она «уходит» всем текущим получателям, после чего их не остаётся.
+  if (clean === 'settings/bot/send-extra-questions') return { ok: true, sent: sendDemoInvites(), failed: 0, blocked: 0 };
   // Переключатель помощника: в демо ничего не меняется, действие просто «получается».
   if (clean === 'settings/assistant/enabled') return { ok: true };
   // Массовое действие: в демо все выбранные «обработаны», ничего не пропущено.

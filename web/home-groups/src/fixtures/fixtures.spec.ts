@@ -1,7 +1,10 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
 import { buildCoordinators, buildGroups, buildPeople, buildRequests, buildToday } from './build';
 import { buildFormMeta } from './formMeta';
 import { fixtureActionResponse, fixtureResponse } from './index';
+import { resetDemoInvites } from './settings';
+
+afterEach(() => resetDemoInvites());
 
 describe('фикстуры', () => {
   test('счётчики сходятся со списком заявок, отказы в список не попадают', () => {
@@ -123,6 +126,16 @@ describe('фикстуры', () => {
     expect(['settings', 'env']).toContain(bot.extraQuestions.source);
     expect(fixtureActionResponse('people/1/delete', {})).toEqual({ ok: true });
     expect(fixtureActionResponse('settings/bot/extra-questions', { mode: 'all' })).toEqual({ ok: true });
+  });
+
+  test('в демо есть кому дослать вопросы, а отправка «доставляет» всем и обнуляет получателей', () => {
+    const before = fixtureResponse('settings/bot') as { invites: { available: boolean; join: number; lead: number; total: number; off: boolean; textJoin: string; textLead: string } };
+    expect(before.invites).toMatchObject({ available: true, join: 4, lead: 2, total: 6, off: false });
+    expect(before.invites.textJoin).not.toBe('');
+    expect(before.invites.textLead).not.toBe('');
+    expect(fixtureActionResponse('settings/bot/send-extra-questions', { expectedTotal: 6 })).toEqual({ ok: true, sent: 6, failed: 0, blocked: 0 });
+    const after = fixtureResponse('settings/bot') as { invites: { join: number; lead: number; total: number } };
+    expect(after.invites).toMatchObject({ join: 0, lead: 0, total: 0 });
   });
 
   test('в демо помощник подключён и включён, а разбор есть у двух заявок: с определёнными полями и только с вопросами', () => {

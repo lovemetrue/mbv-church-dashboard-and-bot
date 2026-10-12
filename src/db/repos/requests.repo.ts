@@ -163,7 +163,11 @@ export class RequestsRepo {
   private async afterCreate(requestId: number, type: RequestType, mayAssign: boolean): Promise<void> {
     try {
       if (type === 'join_group' && mayAssign) await this.assignDistributor(requestId);
-      if (type === 'lead_group') await this.db.query('SELECT ensure_potential_group($1)', [requestId]);
+      if (type === 'lead_group') {
+        await this.db.query('SELECT ensure_potential_group($1)', [requestId]);
+        // Адрес и время, названные до регистрации, ложатся в группу сразу.
+        await this.db.query('SELECT sync_potential_group(user_id) FROM requests WHERE id = $1 AND user_id IS NOT NULL', [requestId]);
+      }
     } catch (err) {
       logger.error({ err: (err as Error).message, requestId }, 'заявка создана, но автоматическое назначение или потенциальная группа не удались');
     }

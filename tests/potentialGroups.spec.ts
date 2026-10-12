@@ -1,5 +1,7 @@
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { UsersRepo } from '../src/db/repos/users.repo.js';
 import { RequestsRepo } from '../src/db/repos/requests.repo.js';
 import { seedUser, setupTestDb, truncateAll } from './helpers/testDb.js';
 
@@ -85,5 +87,43 @@ describe('потенциальные группы из заявок «хочу �
     await db.query(`INSERT INTO requests (type, user_id, status, origin) VALUES ('lead_group', $1, 'Новая', 'бот'), ('lead_group', $2, 'Исполнена', 'бот')`, [a, b]);
     await db.query(`SELECT ensure_potential_group(id) FROM requests WHERE type = 'lead_group' AND archived_at IS NULL ORDER BY id`);
     expect((await groups()).map((g) => g.leader)).toEqual(['Старая Открытая']);
+  });
+
+  test('ответы про время и адрес, пришедшие после заведения группы (досылка), попадают в «Адрес» и комментарий группы', async () => {
+    const { userId } = await lead(1, { place: 'Приморский район' });
+    await new UsersRepo(db).savePatch(userId, { schedule: 'будни после 18:00' });
+    await new UsersRepo(db).savePatch(userId, { address: 'ул. Рылеева, 32' });
+    const g = (await db.query(`SELECT address, comment FROM groups`)).rows[0]!;
+    expect(g.address).toBe('ул. Рылеева, 32');
+    expect(g.comment).toBe('Из заявки «хочу открыть группу». Место: Приморский район. Удобное время: будни после 18:00.');
+  });
+
+  test('адрес, названный до регистрации, ложится в группу при создании заявки; повторный ответ время не дублирует', async () => {
+    const userId = await seedUser(db, { id: '110', fio: 'С Адресом', phone: '+79001110011', mdgStatus: 'open' });
+    await db.query(`UPDATE users SET address_raw = 'пр. Мира, 5', schedule_raw = 'вечером' WHERE id = $1`, [userId]);
+    await repo.create(userId, 'lead_group');
+    await new UsersRepo(db).savePatch(userId, { schedule: 'вечером' });
+    const g = (await db.query(`SELECT address, comment FROM groups`)).rows[0]!;
+    expect(g.address).toBe('пр. Мира, 5');
+    expect(g.comment.match(/Удобное время/g)).toHaveLength(1);
+  });
+
+  test('правка координатора важнее анкеты: непустой адрес группы не затирается', async () => {
+    const { userId } = await lead(1);
+    await db.query(`UPDATE groups SET address = 'Поправлено вручную, 1'`);
+    await new UsersRepo(db).savePatch(userId, { address: 'ул. Из анкеты, 2' });
+    expect((await db.query(`SELECT address FROM groups`)).rows[0]!.address).toBe('Поправлено вручную, 1');
+  });
+
+  test('миграция 035: уже накопившиеся ответы переносятся в группы, повторный запуск ничего не меняет', async () => {
+    const { userId } = await lead(1, { place: 'Выборгский' });
+    await db.query(`UPDATE users SET address_raw = 'пр. Энгельса, 10', schedule_raw = 'по субботам' WHERE id = $1`, [userId]);
+    const sql = readFileSync(new URL('../migrations/035_sync_potential_group_answers.sql', import.meta.url), 'utf8');
+    await db.query(sql);
+    const first = (await db.query(`SELECT address, comment FROM groups`)).rows[0]!;
+    expect(first.address).toBe('пр. Энгельса, 10');
+    expect(first.comment).toContain('Удобное время: по субботам.');
+    await db.query(sql);
+    expect((await db.query(`SELECT address, comment FROM groups`)).rows[0]).toEqual(first);
   });
 });

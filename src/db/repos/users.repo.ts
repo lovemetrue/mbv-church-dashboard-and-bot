@@ -159,6 +159,8 @@ export class UsersRepo {
     if (sets.length === 0) return;
 
     await this.db.query(`UPDATE users SET ${sets.join(', ')} WHERE id = $1`, values);
+    // Время и адрес могут прийти уже после заведения потенциальной группы (досылка вопросов): переносим их в группу.
+    if (patch.schedule || patch.address) await this.db.query('SELECT sync_potential_group($1)', [userId]);
   }
 
   /**

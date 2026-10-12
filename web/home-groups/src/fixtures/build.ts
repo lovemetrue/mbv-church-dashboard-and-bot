@@ -14,6 +14,7 @@ import type {
   CoordinatorItem,
   CoordinatorsView,
   Counters,
+  DataChange,
   GroupBrief,
   GroupItem,
   GroupMember,
@@ -55,8 +56,21 @@ const DEFAULT_CAPACITY = 10;
 const WEIGHTS = { district: 40, age: 25, time: 20, street: 15 };
 /** Порог уверенности, ниже которого заявка уходит в «Нужна помощь». */
 const CONFIDENCE_THRESHOLD = 60;
-/** Заявки, у которых данные изменились после закрепления подбора (для демо и тестов). */
-const DATA_CHANGED_REQUESTS: ReadonlySet<number> = new Set([2, 3]);
+/**
+ * Заявки, у которых данные изменились после закрепления подбора (для демо и тестов), и что именно изменилось.
+ * Два вида: подробный список (человек уточнил район и возраст) и `null` — предложение посчитано до того,
+ * как сервер стал хранить снимок данных, поэтому известно лишь, что что-то изменилось.
+ */
+const DATA_CHANGES: ReadonlyMap<number, DataChange[] | null> = new Map([
+  [
+    2,
+    [
+      { field: 'Район', before: 'Выборгский', after: 'Приморский' },
+      { field: 'Возраст', before: '36–45', after: '26–35' },
+    ],
+  ],
+  [3, null],
+]);
 
 const capOf = (g: RawGroup): number => g.capacity ?? DEFAULT_CAPACITY;
 const freeOf = (g: RawGroup): number => Math.max(0, capOf(g) - (g.people ?? 0));
@@ -251,9 +265,9 @@ export function buildPlan(requests: RawRequest[] = RAW_REQUESTS, groups: RawGrou
         saved: (r.waitingDays ?? 0) >= 2,
         // У пары закреплённых заявок после закрепления поправили данные: так в демо видна метка
         // «Данные изменились». Свежий расчёт «изменившихся данных» не имеет, поэтому только saved.
-        dataChanged: (r.waitingDays ?? 0) >= 2 && DATA_CHANGED_REQUESTS.has(r.id),
-        // Подробности «что изменилось» в демо-данных пока не заведены (как у предложений, посчитанных до миграции 033).
-        changes: null,
+        dataChanged: (r.waitingDays ?? 0) >= 2 && DATA_CHANGES.has(r.id),
+        // У свежего расчёта и у закреплённого с прежними данными подробностей нет (как отдаёт сервер).
+        changes: (r.waitingDays ?? 0) >= 2 ? (DATA_CHANGES.get(r.id) ?? null) : null,
         // В фикстурах предложения всегда считает сервис: языковой модели («agent») здесь нет.
         source: 'script',
         main: toCandidate(pick, confidence),

@@ -15,7 +15,7 @@ import { buildCoordinators, buildGroups, buildPeople, buildRequests, buildToday 
 import { RAW_REQUESTS } from './raw';
 import { setDemoStrange, strangeKey } from './strange';
 import { buildCampaign } from './campaign';
-import { fixtureChatReply } from './chat';
+import { fixtureChatClear, fixtureChatHistory, fixtureChatReply } from './chat';
 import { buildOthers, reconcileDemoOther, reconcileDemoReady } from './others';
 import { buildTeam } from './team';
 
@@ -42,6 +42,9 @@ export function fixtureResponse(path: string): unknown {
       return buildTeam();
     case 'campaign':
       return buildCampaign();
+    // История чата «Помощник»: в демо уже есть пара реплик (fixtures/chat.ts).
+    case 'assistant/chat/history':
+      return fixtureChatHistory();
     case 'settings/bot':
       return buildSettingsBot();
     case 'settings/assistant':
@@ -72,6 +75,7 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
   }
   // Чат «Помощник»: ответ зависит от последнего вопроса (fixtures/chat.ts), сами данные не меняются.
   if (clean === 'assistant/chat') return fixtureChatReply(body);
+  if (clean === 'assistant/chat/clear') return fixtureChatClear();
   // Помощник: в демо он «разобрал» все три заявки, которые ждали разбора; данные при этом не меняются.
   if (clean === 'assistant/run') return { ok: true, asked: 3, filled: 2, withQuestions: 2, proposals: 1 };
   // Пересчёт всех предложений: в демо сервера нет, поэтому «заменено» нулевое, а изменившиеся данные считаем обновлёнными.

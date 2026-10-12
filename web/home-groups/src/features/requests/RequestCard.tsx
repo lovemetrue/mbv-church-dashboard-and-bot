@@ -6,6 +6,7 @@ import { useGroups } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
 import { AgeTag, Button, Drawer, DrawerSection, KeyValue, NewGroupIcon, Pill, StrangeBadge, StrangeBanner, type KvRow } from '../../shared/ui';
 import { CandidateCard } from './CandidateCard';
+import { DataChanges, useChangesDisclosure } from './DataChanges';
 import { SavedTag } from './SavedTag';
 import { isCreationEntry, knownParams, proposalOf, understoodTime, unavailableReason, type UnavailableReason } from './model';
 import { ActionDialogs, ActionNoticeLine, isActionable, RequestActions } from './RequestActions';
@@ -35,14 +36,25 @@ function noPlanHint(code: NonNullable<RequestItem['noPlan']>['code']): string {
 
 /** Кто предложил группу и напоминание, что предложение ещё не решение. */
 function ProposalSource({ proposal }: { proposal: NonNullable<RequestItem['proposal']> }) {
+  const disclosure = useChangesDisclosure();
   return (
     <>
       <p className={styles.source}>
         <b>{proposal.source === 'agent' ? ru.requests.act.sourceAgent : ru.requests.act.sourceScript}</b>
-        <SavedTag saved={proposal.saved} dataChanged={proposal.dataChanged} explained />
+        <SavedTag
+          saved={proposal.saved}
+          dataChanged={proposal.dataChanged}
+          explained
+          changes={{ open: disclosure.open, onToggle: disclosure.toggle, panelId: disclosure.panelId }}
+        />
         <span className={styles.note}>{ru.requests.act.notApproved}</span>
       </p>
       {proposal.dataChanged && <p className={styles.changedNote}>{ru.requests.rematch.changedHint}</p>}
+      {proposal.dataChanged && disclosure.open && (
+        <div id={disclosure.panelId} className={styles.changesPanel}>
+          <DataChanges changes={proposal.changes} />
+        </div>
+      )}
     </>
   );
 }

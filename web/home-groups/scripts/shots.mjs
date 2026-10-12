@@ -224,13 +224,16 @@ const SCREENS = [
   { name: 'members-groups-col', url: '/?tab=reference&col=№&col=Ведущий&col=Места&col=В составе&sort=В составе:desc', ready: 'table' },
   // Плавающая кнопка «✦ Помощник» (на «Сегодня»), открытое окно с подсказками, ответ с таблицей и раскрытым «Как посмотрел», ошибка сервиса.
   { name: 'chat-fab', url: '/', ready: 'button:has-text("✦ Помощник")' },
-  { name: 'chat-open', url: '/', ready: 'button:has-text("✦ Помощник")', click: 'button:has-text("✦ Помощник")', then: '[role=dialog][aria-label="Помощник"] [role=group]' },
+  // В демо у входа уже есть прошлый разговор (две реплики): его сервер отдаёт при открытии окна, поэтому подсказок сначала нет.
+  { name: 'chat-open', url: '/', ready: 'button:has-text("✦ Помощник")', click: 'button:has-text("✦ Помощник")', then: '[role=dialog][aria-label="Помощник"] [role=log]:has-text("Сколько в Приморском районе групп")' },
+  // «Очистить разговор»: экран пустеет только после ответа сервера и возвращает подсказки.
+  { name: 'chat-cleared', url: '/', ready: 'button:has-text("✦ Помощник")', click: ['button:has-text("✦ Помощник")', '[role=dialog][aria-label="Помощник"] button:has-text("Очистить разговор")'], then: '[role=dialog][aria-label="Помощник"] [role=group]' },
   {
     name: 'chat-answer',
     url: '/',
     ready: 'button:has-text("✦ Помощник")',
     click: 'button:has-text("✦ Помощник")',
-    then: '[role=dialog][aria-label="Помощник"] [role=group]',
+    then: '[role=dialog][aria-label="Помощник"] [role=log]:has-text("Сколько в Приморском районе групп")',
     fill: [['[role=dialog][aria-label="Помощник"] textarea', 'В каком районе перебор групп?']],
     submit: '[role=dialog][aria-label="Помощник"] button[aria-label="Отправить"]',
     after: '[role=dialog][aria-label="Помощник"] table',
@@ -242,11 +245,16 @@ const SCREENS = [
     url: '/',
     ready: 'button:has-text("✦ Помощник")',
     click: 'button:has-text("✦ Помощник")',
-    then: '[role=dialog][aria-label="Помощник"] [role=group]',
+    then: '[role=dialog][aria-label="Помощник"] [role=log]:has-text("Сколько в Приморском районе групп")',
     fill: [['[role=dialog][aria-label="Помощник"] textarea', 'Покажи, что за ошибка']],
     submit: '[role=dialog][aria-label="Помощник"] button[aria-label="Отправить"]',
     after: '[role=dialog][aria-label="Помощник"] button:has-text("Повторить")',
   },
+  // «Данные изменились» → что именно: метка в карточке раскрывается (заявка 2 — два поля, 3 — подробностей нет), то же в строке списка и окно из панели подбора.
+  { name: 'changes-card', url: '/?tab=requests&req=2', ready: '[role=dialog][aria-label^="Карточка заявки"]', click: '[role=dialog][aria-label^="Карточка заявки"] button[aria-expanded=false]:has-text("Данные изменились")', then: 'ul[aria-label="Что изменилось"]', scroll: 'ul[aria-label="Что изменилось"]' },
+  { name: 'changes-card-none', url: '/?tab=requests&req=3', ready: '[role=dialog][aria-label^="Карточка заявки"]', click: '[role=dialog][aria-label^="Карточка заявки"] button[aria-expanded=false]:has-text("Данные изменились")', then: 'p:has-text("подробности сохраняются")', scroll: 'p:has-text("подробности сохраняются")' },
+  { name: 'changes-list', url: '/?tab=requests', ready: 'ul[aria-label="Список заявок"]', click: 'ul[aria-label="Список заявок"] button[aria-expanded=false]:has-text("Данные изменились") >> nth=0', then: 'ul[aria-label="Список заявок"] ul[aria-label="Что изменилось"]', scroll: 'ul[aria-label="Список заявок"] ul[aria-label="Что изменилось"]' },
+  { name: 'changes-panel', url: '/?tab=requests', ready: 'ul[aria-label="Список заявок"]', click: 'button:has-text("Данные изменились у")', then: '[role=dialog][aria-modal=true] ul[aria-label="Что изменилось"]' },
   // Метка «Странный человек»: красный значок в списках, плашка и флажок в карточке (заявка 14 отмечена в демо), вопрос при утверждении,
   // чип «Странные», значок в «Людях», в составе группы и в «Других обращениях».
   { name: 'strange-list', url: '/?tab=requests', ready: 'ul[aria-label="Список заявок"] [role=img][aria-label^="Странный человек"]', scroll: 'ul[aria-label="Список заявок"] [role=img][aria-label^="Странный человек"]' },
@@ -333,6 +341,9 @@ const SHOTS = [
   ...['chat-fab', 'chat-open', 'chat-answer', 'chat-error'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
   ['chat-answer', 400, 'dark'],
   ['chat-open', 400, 'gray'],
+  ['chat-open', 400, 'dark'],
+  ...['chat-cleared'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
+  ...['changes-card', 'changes-card-none', 'changes-list', 'changes-panel'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light'], [s, 400, 'dark'], [s, 400, 'gray']]),
   ['chat-fab', 1280, 'dark'],
   ...['strange-list', 'strange-chip', 'strange-card', 'strange-work', 'strange-work-new', 'strange-confirm', 'strange-people', 'strange-person-card', 'strange-members', 'strange-others'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light']]),
   ...['strange-list', 'strange-card', 'strange-confirm'].flatMap((s) => [[s, 400, 'dark'], [s, 400, 'gray']]),

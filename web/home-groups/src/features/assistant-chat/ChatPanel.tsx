@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, type KeyboardEvent } from 'react';
 import { ru } from '../../shared/i18n/ru';
 import { useAppNav } from '../../shared/nav';
 import { Button } from '../../shared/ui';
@@ -23,8 +23,14 @@ export function ChatPanel({ chat, draft, onDraft, onClose, isSuper }: PanelProps
   const nav = useAppNav();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { entries, pending } = chat;
+  const { entries, pending, history, loadHistory } = chat;
   const last = entries[entries.length - 1];
+  const memoryId = useId();
+
+  // Прошлый разговор хранит сервер: читаем его при открытии окна (повторно за сеанс страницы он не запрашивается).
+  useEffect(() => {
+    void loadHistory();
+  }, [loadHistory]);
 
   // При открытии фокус сразу в поле: человек пришёл спросить.
   useEffect(() => {
@@ -91,7 +97,15 @@ export function ChatPanel({ chat, draft, onDraft, onClose, isSuper }: PanelProps
         <div role="log" aria-label={t.logLabel} className={styles.log}>
           <div className={`${styles.bubble} ${styles.bot}`}>
             <p className={styles.text}>{t.hello}</p>
-            {entries.length === 0 && (
+            {entries.length === 0 && history === 'error' && (
+              <div role="alert" className={styles.historyError}>
+                <p className={styles.text}>{t.historyError}</p>
+                <Button size="sm" onClick={() => void loadHistory()}>
+                  {t.historyRetry}
+                </Button>
+              </div>
+            )}
+            {entries.length === 0 && history !== 'loading' && history !== 'idle' && (
               <div role="group" aria-label={t.chipsLabel} className={styles.chips}>
                 {t.chips.map((q) => (
                   <button key={q} type="button" className={styles.chip} onClick={() => chat.send(q)}>
@@ -144,6 +158,7 @@ export function ChatPanel({ chat, draft, onDraft, onClose, isSuper }: PanelProps
         </div>
         <div role="status" className={styles.thinkingBox}>
           {pending && <div className={`${styles.bubble} ${styles.bot} ${styles.thinking}`}>{t.thinking}</div>}
+          {history === 'loading' && <div className={`${styles.bubble} ${styles.bot} ${styles.thinking}`}>{t.historyLoading}</div>}
         </div>
       </div>
 
@@ -164,6 +179,7 @@ export function ChatPanel({ chat, draft, onDraft, onClose, isSuper }: PanelProps
             disabled={pending}
             placeholder={t.placeholder}
             aria-label={t.inputLabel}
+            aria-describedby={memoryId}
             onChange={(e) => onDraft(e.target.value)}
             onKeyDown={onKeyDown}
           />
@@ -171,10 +187,18 @@ export function ChatPanel({ chat, draft, onDraft, onClose, isSuper }: PanelProps
             →
           </Button>
         </div>
+        <p id={memoryId} className={styles.memory}>
+          {t.memory}
+        </p>
+        {chat.clearError && (
+          <p role="alert" className={styles.clearError}>
+            {chat.clearError}
+          </p>
+        )}
         <div className={styles.formFoot}>
           {entries.length > 0 ? (
-            <Button size="sm" variant="ghost" onClick={chat.clear}>
-              {t.clear}
+            <Button size="sm" variant="ghost" disabled={chat.clearing} onClick={() => void chat.clear()}>
+              {chat.clearing ? t.clearing : t.clear}
             </Button>
           ) : (
             <span />

@@ -3,6 +3,7 @@ import { BUCKET_LABEL } from '../../entities/buckets';
 import { groupLabel, groupLine } from '../../entities/format';
 import { ru } from '../../shared/i18n/ru';
 import { AgeTag, ConfidenceDots, Pill, StrangeBadge } from '../../shared/ui';
+import { DataChanges, useChangesDisclosure } from './DataChanges';
 import { SavedTag } from './SavedTag';
 import { AssistantTag } from './assistant/AssistantTag';
 import { proposalOf } from './model';
@@ -16,6 +17,29 @@ function proposalText(r: RequestItem) {
   const proposal = proposalOf(r);
   if (proposal) return groupLine(proposal.main.group);
   return null;
+}
+
+/**
+ * Метка предложения в строке. Раскрытие подробностей у каждой строки своё, поэтому вынесено в компонент.
+ * Панель останавливает клик: строка целиком открывает карточку, а выделить или прочитать текст изменений
+ * не должно уводить с места.
+ */
+function RowTag({ proposal }: { proposal: NonNullable<RequestItem['proposal']> }) {
+  const disclosure = useChangesDisclosure();
+  return (
+    <>
+      <SavedTag
+        saved={proposal.saved}
+        dataChanged={proposal.dataChanged}
+        changes={{ open: disclosure.open, onToggle: disclosure.toggle, panelId: disclosure.panelId }}
+      />
+      {proposal.dataChanged && disclosure.open && (
+        <div id={disclosure.panelId} className={styles.changesPanel} onClick={(e) => e.stopPropagation()}>
+          <DataChanges changes={proposal.changes} />
+        </div>
+      )}
+    </>
+  );
 }
 
 /** Выбор строк для массовых действий (см. `bulk/useBulk.ts`). */
@@ -87,7 +111,7 @@ export function RequestList({ items, selectedId, onSelect, selection }: RequestL
                 <Pill tone={r.bucket === 'cancelled' ? 'plain' : r.bucket}>{BUCKET_LABEL[r.bucket]}</Pill>
                 <div className={styles.propText}>
                   {text ?? <span className={styles.note}>{r.noPlan?.reason ?? ''}</span>}
-                  {proposal && r.bucket !== 'done' && <SavedTag saved={proposal.saved} dataChanged={proposal.dataChanged} />}
+                  {proposal && r.bucket !== 'done' && <RowTag proposal={proposal} />}
                 </div>
               </div>
               <div className={`${styles.conf} num`}>

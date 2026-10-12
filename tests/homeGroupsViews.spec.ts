@@ -1405,3 +1405,34 @@ describe('состав групп', () => {
     });
   });
 });
+
+describe('день недели, время и улица: что уходит в подбор', () => {
+  test('«по средам вечером» из анкеты становится днём и временем суток заявки', () => {
+    const { calls } = build({ requests: [request({ id: 1, place: 'Приморский', schedule: 'по средам вечером' })] });
+    expect(calls.plan[0]!.requests[0]).toMatchObject({ days: ['Ср'], slot: 'вечер', avoidDays: [], avoidSlots: [] });
+  });
+
+  test('«кроме воскресенья» уходит в подбор как неподходящий день, а не как удобный', () => {
+    const { calls, signatures } = build({ requests: [request({ id: 1, place: 'Приморский', schedule: 'кроме воскресенья, вечером' })] });
+    expect(calls.plan[0]!.requests[0]).toMatchObject({ days: [], slot: 'вечер', avoidDays: ['Вс'] });
+    const without = build({ requests: [request({ id: 1, place: 'Приморский', schedule: 'вечером' })] });
+    // Неподходящий день входит в отпечаток: заявка с другим «не подходит» пересчитывается.
+    expect(signatures.get(1)).not.toBe(without.signatures.get(1));
+  });
+
+  test('понятое скриптом («кроме воскресенья») помощнику не отдаётся: ему остаётся только непонятное', () => {
+    const fake = createFakeEngine();
+    const withAvoid = buildViewsWithPlan({ ...empty, requests: [request({ id: 1, schedule: 'кроме воскресенья' })] }, fake.engine, NOW);
+    expect(withAvoid.assistantCandidates).toEqual([]);
+    const unclear = buildViewsWithPlan({ ...empty, requests: [request({ id: 2, schedule: 'как получится, по настроению' })] }, fake.engine, NOW);
+    expect(unclear.assistantCandidates.map((c) => c.id)).toEqual([2]);
+  });
+
+  test('улица группы в подбор не идёт, пока сравнение улиц не включено; включённое передаёт только название без дома', () => {
+    const input = { groups: [group({ id: 1, address: 'ул. Рылеева, д. 32, кв. 5' })], requests: [request({ id: 1, place: 'Приморский', address: 'Рылеева 30' })] };
+    expect(build(input).calls.plan[0]!.groups[0]!.street).toBeNull();
+    const on = build(input, {}, { matchGroupStreet: true });
+    expect(on.calls.plan[0]!.groups[0]!.street).toBe('рылеева');
+    expect(JSON.stringify(on.views)).not.toContain('Рылеева, д. 32');
+  });
+});

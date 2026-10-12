@@ -45,7 +45,7 @@ import { createMatching } from './matching/run.js';
 import type { PlanEngineApi } from './plan/types.js';
 import type { ExtraInvites } from '../core/extraInvites.js';
 
-export interface ComposeOptions { defaultCapacity: number; ttlMs: number; timeZone?: string }
+export interface ComposeOptions { defaultCapacity: number; ttlMs: number; timeZone?: string; matchGroupStreet?: boolean }
 
 /**
  * Склейка сервиса: настоящая база + движок = готовые представления и подбор для новых заявок.
@@ -87,7 +87,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     members: new MembersRepo(db),
     strange: new StrangeRepo(db),
   }, { ...(opts.timeZone ? { timeZone: opts.timeZone } : {}), assistantAvailable: (opts.llm ?? null) !== null });
-  const viewOptions = { defaultCapacity: opts.defaultCapacity, ...(opts.timeZone ? { timeZone: opts.timeZone } : {}) };
+  const viewOptions = { defaultCapacity: opts.defaultCapacity, ...(opts.timeZone ? { timeZone: opts.timeZone } : {}), ...(opts.matchGroupStreet ? { matchGroupStreet: true } : {}) };
 
   const views = createViewsSource({ load, engine, ttlMs: opts.ttlMs, views: viewOptions });
   const matching = createMatching({

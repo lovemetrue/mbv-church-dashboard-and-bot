@@ -18,7 +18,9 @@ export {
   parseGroupWhen,
   parseHumanSchedule,
 } from './parse.js';
-export { DEFAULT_SETTINGS } from './settings.js';
+export { classifyDays } from './days.js';
+export { DEFAULT_SETTINGS, DISTRICT_WEIGHT } from './settings.js';
+export { streetKey, streetName } from './street.js';
 export { buildTodaySummary } from './summary.js';
 export type * from './types.js';
 

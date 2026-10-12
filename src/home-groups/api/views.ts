@@ -3,9 +3,10 @@ import type { MemberRow, PersonRow } from '../../db/repos/members.repo.js';
 import type { StoredHint } from '../../db/repos/hints.repo.js';
 import type { StrangeMarkRow } from '../../db/repos/strange.repo.js';
 import { diffSnapshots, inputSnapshot, type InputSnapshot } from '../plan/signature.js';
+import { streetName } from '../plan/street.js';
 import { gistOf } from '../reconcile/gist.js';
 import { reconcileOf } from '../reconcile/plan.js';
-import { baseHash, needsOf, anyNeed, type RawBrief } from '../assistant/brief.js';
+import { baseHash, needsOf, anyNeed, scriptFactsOf, type AssistantCandidate, type RawBrief } from '../assistant/brief.js';
 import type { ActivityRow, AuditRow } from '../../db/repos/audit.repo.js';
 import type { DashboardRequest } from '../../db/repos/requests.repo.js';
 import type { RegisteredParticipant } from '../../db/repos/users.repo.js';
@@ -56,11 +57,20 @@ export interface ViewsInput {
   matching?: { auto: boolean; lastRun: MatchingStatus['lastRun'] };
 }
 
+/** Разбор удобного времени человека: что подходит и что нет. */
+interface HumanWhen { days: Day[]; slot: Slot | null; avoidDays: Day[]; avoidSlots: Slot[] }
+
 export interface ViewsOptions {
   /** Вместимость группы, пока в базе нет такой колонки (этап A). */
   defaultCapacity?: number;
   /** Пояс, в котором считаются «сегодня» и «дней назад». */
   timeZone?: string;
+  /**
+   * Сравнивать улицу человека с улицей группы. Адрес группы закрытый (это дом ведущего), поэтому по умолчанию выключено:
+   * тогда у групп улицы нет и совпадение по улице нейтральное. Включённым в подбор попадает только название улицы без
+   * дома, и наружу оно не отдаётся — лишь причина «та же улица».
+   */
+  matchGroupStreet?: boolean;
 }
 
 /** Всё, что отдают ручки API, посчитанное за один проход по одному снимку данных. */
@@ -271,7 +281,7 @@ export function buildViews(input: ViewsInput, engine: PlanEngineApi, now: Date, 
 /** Представления и сам план: автоматический подбор берёт из плана то, что нужно сохранить. */
 export function buildViewsWithPlan(
   input: ViewsInput, engine: PlanEngineApi, now: Date, options: ViewsOptions = {},
-): { views: Views; plan: PlanOutput; openRequestIds: number[]; signatures: Map<number, string>; snapshots: Map<number, InputSnapshot>; assistantCandidates: { id: number; brief: RawBrief }[] } {
+): { views: Views; plan: PlanOutput; openRequestIds: number[]; signatures: Map<number, string>; snapshots: Map<number, InputSnapshot>; assistantCandidates: AssistantCandidate[] } {
   const defaultCapacity = options.defaultCapacity ?? DEFAULT_CAPACITY;
   const timeZone = options.timeZone ?? DEFAULT_TIME_ZONE;
   const today = localIsoDate(now, timeZone);
@@ -290,8 +300,9 @@ export function buildViewsWithPlan(
       ageRange: engine.parseAgeRange(g.age),
       day: when.day,
       slot: when.slot,
-      // Улицу для подбора отдельной колонкой ещё не завели, а закрытый `address` сюда нельзя ни при каких условиях.
-      street: null,
+      // Закрытый `address` в подбор не идёт, пока владелец не включил сравнение улиц (`matchGroupStreet`); и тогда —
+      // только название улицы без дома.
+      street: options.matchGroupStreet ? streetName(g.address) : null,
       // Утверждённых сервисом после обратной связи ведущий в число ещё не внёс — добавляем сами.
       people: effectivePeople(g.people, input.placedNew?.get(g.id) ?? 0),
       capacity: defaultCapacity,
@@ -330,9 +341,10 @@ export function buildViewsWithPlan(
   // ── заявки ────────────────────────────────────────────────────────────────
   const joinRequests = input.requests.filter((r) => r.type === 'join_group');
 
-  const humanWhen = (text: string | null): { days: Day[]; slot: Slot | null } => {
+  /** Удобное время человека: подходящие дни и время суток и то, что он назвал неподходящим («кроме воскресенья»). */
+  const humanWhen = (text: string | null): HumanWhen => {
     const w = engine.parseHumanSchedule(text);
-    return { days: w.days, slot: w.slot };
+    return { days: w.days, slot: w.slot, avoidDays: w.avoidDays, avoidSlots: w.avoidSlots };
   };
 
   /** Удобное время и улица: правка координатора важнее ответа из анкеты. */
@@ -354,7 +366,8 @@ export function buildViewsWithPlan(
     const scriptDistrict = engine.resolveDistrict(b.place, metroIndex);
     const scriptAge = engine.parseAgeRange(r.age);
     const scriptWhen = humanWhen(b.schedule);
-    const whenKnown = scriptWhen.days.length > 0 || scriptWhen.slot !== null;
+    // «Кроме воскресенья» — тоже понятый ответ: помощника из-за него звать не нужно.
+    const whenKnown = scriptWhen.days.length > 0 || scriptWhen.slot !== null || scriptWhen.avoidDays.length > 0 || scriptWhen.avoidSlots.length > 0;
     const filled: ('район' | 'возраст' | 'время')[] = [];
     let district = scriptDistrict;
     let ageRange = scriptAge;
@@ -364,11 +377,16 @@ export function buildViewsWithPlan(
       const hintAge = hint.age ? engine.parseAgeRange(hint.age) : null;
       if (ageRange === null && hintAge) { ageRange = hintAge; filled.push('возраст'); }
       if (!whenKnown && (hint.days.length > 0 || hint.slot)) {
-        when = { days: hint.days as Day[], slot: (hint.slot as Slot | null) ?? null };
+        when = { days: hint.days as Day[], slot: (hint.slot as Slot | null) ?? null, avoidDays: [], avoidSlots: [] };
         filled.push('время');
       }
     }
-    return { district, ageRange, when, filled, hint, needs: needsOf(b, { district: scriptDistrict, ageKnown: scriptAge !== null, whenKnown }) };
+    return {
+      district, ageRange, when, filled, hint,
+      needs: needsOf(b, { district: scriptDistrict, ageKnown: scriptAge !== null, whenKnown }),
+      // Что понял скрипт сам (без подстановок помощника) — это и уходит помощнику как уже известное.
+      script: { district: scriptDistrict, ageKnown: scriptAge !== null, when: scriptWhen },
+    };
   };
 
   const planRequestOf = (r: DashboardRequest): PlanRequest => {
@@ -381,11 +399,12 @@ export function buildViewsWithPlan(
       place: nonBlank(r.place),
       // Удобные дни и время — свободный текст человека или правка координатора; разбираем его честно:
       // что неясно, остаётся пустым (или берётся из разбора помощника, если он есть).
-      ...resolved.when,
+      days: resolved.when.days,
+      slot: resolved.when.slot,
       street: streetOf(r).text,
       rejectedGroupIds: [...(input.rejectedGroups?.get(r.id) ?? [])],
-      avoidDays: [],
-      avoidSlots: [],
+      avoidDays: resolved.when.avoidDays,
+      avoidSlots: resolved.when.avoidSlots,
       pinnedGroupId: null,
       waitingDays: daysSince(validIsoDate(r.date), today),
     };
@@ -536,10 +555,13 @@ export function buildViewsWithPlan(
   };
 
   // Что помощник может разобрать сейчас: открытые заявки, где в записи есть текст, а скрипт его не понял, и разбора ещё нет.
-  const assistantCandidates: { id: number; brief: RawBrief }[] = [];
+  const assistantCandidates: AssistantCandidate[] = [];
   for (const r of openRequests) {
     const resolved = resolveWithHint(r);
-    if (!resolved.hint && anyNeed(resolved.needs)) assistantCandidates.push({ id: r.id, brief: briefOf(r) });
+    // Помощнику уходит и то, что скрипт уже понял (район, дни, время суток), чтобы он не разбирал это заново.
+    if (!resolved.hint && anyNeed(resolved.needs)) {
+      assistantCandidates.push({ id: r.id, brief: briefOf(r), needs: resolved.needs, script: scriptFactsOf(resolved.script) });
+    }
   }
 
   const requestItems: RequestItem[] = [];

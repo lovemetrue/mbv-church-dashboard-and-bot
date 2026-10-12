@@ -1,9 +1,14 @@
-import { scrub } from './brief.js';
+import { scrub, type Needs } from './brief.js';
 
 export interface ParseContext {
   refs: ReadonlySet<string>;
   districts: readonly string[];
   ages: readonly string[];
+  /**
+   * Что у какой записи заказывали модели (`needs`). Остальное скрипт уже определил сам, и ответом модели оно не
+   * переопределяется: день недели весит в подборе как район, и «ср» разбирает код, а не догадка. Нет списка — принимается всё.
+   */
+  needs?: ReadonlyMap<string, Needs>;
 }
 
 export interface ParsedHint {
@@ -55,12 +60,15 @@ export function parseReply(text: string, ctx: ParseContext): ParsedHint[] {
     if (!ctx.refs.has(ref) || seen.has(ref)) continue;
     seen.add(ref);
 
-    const district = typeof it['district'] === 'string' ? (districts.get(it['district'].trim().toLowerCase()) ?? null) : null;
-    const age = typeof it['age'] === 'string' && ctx.ages.includes(it['age'].trim()) ? it['age'].trim() : null;
-    const days = Array.isArray(it['days'])
+    const asked = ctx.needs?.get(ref);
+    const district = typeof it['district'] === 'string' && (asked?.district ?? true)
+      ? (districts.get(it['district'].trim().toLowerCase()) ?? null)
+      : null;
+    const age = typeof it['age'] === 'string' && (asked?.age ?? true) && ctx.ages.includes(it['age'].trim()) ? it['age'].trim() : null;
+    const days = Array.isArray(it['days']) && (asked?.time ?? true)
       ? DAYS.filter((d) => (it['days'] as unknown[]).includes(d))
       : [];
-    const slot = typeof it['slot'] === 'string' && SLOTS.includes(it['slot']) ? it['slot'] : null;
+    const slot = typeof it['slot'] === 'string' && (asked?.time ?? true) && SLOTS.includes(it['slot']) ? it['slot'] : null;
     const questions: string[] = [];
     if (Array.isArray(it['questions'])) {
       for (const q of it['questions']) {

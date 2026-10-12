@@ -1,5 +1,5 @@
 import type { Reason } from '../contracts.js';
-import { formatWhen } from './parse.js';
+import { streetKey } from './street.js';
 import type {
   PlanEntry,
   PlanEntryProposal,
@@ -34,10 +34,6 @@ const FILL_BONUS = 6;
 const freePlaces = (g: PlanGroup): number => g.capacity - (g.people ?? 0);
 
 const overlaps = (a: readonly [number, number], b: readonly [number, number]): boolean => a[0] <= b[1] && b[0] <= a[1];
-
-/** «Комендантский пр.» и «комендантский пр» — одна улица. */
-const streetKey = (street: string): string =>
-  street.toLowerCase().replaceAll('ё', 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
 // ── какие параметры известны ────────────────────────────────────────────────
 
@@ -81,7 +77,8 @@ interface Part {
   weight: number;
   /** Доля совпадения 0–1. */
   share: number;
-  reason: Reason;
+  /** null — отдельной причины нет (её уже назвала соседняя часть). */
+  reason: Reason | null;
 }
 
 function districtPart(r: PlanRequest, g: PlanGroup, settings: PlanSettings): Part {
@@ -105,31 +102,38 @@ function agePart(g: PlanGroup, settings: PlanSettings): Part {
 }
 
 /**
- * Время: день и время суток сравниваются по отдельности и усредняются. Чего у группы не указано
- * (несколько дней в одной ячейке, «Плавающий», пустое время), считается нейтральным 0,5: мы не знаем,
- * подходит ли, а штрафовать группу за пробел в таблице несправедливо.
+ * День недели весит как район (`weights.day`, см. `DISTRICT_WEIGHT`). У группы день неизвестен, когда в ячейке
+ * несколько дней («Среда, Четверг»), «Плавающий» или пусто: это нейтральные 0,5 — не знаем, подходит ли, а штрафовать
+ * группу за пробел в таблице несправедливо. Когда неизвестно и время суток, причина одна на оба (`timeUnknown`).
  */
-function timePart(r: PlanRequest, g: PlanGroup, settings: PlanSettings): Part {
-  const weight = settings.weights.time;
-  if (g.day === null && g.slot === null) {
-    return { weight, share: 0.5, reason: { tone: 'neutral', text: 'у группы не указано время' } };
+function dayPart(r: PlanRequest, g: PlanGroup, settings: PlanSettings, timeUnknown: boolean): Part {
+  const weight = settings.weights.day;
+  if (g.day === null) {
+    return { weight, share: 0.5, reason: { tone: 'neutral', text: timeUnknown ? 'у группы не указано время' : 'день группы не указан' } };
   }
-  const shares: number[] = [];
-  if (r.days.length > 0) shares.push(g.day === null ? 0.5 : r.days.includes(g.day) ? 1 : 0);
-  if (r.slot !== null) shares.push(g.slot === null ? 0.5 : r.slot === g.slot ? 1 : 0);
-  const share = shares.reduce((sum, x) => sum + x, 0) / shares.length;
-  const when = formatWhen(g.day, g.slot) ?? '';
-  if (share === 1) return { weight, share, reason: { tone: 'good', text: `время совпало: ${when}` } };
-  if (share === 0) return { weight, share, reason: { tone: 'bad', text: `время не совпало: ${when}` } };
-  return { weight, share, reason: { tone: 'neutral', text: `время частично: ${when}` } };
+  if (r.days.includes(g.day)) return { weight, share: 1, reason: { tone: 'good', text: `день совпал: ${g.day}` } };
+  return { weight, share: 0, reason: { tone: 'bad', text: `день не совпал: ${g.day}` } };
+}
+
+/** Время суток: вес отдельный и меньший, чем у дня. Неизвестное у группы — нейтральные 0,5, как и у дня. */
+function slotPart(r: PlanRequest, g: PlanGroup, settings: PlanSettings, timeUnknown: boolean): Part {
+  const weight = settings.weights.slot;
+  if (g.slot === null) {
+    // Причину «время не указано» уже назвал день, повторять её незачем.
+    return { weight, share: 0.5, reason: timeUnknown && r.days.length > 0 ? null : { tone: 'neutral', text: timeUnknown ? 'у группы не указано время' : 'время суток группы не указано' } };
+  }
+  if (r.slot === g.slot) return { weight, share: 1, reason: { tone: 'good', text: `время суток совпало: ${g.slot}` } };
+  return { weight, share: 0, reason: { tone: 'bad', text: `время суток не совпало: ${g.slot}` } };
 }
 
 function streetPart(r: PlanRequest, g: PlanGroup, settings: PlanSettings): Part {
   const weight = settings.weights.street;
   if (g.street === null) return { weight, share: 0.5, reason: { tone: 'neutral', text: 'у группы нет улицы' } };
-  if (streetKey(g.street) === streetKey(r.street ?? '')) {
-    return { weight, share: 1, reason: { tone: 'good', text: 'та же улица' } };
-  }
+  // Человек пишет «ул. Рылеева, 32», у группы — «Рылеева»: сравниваем названия без типа, дома и падежа.
+  const wanted = streetKey(r.street);
+  const actual = streetKey(g.street);
+  if (wanted === null || actual === null) return { weight, share: 0.5, reason: { tone: 'neutral', text: 'улицу не удалось сравнить' } };
+  if (wanted === actual) return { weight, share: 1, reason: { tone: 'good', text: 'та же улица' } };
   return { weight, share: 0, reason: { tone: 'plain', text: 'другая улица' } };
 }
 
@@ -137,13 +141,18 @@ function scoreGroup(r: PlanRequest, g: PlanGroup, known: KnownParams, settings: 
   const parts: Part[] = [];
   if (known[0]) parts.push(districtPart(r, g, settings));
   if (known[1]) parts.push(agePart(g, settings));
-  if (known[2]) parts.push(timePart(r, g, settings));
+  if (known[2]) {
+    // День и время суток считаются каждый сам и только если человек их назвал: «по вторникам» ничего не говорит о часах.
+    const timeUnknown = g.day === null && g.slot === null;
+    if (r.days.length > 0) parts.push(dayPart(r, g, settings, timeUnknown));
+    if (r.slot !== null) parts.push(slotPart(r, g, settings, timeUnknown));
+  }
   if (known[3]) parts.push(streetPart(r, g, settings));
 
   // Только по известным параметрам: иначе заявка без улицы никогда не набрала бы 100.
   const weights = parts.reduce((sum, p) => sum + p.weight, 0);
   let score = weights > 0 ? (parts.reduce((sum, p) => sum + p.weight * p.share, 0) / weights) * 100 : 0;
-  const reasons = parts.map((p) => p.reason);
+  const reasons = parts.map((p) => p.reason).filter((x): x is Reason => x !== null);
 
   if (g.people === null) reasons.push({ tone: 'neutral', text: 'число участников не указано' });
   if (g.verifiedDaysAgo === null) {

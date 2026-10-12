@@ -83,7 +83,10 @@ describe('помощник: разбор непонятных заявок', () 
     const sent = JSON.stringify(llm.calls);
     expect(sent).not.toMatch(/Мария|Тайная|911|79110001122|Секретов|Иван/);
     expect(sent).toContain('большого дуба');
-    expect(JSON.parse(llm.calls[0]!.user)).toMatchObject({ items: [{ ref: 'r1', age: '30' }] });
+    // Возраст скрипт понял сам, поэтому текстом он не уходит: модели достаётся только непонятое место и отметка, что возраст известен.
+    expect(JSON.parse(llm.calls[0]!.user)).toMatchObject({
+      items: [{ ref: 'r1', age: null, needs: { district: true, age: false, time: false }, script: { district: null, ageKnown: true, days: [], avoidDays: [] } }],
+    });
   });
 
   test('выдуманный моделью район отбрасывается: подбор не меняется, но разбор записан, и повторно заявку не спрашивают', async () => {

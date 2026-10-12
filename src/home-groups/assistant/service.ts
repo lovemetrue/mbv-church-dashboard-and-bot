@@ -97,7 +97,9 @@ export function createAssistant(deps: {
             system,
             user: buildUserMessage(batch, { districts, ages }),
           });
-          const parsed = parseReply(reply.text, { refs: new Set(batch.map((b) => b.ref)), districts, ages });
+          const parsed = parseReply(reply.text, {
+            refs: new Set(batch.map((b) => b.ref)), districts, ages, needs: new Map(batch.map((b) => [b.ref, b.needs])),
+          });
           const byRef = new Map(parsed.map((p) => [p.ref, p]));
           // Заявка без ответа тоже получает пустой разбор: иначе каждый запуск спрашивал бы про неё снова и тратил деньги.
           await deps.hints.upsertMany(batch.map((b) => {

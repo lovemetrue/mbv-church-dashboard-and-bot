@@ -66,6 +66,33 @@ describe('Яндекс.Геокодер', () => {
     expect(await at('house', 'other', 'какой-то дом')).toEqual({ kind: 'missing' });
   });
 
+  test('если с «Санкт-Петербург,» ничего подходящего нет, повторяет запрос как написано; из трёх ответов берёт первый подходящий', async () => {
+    const queries: string[] = [];
+    const responses = [
+      { response: { GeoObjectCollection: { featureMember: [] } } },
+      { response: { GeoObjectCollection: { featureMember: [
+        { GeoObject: { name: 'Ленинградская область', Point: { pos: '30 60' }, metaDataProperty: { GeocoderMetaData: { kind: 'province', precision: 'other' } } } },
+        { GeoObject: { name: 'Колотай 5/1', Point: { pos: '30.5 60.1' }, metaDataProperty: { GeocoderMetaData: { kind: 'house', precision: 'exact' } } } },
+      ] } } },
+    ];
+    const geocoder = createYandexGeocoder('K', (async (url: URL) => { queries.push(decodeURIComponent(String(url).replaceAll('+', ' '))); return new Response(JSON.stringify(responses.shift())); }) as unknown as typeof fetch);
+    expect(await geocoder.geocode('Колотай 5/1')).toEqual({ kind: 'found', point: { lat: 60.1, lon: 30.5, accuracy: 'house' } });
+    expect(queries).toHaveLength(2);
+    expect(queries[0]).toContain('geocode=Санкт-Петербург, Колотай 5/1&');
+    expect(queries[1]).toContain('geocode=Колотай 5/1&');
+  });
+
+  test('адрес уже с городом спрашивается один раз; сбой на первом запросе повтор не запускает', async () => {
+    let calls = 0;
+    const once = createYandexGeocoder('K', (async () => { calls += 1; return new Response(JSON.stringify({ response: { GeoObjectCollection: { featureMember: [] } } })); }) as unknown as typeof fetch);
+    expect(await once.geocode('г. Колпино, Тверская 1')).toEqual({ kind: 'missing' });
+    expect(calls).toBe(1);
+    calls = 0;
+    const broken = createYandexGeocoder('K', (async () => { calls += 1; return new Response('{}', { status: 429 }); }) as unknown as typeof fetch);
+    expect((await broken.geocode('Рылеева 1')).kind).toBe('failed');
+    expect(calls).toBe(1);
+  });
+
   test('лимит и неверный ключ (403/429) — это сбой, а не «не найден»: кэшировать нельзя', async () => {
     for (const status of [403, 429]) {
       expect((await createYandexGeocoder('K', fakeFetch(status, {})).geocode('Рылеева 1')).kind).toBe('failed');

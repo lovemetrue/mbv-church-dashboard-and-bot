@@ -59,33 +59,43 @@ export function accuracyOf(kind: string, precision: string, name: string): GeoAc
 /** Адреса без города Яндекс ищет по всей России, поэтому достраиваем город и подсказываем центр поиска. */
 const HAS_CITY = /петербург|спб|санкт|ленинградск|гатчин|всеволожск|колпино|петергоф|пушкин|кронштадт|сестрорецк|ломоносов|мурино|кудрово/i;
 
+type YandexObject = { name?: string; Point?: { pos?: string }; metaDataProperty?: { GeocoderMetaData?: { kind?: string; precision?: string } } };
+
 export function createYandexGeocoder(apiKey: string, fetchImpl: typeof fetch = fetch): Geocoder {
-  return {
-    async geocode(address) {
-      const clean = cleanAddress(address);
-      const query = HAS_CITY.test(clean) ? clean : `Санкт-Петербург, ${clean}`;
-      const url = new URL('https://geocode-maps.yandex.ru/v1/');
-      url.search = new URLSearchParams({
-        apikey: apiKey, geocode: query, format: 'json', results: '1', lang: 'ru_RU', ll: '30.3351,59.9343', spn: '1.5,1.0',
-      }).toString();
-      let res: Response;
-      try {
-        res = await fetchImpl(url, { signal: AbortSignal.timeout(10_000) });
-      } catch (err) {
-        return { kind: 'failed', message: err instanceof Error ? err.message : String(err) };
-      }
-      // 403 — ключ неверный или лимит исчерпан, 429 — слишком часто: это не «адрес не найден», кэшировать нельзя.
-      if (!res.ok) return { kind: 'failed', message: `Геокодер ответил ${res.status}` };
-      const body = (await res.json().catch(() => null)) as {
-        response?: { GeoObjectCollection?: { featureMember?: { GeoObject?: { name?: string; Point?: { pos?: string }; metaDataProperty?: { GeocoderMetaData?: { kind?: string; precision?: string } } } }[] } };
-      } | null;
-      const found = body?.response?.GeoObjectCollection?.featureMember?.[0]?.GeoObject;
+  /** Один запрос к Яндексу: первый подходящий из трёх ответов (первый бывает слишком крупным, а второй — нужным домом). */
+  async function lookup(query: string): Promise<GeocodeResult> {
+    const url = new URL('https://geocode-maps.yandex.ru/v1/');
+    url.search = new URLSearchParams({
+      apikey: apiKey, geocode: query, format: 'json', results: '3', lang: 'ru_RU', ll: '30.3351,59.9343', spn: '1.5,1.0',
+    }).toString();
+    let res: Response;
+    try {
+      res = await fetchImpl(url, { signal: AbortSignal.timeout(10_000) });
+    } catch (err) {
+      return { kind: 'failed', message: err instanceof Error ? err.message : String(err) };
+    }
+    // 403 — ключ неверный или лимит исчерпан, 429 — слишком часто: это не «адрес не найден», кэшировать нельзя.
+    if (!res.ok) return { kind: 'failed', message: `Геокодер ответил ${res.status}` };
+    const body = (await res.json().catch(() => null)) as { response?: { GeoObjectCollection?: { featureMember?: { GeoObject?: YandexObject }[] } } } | null;
+    for (const member of body?.response?.GeoObjectCollection?.featureMember ?? []) {
+      const found = member.GeoObject;
       const meta = found?.metaDataProperty?.GeocoderMetaData;
       const accuracy = found ? accuracyOf(meta?.kind ?? '', meta?.precision ?? '', found.name ?? '') : null;
       // Яндекс отдаёт «долгота широта» через пробел.
       const [lon, lat] = (found?.Point?.pos ?? '').split(' ').map(Number);
-      if (!found || accuracy === null || !Number.isFinite(lat) || !Number.isFinite(lon)) return { kind: 'missing' };
-      return { kind: 'found', point: { lat: lat!, lon: lon!, accuracy } };
+      if (accuracy !== null && Number.isFinite(lat) && Number.isFinite(lon)) return { kind: 'found', point: { lat: lat!, lon: lon!, accuracy } };
+    }
+    return { kind: 'missing' };
+  }
+
+  return {
+    async geocode(address) {
+      const clean = cleanAddress(address);
+      if (HAS_CITY.test(clean)) return lookup(clean);
+      // Сначала с Санкт-Петербургом: короткие «Рылеева 32» без него уходят куда угодно. Но деревня или посёлок области с
+      // таким префиксом может не найтись, поэтому при неудаче спрашиваем ещё раз как написано (центр поиска и так в Петербурге).
+      const first = await lookup(`Санкт-Петербург, ${clean}`);
+      return first.kind === 'missing' ? lookup(clean) : first;
     },
   };
 }

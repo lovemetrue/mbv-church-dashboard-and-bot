@@ -34,6 +34,9 @@ import { loadPseudonyms } from './assistant/pseudonyms.js';
 import { HintsRepo } from '../db/repos/hints.repo.js';
 import type { LlmClient, LlmSource } from '../platform/llm/deepseek.js';
 import { createGeocoderConfig } from './geocoderConfig.js';
+import { buildAddressTable, createAddressRetry } from './geocodeAddresses.js';
+import { createYandexGeocoder } from './geocode.js';
+import { createMapConfig } from './mapConfig.js';
 import { addressStats, addressesOf } from './geocodeJob.js';
 import { createLlmConfig } from './assistant/llmConfig.js';
 import { requestsToCsv } from './export.js';
@@ -113,6 +116,14 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     usedToday: () => geocodeCache.countSince(24),
     addressStats: async () => addressStats(addressesOf(await load()), await geocodeCache.all()),
   });
+  const mapConfig = createMapConfig({ settings: appSettings, audit: new AuditRepo(db), secret: opts.llmSettings?.secret ?? '' });
+  const geocodeAddresses = {
+    table: async () => buildAddressTable(await load(), await geocodeCache.all(), new Date()),
+    retry: createAddressRetry({
+      load, store: geocodeCache, currentKey: () => geocoderConfig.currentKey(),
+      geocoderFor: (key) => createYandexGeocoder(key), invalidate: () => views.invalidate(),
+    }),
+  };
   const matching = createMatching({
     load, engine, placement, settings: appSettings, options: viewOptions, invalidate: () => views.invalidate(),
   });
@@ -177,7 +188,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   const auditRepo = new AuditRepo(db);
   const audit = (actor: string, action: string, after: unknown) => auditRepo.write(actor, action, 'export', null, after);
   const formMeta = createFormMeta(new CoordinatorsRepo(db));
-  return { load, views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, geocoderConfig, chat, members, reconciler, strange, formMeta };
+  return { load, views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, geocoderConfig, geocodeAddresses, mapConfig, chat, members, reconciler, strange, formMeta };
 }
 
 export function composeViews(db: Pool, engine: PlanEngineApi, opts: ComposeOptions): ViewsSource {

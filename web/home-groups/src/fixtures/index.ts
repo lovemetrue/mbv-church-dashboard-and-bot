@@ -52,7 +52,20 @@ export function fixtureResponse(path: string): unknown {
     case 'settings/assistant':
       return buildSettingsAssistant();
     case 'settings/geocoder':
-      return { keySet: true, keySource: 'env', keyHint: 'a1b2', keyUnreadable: false, usedToday: 42, dailyLimit: 900, addresses: { total: 12, found: 10, missing: 1, waiting: 1 }, missingList: ['ул. Несуществующая, 99'] };
+      return { keySet: true, keySource: 'env', keyHint: 'a1b2', keyUnreadable: false, usedToday: 42, dailyLimit: 900, addresses: { total: 12, found: 10, missing: 1, waiting: 1 } };
+    case 'settings/geocoder/addresses':
+      return {
+        generatedAt: '2026-10-09T09:00:00+03:00',
+        items: [
+          { address: 'ул. Несуществующая, 99', state: 'missing', lat: null, lon: null, sources: [{ kind: 'group', id: '1', label: 'Группа №12, Ольга К.' }, { kind: 'request', id: '1', label: 'Заявка №1, Мария Соколова' }] },
+          { address: 'пр. Просвещения, 10', state: 'waiting', lat: null, lon: null, sources: [{ kind: 'person', id: 'u2', label: 'Участник Иван' }] },
+          { address: 'Комендантский пр.', state: 'found', lat: 60.0, lon: 30.26, sources: [{ kind: 'group', id: '1', label: 'Группа №12, Ольга К.' }] },
+        ],
+      };
+    case 'settings/map':
+      return { keySet: true, keyHint: 'c3d4', keyUnreadable: false, loadsThisMonth: 7, monthlyLimit: 100 };
+    case 'map/config':
+      return { apiKey: 'demo-map-key', loadsThisMonth: 7, monthlyLimit: 100 };
     case 'settings/health':
       return buildSettingsHealth();
     case 'settings/errors':
@@ -135,7 +148,8 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
   }
   if (clean === 'settings/assistant/llm-test') return buildLlmTestResult((body ?? {}) as Parameters<typeof buildLlmTestResult>[0]);
   // Ключ геокодера: в демо сохранение «получается», а проверка отвечает успехом.
-  if (clean === 'settings/geocoder') return { ok: true };
+  if (clean === 'settings/geocoder' || clean === 'settings/geocoder-retry' || clean === 'settings/map') return { ok: true };
+  if (clean === 'map/loaded') return { apiKey: 'demo-map-key', loadsThisMonth: 8, monthlyLimit: 100 };
   if (clean === 'settings/geocoder-test') return { ok: true, ms: 420 };
   // Массовое действие: в демо все выбранные «обработаны», ничего не пропущено.
   if (clean === 'requests/bulk') return { ok: true, done: ((body ?? {}) as { ids?: number[] }).ids?.length ?? 0, skipped: 0 };

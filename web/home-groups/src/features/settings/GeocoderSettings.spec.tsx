@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { App } from '../../app/App';
 import { json, posts } from '../../test/calls';
-import { makeClient, renderAt, stubFetchWithFixtures } from '../../test/render';
+import { currentSearch, makeClient, renderAt, stubFetchWithFixtures } from '../../test/render';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -13,7 +13,7 @@ const KEY = ['ya', 'new', 'key', '12345678'].join('-');
 
 const view = (patch: Partial<GeocoderConfigView> = {}): GeocoderConfigView => ({
   keySet: true, keySource: 'env', keyHint: 'a1b2', keyUnreadable: false, usedToday: 42, dailyLimit: 900,
-  addresses: { total: 12, found: 10, missing: 1, waiting: 1 }, missingList: ['ул. Несуществующая, 99'], ...patch,
+  addresses: { total: 12, found: 10, missing: 1, waiting: 1 }, ...patch,
 });
 
 function open(overrides: Parameters<typeof stubFetchWithFixtures>[0] = {}) {
@@ -38,11 +38,10 @@ describe('«Настройки»: геокодер', () => {
     expect(within(region).getByLabelText('Ключ Яндекс.Геокодера')).toHaveValue('');
   });
 
-  test('показывает сводку по адресам и список не нашедшихся; когда ждать нечего — подсказывает пересчитать предложения в «Заявках»', async () => {
+  test('показывает сводку по адресам; когда ждать нечего — подсказывает пересчитать предложения в «Заявках»', async () => {
     open({ 'settings/geocoder': () => json(view({ addresses: { total: 12, found: 11, missing: 1, waiting: 0 } })) });
     const region = await block();
     expect(within(region).getByText(/Всего адресов: 12\. Координаты найдены: 11\. Не нашлись: 1\. Ждут запроса: 0\./)).toBeInTheDocument();
-    expect(within(region).getByText('ул. Несуществующая, 99')).toBeInTheDocument();
     expect(within(region).getByText(/Пересчитать все предложения/)).toBeInTheDocument();
   });
 
@@ -94,5 +93,41 @@ describe('«Настройки»: геокодер', () => {
     open();
     const region = await block();
     expect(within(region).queryByRole('button', { name: 'Убрать сохранённый ключ' })).toBeNull();
+  });
+
+  test('«Открыть таблицу адресов»: адрес, состояние, ссылки на карточки; по умолчанию видны те, что требуют внимания', async () => {
+    open();
+    const user = userEvent.setup();
+    const region = await block();
+    await user.click(within(region).getByRole('button', { name: 'Открыть таблицу адресов' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Таблица адресов' });
+    expect(await within(dialog).findByText('ул. Несуществующая, 99')).toBeInTheDocument();
+    expect(within(dialog).getByText('пр. Просвещения, 10')).toBeInTheDocument();
+    // «Найдены» по умолчанию скрыты: смотреть нужно то, что требует внимания.
+    expect(within(dialog).queryByText('Комендантский пр.')).toBeNull();
+    await user.selectOptions(within(dialog).getByLabelText('Показать'), 'found');
+    expect(within(dialog).getByText('Комендантский пр.')).toBeInTheDocument();
+    expect(within(dialog).queryByText('ул. Несуществующая, 99')).toBeNull();
+  });
+
+  test('из таблицы по ссылке открывается карточка, откуда взят адрес: группа, заявка или человек', async () => {
+    open();
+    const user = userEvent.setup();
+    const region = await block();
+    await user.click(within(region).getByRole('button', { name: 'Открыть таблицу адресов' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Таблица адресов' });
+    await user.click(await within(dialog).findByRole('button', { name: 'Открыть карточку: Заявка №1, Мария Соколова' }));
+    expect(currentSearch().get('tab')).toBe('requests');
+    expect(currentSearch().get('req')).toBe('1');
+  });
+
+  test('«Определить заново» по строке делает один запрос именно по этому адресу и перечитывает таблицу', async () => {
+    const fetchMock = open({ 'settings/geocoder-retry': () => json({ ok: true }) });
+    const user = userEvent.setup();
+    const region = await block();
+    await user.click(within(region).getByRole('button', { name: 'Открыть таблицу адресов' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Таблица адресов' });
+    await user.click(await within(dialog).findByRole('button', { name: 'Определить координаты заново: ул. Несуществующая, 99' }));
+    await waitFor(() => expect(posts(fetchMock).find((p) => p.path === 'settings/geocoder-retry')?.body).toEqual({ address: 'ул. Несуществующая, 99' }));
   });
 });

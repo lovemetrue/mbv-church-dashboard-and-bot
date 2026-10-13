@@ -728,6 +728,7 @@ export function buildViewsWithPlan(
       comment: nonBlank(g.comment),
       health: groupHealth(g, p),
       addressGeo: geoStateOf(g.address),
+      coords: coordsOf(g.address),
       placedNew: input.placedNew?.get(g.id) ?? 0,
       leaderKey: g.leader_user_id ? `u${g.leader_user_id}` : null,
       plannedRequests: plannedByGroup.get(g.id) ?? [],

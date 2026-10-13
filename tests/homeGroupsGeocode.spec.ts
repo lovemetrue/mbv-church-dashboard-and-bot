@@ -99,13 +99,13 @@ describe('дозаполнение кэша', () => {
     ]);
   });
 
-  test('сводка по адресам: найдены, не нашлись и ждут; одинаковые адреса считаются один раз, список не нашедшихся виден', () => {
+  test('сводка по адресам: найдены, не нашлись и ждут; одинаковые адреса считаются один раз', () => {
     const cache = new Map<string, { lat: number; lon: number } | null>([
       [addressKey('ул. Раз, 1')!, { lat: 1, lon: 2 }],
       [addressKey('ул. Два, 2')!, null],
     ]);
     const r = addressStats(['ул. Раз, 1', 'УЛ Раз 1', 'ул. Два, 2', 'ул. Три, 3'], cache);
-    expect(r).toEqual({ addresses: { total: 3, found: 1, missing: 1, waiting: 1 }, missingList: ['ул. Два, 2'] });
+    expect(r).toEqual({ addresses: { total: 3, found: 1, missing: 1, waiting: 1 } });
   });
 
   test('адреса берутся у групп и из заявок; правка координатора важнее анкеты', () => {

@@ -15,6 +15,8 @@ import type { Assistant } from './assistant/service.js';
 import type { Chat } from './assistant/chat.js';
 import type { LlmConfig } from './assistant/llmConfig.js';
 import type { GeocoderConfig } from './geocoderConfig.js';
+import type { MapConfig } from './mapConfig.js';
+import type { AddressTableView } from './contracts.js';
 import type { Members } from './members.js';
 import type { Strange } from './strange.js';
 import type { Reconciler } from './reconcile/service.js';
@@ -50,6 +52,22 @@ const CSP = [
   "frame-ancestors 'none'",
 ].join('; ');
 
+/**
+ * Политика для самого интерфейса, когда в «Настройки → Карта» задан ключ: к своим источникам добавляются хосты Яндекс.Карт
+ * (скрипт карты, плитки, шрифты). JS API 2.1 собирает часть кода на лету, поэтому ему нужен `'unsafe-eval'`; это ослабление
+ * действует только на странице интерфейса и только пока ключ карты задан. Страница входа остаётся строгой.
+ * Список хостов — по документации Яндекса; если карта не рисуется, смотрите нарушения политики в консоли браузера.
+ */
+const YANDEX_MAPS = ['https://api-maps.yandex.ru', 'https://yastatic.net', 'https://*.maps.yandex.net', 'https://yandex.ru', 'https://*.yandex.ru'];
+const MAP_CSP = CSP.split('; ').map((rule) => {
+  if (rule.startsWith('script-src')) return `${rule} 'unsafe-eval' ${YANDEX_MAPS.join(' ')}`;
+  if (rule.startsWith('style-src')) return `${rule} https://yastatic.net`;
+  if (rule.startsWith('img-src')) return `${rule} ${YANDEX_MAPS.join(' ')} blob:`;
+  if (rule.startsWith('font-src')) return `${rule} https://yastatic.net`;
+  if (rule.startsWith('connect-src')) return `${rule} ${YANDEX_MAPS.join(' ')}`;
+  return rule;
+}).join('; ');
+
 export interface HomeGroupsDeps {
   /** Вход: общие логины или личные поверх них (`PersonalAuth`); сервер не знает, какой режим включён. */
   auth: AuthPort;
@@ -74,6 +92,10 @@ export interface HomeGroupsDeps {
   /** Подключение помощника: провайдер, модель, ключ (только полный вход). */
   llmConfig: LlmConfig;
   geocoderConfig: GeocoderConfig;
+  /** Таблица адресов геокодера и повтор по одному адресу. */
+  geocodeAddresses: { table(): Promise<AddressTableView>; retry(body: unknown): Promise<{ ok: true } | { ok: false; error: ActionError['error']; message: string }> };
+  /** Ключ Яндекс.Карт и счётчик открытий карты. */
+  mapConfig: MapConfig;
   /** Чат помощника: вопросы по базе, только чтение. */
   chat: Chat;
   /** Настройки бота из интерфейса (только полный вход). */
@@ -130,7 +152,8 @@ const CONTENT_TYPES: Record<string, string> = {
 
 class BodyTooLarge extends Error {}
 
-const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode|bot\/extra-questions|bot\/send-extra-questions|assistant\/enabled|assistant\/llm|assistant\/llm-test|geocoder|geocoder-test)$/;
+const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode|bot\/extra-questions|bot\/send-extra-questions|assistant\/enabled|assistant\/llm|assistant\/llm-test|geocoder|geocoder-test|geocoder-retry|map)$/;
+const MAP_LOADED_PATH = '/api/v1/map/loaded';
 const CREATE_PATH = /^\/api\/v1\/(requests|groups|people|coordinators)\/create$/;
 /** `POST /api/v1/groups/5/update`: правка и удаление записей справочника. */
 const MANAGE_PATH = /^\/api\/v1\/(groups|coordinators|people)\/(\d{1,15})\/(update|delete)$/;
@@ -698,6 +721,8 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     }
     const handlers: Record<string, () => Promise<{ ok: true } | { ok: false; error: ActionError['error']; message: string }>> = {
       'geocoder': () => deps.geocoderConfig.save(call.body, call.actor),
+      'geocoder-retry': () => deps.geocodeAddresses.retry(call.body),
+      'map': () => deps.mapConfig.save(call.body, call.actor),
       'prompts/save': () => deps.settings.savePrompt(call.body, call.actor),
       'prompts/activate': () => deps.settings.activatePrompt(call.body, call.actor),
       'staff/suggest': () => deps.staff.suggestLogin(call.body),
@@ -741,6 +766,12 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     if (memberEdit) { await handleMember(req, res, memberEdit[2] === 'update' ? 'update' : 'remove', Number(memberEdit[1]), sid); return; }
     const personEdit = req.method === 'POST' ? PERSON_EDIT_PATH.exec(path) : null;
     if (personEdit) { await handlePersonCard(req, res, Number(personEdit[1]), personEdit[2]!, sid); return; }
+    if (req.method === 'POST' && path === MAP_LOADED_PATH) {
+      // Открытие карты считает любой вход: карта нужна и координаторам, а расход общий.
+      const call = await readAuthedJson(req, res, sid);
+      if (call) sendJson(res, 200, await deps.mapConfig.recordLoad());
+      return;
+    }
     if (req.method === 'POST' && path === BULK_PATH) { await handleBulk(req, res, sid); return; }
     if (req.method === 'POST' && path === PERSON_STRANGE_PATH) { await handlePersonStrange(req, res, sid); return; }
     if (req.method === 'POST' && path === RECONCILE_READY_PATH) { await handleReconcileReady(req, res, sid); return; }
@@ -774,6 +805,8 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       '/api/v1/settings/staff': () => deps.staff.view(),
       '/api/v1/settings/bot': () => deps.botSettings.view(),
       '/api/v1/settings/geocoder': () => deps.geocoderConfig.view(),
+      '/api/v1/settings/geocoder/addresses': () => deps.geocodeAddresses.table(),
+      '/api/v1/settings/map': () => deps.mapConfig.view(),
       '/api/v1/settings/assistant': async () => ({ ...(await deps.assistant.view()), llm: await deps.llmConfig.view() }),
     };
     const settingsRoute = Object.hasOwn(settingsRead, path) ? settingsRead[path] : undefined;
@@ -812,6 +845,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       sendJson(res, 200, view);
       return;
     }
+    if (path === '/api/v1/map/config') { sendJson(res, 200, await deps.mapConfig.bootstrap()); return; }
     if (path === '/api/v1/form-meta') { sendJson(res, 200, await deps.formMeta()); return; }
 
     const pick: Record<string, (v: Views) => unknown> = {
@@ -911,7 +945,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
         ...BASE_HEADERS,
         'content-type': 'text/html; charset=utf-8',
         'cache-control': 'no-store',
-        'content-security-policy': CSP,
+        'content-security-policy': (await deps.mapConfig.bootstrap()).apiKey ? MAP_CSP : CSP,
       });
       res.end(method === 'HEAD' ? undefined : index);
     } catch (err) {

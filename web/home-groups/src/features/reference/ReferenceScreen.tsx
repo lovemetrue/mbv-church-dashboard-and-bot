@@ -19,6 +19,7 @@ import { downloadCsv, toCsv } from '../../shared/csv';
 import { ru } from '../../shared/i18n/ru';
 import { ENTITY_IDS, useAppNav, type EntityId } from '../../shared/nav';
 import { Button, Chip, ErrorState, LoadingState, Popover } from '../../shared/ui';
+import { GroupsMap } from './GroupsMap';
 import { CoordinatorCard, GroupCard, PersonCard } from './Cards';
 import { coordinatorsConfig, groupsConfig, peopleConfig, type EntityConfig } from './config';
 import { FilterPanel, OP_SYMBOL } from './FilterPanel';
@@ -64,6 +65,7 @@ export function ReferenceScreen() {
           query={groups}
           items={groups.data?.items}
           renderCard={(g, close) => <GroupCard g={g} onClose={close} />}
+          extra={<GroupsMap groups={groups.data?.items ?? []} />}
         />
       )}
       {nav.entity === 'people' && (
@@ -93,9 +95,11 @@ interface EntityViewProps<T> {
   query: UseQueryResult<unknown>;
   items: readonly T[] | undefined;
   renderCard: (item: T, close: () => void) => React.ReactNode;
+  /** Блок под таблицей (у групп — карта). */
+  extra?: React.ReactNode;
 }
 
-function EntityView<T>({ config, query, items, renderCard }: EntityViewProps<T>) {
+function EntityView<T>({ config, query, items, renderCard, extra }: EntityViewProps<T>) {
   const nav = useAppNav();
   const { state, setState, columns } = useTableState(config);
   const [views, setViews] = useState<SavedView[]>(() => loadViews(config.id));
@@ -202,6 +206,7 @@ function EntityView<T>({ config, query, items, renderCard }: EntityViewProps<T>)
         onSort={sortBy}
         onSelect={nav.openRecord}
       />
+      {extra}
       {selected && renderCard(selected, nav.closeRecord)}
     </>
   );

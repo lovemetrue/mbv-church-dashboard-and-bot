@@ -755,6 +755,7 @@ export function buildViewsWithPlan(
       district: engine.resolveDistrict(nonBlank(u.location), metroIndex),
       place: nonBlank(u.location),
       address: nonBlank(u.address),
+      addressGeo: geoStateOf(u.address),
       // Заведённый служителем вручную: платформа в записи условная, чата с ботом нет.
       from: !u.has_chat ? 'Форма регистрации' : u.platform === 'max' ? 'Бот · MAX' : 'Бот · Telegram',
       userId: u.id,
@@ -778,6 +779,7 @@ export function buildViewsWithPlan(
       district: pr.district,
       place: nonBlank(r.place),
       address: streetOf(r).text,
+      addressGeo: geoStateOf(streetOf(r).text),
       from: sourceLabel(r.origin, r.source),
       userId: r.user_id,
       registrationNo: null,
@@ -799,6 +801,7 @@ export function buildViewsWithPlan(
       district: engine.resolveDistrict(nonBlank(p.place), metroIndex),
       place: nonBlank(p.place),
       address: null,
+      addressGeo: null,
       from: 'Внесён вручную',
       userId: null,
       registrationNo: null,

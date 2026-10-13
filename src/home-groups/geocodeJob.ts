@@ -4,18 +4,24 @@ import { logger } from '../logger.js';
 import { addressKey, createYandexGeocoder, geocodePending, type Geocoder } from './geocode.js';
 import type { ViewsInput } from './api/views.js';
 
+/** Группы, чьи адреса геокодируются: все, кроме закрытых (в том числе «Кампания» и «Недвижимость»: они нужны справочнику и карте). */
+export const GEOCODED_GROUP_STATUSES: ReadonlySet<string> = new Set(['Функционирует', 'На паузе', 'Потенциальная', 'Кампания', 'Недвижимость']);
+
 /**
- * Адреса, которые нужно знать подбору: адреса действующих групп и улица из открытых заявок «в группу» (правка координатора
- * важнее анкеты). Закрытые группы и закрытые заявки в подбор не идут, а лимит запросов у бесплатного ключа небольшой.
+ * Адреса, которые нужны подбору и справочнику: у групп из `GEOCODED_GROUP_STATUSES` и у всех людей, где адрес заполнен
+ * (анкета регистрации, улица из заявок; правка координатора важнее анкеты).
+ *
+ * Порядок важен: у бесплатного ключа суточный лимит, а геокодер идёт по списку сверху вниз. Сначала группы (их мало, и без
+ * них сравнивать не с чем), потом открытые заявки «в группу» (те, кого сейчас подбирают), потом остальные люди.
  */
-export function addressesOf(input: Pick<ViewsInput, 'groups' | 'requests'>): string[] {
+export function addressesOf(input: Pick<ViewsInput, 'groups' | 'requests'> & { participants?: readonly { address: string | null }[] }): string[] {
   const out: string[] = [];
-  for (const g of input.groups) if (g.address && g.status !== 'Закрыта') out.push(g.address);
-  for (const r of input.requests) {
-    if (r.type !== 'join_group' || r.status === 'Исполнена' || r.status === 'Аннулирована') continue;
-    const text = r.manual_street ?? r.address;
-    if (text) out.push(text);
-  }
+  for (const g of input.groups) if (g.address && GEOCODED_GROUP_STATUSES.has(g.status)) out.push(g.address);
+  const text = (r: { manual_street: string | null; address: string | null }) => r.manual_street ?? r.address;
+  const open = (r: { type: string; status: string }) => r.type === 'join_group' && r.status !== 'Исполнена' && r.status !== 'Аннулирована';
+  for (const r of input.requests) if (open(r) && text(r)) out.push(text(r)!);
+  for (const r of input.requests) if (!open(r) && text(r)) out.push(text(r)!);
+  for (const u of input.participants ?? []) if (u.address) out.push(u.address);
   return out;
 }
 

@@ -446,6 +446,8 @@ describe('группы справочника', () => {
     });
     expect(views.groups.items.map((g) => g.addressGeo)).toEqual(['found', 'missing', null]);
     expect(views.requests.items[0]!.streetGeo).toBe('found');
+    // У людей то же: заявка без регистрации и регистрация с адресом показывают состояние координат.
+    expect(views.people.items.find((p) => p.key === 'r1')!.addressGeo).toBe('found');
     expect(calls.plan[0]!.groups.map((g) => g.coords ?? null)).toEqual([{ lat: 59.94, lon: 30.35 }, null, null]);
     expect(calls.plan[0]!.requests[0]!.coords).toEqual({ lat: 59.95, lon: 30.36 });
   });
@@ -636,7 +638,7 @@ describe('люди', () => {
     });
     expect(views.people.items).toEqual([{
       key: 'u12', strange: null, personId: null, groups: [], fio: 'Дарья Ефимова', phone: '+7 911 123-45-67', ageLabel: '26-35', district: 'Невский',
-      place: 'Ломоносовская', address: null, from: 'Бот · MAX', mdgLabel: 'Хочет в группу', date: '2026-09-12', requestId: 40, userId: 12, registrationNo: 12,
+      place: 'Ломоносовская', address: null, addressGeo: null, from: 'Бот · MAX', mdgLabel: 'Хочет в группу', date: '2026-09-12', requestId: 40, userId: 12, registrationNo: 12,
     }]);
   });
 
@@ -676,7 +678,7 @@ describe('люди', () => {
     const person = (key: string) => views.people.items.find((p) => p.key === key)!;
     expect(person('r7')).toEqual({
       key: 'r7', strange: null, personId: null, groups: [], fio: 'Станислав Ким', phone: '+7 904 123-45-67', ageLabel: '26-35', district: 'Приморский',
-      place: 'Приморский', address: null, from: 'Таблица', mdgLabel: 'Заявка: готово к утверждению', date: '2026-10-02', requestId: 7, userId: null, registrationNo: null,
+      place: 'Приморский', address: null, addressGeo: null, from: 'Таблица', mdgLabel: 'Заявка: готово к утверждению', date: '2026-10-02', requestId: 7, userId: null, registrationNo: null,
     });
     expect(person('r8')).toMatchObject({ from: 'Дашборд · Звонок', mdgLabel: 'Заявка: нужна помощь в сопоставлении', district: null });
     expect(person('r9').mdgLabel).toBe('Заявка: утверждено');

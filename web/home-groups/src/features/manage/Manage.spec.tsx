@@ -605,7 +605,7 @@ describe('удаление заявки', () => {
   test('обычному входу кнопки «Удалить заявку» нет', async () => {
     stubFetchWithFixtures(asAdmin);
     const card = await requestCard();
-    await within(card).findByRole('button', { name: 'Править данные' });
+    await within(card).findByRole('button', { name: /^Править данные: / });
     await act(async () => {
       await new Promise((r) => setTimeout(r, 30));
     });

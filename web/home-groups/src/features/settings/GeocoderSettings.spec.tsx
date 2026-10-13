@@ -132,4 +132,16 @@ describe('«Настройки»: геокодер', () => {
     await user.click(await within(dialog).findByRole('button', { name: 'Определить координаты заново: ул. Несуществующая, 99' }));
     await waitFor(() => expect(posts(fetchMock).find((p) => p.path === 'settings/geocoder-retry')?.body).toEqual({ address: 'ул. Несуществующая, 99' }));
   });
+
+  test('у найденного адреса видно, что нашёл Яндекс, и «Это не адрес» снимает координаты запросом по этому адресу', async () => {
+    const fetchMock = open({ 'settings/geocoder-reject': () => json({ ok: true }) });
+    const user = userEvent.setup();
+    const region = await block();
+    await user.click(within(region).getByRole('button', { name: 'Открыть таблицу адресов' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Таблица адресов' });
+    await user.selectOptions(await within(dialog).findByLabelText('Показать'), 'found');
+    expect(await within(dialog).findByText('Россия, Санкт-Петербург, Комендантский проспект')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Это не адрес, снять координаты: Комендантский пр.' }));
+    await waitFor(() => expect(posts(fetchMock).find((p) => p.path === 'settings/geocoder-reject')?.body).toEqual({ address: 'Комендантский пр.' }));
+  });
 });

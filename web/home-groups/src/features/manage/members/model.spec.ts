@@ -8,6 +8,7 @@ const person = (over: Partial<PersonItem>): PersonItem => ({
   personId: null,
   place: null,
   address: null,
+  schedule: null,
   addressGeo: null,
   groups: [],
   fio: 'Дарья Ефимова',

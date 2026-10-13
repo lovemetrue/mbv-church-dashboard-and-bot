@@ -564,6 +564,7 @@ export function buildPeople(): PeopleView {
       district: raw.district,
       place: raw.place,
       address: raw.street,
+      schedule: null,
       addressGeo: raw.street ? 'found' : null,
       from: raw.source,
       // Заявка без участника (пришла из таблицы): карточки и QR регистрации у неё нет.
@@ -574,7 +575,7 @@ export function buildPeople(): PeopleView {
       requestId: raw.id,
     };
   });
-  const extras: PersonItem[] = RAW_EXTRA_PEOPLE.map((p) => ({ ...p, place: p.place ?? p.district, address: p.address ?? null, addressGeo: p.address ? ('found' as const) : null, personId: p.personId ?? null, groups: groupsOf(p.key), requestId: null, strange: demoStrangeOf(p.phone, p.key) }));
+  const extras: PersonItem[] = RAW_EXTRA_PEOPLE.map((p) => ({ ...p, place: p.place ?? p.district, address: p.address ?? null, schedule: p.schedule ?? null, addressGeo: p.address ? ('found' as const) : null, personId: p.personId ?? null, groups: groupsOf(p.key), requestId: null, strange: demoStrangeOf(p.phone, p.key) }));
   return { generatedAt: GENERATED_AT, items: [...fromRequests, ...extras] };
 }
 

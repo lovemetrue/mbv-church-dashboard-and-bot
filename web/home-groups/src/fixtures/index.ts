@@ -57,9 +57,9 @@ export function fixtureResponse(path: string): unknown {
       return {
         generatedAt: '2026-10-09T09:00:00+03:00',
         items: [
-          { address: 'ул. Несуществующая, 99', state: 'missing', accuracy: null, lat: null, lon: null, sources: [{ kind: 'group', id: '1', label: 'Группа №12, Ольга К.' }, { kind: 'request', id: '1', label: 'Заявка №1, Мария Соколова' }] },
-          { address: 'пр. Просвещения, 10', state: 'waiting', accuracy: null, lat: null, lon: null, sources: [{ kind: 'person', id: 'u2', label: 'Участник Иван' }] },
-          { address: 'Комендантский пр.', state: 'found', accuracy: 'street', lat: 60.0, lon: 30.26, sources: [{ kind: 'group', id: '1', label: 'Группа №12, Ольга К.' }] },
+          { address: 'ул. Несуществующая, 99', state: 'missing', accuracy: null, lat: null, lon: null, matched: null, sources: [{ kind: 'group', id: '1', label: 'Группа №12, Ольга К.' }, { kind: 'request', id: '1', label: 'Заявка №1, Мария Соколова' }] },
+          { address: 'пр. Просвещения, 10', state: 'waiting', accuracy: null, lat: null, lon: null, matched: null, sources: [{ kind: 'person', id: 'u2', label: 'Участник Иван' }] },
+          { address: 'Комендантский пр.', state: 'found', accuracy: 'street', lat: 60.0, lon: 30.26, matched: 'Россия, Санкт-Петербург, Комендантский проспект', sources: [{ kind: 'group', id: '1', label: 'Группа №12, Ольга К.' }] },
         ],
       };
     case 'settings/map':

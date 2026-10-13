@@ -9,7 +9,7 @@ import type { RequestWorkState } from './useRequestWork';
 
 const w = ru.requests.work;
 
-type Key = 'fio' | 'phone' | 'age' | 'place' | 'note';
+type Key = 'fio' | 'phone' | 'age' | 'place' | 'address' | 'schedule' | 'note';
 type Values = Record<Key, string>;
 
 const FIELD_NAME: Record<Key, string> = {
@@ -17,9 +17,11 @@ const FIELD_NAME: Record<Key, string> = {
   phone: w.fieldPhone,
   age: w.fieldAge,
   place: w.fieldPlace,
+  address: w.fieldAddress,
+  schedule: w.fieldSchedule,
   note: w.fieldNote,
 };
-const ORDER: Key[] = ['fio', 'phone', 'age', 'place', 'note'];
+const ORDER: Key[] = ['fio', 'phone', 'age', 'place', 'address', 'schedule', 'note'];
 
 /** Что подставляем в поля. Сравниваем с тем же: показанное и есть исходное, иначе непротронутое поле считалось бы изменённым. */
 function initialValues(r: WorkSubject): Values {
@@ -28,6 +30,8 @@ function initialValues(r: WorkSubject): Values {
     phone: r.phone ?? '',
     age: r.ageLabel ?? '',
     place: r.place ?? '',
+    address: r.address ?? '',
+    schedule: r.schedule ?? '',
     note: r.note ?? '',
   };
 }
@@ -80,6 +84,8 @@ function EditForm({ r, work, onClose }: { r: WorkSubject; work: RequestWorkState
       {field('phone', w.editPhone, { type: 'tel', inputMode: 'tel', placeholder: w.editPhonePlaceholder })}
       {field('age', w.editAge, { placeholder: w.editAgePlaceholder })}
       {field('place', w.editPlace, { placeholder: w.editPlacePlaceholder })}
+      {field('address', w.editAddress, { placeholder: w.editAddressPlaceholder })}
+      {field('schedule', w.editSchedule, { placeholder: w.editSchedulePlaceholder })}
       <div className={styles.field}>
         <label className={styles.label} htmlFor={`${base}-note`}>
           {w.editNote}

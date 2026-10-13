@@ -24,6 +24,14 @@ describe('расстояние', () => {
   });
 });
 
+describe('текст, который нашёл Яндекс', () => {
+  test('полный адрес из ответа сохраняется в точке: по нему видно, что принято за адрес', async () => {
+    const body = { response: { GeoObjectCollection: { featureMember: [{ GeoObject: { name: 'улица Средняя', Point: { pos: '30.3 59.9' }, metaDataProperty: { GeocoderMetaData: { kind: 'street', precision: 'other', text: 'Россия, Санкт-Петербург, улица Средняя' } } } }] } } };
+    const r = await createYandexGeocoder('K', fakeFetch(200, body)).geocode('среда');
+    expect(r).toMatchObject({ kind: 'found', point: { matched: 'Россия, Санкт-Петербург, улица Средняя' } });
+  });
+});
+
 describe('очистка адреса', () => {
   test('смайлики, «)))» и знаки на краях уходят, а нужные адресу знаки остаются', () => {
     expect(cleanAddress('Гражданский проспект)))')).toBe('Гражданский проспект');

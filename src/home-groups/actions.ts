@@ -117,7 +117,7 @@ export function createActions(
     async edit(requestId, body, actor) {
       if (!isRecord(body)) return bad('Нужно указать, что менять.');
       const out: Record<string, string | null> = {};
-      for (const key of ['fio', 'phone', 'age', 'place', 'note'] as const) {
+      for (const key of ['fio', 'phone', 'age', 'place', 'note', 'address', 'schedule'] as const) {
         const v = body[key];
         if (v === undefined) continue;
         if (v !== null && typeof v !== 'string') return bad('Значение должно быть текстом или null.');

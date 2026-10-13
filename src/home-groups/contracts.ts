@@ -24,7 +24,7 @@
  *   POST /api/v1/people/create         CreateRecordBody  → CreateRegistrationOk | ActionError (регистрация участника)
  *   GET  /api/v1/people/:id/card       → HTML-страница печатной карточки с QR (открывается в новой вкладке)
  *   GET  /api/v1/people/:id/qr         → PNG с QR регистрации
- *   POST /api/v1/requests/:id/edit     RequestEditBody → ActionOk | ActionError (ФИО, телефон, возраст, район, комментарий)
+ *   POST /api/v1/requests/:id/edit     RequestEditBody → ActionOk | ActionError (ФИО, телефон, возраст, район, адрес, время, комментарий)
  *   POST /api/v1/requests/:id/assign    AssignBody      → ActionOk | ActionError («в работе у»)
  *   POST /api/v1/requests/:id/call      CallBody        → ActionOk | ActionError (итог звонка)
  *   GET  /api/v1/team                   → TeamView (нагрузка, сроки ожидания, действия за неделю)
@@ -33,6 +33,7 @@
  *   POST /api/v1/people/strange         PersonStrangeBody → ActionOk | ActionError (то же по ключу человека: u12, r345, p7)
  *   POST /api/v1/requests/:id/reconcile ReconcileBody → ReconcileOk | ActionError (разобрать «другое обращение»: в состав групп или ведущим групп)
  *   POST /api/v1/requests/reconcile-ready ReconcileReadyBody → ReconcileReadyOk | ActionError (разобрать сразу все с одной точно найденной группой)
+ *   POST /api/v1/people/(u|r)<id>/update {fields} → ActionOk | ActionError (контакты регистрации или человека из заявки; доходят и до заявок)
  *   POST /api/v1/groups/:id/update      UpdateBody → ActionOk | ActionError (правка части полей группы; адрес и телефоны только записываются, обратно не отдаются)
  *   POST /api/v1/groups/:id/delete      (тело {})  → ActionOk | ActionError (только super; скрывает, а не стирает)
  *   POST /api/v1/coordinators/create    CreateRecordBody → CreateRecordOk | ActionError
@@ -59,6 +60,7 @@
  *   POST /api/v1/settings/geocoder-test GeocoderConfigBody → GeocoderTestResult (только super; ничего не сохраняет)
  *   GET  /api/v1/settings/geocoder/addresses → AddressTableView (только super: все адреса, их состояние и откуда они взяты)
  *   POST /api/v1/settings/geocoder-retry AddressRetryBody → ActionOk | ActionError (только super: один запрос к Яндексу по одному адресу)
+ *   POST /api/v1/settings/geocoder-reject AddressRejectBody → ActionOk | ActionError (только super: «это не адрес» — снимает найденные координаты)
  *   GET  /api/v1/settings/map            → MapConfigView (только super; ключа в ответе нет)
  *   POST /api/v1/settings/map            GeocoderConfigBody → ActionOk | ActionError (только super; ключ карты шифруется)
  *   GET  /api/v1/map/config              → MapBootstrap (любой вход: нужен, чтобы открыть карту)
@@ -518,6 +520,8 @@ export interface AddressRowView {
   accuracy: 'house' | 'street' | 'area' | null;
   lat: number | null;
   lon: number | null;
+  /** Полный адрес, который вернул Яндекс; null — не найден или найден до того, как мы стали это хранить. */
+  matched: string | null;
   /** Карточки, где этот адрес записан (один и тот же адрес может быть у нескольких). */
   sources: AddressSourceView[];
 }
@@ -526,6 +530,9 @@ export interface AddressTableView { generatedAt: string; items: AddressRowView[]
 
 /** Повторить определение координат одного адреса. */
 export interface AddressRetryBody { address: string }
+
+/** Отметить, что это не адрес («среда с 18:00»): координаты снимаются, повторно не спрашиваем. Тело то же, что у повтора. */
+export type AddressRejectBody = AddressRetryBody
 
 /** Ключ Яндекс.Карт (JS API) для карты групп. Самого ключа в ответе настроек нет никогда. */
 export interface MapConfigView {
@@ -607,6 +614,10 @@ export interface RequestEditBody {
   /** Район и метро свободным текстом, как их пишет человек; район для подбора определяется по нему. */
   place?: string | null;
   note?: string | null;
+  /** Улица и дом (правка координатора, главнее анкеты); по ним идёт подбор. */
+  address?: string | null;
+  /** Удобное время свободным текстом: «среда вечером». */
+  schedule?: string | null;
 }
 
 export interface AssignBody {
@@ -1046,6 +1057,8 @@ export interface PersonItem {
   place: string | null;
   /** Улица и дом — как написал человек; подбор сопоставляет по нему в первую очередь. */
   address: string | null;
+  /** Удобное время — как написал человек. */
+  schedule: string | null;
   /** Координаты этого адреса (см. `GeoState`). */
   addressGeo: GeoState;
   /** Откуда: «Бот · Telegram», «Таблица», «Форма регистрации». */

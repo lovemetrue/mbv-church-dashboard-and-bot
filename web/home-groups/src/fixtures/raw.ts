@@ -190,6 +190,7 @@ export interface RawPerson {
   district: string | null;
   place?: string | null;
   address?: string | null;
+  schedule?: string | null;
   from: string;
   mdgLabel: string;
   date: string | null;

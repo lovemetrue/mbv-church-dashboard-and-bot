@@ -21,6 +21,8 @@ import { createRegistrar } from './registration.js';
 import { createManager } from './manage.js';
 import { createBotSettings } from './botSettings.js';
 import { createMembers } from './members.js';
+import { createContacts } from './contacts.js';
+import { ContactsRepo } from '../db/repos/contacts.repo.js';
 import { createReconciler } from './reconcile/service.js';
 import { createStrange } from './strange.js';
 import { MembersRepo } from '../db/repos/members.repo.js';
@@ -34,7 +36,7 @@ import { loadPseudonyms } from './assistant/pseudonyms.js';
 import { HintsRepo } from '../db/repos/hints.repo.js';
 import type { LlmClient, LlmSource } from '../platform/llm/deepseek.js';
 import { createGeocoderConfig } from './geocoderConfig.js';
-import { buildAddressTable, createAddressRetry } from './geocodeAddresses.js';
+import { buildAddressTable, createAddressReject, createAddressRetry } from './geocodeAddresses.js';
 import { createYandexGeocoder } from './geocode.js';
 import { createMapConfig } from './mapConfig.js';
 import { addressStats, addressesOf } from './geocodeJob.js';
@@ -123,6 +125,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
       load, store: geocodeCache, currentKey: () => geocoderConfig.currentKey(),
       geocoderFor: (key) => createYandexGeocoder(key), invalidate: () => views.invalidate(),
     }),
+    reject: createAddressReject({ load, store: geocodeCache, invalidate: () => views.invalidate() }),
   };
   const matching = createMatching({
     load, engine, placement, settings: appSettings, options: viewOptions, invalidate: () => views.invalidate(),
@@ -170,6 +173,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   const reconciler = createReconciler({ load, placement });
   const strange = createStrange({ repo: new StrangeRepo(db) });
   const members = createMembers({ members: new MembersRepo(db), audit: new AuditRepo(db) });
+  const contacts = createContacts({ contacts: new ContactsRepo(db) });
   const usersRepo = new UsersRepo(db);
   const manager = createManager({
     groups: new GroupsRepo(db), coordinators: new CoordinatorsRepo(db), requests: requestsRepo, users: usersRepo, audit: new AuditRepo(db),
@@ -188,7 +192,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   const auditRepo = new AuditRepo(db);
   const audit = (actor: string, action: string, after: unknown) => auditRepo.write(actor, action, 'export', null, after);
   const formMeta = createFormMeta(new CoordinatorsRepo(db));
-  return { load, views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, geocoderConfig, geocodeAddresses, mapConfig, chat, members, reconciler, strange, formMeta };
+  return { load, views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, geocoderConfig, geocodeAddresses, mapConfig, chat, members, contacts, reconciler, strange, formMeta };
 }
 
 export function composeViews(db: Pool, engine: PlanEngineApi, opts: ComposeOptions): ViewsSource {

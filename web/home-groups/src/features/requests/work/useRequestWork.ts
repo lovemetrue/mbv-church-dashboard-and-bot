@@ -65,6 +65,8 @@ export function useRequestWork(requestId: number) {
       queryClient.invalidateQueries({ queryKey: queryKeys.requests }),
       queryClient.invalidateQueries({ queryKey: queryKeys.today }),
       queryClient.invalidateQueries({ queryKey: queryKeys.groups }),
+      // Правка данных заявки доходит до карточки человека (и наоборот).
+      queryClient.invalidateQueries({ queryKey: queryKeys.people }),
       // «Команда» считает открытые заявки и обращения: после закрытия и возврата её числа устаревают.
       queryClient.invalidateQueries({ queryKey: queryKeys.team }),
     ]);

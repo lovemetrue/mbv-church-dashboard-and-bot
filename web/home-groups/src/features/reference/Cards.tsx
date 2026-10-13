@@ -160,6 +160,7 @@ export function PersonCard({ p, onClose }: { p: PersonItem; onClose: () => void 
     // Подбор идёт сначала по адресу, а если он не заполнен — по району, метро или ориентиру.
     { label: 'Адрес', value: p.address ? (p.addressGeo === 'found' ? `${p.address} · ${ru.reference.geoFound}` : p.addressGeo === 'missing' ? `${p.address} · ${ru.reference.geoMissing}` : p.address) : noValue },
     { label: 'Район, метро, ориентир', value: orNone(p.place) },
+    { label: 'Удобное время', value: orNone(p.schedule) },
     { label: 'Откуда', value: p.from },
     { label: 'Малая группа', value: p.mdgLabel },
     { label: 'Дата', value: p.date ? formatDateFull(p.date) : noValue },

@@ -85,6 +85,8 @@ export interface RegisteredParticipant {
   location: string | null;
   /** Улица и дом из анкеты (`address_raw`). */
   address: string | null;
+  /** Удобное время из анкеты (`schedule_raw`). */
+  schedule: string | null;
   /** С какой платформы пришёл. У заведённого вручную (has_chat = false) это условное значение. */
   platform: PlatformName;
 }
@@ -399,7 +401,7 @@ export class UsersRepo {
   async listRegistered(): Promise<RegisteredParticipant[]> {
     const { rows } = await this.db.query<RegisteredParticipant>(
       `SELECT id, registration_no, full_name, phone, church, mdg_status, registered_at,
-              chat_id <> '' AS has_chat, kit_issued_at, age, location, address_raw AS address, platform
+              chat_id <> '' AS has_chat, kit_issued_at, age, location, address_raw AS address, schedule_raw AS schedule, platform
          FROM users
         WHERE registration_no IS NOT NULL
         ORDER BY registration_no DESC`,

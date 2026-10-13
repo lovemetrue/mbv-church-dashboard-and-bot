@@ -260,6 +260,14 @@ export function useSettingsGeocoder(): UseQueryResult<GeocoderConfigView> {
 /** Ключ геокодера уходит только в теле запроса: ни в кэш запросов, ни в хранилище браузера он не попадает. */
 export function useGeocoderActions() {
   const queryClient = useQueryClient();
+  const refreshGeo = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: settingsKeys.addresses }),
+      queryClient.invalidateQueries({ queryKey: settingsKeys.geocoder }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.requests }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.people }),
+    ]);
   return {
     async save(body: GeocoderConfigBody): Promise<void> {
       await apiPost('settings/geocoder', body);
@@ -272,13 +280,12 @@ export function useGeocoderActions() {
     /** Один запрос к Яндексу по одному адресу; после него таблица и сводка перечитываются. Ошибку не глотаем. */
     async retry(address: string): Promise<void> {
       await apiPost('settings/geocoder-retry', { address });
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: settingsKeys.addresses }),
-        queryClient.invalidateQueries({ queryKey: settingsKeys.geocoder }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.groups }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.requests }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.people }),
-      ]);
+      await refreshGeo();
+    },
+    /** «Это не адрес»: координаты снимаются без запроса к Яндексу. */
+    async reject(address: string): Promise<void> {
+      await apiPost('settings/geocoder-reject', { address });
+      await refreshGeo();
     },
   };
 }

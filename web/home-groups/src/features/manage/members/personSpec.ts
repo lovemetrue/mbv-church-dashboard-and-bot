@@ -6,18 +6,30 @@ import type { EditSpec } from '../editSpec';
 const f = ru.members.person.fields;
 
 /**
- * Форма правки карточки, внесённой вручную. Заметку сервер в списке людей не отдаёт, поэтому поле пустое и
- * «пишущее»: непустое заменит заметку, пустое не уходит вовсе (пустая строка стёрла бы её в базе).
+ * Форма правки человека. Карточка, внесённая вручную (p<id>): без адреса и времени, зато с заметкой; заметку
+ * сервер в списке людей не отдаёт, поэтому поле пустое и «пишущее»: непустое заменит заметку, пустое не уходит
+ * вовсе (пустая строка стёрла бы её в базе). Регистрация и человек из заявки (u<id>, r<id>): наоборот, адрес и
+ * удобное время есть, заметки нет — у них она живёт в заявке.
  */
 export function personEditSpec(p: PersonItem): EditSpec {
+  const manual = p.personId !== null;
+  const initial: Record<string, string> = { fio: p.fio, phone: p.phone ? formatPhone(p.phone) : '', age: p.ageLabel ?? '', place: p.place ?? '' };
+  if (manual) initial['note'] = '';
+  else Object.assign(initial, { address: p.address ?? '', schedule: p.schedule ?? '' });
   return {
     fields: [
       { name: 'fio', label: f.fio, kind: 'text', required: true, wide: true },
       { name: 'phone', label: f.phone, kind: 'text', inputMode: 'tel' },
       { name: 'age', label: f.age, kind: 'text' },
       { name: 'place', label: f.place, kind: 'text', wide: true },
-      { name: 'note', label: f.note, kind: 'textarea', wide: true, hint: ru.members.person.noteHint },
+      ...(manual
+        ? [{ name: 'note', label: f.note, kind: 'textarea' as const, wide: true, hint: ru.members.person.noteHint }]
+        : [
+            { name: 'address', label: f.address, kind: 'text' as const, wide: true },
+            { name: 'schedule', label: f.schedule, kind: 'text' as const, wide: true },
+          ]),
     ],
-    initial: { fio: p.fio, phone: p.phone ? formatPhone(p.phone) : '', age: p.ageLabel ?? '', place: p.district ?? '', note: '' },
+    initial,
+    ...(manual ? {} : { note: ru.members.person.contactHint }),
   };
 }

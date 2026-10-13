@@ -69,7 +69,7 @@ export function GroupCard({ g, onClose }: { g: GroupItem; onClose: () => void })
     { label: 'Состав', value: orNone(g.composition) },
     { label: 'Со-ведущий', value: orNone(g.coLeader) },
     { label: 'Телефон', value: g.phone ? <span className="num">{formatPhone(g.phone)}</span> : noValue },
-    { label: 'Адрес', value: orNone(g.address) },
+    { label: 'Адрес', value: g.address ? (g.addressGeo === 'found' ? `${g.address} · ${ru.reference.geoFound}` : g.addressGeo === 'missing' ? `${g.address} · ${ru.reference.geoMissing}` : g.address) : noValue },
     { label: 'Метро или ориентир', value: orNone(g.metro) },
     { label: 'Статус', value: g.status },
     { label: 'Принимает новых', value: g.acceptsNew ? ru.reference.yes : ru.reference.no },

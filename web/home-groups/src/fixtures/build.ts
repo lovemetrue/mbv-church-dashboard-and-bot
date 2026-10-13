@@ -329,6 +329,8 @@ export function buildRequests(): RequestsView {
       days: r.days,
       slot: r.slot,
       street: r.street,
+      // В демо у адресов, которые есть, координаты «найдены»; у заявки без адреса статуса нет.
+      streetGeo: r.street ? 'found' : null,
       source: r.source,
       status: r.status,
       bucket: held ? 'human' : bucket,
@@ -515,6 +517,7 @@ export function buildGroups(): GroupsView {
     verifiedDaysAgo: g.verifiedDaysAgo,
     comment: g.comment,
     health: healthOf(g),
+    addressGeo: g.street ? 'found' : null,
     placedNew: 0,
     leaderKey: g.leaderKey,
     plannedRequests: (plan.takenBy.get(g.id) ?? []).map((id) => {

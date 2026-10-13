@@ -327,6 +327,8 @@ export interface RequestItem {
   scheduleInfo: ParamInfo;
   /** То же про улицу и дом (поле `street`). */
   streetInfo: ParamInfo;
+  /** Координаты адреса: найдены, адрес не нашёлся на карте или ещё не геокодирован / геокодер выключен (null). */
+  streetGeo: GeoState;
   /** Заявка как она пришла: что человек заполнил сам, в порядке показа. */
   original: OriginalField[];
   /** Куда человека утвердили (для bucket = done). */
@@ -489,6 +491,10 @@ export interface GeocoderConfigView {
   /** Запросов к геокодеру за последние сутки и суточный предел сервиса (ключ у Яндекса — тысяча в сутки). */
   usedToday: number;
   dailyLimit: number;
+  /** Адреса, которые нужны подбору (групп и открытых заявок): сколько всего, с координатами, не нашлись и ещё ждут запроса. */
+  addresses: { total: number; found: number; missing: number; waiting: number };
+  /** Адреса, которые Яндекс не нашёл (не больше 30): их стоит поправить в карточке. */
+  missingList: string[];
 }
 
 /** `apiKey`: строка — новый ключ, null — убрать сохранённый (вернётся `.env`). В проверке не указан — берётся действующий. */
@@ -533,6 +539,9 @@ export interface MatchingAutoBody {
 }
 
 /** Откуда взято значение параметра подбора. anketa — ответ человека (бот), manual — правка координатора. */
+/** Что известно про координаты адреса (кэш геокодера). */
+export type GeoState = 'found' | 'missing' | null;
+
 export interface ParamInfo {
   text: string | null;
   source: 'anketa' | 'manual' | null;
@@ -959,6 +968,8 @@ export interface GroupItem extends GroupBrief {
   verifiedDaysAgo: number | null;
   comment: string | null;
   health: { score: number; items: HealthItem[] };
+  /** Координаты адреса группы (см. `GeoState`). */
+  addressGeo: GeoState;
   /**
    * Сколько человек утвердил сервис после последней обратной связи ведущего. Они уже добавлены к
    * `people`: ведущий обновит число сам, и счётчик обнулится (считаем только утверждённых позже).

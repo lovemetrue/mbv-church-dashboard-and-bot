@@ -116,9 +116,11 @@ export function createActions(
 
     async edit(requestId, body, actor) {
       if (!isRecord(body)) return bad('Нужно указать, что менять.');
+      // Форма правки одна и у людей, и у заявок и шлёт `{fields}`; плоское тело принимаем для прежних вкладок.
+      const src = isRecord(body['fields']) ? body['fields'] : body;
       const out: Record<string, string | null> = {};
-      for (const key of ['fio', 'phone', 'age', 'place', 'note', 'address', 'schedule'] as const) {
-        const v = body[key];
+      for (const key of ['fio', 'phone', 'age', 'place', 'note', 'address', 'schedule', 'hobby', 'profession', 'family'] as const) {
+        const v = src[key];
         if (v === undefined) continue;
         if (v !== null && typeof v !== 'string') return bad('Значение должно быть текстом или null.');
         out[key] = v;

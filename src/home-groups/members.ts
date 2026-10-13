@@ -48,8 +48,9 @@ function parseRow(src: Record<string, unknown>, today: Date): { joinedOn?: strin
 /** Карточка человека: ФИО обязательно; телефон, который не разбирается, сохраняется как написан («спросить у Марины»). */
 function parsePerson(src: Record<string, unknown>, base: PersonInput | null): PersonInput | string {
   const out: PersonInput = base ? { ...base } : { fio: '', phone: null, age: null, place: null, note: null };
-  for (const k of Object.keys(src)) if (!['fio', 'phone', 'age', 'place', 'note'].includes(k)) return `Поле «${k.slice(0, 40)}» здесь менять нельзя.`;
-  for (const k of ['fio', 'phone', 'age', 'place', 'note'] as const) {
+  const TEXT = ['fio', 'phone', 'age', 'place', 'note', 'address', 'schedule', 'hobby', 'profession', 'family'] as const;
+  for (const k of Object.keys(src)) if (!(TEXT as readonly string[]).includes(k)) return `Поле «${k.slice(0, 40)}» здесь менять нельзя.`;
+  for (const k of TEXT) {
     if (!(k in src)) continue;
     if (src[k] !== null && typeof src[k] !== 'string') return 'Значения должны быть текстом.';
     const v = clean(src[k]) ?? null;
@@ -63,6 +64,9 @@ function parsePerson(src: Record<string, unknown>, base: PersonInput | null): Pe
   if ((out.age ?? '').length > 60) return 'Возраст слишком длинный (до 60 знаков).';
   if ((out.place ?? '').length > 200) return 'Место слишком длинное (до 200 знаков).';
   if ((out.note ?? '').length > 300) return 'Заметка слишком длинная (до 300 знаков).';
+  for (const k of ['address', 'schedule', 'hobby', 'profession', 'family'] as const) {
+    if ((out[k] ?? '').length > 200) return 'Слишком длинный текст (до 200 знаков).';
+  }
   return out;
 }
 
@@ -131,7 +135,7 @@ export function createMembers(deps: {
       if (!fields || Object.keys(fields).length === 0) return bad('Нечего менять.');
       const current = await deps.members.findPerson(id);
       if (!current) return notFound('Карточка не найдена.');
-      const person = parsePerson(fields, { fio: current.full_name, phone: current.phone, age: current.age, place: current.place, note: current.note });
+      const person = parsePerson(fields, { fio: current.full_name, phone: current.phone, age: current.age, place: current.place, note: current.note, address: current.address, schedule: current.schedule, hobby: current.hobby, profession: current.profession, family: current.family });
       if (typeof person === 'string') return bad(person);
       if (!(await deps.members.updatePerson(id, person))) return notFound('Карточка не найдена.');
       await deps.audit.write(actor, 'person.update', 'person', id, { fields: Object.keys(fields) });

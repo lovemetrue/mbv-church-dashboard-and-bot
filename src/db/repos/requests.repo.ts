@@ -109,6 +109,9 @@ export interface DashboardRequest {
   /** Правки координатора: улица и удобное время свободным текстом (перекрывают анкету). */
   manual_street: string | null;
   manual_schedule: string | null;
+  hobby: string | null;
+  profession: string | null;
+  family: string | null;
 }
 
 /** Что можно заполнить в форме дашборда. */
@@ -359,6 +362,7 @@ export class RequestsRepo {
       church: string | null; mdg_status: MdgStatus | null; leader_name: string | null;
       schedule: string | null; address: string | null; callback: boolean;
       manual_street: string | null; manual_schedule: string | null;
+      hobby: string | null; profession: string | null; family: string | null;
     }>(
       `SELECT r.id, r.user_id, r.group_id,
               coalesce(r.fio, u.full_name) AS fio,
@@ -375,7 +379,9 @@ export class RequestsRepo {
               -- Ответы из анкеты бота: у заявок из таблицы церкви участника нет, будет null.
               u.church, u.mdg_status, u.leader_name,
               u.schedule_raw AS schedule, u.address_raw AS address, r.callback,
-              r.manual_street, r.manual_schedule
+              r.manual_street, r.manual_schedule,
+              coalesce(r.hobby, u.hobby) AS hobby, coalesce(r.profession, u.profession) AS profession,
+              coalesce(r.family_status, u.family_status) AS family
          FROM requests r
          LEFT JOIN users u ON u.id = r.user_id
         WHERE r.archived_at IS NULL

@@ -14,7 +14,7 @@ export function refreshAfterMembers(client: QueryClient): Promise<unknown> {
 
 /** Контакты человека лежат и в заявках, и от них зависит подбор: перечитывается всё, что их показывает. */
 export function refreshAfterContact(client: QueryClient): Promise<unknown> {
-  return Promise.all([queryKeys.groups, queryKeys.people, queryKeys.requests, queryKeys.today].map((queryKey) => client.invalidateQueries({ queryKey })));
+  return Promise.all([queryKeys.groups, queryKeys.people, queryKeys.requests, queryKeys.today, queryKeys.team].map((queryKey) => client.invalidateQueries({ queryKey })));
 }
 
 /** 409 здесь значит одно: человек уже в составе. Общий разбор сказал бы «Не получилось». */

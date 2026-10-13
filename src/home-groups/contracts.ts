@@ -337,6 +337,10 @@ export interface RequestItem {
   streetInfo: ParamInfo;
   /** Координаты адреса: найдены, адрес не нашёлся на карте или ещё не геокодирован / геокодер выключен (null). */
   streetGeo: GeoState;
+  /** Хобби, профессия, семейное положение — свободным текстом, как их написал человек или внёс координатор. */
+  hobby: string | null;
+  profession: string | null;
+  family: string | null;
   /** Заявка как она пришла: что человек заполнил сам, в порядке показа. */
   original: OriginalField[];
   /** Куда человека утвердили (для bucket = done). */
@@ -825,6 +829,13 @@ export interface OtherItem {
   callback: boolean;
   responsible: string | null;
   note: string | null;
+  /** Улица и дом, удобное время: те же поля, что у заявки в подбор (форма правки одна). */
+  address: string | null;
+  schedule: string | null;
+  /** Хобби, профессия, семейное положение — свободным текстом, как их написал человек или внёс координатор. */
+  hobby: string | null;
+  profession: string | null;
+  family: string | null;
   cancelReason: string | null;
   original: OriginalField[];
   log: LogEntry[];
@@ -1059,6 +1070,12 @@ export interface PersonItem {
   address: string | null;
   /** Удобное время — как написал человек. */
   schedule: string | null;
+  /** Хобби, профессия, семейное положение — свободным текстом, как их написал человек или внёс координатор. */
+  hobby: string | null;
+  profession: string | null;
+  family: string | null;
+  /** Комментарий к человеку: у регистрации — служителя, у человека из заявки — комментарий заявки, у карточки — заметка. */
+  note: string | null;
   /** Координаты этого адреса (см. `GeoState`). */
   addressGeo: GeoState;
   /** Откуда: «Бот · Telegram», «Таблица», «Форма регистрации». */

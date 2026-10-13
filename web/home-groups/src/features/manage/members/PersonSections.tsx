@@ -4,14 +4,11 @@ import { groupLine } from '../../../entities/format';
 import { useGroups } from '../../../shared/api/queries';
 import { ru } from '../../../shared/i18n/ru';
 import { useAppNav } from '../../../shared/nav';
-import { Button, DrawerSection, Modal, Pill } from '../../../shared/ui';
+import { Button, DrawerSection, Pill } from '../../../shared/ui';
 import { DeleteRecord } from '../DeleteRecord';
-import { useGuardedClose } from '../EditDialogs';
-import { EditForm } from '../EditForm';
+import { ContactEditDialog } from '../../contact';
 import manage from '../Manage.module.css';
 import styles from './Members.module.css';
-import { personEditSpec } from './personSpec';
-import { refreshAfterContact, refreshAfterMembers } from './refresh';
 
 const t = ru.members.person;
 
@@ -40,22 +37,6 @@ export function PersonGroups({ p }: { p: PersonItem }) {
         </div>
       )}
     </DrawerSection>
-  );
-}
-
-function PersonEditDialog({ p, path, onClose, onSaved }: { p: PersonItem; path: string; onClose: () => void; onSaved: () => void }) {
-  const guard = useGuardedClose(onClose);
-  return (
-    <Modal title={t.editTitle(p.fio)} onClose={guard.close}>
-      <EditForm
-        spec={personEditSpec(p)}
-        path={path}
-        onClose={guard.close}
-        onSaved={onSaved}
-        onBusyChange={guard.setBusy}
-        refresh={p.personId === null ? refreshAfterContact : refreshAfterMembers}
-      />
-    </Modal>
   );
 }
 
@@ -98,8 +79,9 @@ export function PersonActions({ p, onDeleted }: { p: PersonItem; onDeleted: () =
         </p>
       )}
       {editing && (
-        <PersonEditDialog
-          p={p}
+        <ContactEditDialog
+          title={t.editTitle(p.fio)}
+          values={p}
           path={path}
           onClose={() => setEditing(false)}
           onSaved={() => {

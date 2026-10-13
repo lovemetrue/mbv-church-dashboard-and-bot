@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { AssignBody, CallBody, CallResult, CloseBody, RequestEditBody } from '@contracts';
+import type { AssignBody, CallBody, CallResult, CloseBody } from '@contracts';
 import { ApiError, apiPost } from '../../../shared/api/client';
 import { queryKeys } from '../../../shared/api/queries';
 import { ru } from '../../../shared/i18n/ru';
@@ -109,8 +109,6 @@ export function useRequestWork(requestId: number) {
       const body: CallBody = text ? { result, comment: text } : { result };
       return run('call', 'call', body, w.callRecorded(CALL_DONE[result]));
     },
-    /** `fields` — названия изменённых полей для подтверждения (без значений). */
-    edit: (body: RequestEditBody, fields: string[]) => run('edit', 'edit', body, w.editSaved(fields)),
     /** Закрыть заявку: `okText` показывается, если окно закрытия ещё на экране; обычно карточка закрывается сама. */
     close: (body: CloseBody, okText: string) => run('close', 'close', body, okText),
     /** Вернуть закрытую заявку в работу; тело пустое, как требует контракт. */

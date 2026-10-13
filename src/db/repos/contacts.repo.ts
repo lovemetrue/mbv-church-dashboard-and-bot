@@ -12,18 +12,25 @@ export interface ContactPatch {
   place?: string | null;
   address?: string | null;
   schedule?: string | null;
+  hobby?: string | null;
+  profession?: string | null;
+  family?: string | null;
+  /** Комментарий: у регистрации это `admin_comment` человека, у заявки — её собственный `note`. */
+  note?: string | null;
 }
 export type ContactField = keyof ContactPatch;
 
-export const CONTACT_FIELDS: readonly ContactField[] = ['fio', 'phone', 'age', 'place', 'address', 'schedule'];
+export const CONTACT_FIELDS: readonly ContactField[] = ['fio', 'phone', 'age', 'place', 'address', 'schedule', 'hobby', 'profession', 'family', 'note'];
 
 /** Колонки регистрации. Возраст — текстом, а «место» хранится в `location`. */
 const USER_COLUMNS: Record<ContactField, string> = {
   fio: 'full_name', phone: 'phone', age: 'age', place: 'location', address: 'address_raw', schedule: 'schedule_raw',
+  hobby: 'hobby', profession: 'profession', family: 'family_status', note: 'admin_comment',
 };
 /** Колонки заявки: адрес и время — это правка координатора (`manual_*`), они главнее ответов анкеты. */
 const REQUEST_COLUMNS: Record<ContactField, string> = {
   fio: 'fio', phone: 'phone', age: 'age', place: 'place', address: 'manual_street', schedule: 'manual_schedule',
+  hobby: 'hobby', profession: 'profession', family: 'family_status', note: 'note',
 };
 
 const keysOf = (patch: ContactPatch): ContactField[] => CONTACT_FIELDS.filter((k) => patch[k] !== undefined);
@@ -39,9 +46,12 @@ export async function writeToUser(c: PoolClient, userId: number, patch: ContactP
   const userSets = keys.map((k, i) => `${USER_COLUMNS[k]} = $${i + 2}`);
   await c.query(`UPDATE users SET ${userSets.join(', ')} WHERE id = $1`, [userId, ...keys.map((k) => patch[k] ?? null)]);
 
-  const sets = keys.map((k, i) => `${REQUEST_COLUMNS[k]} = CASE WHEN ${REQUEST_COLUMNS[k]} IS NOT NULL THEN $${i + 2} END`);
-  const values: unknown[] = keys.map((k) => patch[k] ?? null);
-  if (keys.includes('phone')) {
+  // Комментарий заявки относится к ней самой, а не к человеку: в чужие заявки он не расходится.
+  const shared = keys.filter((k) => k !== 'note');
+  if (shared.length === 0) return;
+  const sets = shared.map((k, i) => `${REQUEST_COLUMNS[k]} = CASE WHEN ${REQUEST_COLUMNS[k]} IS NOT NULL THEN $${i + 2} END`);
+  const values: unknown[] = shared.map((k) => patch[k] ?? null);
+  if (shared.includes('phone')) {
     sets.push(`phones = CASE WHEN array_length(phones, 1) > 0 THEN $${values.length + 2}::text[] ELSE phones END`);
     values.push(patch.phone ? [patch.phone] : []);
   }
@@ -102,7 +112,8 @@ export class ContactsRepo {
           return { ok: false, error: 'not_found', message: 'Заявка не найдена.' };
         }
         await writeToRequest(c, id, patch);
-        if (rows[0].user_id !== null) await writeToUser(c, rows[0].user_id, patch);
+        // Комментарий заявки остаётся в ней: в регистрацию человека он не уходит.
+        if (rows[0].user_id !== null) await writeToUser(c, rows[0].user_id, { ...patch, note: undefined });
       }
       await c.query(
         `INSERT INTO audit_log (actor, service, action, entity_type, entity_id, after)

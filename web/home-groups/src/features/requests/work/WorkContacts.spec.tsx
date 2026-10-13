@@ -12,24 +12,26 @@ const PHONE = '+7 921 555-00-11';
 async function openWithPhone(id = 1, phone: string | null = PHONE) {
   stubFetchWithFixtures({ requests: () => json(viewWith(id, { phone })) });
   const card = await openCard(id);
-  const section = await within(card).findByRole('region', { name: 'Связаться' });
+  // Значки живут в шапке карточки, рядом с названием: искать их в глубине карточки не нужно.
+  const section = within(card).getByRole('banner');
+  await within(card).findByRole('heading', { name: 'Работа с заявкой' });
   return { card, section };
 }
 
-describe('Карточка заявки: связь с человеком', () => {
+describe('Карточка заявки: значки связи в шапке', () => {
   test('«Позвонить» — ссылка tel: только с плюсом и цифрами', async () => {
     const { section } = await openWithPhone();
-    expect(within(section).getByRole('link', { name: 'Позвонить' })).toHaveAttribute('href', 'tel:+79215550011');
+    expect(within(section).getByRole('link', { name: /^Позвонить: / })).toHaveAttribute('href', 'tel:+79215550011');
   });
 
   test('«Написать» — ссылка sms: с тем же номером', async () => {
     const { section } = await openWithPhone();
-    expect(within(section).getByRole('link', { name: 'Написать' })).toHaveAttribute('href', 'sms:+79215550011');
+    expect(within(section).getByRole('link', { name: /^Написать: / })).toHaveAttribute('href', 'sms:+79215550011');
   });
 
   test('номер с восьмёрки в ссылке приводится к +7', async () => {
     const { section } = await openWithPhone(1, '89215550011');
-    expect(within(section).getByRole('link', { name: 'Позвонить' })).toHaveAttribute('href', 'tel:+79215550011');
+    expect(within(section).getByRole('link', { name: /^Позвонить: / })).toHaveAttribute('href', 'tel:+79215550011');
   });
 
   test('«Скопировать номер» кладёт номер в буфер и подтверждает через живую область', async () => {
@@ -50,14 +52,23 @@ describe('Карточка заявки: связь с человеком', () =
     Object.defineProperty(document, 'execCommand', { value: undefined, configurable: true });
     await user.click(within(section).getByRole('button', { name: 'Скопировать номер' }));
     await waitFor(() => expect(section.querySelector('[aria-live="polite"]')).toHaveTextContent(/Не удалось скопировать/));
-    expect(within(section).getByRole('link', { name: 'Позвонить' })).toBeInTheDocument();
+    expect(within(section).getByRole('link', { name: /^Позвонить: / })).toBeInTheDocument();
+  });
+
+  test('значки в шапке: правка, звонок, письмо, копирование — и ни одного раздела «Связаться» в глубине карточки', async () => {
+    const { card, section } = await openWithPhone();
+    expect(within(section).getByRole('button', { name: /^Править данные: / })).toBeInTheDocument();
+    expect(within(section).getByRole('link', { name: /^Позвонить: / })).toBeInTheDocument();
+    expect(within(section).getByRole('link', { name: /^Написать: / })).toBeInTheDocument();
+    expect(within(section).getByRole('button', { name: 'Скопировать номер' })).toBeInTheDocument();
+    expect(within(card).queryByRole('region', { name: 'Связаться' })).not.toBeInTheDocument();
   });
 
   test('без телефона вместо кнопок — подсказка, куда его добавить', async () => {
     const { section } = await openWithPhone(1, null);
     expect(within(section).getByText('Телефона нет — добавьте его через «Править данные»')).toBeInTheDocument();
-    expect(within(section).queryByRole('link', { name: 'Позвонить' })).not.toBeInTheDocument();
-    expect(within(section).queryByRole('link', { name: 'Написать' })).not.toBeInTheDocument();
+    expect(within(section).queryByRole('link', { name: /^Позвонить: / })).not.toBeInTheDocument();
+    expect(within(section).queryByRole('link', { name: /^Написать: / })).not.toBeInTheDocument();
     expect(within(section).queryByRole('button', { name: 'Скопировать номер' })).not.toBeInTheDocument();
   });
 
@@ -69,6 +80,6 @@ describe('Карточка заявки: связь с человеком', () =
 
   test('у закрытой заявки с телефоном связаться по-прежнему можно', async () => {
     const { section } = await openWithPhone(10);
-    expect(within(section).getByRole('link', { name: 'Позвонить' })).toHaveAttribute('href', 'tel:+79215550011');
+    expect(within(section).getByRole('link', { name: /^Позвонить: / })).toHaveAttribute('href', 'tel:+79215550011');
   });
 });

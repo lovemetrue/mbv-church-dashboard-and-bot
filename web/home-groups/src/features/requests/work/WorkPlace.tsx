@@ -4,8 +4,6 @@ import { StrangeSection } from '../../strange';
 import { AssignSelect } from './AssignSelect';
 import { CallOutcome } from './CallOutcome';
 import { CloseRequest } from './CloseRequest';
-import { ContactLinks } from './ContactLinks';
-import { EditData } from './EditData';
 import type { WorkSubject } from './subject';
 import { useRequestWork } from './useRequestWork';
 import styles from './work.module.css';
@@ -24,14 +22,12 @@ export function WorkPlace({ subject, onClosed }: { subject: WorkSubject; onClose
   return (
     <DrawerSection title={ru.requests.work.title}>
       <div className={styles.work}>
-        <ContactLinks r={subject} editable={open} />
         <AssignSelect r={subject} work={work} />
         {open && <CallOutcome work={work} />}
         {/* Метка про человека, а не про заявку: ставится и снимается, даже когда заявка закрыта. */}
         <div className={styles.slot}>
           <StrangeSection key={subject.id} target={{ kind: 'request', id: subject.id }} mark={subject.strange} />
         </div>
-        {open && <EditData r={subject} work={work} />}
         <CloseRequest subject={subject} work={work} onClosed={onClosed} />
       </div>
     </DrawerSection>

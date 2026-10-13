@@ -228,11 +228,13 @@ describe('«Другие обращения»: карточка', () => {
 
   test('блок «Работа с заявкой» есть: связаться, «В работе у», итог звонка, правка, закрытие', async () => {
     const { card } = await openCard(202);
+    const head = within(card).getByRole('banner');
+    // Связь и правка — значки в шапке, рядом с фамилией.
+    expect(within(head).getByRole('link', { name: /^Позвонить: / })).toHaveAttribute('href', 'tel:+79215550102');
+    expect(within(head).getByRole('button', { name: /^Править данные: / })).toBeInTheDocument();
     const work = within(card).getByRole('heading', { name: 'Работа с заявкой' }).closest('section')!;
-    expect(within(work).getByRole('link', { name: 'Позвонить' })).toHaveAttribute('href', 'tel:+79215550102');
     expect(within(work).getByRole('combobox', { name: 'В работе у' })).toBeInTheDocument();
     expect(within(work).getByRole('region', { name: 'Итог звонка' })).toBeInTheDocument();
-    expect(within(work).getByRole('button', { name: 'Править данные' })).toBeInTheDocument();
     expect(within(work).getByRole('button', { name: 'Закрыть заявку…' })).toBeInTheDocument();
   });
 
@@ -249,7 +251,7 @@ describe('«Другие обращения»: карточка', () => {
     expect(within(card).getByRole('button', { name: 'Вернуть в работу' })).toBeInTheDocument();
     expect(within(card).queryByRole('button', { name: 'Закрыть заявку…' })).not.toBeInTheDocument();
     expect(within(card).queryByRole('region', { name: 'Итог звонка' })).not.toBeInTheDocument();
-    expect(within(card).queryByRole('button', { name: 'Править данные' })).not.toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: /^Править данные/ })).not.toBeInTheDocument();
   });
 
   test('карточка, открытая по ссылке, остаётся, даже если обращения нет под выбранным чипом', async () => {
@@ -275,7 +277,7 @@ describe('«Другие обращения»: карточка', () => {
 
   test('обычному входу кнопки удаления нет', async () => {
     const { card } = await openCard(202, '', { me: () => json({ role: 'admin' }) });
-    await within(card).findByRole('button', { name: 'Править данные' });
+    await within(card).findByRole('button', { name: /^Править данные: / });
     await waitFor(() => expect(screen.queryByRole('button', { name: /Удалить заявку/ })).not.toBeInTheDocument());
   });
 

@@ -1,6 +1,9 @@
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { ContactsRepo } from '../src/db/repos/contacts.repo.js';
+import { AuditRepo } from '../src/db/repos/audit.repo.js';
+import { MembersRepo } from '../src/db/repos/members.repo.js';
+import { createMembers } from '../src/home-groups/members.js';
 import { PlacementRepo } from '../src/db/repos/placement.repo.js';
 import { createContacts, parseContactPatch } from '../src/home-groups/contacts.js';
 import { setupTestDb, truncateAll } from './helpers/testDb.js';
@@ -18,15 +21,16 @@ const seedUser = async () => (await db.query<{ id: number }>(
 const seedRequest = async (userId: number | null, extra = '') => (await db.query<{ id: number }>(
   `INSERT INTO requests (type, status, user_id, origin${extra ? ', ' + extra.split('|')[0] : ''})
    VALUES ('join_group', 'Новая', $1, 'бот'${extra ? ', ' + extra.split('|')[1] : ''}) RETURNING id`, [userId])).rows[0]!.id;
-const user = async (id: number) => (await db.query('SELECT full_name, phone, age, location, address_raw, schedule_raw FROM users WHERE id = $1', [id])).rows[0];
-const request = async (id: number) => (await db.query('SELECT fio, phone, phones, age, place, manual_street, manual_schedule, origin FROM requests WHERE id = $1', [id])).rows[0];
+const user = async (id: number) => (await db.query('SELECT full_name, phone, age, location, address_raw, schedule_raw, hobby, profession, family_status, admin_comment FROM users WHERE id = $1', [id])).rows[0];
+const request = async (id: number) => (await db.query('SELECT fio, phone, phones, age, place, manual_street, manual_schedule, origin, hobby, profession, family_status, note FROM requests WHERE id = $1', [id])).rows[0];
 
 describe('разбор тела правки', () => {
   test('пустая строка очищает поле, телефон приводится к +7…, ФИО пустым быть не может', () => {
     expect(parseContactPatch({ fields: { phone: '8 921 555-00-11', address: '  ', age: ' 36-45 ' } })).toEqual({ phone: '+79215550011', address: null, age: '36-45' });
     expect(parseContactPatch({ fields: { fio: '  ' } })).toBe('ФИО не может быть пустым.');
     expect(parseContactPatch({ fields: { phone: 'позвонить Марине' } })).toMatch(/телефон/);
-    expect(parseContactPatch({ fields: { note: 'x' } })).toMatch(/нельзя/);
+    expect(parseContactPatch({ fields: { surname: 'x' } })).toMatch(/нельзя/);
+    expect(parseContactPatch({ fields: { hobby: ' вязание ', family: '', note: 'x' } })).toEqual({ hobby: 'вязание', family: null, note: 'x' });
     expect(parseContactPatch({ fields: {} })).toBe('Нечего менять.');
     expect(parseContactPatch({ fields: { address: 'я'.repeat(201) } })).toMatch(/длинный/);
   });
@@ -79,5 +83,33 @@ describe('правка из заявки доходит до человека', 
     const r = await seedRequest(u);
     await new PlacementRepo(db).editRequest(r, { note: 'позвонить после 18' }, 'тест');
     expect(await user(u)).toMatchObject({ full_name: 'Мария Участница' });
+  });
+
+  test('хобби, профессия, семейное положение: у регистрации и в переписанных полях заявок, а комментарий — каждый свой', async () => {
+    const u = await seedUser();
+    const own = await seedRequest(u, "hobby, note|'старое хобби', 'комментарий заявки'");
+    const plain = await seedRequest(u);
+    expect(await svc().update(`u${u}`, { fields: { hobby: 'вязание', profession: 'врач', family: 'замужем', note: 'позвонить вечером' } }, 'тест')).toEqual({ ok: true });
+    expect(await user(u)).toMatchObject({ hobby: 'вязание', profession: 'врач', family_status: 'замужем', admin_comment: 'позвонить вечером' });
+    expect(await request(own)).toMatchObject({ hobby: 'вязание', profession: null, note: 'комментарий заявки' });
+    expect(await request(plain)).toMatchObject({ hobby: null, note: null });
+  });
+
+  test('«Править данные» заявки: профессия и семейное положение уходят и в регистрацию, комментарий — только в заявку', async () => {
+    const u = await seedUser();
+    const r = await seedRequest(u);
+    expect(await new PlacementRepo(db).editRequest(r, { profession: 'учитель', family: 'женат', note: 'только для заявки' }, 'тест')).toEqual({ ok: true });
+    expect(await request(r)).toMatchObject({ profession: 'учитель', family_status: 'женат', note: 'только для заявки' });
+    expect(await user(u)).toMatchObject({ profession: 'учитель', family_status: 'женат', admin_comment: null });
+  });
+
+  test('карточка, внесённая вручную, хранит те же поля: адрес, время, хобби, профессию, семейное положение', async () => {
+    const members = createMembers({ members: new MembersRepo(db), audit: new AuditRepo(db) });
+    const g = (await db.query<{ id: number }>(`INSERT INTO groups (leader, district, format, status, source) VALUES ('Иван', 'Приморский', 'Основная церковь', 'Функционирует', 'ui') RETURNING id`)).rows[0]!.id;
+    expect(await members.add(g, { newPerson: { fio: 'Анна Новая', address: 'Юкки', hobby: 'бег' } }, 'тест')).toMatchObject({ ok: true });
+    const id = (await db.query<{ id: number }>('SELECT id FROM persons')).rows[0]!.id;
+    expect(await members.updatePerson(id, { fields: { schedule: 'вторник', profession: 'повар', family: 'вдова' } }, 'тест')).toEqual({ ok: true });
+    expect((await db.query('SELECT address, schedule, hobby, profession, family_status FROM persons')).rows[0]).toEqual({ address: 'Юкки', schedule: 'вторник', hobby: 'бег', profession: 'повар', family_status: 'вдова' });
+    expect(await members.updatePerson(id, { fields: { address: 'я'.repeat(201) } }, 'тест')).toMatchObject({ ok: false, error: 'bad_request' });
   });
 });

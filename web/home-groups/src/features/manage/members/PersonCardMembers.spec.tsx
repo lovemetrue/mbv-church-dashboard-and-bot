@@ -43,16 +43,17 @@ describe('карточка человека: правка и удаление к
     expect(within(card).queryByRole('button', { name: /Удалить карточку/ })).not.toBeInTheDocument();
   });
 
-  test('регистрация: в форме адрес и удобное время вместо заметки, на сервер уходит только изменённое', async () => {
+  test('регистрация: в форме те же поля, что у заявки, на сервер уходит только изменённое', async () => {
     const fetchMock = stubFetchWithFixtures({ 'people/u1/update': () => json({ ok: true }) });
     const user = userEvent.setup();
     const card = await personCard('u1');
     await user.click(await within(card).findByRole('button', { name: 'Править карточку: Дарья Ефимова' }));
     const dialog = await screen.findByRole('dialog', { name: /^Правка карточки/ });
     expect(within(dialog).queryByRole('textbox', { name: 'Заметка' })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('textbox', { name: 'Комментарий' })).toBeInTheDocument();
     expect(within(dialog).getByText(/сохранятся и в регистрации, и во всех заявках/)).toBeInTheDocument();
     await user.type(within(dialog).getByRole('textbox', { name: 'Улица и дом' }), 'Коллонтай 5');
-    await user.type(within(dialog).getByRole('textbox', { name: 'Удобное время' }), 'среда вечером');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Удобные день и время' }), 'среда вечером');
     await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
     await waitFor(() =>
       expect(posts(fetchMock)).toEqual([{ path: 'people/u1/update', body: { fields: { address: 'Коллонтай 5', schedule: 'среда вечером' } } }]),
@@ -71,11 +72,21 @@ describe('карточка человека: правка и удаление к
     await waitFor(() => expect(getsOf(fetchMock, 'requests')).toBeGreaterThan(before));
   });
 
-  test('у карточки «Внесён вручную» есть «Править» и «Заметка», но нет адреса и времени', async () => {
+  test('у карточки «Внесён вручную» есть «Править» и тот же набор полей, что у заявки и регистрации', async () => {
     stubFetchWithFixtures();
     const card = await personCard('p1');
     expect(within(card).getByRole('button', { name: 'Править карточку: Нина Воронцова' })).toBeInTheDocument();
     expect(within(card).getByText('Внесён вручную')).toBeInTheDocument();
+  });
+
+  test.each([['u1'], ['r1'], ['p1']])('форма человека %s: те же десять полей в том же порядке, что в заявке', async (key) => {
+    stubFetchWithFixtures();
+    const user = userEvent.setup();
+    const card = await personCard(key);
+    await user.click(await within(card).findByRole('button', { name: /Править карточку/ }));
+    const dialog = await screen.findByRole('dialog', { name: /^Правка карточки/ });
+    const names = within(dialog).getAllByRole('textbox').map((e) => document.querySelector(`label[for="${e.id}"]`)?.textContent?.replace(/\s*\*$/, ''));
+    expect(names).toEqual(['ФИО', 'Телефон', 'Возраст', 'Район, метро, ориентир', 'Улица и дом', 'Удобные день и время', 'Хобби', 'Профессия', 'Семейное положение', 'Комментарий']);
   });
 
   test('форма заполнена текущими значениями, а сохранить нечего, пока не изменили', async () => {
@@ -87,7 +98,7 @@ describe('карточка человека: правка и удаление к
     expect(within(dialog).getByRole('textbox', { name: /^ФИО/ })).toHaveValue('Нина Воронцова');
     expect(within(dialog).getByRole('textbox', { name: 'Телефон' })).toHaveValue('+7 911 000 55 11');
     expect(within(dialog).getByRole('textbox', { name: 'Возраст' })).toHaveValue('46+');
-    expect(within(dialog).getByRole('textbox', { name: 'Район или место' })).toHaveValue('Приморский');
+    expect(within(dialog).getByRole('textbox', { name: 'Район, метро, ориентир' })).toHaveValue('Приморский');
     expect(within(dialog).getByRole('button', { name: 'Сохранить' })).toBeDisabled();
   });
 
@@ -102,7 +113,7 @@ describe('карточка человека: правка и удаление к
     const phone = within(dialog).getByRole('textbox', { name: 'Телефон' });
     await user.clear(phone);
     await user.type(phone, '+7 911 000 55 99');
-    await user.type(within(dialog).getByRole('textbox', { name: 'Заметка' }), 'Звонить после шести');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Комментарий' }), 'Звонить после шести');
     await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
     await waitFor(() =>
       expect(posts(fetchMock)).toEqual([{ path: 'persons/1/update', body: { fields: { phone: '+7 911 000 55 99', note: 'Звонить после шести' } } }]),

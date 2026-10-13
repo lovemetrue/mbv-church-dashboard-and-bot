@@ -27,7 +27,7 @@ describe('Карточка заявки: итог звонка', () => {
   test('у закрытой заявки блока нет: звонить по ней уже незачем', async () => {
     stubFetchWithFixtures();
     const card = await openCard(10);
-    await within(card).findByRole('region', { name: 'Связаться' });
+    await within(card).findByRole('heading', { name: 'Работа с заявкой' });
     expect(within(card).queryByRole('region', { name: 'Итог звонка' })).not.toBeInTheDocument();
   });
 

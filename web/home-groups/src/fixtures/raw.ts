@@ -191,6 +191,10 @@ export interface RawPerson {
   place?: string | null;
   address?: string | null;
   schedule?: string | null;
+  hobby?: string | null;
+  profession?: string | null;
+  family?: string | null;
+  note?: string | null;
   from: string;
   mdgLabel: string;
   date: string | null;

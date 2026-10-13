@@ -5,6 +5,9 @@ import type {
   CreateStaffBody,
   DeliveryOk,
   ExtraQuestionsBody,
+  GeocoderConfigBody,
+  GeocoderConfigView,
+  GeocoderTestResult,
   LlmConfigBody,
   LlmTestBody,
   LlmTestResult,
@@ -48,6 +51,7 @@ export const settingsKeys = {
   staff: ['settings', 'staff'],
   bot: ['settings', 'bot'],
   assistant: ['settings', 'assistant'],
+  geocoder: ['settings', 'geocoder'],
 } as const;
 
 const common = {
@@ -235,6 +239,31 @@ export function useAssistantActions() {
     /** Проверка подключения: ничего не сохраняет, поэтому и перечитывать нечего. Отказ провайдера приходит обычным ответом `ok: false`. */
     testLlm(body: LlmTestBody): Promise<LlmTestResult> {
       return apiPost<LlmTestResult>('settings/assistant/llm-test', body);
+    },
+  };
+}
+
+export function useSettingsGeocoder(): UseQueryResult<GeocoderConfigView> {
+  return useQuery({
+    queryKey: settingsKeys.geocoder,
+    queryFn: ({ signal }) => apiGet<GeocoderConfigView>('settings/geocoder', signal),
+    ...common,
+    refetchInterval: ASSISTANT_REFRESH_MS,
+    refetchIntervalInBackground: false,
+  });
+}
+
+/** Ключ геокодера уходит только в теле запроса: ни в кэш запросов, ни в хранилище браузера он не попадает. */
+export function useGeocoderActions() {
+  const queryClient = useQueryClient();
+  return {
+    async save(body: GeocoderConfigBody): Promise<void> {
+      await apiPost('settings/geocoder', body);
+      await queryClient.invalidateQueries({ queryKey: settingsKeys.geocoder });
+    },
+    /** Проверка ничего не сохраняет; отказ Яндекса приходит обычным ответом `ok: false`. */
+    test(body: GeocoderConfigBody): Promise<GeocoderTestResult> {
+      return apiPost<GeocoderTestResult>('settings/geocoder-test', body);
     },
   };
 }

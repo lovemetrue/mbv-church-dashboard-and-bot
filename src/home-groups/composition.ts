@@ -33,6 +33,7 @@ import { createReadonlyRunner } from './assistant/readonly.js';
 import { loadPseudonyms } from './assistant/pseudonyms.js';
 import { HintsRepo } from '../db/repos/hints.repo.js';
 import type { LlmClient, LlmSource } from '../platform/llm/deepseek.js';
+import { createGeocoderConfig } from './geocoderConfig.js';
 import { createLlmConfig } from './assistant/llmConfig.js';
 import { requestsToCsv } from './export.js';
 import { usersToCsv } from '../core/csv.js';
@@ -82,6 +83,12 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   // Подключение помощника (провайдер, модель, ключ) читается из настроек при каждом обращении; пока там пусто — из `.env`.
   const llmConfig = createLlmConfig({
     settings: appSettings, audit: new AuditRepo(db), env: opts.llmSettings?.env ?? {}, secret: opts.llmSettings?.secret ?? '',
+  });
+  const geocodeCache = new GeocodeRepo(db);
+  // Ключ геокодера — тоже из настроек (зашифрован тем же секретом), а пока там пусто — `YANDEX_GEOCODER_KEY` из `.env`.
+  const geocoderConfig = createGeocoderConfig({
+    settings: appSettings, audit: new AuditRepo(db), env: opts.llmSettings?.env ?? {}, secret: opts.llmSettings?.secret ?? '',
+    usedToday: () => geocodeCache.countSince(24),
   });
   const llm: LlmClient | LlmSource | null = opts.llm !== undefined ? opts.llm : llmConfig.source;
   const assistantAvailable = async (): Promise<boolean> => {
@@ -168,7 +175,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   const auditRepo = new AuditRepo(db);
   const audit = (actor: string, action: string, after: unknown) => auditRepo.write(actor, action, 'export', null, after);
   const formMeta = createFormMeta(new CoordinatorsRepo(db));
-  return { load, views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, chat, members, reconciler, strange, formMeta };
+  return { load, views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, geocoderConfig, chat, members, reconciler, strange, formMeta };
 }
 
 export function composeViews(db: Pool, engine: PlanEngineApi, opts: ComposeOptions): ViewsSource {

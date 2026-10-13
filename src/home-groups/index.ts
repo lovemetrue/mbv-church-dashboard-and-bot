@@ -71,7 +71,7 @@ async function main(): Promise<void> {
     timezone: env('TIMEZONE', 'Europe/Moscow'),
   };
   const bots = serviceFromEnv(db, process.env, schedule, 'домашние группы');
-  const { load, views, matching, placement, settings, errors, staff, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, chat, members, reconciler, strange, formMeta } = composeService(db, engine, {
+  const { load, views, matching, placement, settings, errors, staff, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, geocoderConfig, chat, members, reconciler, strange, formMeta } = composeService(db, engine, {
     campaignSchedule: schedule,
     // Ключ, провайдер и модель можно менять в «Настройки → Помощник»; пока там пусто, действует `.env`. Ключ в базе шифруется
     // секретом SETTINGS_SECRET, а если его нет — паролем полного входа (смена пароля потребует ввести ключ заново).
@@ -103,6 +103,7 @@ async function main(): Promise<void> {
     botSettings,
     assistant,
     llmConfig,
+    geocoderConfig,
     chat,
     members,
     reconciler,
@@ -129,9 +130,9 @@ async function main(): Promise<void> {
   const auto = startAutoMatching({ intervalMs: autoSeconds * 1000, isEnabled: () => matching.isAuto(), run: (actor) => matching.run(actor),
     onError: (err) => reportError('подбор', err, 'автоматический запуск') });
 
-  // Координаты адресов нужны подбору «по близости». Без ключа геокодера ничего не запускается, и подбор сравнивает улицы по названию.
-  const geocoderKey = process.env['YANDEX_GEOCODER_KEY']?.trim();
-  const geocodeTimer = geocoderKey ? startGeocoding({ load, db, apiKey: geocoderKey, invalidate: () => views.invalidate() }) : null;
+  // Координаты адресов нужны подбору «по близости». Ключ читается из настроек при каждом заходе (иначе из `.env`);
+  // пока ключа нет, заход ничего не делает, и подбор сравнивает улицы по названию.
+  const geocodeTimer = startGeocoding({ load, db, apiKey: () => geocoderConfig.currentKey(), invalidate: () => views.invalidate() });
 
   server.listen(port, () => logger.info({ port, sessionDays: ttlDays, defaultCapacity }, 'домашние группы запущены'));
 

@@ -54,6 +54,9 @@
  *   POST /api/v1/settings/assistant/enabled AssistantEnabledBody → ActionOk | ActionError (только super)
  *   POST /api/v1/settings/assistant/llm LlmConfigBody → ActionOk | ActionError (только super; ключ шифруется, обратно не отдаётся)
  *   POST /api/v1/settings/assistant/llm-test LlmTestBody → LlmTestResult (только super; ничего не сохраняет)
+ *   GET  /api/v1/settings/geocoder      → GeocoderConfigView (только super; ключа в ответе нет)
+ *   POST /api/v1/settings/geocoder      GeocoderConfigBody → ActionOk | ActionError (только super; ключ шифруется)
+ *   POST /api/v1/settings/geocoder-test GeocoderConfigBody → GeocoderTestResult (только super; ничего не сохраняет)
  *   GET  /api/v1/settings/bot           → SettingsBotView (только super)
  *   POST /api/v1/settings/bot/extra-questions ExtraQuestionsBody → ActionOk | ActionError (только super)
  *   POST /api/v1/settings/bot/send-extra-questions SendExtraInvitesBody → SendExtraInvitesOk | ActionError (только super; пишет живым людям)
@@ -476,6 +479,22 @@ export type LlmTestResult =
       /** Короткое пояснение провайдера (ключи в нём закрыты). */
       detail?: string;
     };
+
+/** Ключ Яндекс.Геокодера (раздел «Геокодер»). Самого ключа в ответе нет никогда. */
+export interface GeocoderConfigView {
+  keySet: boolean;
+  keySource: 'settings' | 'env' | null;
+  keyHint: string | null;
+  keyUnreadable: boolean;
+  /** Запросов к геокодеру за последние сутки и суточный предел сервиса (ключ у Яндекса — тысяча в сутки). */
+  usedToday: number;
+  dailyLimit: number;
+}
+
+/** `apiKey`: строка — новый ключ, null — убрать сохранённый (вернётся `.env`). В проверке не указан — берётся действующий. */
+export interface GeocoderConfigBody { apiKey?: string | null }
+
+export type GeocoderTestResult = { ok: true; ms: number } | { ok: false; message: string };
 
 export interface SettingsAssistantView {
   generatedAt: string;

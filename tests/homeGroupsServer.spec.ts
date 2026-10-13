@@ -137,6 +137,11 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
       save: async (body: unknown, actor: string) => { llmCalls.push({ name: 'save', body, actor }); return llmSaveOutcome; },
       test: async (body: unknown) => { llmCalls.push({ name: 'test', body }); return llmTestResult; },
     } as never,
+    geocoderConfig: {
+      view: async () => ({ keySet: true, keySource: 'settings', keyHint: 'WXYZ', keyUnreadable: false, usedToday: 3, dailyLimit: 900 }),
+      save: async (body: unknown, actor: string) => { llmCalls.push({ name: 'geo-save', body, actor }); return { ok: true }; },
+      test: async (body: unknown) => { llmCalls.push({ name: 'geo-test', body }); return { ok: true, ms: 5 }; },
+    } as never,
     reconciler: {
       apply: async (id: number, body: unknown, actor: string) => { reconcileCalls.push({ name: 'apply', id, body, actor }); return { ok: true, already: false }; },
       applyReady: async (body: unknown, actor: string) => { reconcileCalls.push({ name: 'ready', body, actor }); return { ok: true, applied: 2, skipped: 1 }; },
@@ -1411,6 +1416,24 @@ describe('помощник по разбору заявок', () => {
     const bad = await post(sup, 'settings/assistant/llm-test', { provider: 'deepseek', model: 'deepseek-chat', apiKey: 'sk-1234567890' });
     expect(bad.status).toBe(200);
     expect(await bad.json()).toMatchObject({ ok: false, code: 'auth', status: 401 });
+  });
+
+  test('ключ геокодера: читать, сохранять и проверять можно только с полного входа, ключ в ответе не отдаётся', async () => {
+    const before = app.llmCalls.length;
+    for (const path of ['settings/geocoder', 'settings/geocoder-test']) {
+      expect((await post(null, path, { apiKey: 'AAAAAAAA-1111' })).status, path).toBe(401);
+      expect((await post(await signIn(REGULAR), path, { apiKey: 'AAAAAAAA-1111' })).status, path).toBe(403);
+    }
+    expect((await fetch(`${app.base}/api/v1/settings/geocoder`, { headers: { cookie: await signIn(REGULAR) } })).status).toBe(403);
+    expect(app.llmCalls.length).toBe(before);
+    const sup = await signIn(SUPER);
+    const view = await (await fetch(`${app.base}/api/v1/settings/geocoder`, { headers: { cookie: sup } })).text();
+    expect(JSON.parse(view)).toMatchObject({ keySet: true, keyHint: 'WXYZ', usedToday: 3, dailyLimit: 900 });
+    expect(view).not.toMatch(/apiKey|api_key/i);
+    expect((await post(sup, 'settings/geocoder', { apiKey: 'AAAAAAAA-1111' })).status).toBe(200);
+    expect(app.llmCalls.at(-1)).toEqual({ name: 'geo-save', body: { apiKey: 'AAAAAAAA-1111' }, actor: SUPER.login });
+    const test = await post(sup, 'settings/geocoder-test', {});
+    expect(await test.json()).toEqual({ ok: true, ms: 5 });
   });
 
   test('ключ и его значение в ответах настроек не встречаются', async () => {

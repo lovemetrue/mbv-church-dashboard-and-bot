@@ -20,16 +20,19 @@ export function addressesOf(input: Pick<ViewsInput, 'groups' | 'requests'>): str
  * Первый заход — сразу после запуска, чтобы свежие адреса не ждали.
  */
 export function startGeocoding(deps: {
-  load: () => Promise<ViewsInput>; db: Pool; apiKey: string; invalidate: () => void; geocoder?: Geocoder; intervalMs?: number;
+  load: () => Promise<ViewsInput>; db: Pool; apiKey: () => Promise<string | null>; invalidate: () => void;
+  geocoderFor?: (key: string) => Geocoder; intervalMs?: number;
 }): NodeJS.Timeout {
   const store = new GeocodeRepo(deps.db);
-  const geocoder = deps.geocoder ?? createYandexGeocoder(deps.apiKey);
+  const geocoderFor = deps.geocoderFor ?? ((key: string) => createYandexGeocoder(key));
   let busy = false;
   const tick = async (): Promise<void> => {
     if (busy) return;
     busy = true;
     try {
-      const { done, failed } = await geocodePending(addressesOf(await deps.load()), store, geocoder);
+      const key = await deps.apiKey();
+      if (!key) return;
+      const { done, failed } = await geocodePending(addressesOf(await deps.load()), store, geocoderFor(key));
       if (done > 0) deps.invalidate();
       if (failed) logger.warn({ failed, done }, 'геокодер: остановились до следующего захода');
       else if (done > 0) logger.info({ done }, 'геокодер: адреса добавлены в кэш');

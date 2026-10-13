@@ -7,43 +7,59 @@ import type { ViewsInput } from './api/views.js';
 /** Группы, чьи адреса геокодируются: все, кроме закрытых (в том числе «Кампания» и «Недвижимость»: они нужны справочнику и карте). */
 export const GEOCODED_GROUP_STATUSES: ReadonlySet<string> = new Set(['Функционирует', 'На паузе', 'Потенциальная', 'Кампания', 'Недвижимость']);
 
+/** Откуда взят адрес: по этому описанию в таблице адресов открывается карточка. */
+export interface AddressSource { kind: 'group' | 'request' | 'person'; id: string; label: string }
+export interface AddressEntry { address: string; source: AddressSource }
+
 /**
- * Адреса, которые нужны подбору и справочнику: у групп из `GEOCODED_GROUP_STATUSES` и у всех людей, где адрес заполнен
- * (анкета регистрации, улица из заявок; правка координатора важнее анкеты).
+ * Адреса, которые нужны подбору и справочнику, вместе с тем, откуда они взяты: у групп из `GEOCODED_GROUP_STATUSES` и у всех
+ * людей, где адрес заполнен (анкета регистрации, улица из заявок; правка координатора важнее анкеты).
  *
  * Порядок важен: у бесплатного ключа суточный лимит, а геокодер идёт по списку сверху вниз. Сначала группы (их мало, и без
  * них сравнивать не с чем), потом открытые заявки «в группу» (те, кого сейчас подбирают), потом остальные люди.
  */
-export function addressesOf(input: Pick<ViewsInput, 'groups' | 'requests'> & { participants?: readonly { address: string | null }[] }): string[] {
-  const out: string[] = [];
-  for (const g of input.groups) if (g.address && GEOCODED_GROUP_STATUSES.has(g.status)) out.push(g.address);
+export function addressEntries(input: {
+  groups: readonly { id: number; no: number | null; leader: string; address: string | null; status: string }[];
+  requests: readonly { id: number; fio: string | null; type: string; status: string; manual_street: string | null; address: string | null }[];
+  participants?: readonly { id: number; full_name: string | null; address: string | null }[];
+}): AddressEntry[] {
+  const out: AddressEntry[] = [];
+  for (const g of input.groups) {
+    if (g.address && GEOCODED_GROUP_STATUSES.has(g.status)) {
+      out.push({ address: g.address, source: { kind: 'group', id: String(g.id), label: `Группа ${g.no !== null ? `№${g.no}` : `#${g.id}`}, ${g.leader}` } });
+    }
+  }
   const text = (r: { manual_street: string | null; address: string | null }) => r.manual_street ?? r.address;
   const open = (r: { type: string; status: string }) => r.type === 'join_group' && r.status !== 'Исполнена' && r.status !== 'Аннулирована';
-  for (const r of input.requests) if (open(r) && text(r)) out.push(text(r)!);
-  for (const r of input.requests) if (!open(r) && text(r)) out.push(text(r)!);
-  for (const u of input.participants ?? []) if (u.address) out.push(u.address);
+  const request = (r: (typeof input.requests)[number]): AddressEntry => ({
+    address: text(r)!, source: { kind: 'request', id: String(r.id), label: `Заявка №${r.id}${r.fio ? `, ${r.fio}` : ''}` },
+  });
+  for (const r of input.requests) if (open(r) && text(r)) out.push(request(r));
+  for (const r of input.requests) if (!open(r) && text(r)) out.push(request(r));
+  for (const u of input.participants ?? []) {
+    if (u.address) out.push({ address: u.address, source: { kind: 'person', id: `u${u.id}`, label: u.full_name ?? `Регистрация №${u.id}` } });
+  }
   return out;
 }
 
+/** Только тексты адресов, в том же порядке (очередь геокодера). */
+export const addressesOf = (input: Parameters<typeof addressEntries>[0]): string[] => addressEntries(input).map((e) => e.address);
+
 /** Сколько нужных подбору адресов уже с координатами, сколько не нашлось и сколько ещё ждёт запроса; одинаковые адреса считаются один раз. */
-export function addressStats(addresses: readonly string[], cache: ReadonlyMap<string, GeocodeEntry>, listLimit = 30) {
-  const seen = new Map<string, string>();
+export function addressStats(addresses: readonly string[], cache: ReadonlyMap<string, GeocodeEntry>) {
+  const seen = new Set<string>();
   for (const a of addresses) {
     const key = addressKey(a);
-    if (key !== null && !seen.has(key)) seen.set(key, a.trim());
+    if (key !== null) seen.add(key);
   }
   let found = 0;
   let missing = 0;
-  const missingList: string[] = [];
-  for (const [key, text] of seen) {
+  for (const key of seen) {
     if (!cache.has(key)) continue;
     if (cache.get(key)) found += 1;
-    else {
-      missing += 1;
-      if (missingList.length < listLimit) missingList.push(text);
-    }
+    else missing += 1;
   }
-  return { addresses: { total: seen.size, found, missing, waiting: seen.size - found - missing }, missingList };
+  return { addresses: { total: seen.size, found, missing, waiting: seen.size - found - missing } };
 }
 
 /**

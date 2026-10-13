@@ -3,6 +3,7 @@ import type { GeocoderConfigView, GeocoderTestResult } from '@contracts';
 import { ru } from '../../shared/i18n/ru';
 import { Button, Modal } from '../../shared/ui';
 import { isInsecurePage, llmErrorText } from './model';
+import { AddressesModal } from './AddressesModal';
 import { QueryBoundary } from './QueryBoundary';
 import { RefreshButton } from './RefreshButton';
 import { SectionHead } from './SectionHead';
@@ -43,6 +44,7 @@ function GeocoderForm({ view }: { view: GeocoderConfigView }) {
   const [testing, setTesting] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
+  const [tableOpen, setTableOpen] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const inFlight = useRef(false);
@@ -198,21 +200,15 @@ function GeocoderForm({ view }: { view: GeocoderConfigView }) {
         <h3 className={styles.h5}>{t.addressesTitle}</h3>
         <p>{t.addresses(view.addresses)}</p>
         <p className={`${styles.muted} ${styles.hintLine}`}>{t.addressesHint}</p>
-        {view.missingList.length > 0 && (
-          <>
-            <h4 className={styles.h5}>{t.missingTitle}</h4>
-            <ul>
-              {view.missingList.map((a) => (
-                <li key={a}>{a}</li>
-              ))}
-            </ul>
-          </>
-        )}
+        <div className={styles.actionsRow}>
+          <Button onClick={() => setTableOpen(true)}>{t.openTable}</Button>
+        </div>
         {view.addresses.waiting === 0 && view.addresses.found > 0 && <p className={styles.noticeOk}>{t.rerunHint}</p>}
       </div>
       <p className={`${styles.muted} ${styles.hintBelow}`}>{t.usage(view.usedToday, view.dailyLimit)}</p>
       <p className={`${styles.muted} ${styles.hintLine}`}>{t.privacy}</p>
 
+      {tableOpen && <AddressesModal onClose={() => setTableOpen(false)} />}
       {removeOpen && <RemoveKeyDialog busy={removing} onConfirm={removeKey} onClose={() => !removing && setRemoveOpen(false)} />}
     </div>
   );

@@ -445,6 +445,8 @@ describe('группы справочника', () => {
       geo,
     });
     expect(views.groups.items.map((g) => g.addressGeo)).toEqual(['found', 'missing', null]);
+    // Для карты: у группы с найденным адресом точка, у остальных null.
+    expect(views.groups.items.map((g) => g.coords)).toEqual([{ lat: 59.94, lon: 30.35 }, null, null]);
     expect(views.requests.items[0]!.streetGeo).toBe('found');
     // У людей то же: заявка без регистрации и регистрация с адресом показывают состояние координат.
     expect(views.people.items.find((p) => p.key === 'r1')!.addressGeo).toBe('found');

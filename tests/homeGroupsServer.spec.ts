@@ -67,6 +67,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
   const settingsCalls: { name: string; actor?: string; body?: unknown }[] = [];
   const strangeCalls: { name: string; id?: number; body?: unknown; actor?: string }[] = [];
   const llmCalls: { name: string; body?: unknown; actor?: string }[] = [];
+  let mapKey: string | null = null;
   let llmSaveOutcome: unknown = { ok: true };
   let llmTestResult: unknown = { ok: true, provider: 'DeepSeek', model: 'deepseek-chat', ms: 700 };
   const reconcileCalls: { name: string; id?: number; actor?: string; body?: unknown }[] = [];
@@ -142,6 +143,16 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
       save: async (body: unknown, actor: string) => { llmCalls.push({ name: 'geo-save', body, actor }); return { ok: true }; },
       test: async (body: unknown) => { llmCalls.push({ name: 'geo-test', body }); return { ok: true, ms: 5 }; },
     } as never,
+    geocodeAddresses: {
+      table: async () => ({ generatedAt: 'g', items: [{ address: 'ул. Тест, 1', state: 'missing', lat: null, lon: null, sources: [{ kind: 'group', id: '7', label: 'Группа №7' }] }] }),
+      retry: async (body: unknown) => { llmCalls.push({ name: 'geo-retry', body }); return { ok: true }; },
+    } as never,
+    mapConfig: {
+      view: async () => ({ keySet: mapKey !== null, keyHint: mapKey ? mapKey.slice(-4) : null, keyUnreadable: false, loadsThisMonth: 3, monthlyLimit: 100 }),
+      bootstrap: async () => ({ apiKey: mapKey, loadsThisMonth: 3, monthlyLimit: 100 }),
+      recordLoad: async () => { llmCalls.push({ name: 'map-loaded' }); return { apiKey: mapKey, loadsThisMonth: 4, monthlyLimit: 100 }; },
+      save: async (body: unknown, actor: string) => { llmCalls.push({ name: 'map-save', body, actor }); return { ok: true }; },
+    } as never,
     reconciler: {
       apply: async (id: number, body: unknown, actor: string) => { reconcileCalls.push({ name: 'apply', id, body, actor }); return { ok: true, already: false }; },
       applyReady: async (body: unknown, actor: string) => { reconcileCalls.push({ name: 'ready', body, actor }); return { ok: true, applied: 2, skipped: 1 }; },
@@ -193,7 +204,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
     viewsCalls: () => calls,
     close: () => { server.close(); },
     setViews: (f) => { views = f; },
-    actionCalls, auditCalls, assistantCalls, chatCalls, setChatOutcome: (o: unknown) => { chatOutcome = o; }, setAssistantOutcome: (o: unknown) => { assistantOutcome = o; }, matchingCalls, settingsCalls, reconcileCalls, strangeCalls, llmCalls, setLlmSave: (o: unknown) => { llmSaveOutcome = o; }, setLlmTest: (o: unknown) => { llmTestResult = o; }, reported, staffCalls, createCalls, setCreate: (o) => { createOutcome = o; }, setTokenInfo: (v) => { tokenInfo = v; }, setComplete: (v) => { complete = v; }, setSettingsOutcome: (o: ActionOutcome) => { settingsOutcome = o; }, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
+    actionCalls, auditCalls, assistantCalls, chatCalls, setChatOutcome: (o: unknown) => { chatOutcome = o; }, setAssistantOutcome: (o: unknown) => { assistantOutcome = o; }, matchingCalls, settingsCalls, reconcileCalls, strangeCalls, llmCalls, setMapKey: (k: string | null) => { mapKey = k; }, setLlmSave: (o: unknown) => { llmSaveOutcome = o; }, setLlmTest: (o: unknown) => { llmTestResult = o; }, reported, staffCalls, createCalls, setCreate: (o) => { createOutcome = o; }, setTokenInfo: (v) => { tokenInfo = v; }, setComplete: (v) => { complete = v; }, setSettingsOutcome: (o: ActionOutcome) => { settingsOutcome = o; }, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
   };
 }
 
@@ -1434,6 +1445,50 @@ describe('помощник по разбору заявок', () => {
     expect(app.llmCalls.at(-1)).toEqual({ name: 'geo-save', body: { apiKey: 'AAAAAAAA-1111' }, actor: SUPER.login });
     const test = await post(sup, 'settings/geocoder-test', {});
     expect(await test.json()).toEqual({ ok: true, ms: 5 });
+  });
+
+  test('таблица адресов и повтор по строке — только полному входу; повтор доходит до обработчика с адресом', async () => {
+    expect((await fetch(`${app.base}/api/v1/settings/geocoder/addresses`, { headers: { cookie: await signIn(REGULAR) } })).status).toBe(403);
+    expect((await post(await signIn(REGULAR), 'settings/geocoder-retry', { address: 'ул. Тест, 1' })).status).toBe(403);
+    const sup = await signIn(SUPER);
+    const table = await (await fetch(`${app.base}/api/v1/settings/geocoder/addresses`, { headers: { cookie: sup } })).json();
+    expect(table.items[0]).toMatchObject({ address: 'ул. Тест, 1', state: 'missing', sources: [{ kind: 'group', id: '7' }] });
+    expect((await post(sup, 'settings/geocoder-retry', { address: 'ул. Тест, 1' })).status).toBe(200);
+    expect(app.llmCalls.at(-1)).toEqual({ name: 'geo-retry', body: { address: 'ул. Тест, 1' } });
+  });
+
+  test('ключ карты: настройки и сохранение только у полного входа, а страница получает ключ и расход при любом входе', async () => {
+    app.setMapKey('map-key-WXYZ');
+    expect((await fetch(`${app.base}/api/v1/settings/map`, { headers: { cookie: await signIn(REGULAR) } })).status).toBe(403);
+    expect((await post(await signIn(REGULAR), 'settings/map', { apiKey: 'map-key-1234' })).status).toBe(403);
+    const sup = await signIn(SUPER);
+    const view = await (await fetch(`${app.base}/api/v1/settings/map`, { headers: { cookie: sup } })).text();
+    expect(JSON.parse(view)).toMatchObject({ keySet: true, keyHint: 'WXYZ', loadsThisMonth: 3, monthlyLimit: 100 });
+    expect(view).not.toContain('map-key-WXYZ');
+    expect((await post(sup, 'settings/map', { apiKey: 'map-key-1234' })).status).toBe(200);
+    // Для открытия карты ключ нужен любому входу.
+    const boot = await fetch(`${app.base}/api/v1/map/config`, { headers: { cookie: await signIn(REGULAR) } });
+    expect(await boot.json()).toEqual({ apiKey: 'map-key-WXYZ', loadsThisMonth: 3, monthlyLimit: 100 });
+    expect((await fetch(`${app.base}/api/v1/map/config`)).status).toBe(401);
+    const loaded = await post(await signIn(REGULAR), 'map/loaded', {});
+    expect(await loaded.json()).toMatchObject({ loadsThisMonth: 4 });
+    expect((await post(null, 'map/loaded', {})).status).toBe(401);
+    app.setMapKey(null);
+  });
+
+  test('политика содержимого интерфейса: без ключа карты строгая, с ключом добавляет хосты Яндекс.Карт; страница входа всегда строгая', async () => {
+    const cookie = await signIn();
+    const strict = (await fetch(`${app.base}/`, { headers: { cookie } })).headers.get('content-security-policy')!;
+    expect(strict).not.toMatch(/https?:|unsafe-eval/);
+    app.setMapKey('map-key-WXYZ');
+    const withMap = (await fetch(`${app.base}/`, { headers: { cookie } })).headers.get('content-security-policy')!;
+    expect(withMap).toMatch(/script-src[^;]*https:\/\/api-maps\.yandex\.ru/);
+    expect(withMap).toMatch(/script-src[^;]*'unsafe-eval'/);
+    expect(withMap).toContain("default-src 'none'");
+    expect(withMap).toContain("frame-ancestors 'none'");
+    const login = (await fetch(`${app.base}/login`)).headers.get('content-security-policy')!;
+    expect(login).not.toMatch(/https?:|unsafe-eval/);
+    app.setMapKey(null);
   });
 
   test('ключ и его значение в ответах настроек не встречаются', async () => {

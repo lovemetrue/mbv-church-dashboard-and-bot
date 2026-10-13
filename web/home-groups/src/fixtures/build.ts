@@ -76,6 +76,16 @@ const capOf = (g: RawGroup): number => g.capacity ?? DEFAULT_CAPACITY;
 const freeOf = (g: RawGroup): number => Math.max(0, capOf(g) - (g.people ?? 0));
 const accepting = (g: RawGroup): boolean => g.status === 'Функционирует' && g.acceptsNew && !g.doNotRefer;
 
+/** Демо-координаты: около центра района группы, со сдвигом по номеру, чтобы метки не слипались. */
+const DEMO_CENTERS: Record<string, [number, number]> = {
+  Приморский: [60.0, 30.25], Выборгский: [60.04, 30.33], Центральный: [59.93, 30.36], Калининский: [60.0, 30.4],
+  Невский: [59.88, 30.46], Красногвардейский: [59.95, 30.47], Московский: [59.85, 30.32], Петроградский: [59.96, 30.3],
+};
+function demoCoords(g: RawGroup): { lat: number; lon: number } {
+  const [lat, lon] = DEMO_CENTERS[g.district] ?? [59.93, 30.31];
+  return { lat: lat + ((g.id * 37) % 11 - 5) * 0.004, lon: lon + ((g.id * 53) % 11 - 5) * 0.006 };
+}
+
 export function groupBrief(g: RawGroup): GroupBrief {
   return {
     id: g.id,
@@ -518,6 +528,7 @@ export function buildGroups(): GroupsView {
     comment: g.comment,
     health: healthOf(g),
     addressGeo: g.street ? 'found' : null,
+    coords: g.street ? demoCoords(g) : null,
     placedNew: 0,
     leaderKey: g.leaderKey,
     plannedRequests: (plan.takenBy.get(g.id) ?? []).map((id) => {

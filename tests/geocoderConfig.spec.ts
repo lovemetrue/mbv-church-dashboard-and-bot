@@ -20,7 +20,7 @@ function make(env: NodeJS.ProcessEnv = {}, geocoder?: Geocoder) {
   const asked: string[] = [];
   const cfg = createGeocoderConfig({
     settings: new SettingsRepo(db), audit: new AuditRepo(db), env, secret: SECRET, usedToday: async () => 7,
-    addressStats: async () => ({ addresses: { total: 0, found: 0, missing: 0, waiting: 0 }, missingList: [] }),
+    addressStats: async () => ({ addresses: { total: 0, found: 0, missing: 0, waiting: 0 } }),
     makeGeocoder: (key) => geocoder ?? { geocode: async () => { asked.push(key); return { kind: 'found', point: { lat: 1, lon: 2 }, precision: 'exact' }; } },
   });
   return { cfg, asked };
@@ -60,7 +60,7 @@ describe('ключ геокодера', () => {
   });
 
   test('без секрета сервера ключ сохранить нельзя: открыто мы его не храним', async () => {
-    const cfg = createGeocoderConfig({ settings: new SettingsRepo(db), audit: new AuditRepo(db), env: {}, secret: '', usedToday: async () => 0, addressStats: async () => ({ addresses: { total: 0, found: 0, missing: 0, waiting: 0 }, missingList: [] }) });
+    const cfg = createGeocoderConfig({ settings: new SettingsRepo(db), audit: new AuditRepo(db), env: {}, secret: '', usedToday: async () => 0, addressStats: async () => ({ addresses: { total: 0, found: 0, missing: 0, waiting: 0 } }) });
     expect(await cfg.save({ apiKey: SAVED }, 'admin')).toMatchObject({ ok: false, error: 'unavailable' });
   });
 

@@ -5,13 +5,14 @@ import { AssistantSection } from './AssistantSection';
 import { AuditSection } from './AuditSection';
 import { BotSection } from './BotSection';
 import { GeocoderSection } from './GeocoderSection';
+import { MapSection } from './MapSection';
 import { ErrorsSection } from './ErrorsSection';
 import { HealthSection } from './HealthSection';
 import { PromptsSection } from './PromptsSection';
 import { UsersSection } from './UsersSection';
 import styles from './Settings.module.css';
 
-export const SECTION_IDS = ['health', 'errors', 'audit', 'prompts', 'bot', 'assistant', 'geocoder', 'users'] as const;
+export const SECTION_IDS = ['health', 'errors', 'audit', 'prompts', 'bot', 'assistant', 'geocoder', 'map', 'users'] as const;
 export type SectionId = (typeof SECTION_IDS)[number];
 const DEFAULT_SECTION: SectionId = 'health';
 
@@ -20,7 +21,7 @@ export function parseSection(v: string | null): SectionId {
 }
 
 /** Разделы, которые после первого открытия не размонтируются, а прячутся: в них бывает несохранённая правка. */
-const KEEP_MOUNTED: ReadonlySet<SectionId> = new Set(['prompts', 'bot', 'assistant', 'geocoder']);
+const KEEP_MOUNTED: ReadonlySet<SectionId> = new Set(['prompts', 'bot', 'assistant', 'geocoder', 'map']);
 
 const VIEWS: Record<SectionId, () => JSX.Element> = {
   health: HealthSection,
@@ -30,6 +31,7 @@ const VIEWS: Record<SectionId, () => JSX.Element> = {
   bot: BotSection,
   assistant: AssistantSection,
   geocoder: GeocoderSection,
+  map: MapSection,
   users: UsersSection,
 };
 

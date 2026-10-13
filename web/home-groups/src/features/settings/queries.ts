@@ -5,7 +5,9 @@ import type {
   CreateStaffBody,
   DeliveryOk,
   ExtraQuestionsBody,
+  AddressTableView,
   GeocoderConfigBody,
+  MapConfigView,
   GeocoderConfigView,
   GeocoderTestResult,
   LlmConfigBody,
@@ -52,6 +54,8 @@ export const settingsKeys = {
   bot: ['settings', 'bot'],
   assistant: ['settings', 'assistant'],
   geocoder: ['settings', 'geocoder'],
+  addresses: ['settings', 'geocoder', 'addresses'],
+  map: ['settings', 'map'],
 } as const;
 
 const common = {
@@ -264,6 +268,44 @@ export function useGeocoderActions() {
     /** Проверка ничего не сохраняет; отказ Яндекса приходит обычным ответом `ok: false`. */
     test(body: GeocoderConfigBody): Promise<GeocoderTestResult> {
       return apiPost<GeocoderTestResult>('settings/geocoder-test', body);
+    },
+    /** Один запрос к Яндексу по одному адресу; после него таблица и сводка перечитываются. Ошибку не глотаем. */
+    async retry(address: string): Promise<void> {
+      await apiPost('settings/geocoder-retry', { address });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: settingsKeys.addresses }),
+        queryClient.invalidateQueries({ queryKey: settingsKeys.geocoder }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.groups }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.requests }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.people }),
+      ]);
+    },
+  };
+}
+
+/** Таблица адресов читается только пока открыто окно: адресов сотни, а нужна она редко. */
+export function useGeocoderAddresses(): UseQueryResult<AddressTableView> {
+  return useQuery({
+    queryKey: settingsKeys.addresses,
+    queryFn: ({ signal }) => apiGet<AddressTableView>('settings/geocoder/addresses', signal),
+    ...common,
+  });
+}
+
+export function useSettingsMap(): UseQueryResult<MapConfigView> {
+  return useQuery({ queryKey: settingsKeys.map, queryFn: ({ signal }) => apiGet<MapConfigView>('settings/map', signal), ...common });
+}
+
+/** Ключ карты, как и остальные ключи, уходит только в теле запроса и нигде не запоминается. */
+export function useMapActions() {
+  const queryClient = useQueryClient();
+  return {
+    async save(body: GeocoderConfigBody): Promise<void> {
+      await apiPost('settings/map', body);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: settingsKeys.map }),
+        queryClient.invalidateQueries({ queryKey: ['map'] }),
+      ]);
     },
   };
 }

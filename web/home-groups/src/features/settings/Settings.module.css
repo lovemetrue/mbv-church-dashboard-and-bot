@@ -602,3 +602,18 @@
   font-size: 12px;
   font-weight: 400;
 }
+
+/* Ссылка-кнопка в таблице адресов: открывает карточку, откуда взят адрес. */
+.linkBtn {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.linkBtn:hover {
+  text-decoration-thickness: 2px;
+}

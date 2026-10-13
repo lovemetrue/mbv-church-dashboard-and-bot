@@ -57,6 +57,12 @@
  *   GET  /api/v1/settings/geocoder      → GeocoderConfigView (только super; ключа в ответе нет)
  *   POST /api/v1/settings/geocoder      GeocoderConfigBody → ActionOk | ActionError (только super; ключ шифруется)
  *   POST /api/v1/settings/geocoder-test GeocoderConfigBody → GeocoderTestResult (только super; ничего не сохраняет)
+ *   GET  /api/v1/settings/geocoder/addresses → AddressTableView (только super: все адреса, их состояние и откуда они взяты)
+ *   POST /api/v1/settings/geocoder-retry AddressRetryBody → ActionOk | ActionError (только super: один запрос к Яндексу по одному адресу)
+ *   GET  /api/v1/settings/map            → MapConfigView (только super; ключа в ответе нет)
+ *   POST /api/v1/settings/map            GeocoderConfigBody → ActionOk | ActionError (только super; ключ карты шифруется)
+ *   GET  /api/v1/map/config              → MapBootstrap (любой вход: нужен, чтобы открыть карту)
+ *   POST /api/v1/map/loaded              (тело {}) → MapBootstrap (любой вход: считает открытие карты в месяце)
  *   GET  /api/v1/settings/bot           → SettingsBotView (только super)
  *   POST /api/v1/settings/bot/extra-questions ExtraQuestionsBody → ActionOk | ActionError (только super)
  *   POST /api/v1/settings/bot/send-extra-questions SendExtraInvitesBody → SendExtraInvitesOk | ActionError (только super; пишет живым людям)
@@ -493,14 +499,44 @@ export interface GeocoderConfigView {
   dailyLimit: number;
   /** Адреса, которые нужны подбору (групп и открытых заявок): сколько всего, с координатами, не нашлись и ещё ждут запроса. */
   addresses: { total: number; found: number; missing: number; waiting: number };
-  /** Адреса, которые Яндекс не нашёл (не больше 30): их стоит поправить в карточке. */
-  missingList: string[];
 }
 
 /** `apiKey`: строка — новый ключ, null — убрать сохранённый (вернётся `.env`). В проверке не указан — берётся действующий. */
 export interface GeocoderConfigBody { apiKey?: string | null }
 
 export type GeocoderTestResult = { ok: true; ms: number } | { ok: false; message: string };
+
+/** Откуда взят адрес в таблице адресов: по нему открывается карточка. */
+export interface AddressSourceView { kind: 'group' | 'request' | 'person'; id: string; label: string }
+
+/** Строка таблицы адресов: что с адресом в геокодере и где он встречается. */
+export interface AddressRowView {
+  /** Адрес как записан (по нему же идёт повтор). */
+  address: string;
+  state: 'found' | 'missing' | 'waiting';
+  lat: number | null;
+  lon: number | null;
+  /** Карточки, где этот адрес записан (один и тот же адрес может быть у нескольких). */
+  sources: AddressSourceView[];
+}
+
+export interface AddressTableView { generatedAt: string; items: AddressRowView[] }
+
+/** Повторить определение координат одного адреса. */
+export interface AddressRetryBody { address: string }
+
+/** Ключ Яндекс.Карт (JS API) для карты групп. Самого ключа в ответе настроек нет никогда. */
+export interface MapConfigView {
+  keySet: boolean;
+  keyHint: string | null;
+  keyUnreadable: boolean;
+  /** Сколько раз карта открывалась в этом месяце и сколько бесплатно даёт ключ. */
+  loadsThisMonth: number;
+  monthlyLimit: number;
+}
+
+/** Что нужно странице, чтобы показать карту: ключ (он и так уходит в браузер, ограничьте его по адресу сайта в кабинете Яндекса) и расход. */
+export interface MapBootstrap { apiKey: string | null; loadsThisMonth: number; monthlyLimit: number }
 
 export interface SettingsAssistantView {
   generatedAt: string;
@@ -970,6 +1006,8 @@ export interface GroupItem extends GroupBrief {
   health: { score: number; items: HealthItem[] };
   /** Координаты адреса группы (см. `GeoState`). */
   addressGeo: GeoState;
+  /** Точка адреса группы для карты; null — адреса нет или он не нашёлся. */
+  coords: { lat: number; lon: number } | null;
   /**
    * Сколько человек утвердил сервис после последней обратной связи ведущего. Они уже добавлены к
    * `people`: ведущий обновит число сам, и счётчик обнулится (считаем только утверждённых позже).

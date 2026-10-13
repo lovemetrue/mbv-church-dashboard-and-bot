@@ -87,15 +87,16 @@ describe('дозаполнение кэша', () => {
     used = 0;
   });
 
-  test('закрытые группы, закрытые заявки и заявки не «в группу» геокодер не тратят: лимит небольшой', () => {
-    const groups = [{ address: 'ул. Живая, 1', status: 'Функционирует' }, { address: 'ул. Закрытая, 2', status: 'Закрыта' }] as never;
-    const requests = [
-      { type: 'join_group', status: 'Новая', manual_street: null, address: 'ул. Открытая, 3' },
-      { type: 'join_group', status: 'Исполнена', manual_street: null, address: 'ул. Исполненная, 4' },
-      { type: 'join_group', status: 'Аннулирована', manual_street: null, address: 'ул. Аннулированная, 5' },
-      { type: 'lead_group', status: 'Новая', manual_street: null, address: 'ул. Хозяйская, 6' },
-    ] as never;
-    expect(addressesOf({ groups, requests })).toEqual(['ул. Живая, 1', 'ул. Открытая, 3']);
+  test('геокодируются группы «Функционирует», «На паузе» и «Потенциальная» и все люди с адресом; закрытые и «недвижимость» — нет', () => {
+    const g = (status: string, address: string | null) => ({ status, address });
+    const groups = [g('Функционирует', 'ул. Живая, 1'), g('На паузе', 'ул. Пауза, 2'), g('Потенциальная', 'ул. Потенциал, 3'), g('Закрыта', 'ул. Закрытая, 4'), g('Недвижимость', 'ул. Дом, 5'), g('Функционирует', null)] as never;
+    const r = (type: string, status: string, address: string) => ({ type, status, manual_street: null, address });
+    const requests = [r('lead_group', 'Новая', 'ул. Хозяйская, 6'), r('join_group', 'Исполнена', 'ул. Исполненная, 7'), r('join_group', 'Новая', 'ул. Открытая, 8')] as never;
+    const participants = [{ address: 'ул. Анкетная, 9' }, { address: null }];
+    // Порядок: группы, открытые заявки «в группу», остальные заявки, регистрации.
+    expect(addressesOf({ groups, requests, participants })).toEqual([
+      'ул. Живая, 1', 'ул. Пауза, 2', 'ул. Потенциал, 3', 'ул. Открытая, 8', 'ул. Хозяйская, 6', 'ул. Исполненная, 7', 'ул. Анкетная, 9',
+    ]);
   });
 
   test('сводка по адресам: найдены, не нашлись и ждут; одинаковые адреса считаются один раз, список не нашедшихся виден', () => {

@@ -252,7 +252,7 @@ describe('«Добавить человека»: новый человек', () 
     const user = userEvent.setup();
     const dialog = await openDialog(user);
     await user.click(within(dialog).getByRole('tab', { name: 'Новый человек' }));
-    for (const name of [/^ФИО/, 'Телефон', 'Возраст', 'Район или место', 'Заметка']) {
+    for (const name of [/^ФИО/, 'Телефон', 'Возраст', 'Район, метро, ориентир', 'Улица и дом', 'Удобные день и время', 'Хобби', 'Профессия', 'Семейное положение', 'Комментарий', 'Заметка']) {
       expect(within(dialog).getByRole('textbox', { name })).toBeInTheDocument();
     }
     expect(within(dialog).getByLabelText('В группе с')).toHaveAttribute('max', todayIso());
@@ -281,6 +281,33 @@ describe('«Добавить человека»: новый человек', () 
     expect(within(dialog).getByRole('textbox', { name: 'Телефон' })).toHaveValue('+7 911 555');
   });
 
+  test('новый человек вносится со всеми полями карточки: адрес, время, хобби, профессия, семейное положение, комментарий', async () => {
+    const fetchMock = stubFetchWithFixtures({ 'groups/3/members/create': () => json({ ok: true, id: 9, personKey: 'p2' }) });
+    const user = userEvent.setup();
+    const dialog = await openDialog(user);
+    await user.click(within(dialog).getByRole('tab', { name: 'Новый человек' }));
+    await user.type(fio(dialog), 'Анна Лебедева');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Улица и дом' }), 'Коллонтай 5');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Удобные день и время' }), 'среда вечером');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Хобби' }), 'вязание');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Профессия' }), 'врач');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Семейное положение' }), 'замужем');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Комментарий' }), 'позвонить вечером');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Заметка' }), 'ходит с лета');
+    await user.click(submit(dialog));
+    await waitFor(() =>
+      expect(posts(fetchMock)).toEqual([
+        {
+          path: 'groups/3/members/create',
+          body: {
+            newPerson: { fio: 'Анна Лебедева', address: 'Коллонтай 5', schedule: 'среда вечером', hobby: 'вязание', profession: 'врач', family: 'замужем', note: 'позвонить вечером' },
+            note: 'ходит с лета',
+          },
+        },
+      ]),
+    );
+  });
+
   test('на сервер уходит newPerson и без personKey, пустые поля опущены', async () => {
     const fetchMock = stubFetchWithFixtures({ 'groups/3/members/create': () => json({ ok: true, id: 9, personKey: 'p2' }) });
     const user = userEvent.setup();
@@ -288,7 +315,7 @@ describe('«Добавить человека»: новый человек', () 
     await user.click(within(dialog).getByRole('tab', { name: 'Новый человек' }));
     await user.type(fio(dialog), ' Анна Лебедева ');
     await user.type(within(dialog).getByRole('textbox', { name: 'Телефон' }), '+7 911 111 22 33');
-    await user.type(within(dialog).getByRole('textbox', { name: 'Район или место' }), 'Купчино');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Район, метро, ориентир' }), 'Купчино');
     fireEvent.change(within(dialog).getByLabelText('В группе с'), { target: { value: '2026-09-02' } });
     await user.click(submit(dialog));
     await waitFor(() =>

@@ -993,7 +993,11 @@ export interface GroupMember {
 /** Добавить человека в состав: выбрать из справочника (`personKey`) ИЛИ внести нового (`newPerson`) — карточка появится в «Людях». */
 export interface MemberAddBody {
   personKey?: string;
-  newPerson?: { fio: string; phone?: string | null; age?: string | null; place?: string | null; note?: string | null };
+  /** Новая карточка: те же поля, что у формы правки человека (см. `PersonItem`). */
+  newPerson?: {
+    fio: string; phone?: string | null; age?: string | null; place?: string | null; note?: string | null;
+    address?: string | null; schedule?: string | null; hobby?: string | null; profession?: string | null; family?: string | null;
+  };
   /** Дата вступления, 2026-09-01, не из будущего. */
   joinedOn?: string | null;
   note?: string | null;

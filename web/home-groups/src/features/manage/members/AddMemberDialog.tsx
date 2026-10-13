@@ -6,6 +6,7 @@ import { ru } from '../../../shared/i18n/ru';
 import { useAppNav } from '../../../shared/nav';
 import { Button, ErrorState, LoadingState, Modal, Pill, StrangeBadge } from '../../../shared/ui';
 import buttonStyles from '../../../shared/ui/Button.module.css';
+import { CONTACT_FIELD_DEFS, type ContactName } from '../../contact/contactSpec';
 import manage from '../Manage.module.css';
 import { buildAddBody, isFutureDate, searchPeople, todayIso, type AddForm } from './model';
 import styles from './Members.module.css';
@@ -14,7 +15,8 @@ import { useMemberAction } from './refresh';
 const t = ru.members.addDialog;
 
 type Mode = 'directory' | 'new';
-const NO_NEW = { fio: '', phone: '', age: '', place: '' };
+/** Те же поля, что в форме правки человека (`CONTACT_FIELD_DEFS`): добавить можно сразу с адресом, хобби и остальным. */
+const NO_NEW = Object.fromEntries(CONTACT_FIELD_DEFS.map((d) => [d.name, ''])) as Record<ContactName, string>;
 
 /**
  * Окно «Добавить человека»: выбрать из справочника людей или внести нового «по плюсу» (его карточка
@@ -43,7 +45,7 @@ export function AddMemberDialog({ g, onClose }: { g: GroupItem; onClose: () => v
   const found = useMemo(() => searchPeople(people.data?.items ?? [], query), [people.data, query]);
   const chosen = picked ? people.data?.items.find((p) => p.key === picked) : undefined;
 
-  const form: AddForm = mode === 'directory' ? { mode, personKey: picked, joinedOn, note } : { mode, ...fresh, joinedOn, note };
+  const form: AddForm = mode === 'directory' ? { mode, personKey: picked, joinedOn, note } : { mode, person: fresh, joinedOn, note };
   const body = buildAddBody(form);
   // Пустую дату сервер примет, дату из завтрашнего дня — нет; говорим об этом сразу, а не после запроса.
   const future = isFutureDate(joinedOn, today);
@@ -126,24 +128,34 @@ export function AddMemberDialog({ g, onClose }: { g: GroupItem; onClose: () => v
     </div>
   );
 
-  const freshField = (name: keyof typeof NO_NEW, label: string, extra: { required?: boolean; inputMode?: 'tel' | 'numeric' } = {}) => (
-    <div className={manage.field}>
-      <label htmlFor={`${uid}-${name}`} className={extra.required ? manage.required : undefined}>
-        {label}
-      </label>
-      <input
-        id={`${uid}-${name}`}
-        className={manage.control}
-        type="text"
-        autoComplete="off"
-        inputMode={extra.inputMode}
-        aria-required={extra.required ? true : undefined}
-        value={fresh[name]}
-        disabled={busy}
-        onChange={(e) => change(() => setFresh((f) => ({ ...f, [name]: e.target.value })))}
-      />
-    </div>
-  );
+  const freshField = (d: (typeof CONTACT_FIELD_DEFS)[number]) => {
+    const name = d.name as ContactName;
+    const id = `${uid}-person-${name}`;
+    const change1 = (v: string) => change(() => setFresh((f) => ({ ...f, [name]: v })));
+    return (
+      <div key={name} className={d.wide ? manage.fieldWide : manage.field}>
+        <label htmlFor={id} className={d.required ? manage.required : undefined}>
+          {d.label}
+        </label>
+        {d.kind === 'textarea' ? (
+          <textarea id={id} className={manage.control} rows={2} value={fresh[name]} disabled={busy} onChange={(e) => change1(e.target.value)} />
+        ) : (
+          <input
+            id={id}
+            className={manage.control}
+            type="text"
+            autoComplete="off"
+            inputMode={d.inputMode}
+            placeholder={d.placeholder}
+            aria-required={d.required ? true : undefined}
+            value={fresh[name]}
+            disabled={busy}
+            onChange={(e) => change1(e.target.value)}
+          />
+        )}
+      </div>
+    );
+  };
 
   return (
     <Modal title={t.title(groupLabel(g))} onClose={() => !busyRef.current && onClose()}>
@@ -260,10 +272,7 @@ export function AddMemberDialog({ g, onClose }: { g: GroupItem; onClose: () => v
           ) : (
             <div>
               <div className={styles.fields}>
-                {freshField('fio', t.fio, { required: true })}
-                {freshField('phone', t.phone, { inputMode: 'tel' })}
-                {freshField('age', t.age)}
-                {freshField('place', t.place)}
+                {CONTACT_FIELD_DEFS.map(freshField)}
                 {dateField}
                 {noteField}
               </div>

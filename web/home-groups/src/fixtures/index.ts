@@ -52,7 +52,7 @@ export function fixtureResponse(path: string): unknown {
     case 'settings/assistant':
       return buildSettingsAssistant();
     case 'settings/geocoder':
-      return { keySet: true, keySource: 'env', keyHint: 'a1b2', keyUnreadable: false, usedToday: 42, dailyLimit: 900 };
+      return { keySet: true, keySource: 'env', keyHint: 'a1b2', keyUnreadable: false, usedToday: 42, dailyLimit: 900, addresses: { total: 12, found: 10, missing: 1, waiting: 1 }, missingList: ['ул. Несуществующая, 99'] };
     case 'settings/health':
       return buildSettingsHealth();
     case 'settings/errors':

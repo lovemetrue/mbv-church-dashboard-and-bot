@@ -291,7 +291,7 @@ function Params({ r }: { r: RequestItem }) {
       title: ru.requests.paramStreet,
       on: hasStreet,
       value: streetText || ru.requests.paramUnknown,
-      hint: ru.requests.paramStreetHint,
+      hint: [ru.requests.paramStreetHint, r.streetGeo === 'found' ? ru.requests.paramStreetGeoFound : r.streetGeo === 'missing' ? ru.requests.paramStreetGeoMissing : ''].filter(Boolean).join('. ').replace(/\.\. /g, '. '),
       field: 'street',
       source: r.streetInfo.text ? r.streetInfo.source : null,
       editLabel: pr.editStreet,

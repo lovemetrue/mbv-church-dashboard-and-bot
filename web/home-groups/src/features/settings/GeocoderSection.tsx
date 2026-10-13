@@ -194,6 +194,22 @@ function GeocoderForm({ view }: { view: GeocoderConfigView }) {
         </p>
       )}
 
+      <div role="group" aria-label={t.addressesTitle} className={styles.stackTop}>
+        <h3 className={styles.h5}>{t.addressesTitle}</h3>
+        <p>{t.addresses(view.addresses)}</p>
+        <p className={`${styles.muted} ${styles.hintLine}`}>{t.addressesHint}</p>
+        {view.missingList.length > 0 && (
+          <>
+            <h4 className={styles.h5}>{t.missingTitle}</h4>
+            <ul>
+              {view.missingList.map((a) => (
+                <li key={a}>{a}</li>
+              ))}
+            </ul>
+          </>
+        )}
+        {view.addresses.waiting === 0 && view.addresses.found > 0 && <p className={styles.noticeOk}>{t.rerunHint}</p>}
+      </div>
       <p className={`${styles.muted} ${styles.hintBelow}`}>{t.usage(view.usedToday, view.dailyLimit)}</p>
       <p className={`${styles.muted} ${styles.hintLine}`}>{t.privacy}</p>
 

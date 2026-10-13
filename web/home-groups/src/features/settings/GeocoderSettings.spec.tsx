@@ -12,7 +12,8 @@ afterEach(() => vi.unstubAllGlobals());
 const KEY = ['ya', 'new', 'key', '12345678'].join('-');
 
 const view = (patch: Partial<GeocoderConfigView> = {}): GeocoderConfigView => ({
-  keySet: true, keySource: 'env', keyHint: 'a1b2', keyUnreadable: false, usedToday: 42, dailyLimit: 900, ...patch,
+  keySet: true, keySource: 'env', keyHint: 'a1b2', keyUnreadable: false, usedToday: 42, dailyLimit: 900,
+  addresses: { total: 12, found: 10, missing: 1, waiting: 1 }, missingList: ['ул. Несуществующая, 99'], ...patch,
 });
 
 function open(overrides: Parameters<typeof stubFetchWithFixtures>[0] = {}) {
@@ -35,6 +36,20 @@ describe('«Настройки»: геокодер', () => {
     expect(within(region).getByText(/Ключ задан в файле \.env на сервере: ••••••••a1b2/)).toBeInTheDocument();
     expect(within(region).getByText(/сделано запросов: 42 из 900/)).toBeInTheDocument();
     expect(within(region).getByLabelText('Ключ Яндекс.Геокодера')).toHaveValue('');
+  });
+
+  test('показывает сводку по адресам и список не нашедшихся; когда ждать нечего — подсказывает пересчитать предложения в «Заявках»', async () => {
+    open({ 'settings/geocoder': () => json(view({ addresses: { total: 12, found: 11, missing: 1, waiting: 0 } })) });
+    const region = await block();
+    expect(within(region).getByText(/Всего адресов: 12\. Координаты найдены: 11\. Не нашлись: 1\. Ждут запроса: 0\./)).toBeInTheDocument();
+    expect(within(region).getByText('ул. Несуществующая, 99')).toBeInTheDocument();
+    expect(within(region).getByText(/Пересчитать все предложения/)).toBeInTheDocument();
+  });
+
+  test('пока адреса ещё ждут запроса, подсказки про пересчёт нет', async () => {
+    open();
+    const region = await block();
+    expect(within(region).queryByText(/Пересчитать все предложения/)).toBeNull();
   });
 
   test('сохранить можно только введённый ключ; он уходит в теле запроса, поле после сохранения очищается', async () => {

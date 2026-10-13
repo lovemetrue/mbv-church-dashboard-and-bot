@@ -439,11 +439,13 @@ describe('группы справочника', () => {
       [addressKey('ул. Анкетная, 2')!, { lat: 59.95, lon: 30.36 }],
       [addressKey('ул. Потерянная, 9')!, null],
     ]);
-    const { calls } = build({
+    const { calls, views } = build({
       groups: [group({ id: 1, address: 'ул. Рылеева, 32' }), group({ id: 2, address: 'ул. Потерянная, 9' }), group({ id: 3, address: null })],
       requests: [request({ id: 1, address: 'ул. Анкетная, 2', place: 'Приморский' })],
       geo,
     });
+    expect(views.groups.items.map((g) => g.addressGeo)).toEqual(['found', 'missing', null]);
+    expect(views.requests.items[0]!.streetGeo).toBe('found');
     expect(calls.plan[0]!.groups.map((g) => g.coords ?? null)).toEqual([{ lat: 59.94, lon: 30.35 }, null, null]);
     expect(calls.plan[0]!.requests[0]!.coords).toEqual({ lat: 59.95, lon: 30.36 });
   });

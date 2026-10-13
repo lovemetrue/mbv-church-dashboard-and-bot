@@ -34,6 +34,7 @@ import { loadPseudonyms } from './assistant/pseudonyms.js';
 import { HintsRepo } from '../db/repos/hints.repo.js';
 import type { LlmClient, LlmSource } from '../platform/llm/deepseek.js';
 import { createGeocoderConfig } from './geocoderConfig.js';
+import { addressStats, addressesOf } from './geocodeJob.js';
 import { createLlmConfig } from './assistant/llmConfig.js';
 import { requestsToCsv } from './export.js';
 import { usersToCsv } from '../core/csv.js';
@@ -84,12 +85,6 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   const llmConfig = createLlmConfig({
     settings: appSettings, audit: new AuditRepo(db), env: opts.llmSettings?.env ?? {}, secret: opts.llmSettings?.secret ?? '',
   });
-  const geocodeCache = new GeocodeRepo(db);
-  // Ключ геокодера — тоже из настроек (зашифрован тем же секретом), а пока там пусто — `YANDEX_GEOCODER_KEY` из `.env`.
-  const geocoderConfig = createGeocoderConfig({
-    settings: appSettings, audit: new AuditRepo(db), env: opts.llmSettings?.env ?? {}, secret: opts.llmSettings?.secret ?? '',
-    usedToday: () => geocodeCache.countSince(24),
-  });
   const llm: LlmClient | LlmSource | null = opts.llm !== undefined ? opts.llm : llmConfig.source;
   const assistantAvailable = async (): Promise<boolean> => {
     if (llm === null) return false;
@@ -111,6 +106,13 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   const viewOptions = { defaultCapacity: opts.defaultCapacity, ...(opts.timeZone ? { timeZone: opts.timeZone } : {}) };
 
   const views = createViewsSource({ load, engine, ttlMs: opts.ttlMs, views: viewOptions });
+  const geocodeCache = new GeocodeRepo(db);
+  // Ключ геокодера — тоже из настроек (зашифрован тем же секретом), а пока там пусто — `YANDEX_GEOCODER_KEY` из `.env`.
+  const geocoderConfig = createGeocoderConfig({
+    settings: appSettings, audit: new AuditRepo(db), env: opts.llmSettings?.env ?? {}, secret: opts.llmSettings?.secret ?? '',
+    usedToday: () => geocodeCache.countSince(24),
+    addressStats: async () => addressStats(addressesOf(await load()), await geocodeCache.all()),
+  });
   const matching = createMatching({
     load, engine, placement, settings: appSettings, options: viewOptions, invalidate: () => views.invalidate(),
   });

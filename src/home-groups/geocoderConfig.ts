@@ -42,6 +42,8 @@ export function createGeocoderConfig(deps: {
   secret: string;
   /** Сколько запросов к геокодеру сделано за сутки (для строки «осталось»). */
   usedToday: () => Promise<number>;
+  /** Адреса, нужные подбору, и что про них известно (для строки «найдено / не нашлись / ждут»). */
+  addressStats: () => Promise<Pick<GeocoderConfigView, 'addresses' | 'missingList'>>;
   makeGeocoder?: (key: string) => Geocoder;
 }) {
   const envKey = (): string | null => deps.env['YANDEX_GEOCODER_KEY']?.trim() || null;
@@ -70,6 +72,7 @@ export function createGeocoderConfig(deps: {
         keyUnreadable: e.unreadable,
         usedToday: await deps.usedToday(),
         dailyLimit: DAILY_LIMIT,
+        ...(await deps.addressStats()),
       };
     },
 

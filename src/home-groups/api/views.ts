@@ -289,6 +289,12 @@ export function buildViewsWithPlan(
   const settings = { ...engine.DEFAULT_SETTINGS, defaultCapacity };
 
   const coordsOf = (address: string | null | undefined) => input.geo?.get(addressKey(address) ?? '') ?? null;
+  // Есть запись с точкой — «found», запись «не нашли» — «missing», записи нет (не спрашивали или геокодер выключен) — null.
+  const geoStateOf = (address: string | null | undefined): 'found' | 'missing' | null => {
+    const key = addressKey(address);
+    if (key === null || !input.geo?.has(key)) return null;
+    return input.geo.get(key) ? 'found' : 'missing';
+  };
 
   // ── группы ────────────────────────────────────────────────────────────────
   const planGroups: PlanGroup[] = input.groups.map((g) => {
@@ -587,6 +593,7 @@ export function buildViewsWithPlan(
       slot: pr.slot,
       scheduleInfo: scheduleOf(r),
       streetInfo: streetOf(r),
+      streetGeo: geoStateOf(streetOf(r).text),
       original: originalFields(r),
       street: pr.street,
       source: sourceLabel(r.origin, r.source),
@@ -720,6 +727,7 @@ export function buildViewsWithPlan(
       verifiedDaysAgo: p.verifiedDaysAgo,
       comment: nonBlank(g.comment),
       health: groupHealth(g, p),
+      addressGeo: geoStateOf(g.address),
       placedNew: input.placedNew?.get(g.id) ?? 0,
       leaderKey: g.leader_user_id ? `u${g.leader_user_id}` : null,
       plannedRequests: plannedByGroup.get(g.id) ?? [],

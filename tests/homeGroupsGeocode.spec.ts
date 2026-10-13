@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { addressKey, createYandexGeocoder, distanceMeters, geocodePending, type Geocoder, type GeocodeStore } from '../src/home-groups/geocode.js';
-import { addressesOf } from '../src/home-groups/geocodeJob.js';
+import { addressStats, addressesOf } from '../src/home-groups/geocodeJob.js';
 import type { GeocodeEntry } from '../src/db/repos/geocode.repo.js';
 
 const reply = (pos: string, precision: string) => ({
@@ -87,9 +87,30 @@ describe('дозаполнение кэша', () => {
     used = 0;
   });
 
+  test('закрытые группы, закрытые заявки и заявки не «в группу» геокодер не тратят: лимит небольшой', () => {
+    const groups = [{ address: 'ул. Живая, 1', status: 'Функционирует' }, { address: 'ул. Закрытая, 2', status: 'Закрыта' }] as never;
+    const requests = [
+      { type: 'join_group', status: 'Новая', manual_street: null, address: 'ул. Открытая, 3' },
+      { type: 'join_group', status: 'Исполнена', manual_street: null, address: 'ул. Исполненная, 4' },
+      { type: 'join_group', status: 'Аннулирована', manual_street: null, address: 'ул. Аннулированная, 5' },
+      { type: 'lead_group', status: 'Новая', manual_street: null, address: 'ул. Хозяйская, 6' },
+    ] as never;
+    expect(addressesOf({ groups, requests })).toEqual(['ул. Живая, 1', 'ул. Открытая, 3']);
+  });
+
+  test('сводка по адресам: найдены, не нашлись и ждут; одинаковые адреса считаются один раз, список не нашедшихся виден', () => {
+    const cache = new Map<string, { lat: number; lon: number } | null>([
+      [addressKey('ул. Раз, 1')!, { lat: 1, lon: 2 }],
+      [addressKey('ул. Два, 2')!, null],
+    ]);
+    const r = addressStats(['ул. Раз, 1', 'УЛ Раз 1', 'ул. Два, 2', 'ул. Три, 3'], cache);
+    expect(r).toEqual({ addresses: { total: 3, found: 1, missing: 1, waiting: 1 }, missingList: ['ул. Два, 2'] });
+  });
+
   test('адреса берутся у групп и из заявок; правка координатора важнее анкеты', () => {
-    const groups = [{ address: 'ул. Группы, 1' }, { address: null }] as never;
-    const requests = [{ manual_street: 'ул. Правка, 2', address: 'ул. Анкета, 3' }, { manual_street: null, address: 'ул. Анкета, 4' }, { manual_street: null, address: null }] as never;
+    const groups = [{ address: 'ул. Группы, 1', status: 'Функционирует' }, { address: null, status: 'Функционирует' }] as never;
+    const open = { type: 'join_group', status: 'Новая' };
+    const requests = [{ ...open, manual_street: 'ул. Правка, 2', address: 'ул. Анкета, 3' }, { ...open, manual_street: null, address: 'ул. Анкета, 4' }, { ...open, manual_street: null, address: null }] as never;
     expect(addressesOf({ groups, requests })).toEqual(['ул. Группы, 1', 'ул. Правка, 2', 'ул. Анкета, 4']);
   });
 });

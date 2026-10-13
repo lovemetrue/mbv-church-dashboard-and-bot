@@ -26,7 +26,7 @@ describe('Карточка заявки: карандаш «Править да�
   test('у закрытой заявки карандаша нет', async () => {
     stubFetchWithFixtures();
     const card = await openCard(10);
-    await within(card).findByRole('region', { name: 'Работа с заявкой' });
+    await within(card).findByRole('heading', { name: 'Работа с заявкой' });
     expect(within(card).queryByRole('button', { name: /^Править данные/ })).not.toBeInTheDocument();
   });
 
@@ -34,7 +34,7 @@ describe('Карточка заявки: карандаш «Править да�
     const r = fixtureItem(5);
     const { dialog } = await openEdit(5);
     expect(within(dialog).getByRole('textbox', { name: /^ФИО/ })).toHaveValue(r.fio);
-    expect(within(dialog).getByRole('textbox', { name: 'Телефон' })).toHaveValue(PHONE);
+    expect(within(dialog).getByRole('textbox', { name: 'Телефон' })).toHaveValue('+7 921 555 00 11');
     expect(within(dialog).getByRole('textbox', { name: 'Возраст' })).toHaveValue('46 и старше');
     expect(within(dialog).getByRole('textbox', { name: 'Район, метро, ориентир' })).toHaveValue('Ладожская');
     for (const name of ['Улица и дом', 'Удобные день и время', 'Хобби', 'Профессия', 'Семейное положение']) {
@@ -72,10 +72,8 @@ describe('Карточка заявки: карандаш «Править да�
     await user.type(within(dialog).getByRole('textbox', { name: 'Семейное положение' }), 'замужем');
     await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
-    expect(posts(fetchMock)[0]).toEqual({
-      path: 'requests/5/edit',
-      body: { fields: { address: 'Коллонтай 5', schedule: 'среда', hobby: 'вязание', profession: 'врач', family: 'замужем' } },
-    });
+    expect(posts(fetchMock)[0]).toMatchObject({ path: 'requests/5/edit' });
+    expect(posts(fetchMock)[0]!.body).toEqual({ fields: { address: 'Коллонтай 5', schedule: 'среда', hobby: 'вязание', profession: 'врач', family: 'замужем' } });
   });
 
   test('после успеха окно закрывается, а заявки, «Сегодня», группы и люди перечитываются', async () => {

@@ -505,8 +505,6 @@ export function RequestCard({
   const contacts: KvRow[] = [
     { label: ru.requests.phone, value: r.phone ? <span className="num">{formatPhone(r.phone)}</span> : noValue },
     { label: ru.requests.place, value: r.place ?? noValue },
-    { label: ru.contact.fields.address, value: r.streetInfo.text ?? noValue },
-    { label: ru.contact.fields.schedule, value: r.scheduleInfo.text ?? noValue },
     ...(r.hobby ? [{ label: ru.contact.fields.hobby, value: r.hobby }] : []),
     ...(r.profession ? [{ label: ru.contact.fields.profession, value: r.profession }] : []),
     ...(r.family ? [{ label: ru.contact.fields.family, value: r.family }] : []),

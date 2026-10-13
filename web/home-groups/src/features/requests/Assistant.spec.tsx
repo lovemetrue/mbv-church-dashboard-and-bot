@@ -239,7 +239,7 @@ const NOTE_QUESTIONS: AssistantNote = { filled: [], questions: ['Сколько 
 async function cardBlock(patch: AssistantNote | null, id = 1) {
   stubFetchWithFixtures({ requests: () => json(viewWith(id, { assistant: patch })) });
   const card = await openCard(id);
-  await within(card).findByRole('region', { name: 'Связаться' });
+  await within(card).findByRole('heading', { name: 'Работа с заявкой' });
   return card;
 }
 
@@ -297,7 +297,7 @@ describe('Карточка заявки: блок «Помощник»', () => {
   test('блок стоит выше «Работы с заявкой»', async () => {
     const card = await cardBlock(NOTE_FULL);
     const helper = within(card).getByRole('region', { name: 'Помощник' });
-    const work = within(card).getByRole('region', { name: 'Связаться' });
+    const work = within(card).getByRole('heading', { name: 'Работа с заявкой' });
     expect(helper.compareDocumentPosition(work) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 

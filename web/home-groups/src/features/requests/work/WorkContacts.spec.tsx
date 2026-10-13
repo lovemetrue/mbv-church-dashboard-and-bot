@@ -14,7 +14,7 @@ async function openWithPhone(id = 1, phone: string | null = PHONE) {
   const card = await openCard(id);
   // Значки живут в шапке карточки, рядом с названием: искать их в глубине карточки не нужно.
   const section = within(card).getByRole('banner');
-  await within(card).findByRole('region', { name: 'Работа с заявкой' });
+  await within(card).findByRole('heading', { name: 'Работа с заявкой' });
   return { card, section };
 }
 
@@ -74,7 +74,7 @@ describe('Карточка заявки: значки связи в шапке',
 
   test('у закрытой заявки без телефона подсказка не зовёт править данные: править уже нельзя', async () => {
     const { section } = await openWithPhone(10, null);
-    expect(within(section).getByText('Телефона нет')).toBeInTheDocument();
+    expect(within(section).getByText('Телефона нет.')).toBeInTheDocument();
     expect(within(section).queryByText(/Править данные/)).not.toBeInTheDocument();
   });
 

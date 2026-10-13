@@ -64,7 +64,12 @@ export function createYandexGeocoder(apiKey: string, fetchImpl: typeof fetch = f
 export interface GeocodeStore {
   all(): Promise<Map<string, GeocodeEntry>>;
   save(key: string, point: GeoPoint | null, precision: string | null): Promise<void>;
+  /** Сколько запросов уже сделано за последние `hours` часов (для суточного лимита). */
+  countSince(hours: number): Promise<number>;
 }
+
+/** Бесплатный ключ — тысяча запросов в сутки; оставляем запас, чтобы ручные проверки и повторы не упёрлись в лимит. */
+export const DAILY_LIMIT = 900;
 
 /**
  * Дозаполняет кэш: берёт адреса, которых в нём нет, и спрашивает по одному с паузой (бесплатный лимит небольшой, а
@@ -72,9 +77,12 @@ export interface GeocodeStore {
  */
 export async function geocodePending(
   addresses: readonly string[], store: GeocodeStore, geocoder: Geocoder,
-  opts: { limit?: number; pauseMs?: number; sleep?: (ms: number) => Promise<void> } = {},
+  opts: { limit?: number; pauseMs?: number; dailyLimit?: number; sleep?: (ms: number) => Promise<void> } = {},
 ): Promise<{ done: number; failed: string | null }> {
-  const { limit = 50, pauseMs = 1000, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = opts;
+  const { limit = 50, pauseMs = 1000, dailyLimit = DAILY_LIMIT, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = opts;
+  // Остаток на сутки: когда он кончился, ждём — адреса дозаполнятся завтра, а подбор пока сравнивает улицы по названию.
+  const budget = Math.min(limit, dailyLimit - (await store.countSince(24)));
+  if (budget <= 0) return { done: 0, failed: null };
   const cache = await store.all();
   const todo = new Map<string, string>();
   for (const a of addresses) {
@@ -82,7 +90,7 @@ export async function geocodePending(
     if (key !== null && !cache.has(key) && !todo.has(key)) todo.set(key, a.trim());
   }
   let done = 0;
-  for (const [key, address] of [...todo].slice(0, limit)) {
+  for (const [key, address] of [...todo].slice(0, budget)) {
     const r = await geocoder.geocode(address);
     if (r.kind === 'failed') return { done, failed: r.message };
     await store.save(key, r.kind === 'found' ? r.point : null, r.kind === 'found' ? r.precision : null);

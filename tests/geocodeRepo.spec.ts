@@ -16,5 +16,8 @@ describe('кэш координат', () => {
     expect(await repo.all()).toEqual(new Map([['рылеева 32', { lat: 59.94, lon: 30.35 }], ['потерянная 9', null]]));
     await repo.save('рылеева 32', { lat: 1, lon: 2 }, 'number');
     expect((await repo.all()).get('рылеева 32')).toEqual({ lat: 1, lon: 2 });
+    expect(await repo.countSince(24)).toBe(2);
+    await db.query("UPDATE geocode_cache SET fetched_at = now() - interval '2 days' WHERE address_key = 'потерянная 9'");
+    expect(await repo.countSince(24)).toBe(1);
   });
 });

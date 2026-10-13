@@ -47,9 +47,10 @@ describe('Яндекс.Геокодер', () => {
 });
 
 describe('дозаполнение кэша', () => {
+  let used = 0;
   const memory = (): GeocodeStore & { rows: Map<string, GeocodeEntry> } => {
     const rows = new Map<string, GeocodeEntry>();
-    return { rows, all: async () => new Map(rows), save: async (k, p) => { rows.set(k, p); } };
+    return { rows, all: async () => new Map(rows), save: async (k, p) => { rows.set(k, p); }, countSince: async () => used };
   };
   const found: Geocoder = { geocode: async () => ({ kind: 'found', point: { lat: 1, lon: 2 }, precision: 'exact' }) };
 
@@ -72,6 +73,18 @@ describe('дозаполнение кэша', () => {
     const r = await geocodePending(['Новая 2', 'Новая 3'], store, broken, { sleep: async () => {} });
     expect(r).toEqual({ done: 0, failed: 'лимит' });
     expect(store.rows.has(addressKey('Новая 2')!)).toBe(false);
+  });
+
+  test('суточный лимит: на остаток запрашивает не больше, а когда он кончился — ничего', async () => {
+    const asked: string[] = [];
+    const geocoder: Geocoder = { geocode: async (a) => { asked.push(a); return found.geocode(a); } };
+    used = 898;
+    await geocodePending(['Раз 1', 'Два 2', 'Три 3'], memory(), geocoder, { sleep: async () => {} });
+    expect(asked).toHaveLength(2);
+    used = 900;
+    expect(await geocodePending(['Четыре 4'], memory(), geocoder, { sleep: async () => {} })).toEqual({ done: 0, failed: null });
+    expect(asked).toHaveLength(2);
+    used = 0;
   });
 
   test('адреса берутся у групп и из заявок; правка координатора важнее анкеты', () => {

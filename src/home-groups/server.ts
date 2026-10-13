@@ -14,6 +14,7 @@ import type { BotSettings } from './botSettings.js';
 import type { Assistant } from './assistant/service.js';
 import type { Chat } from './assistant/chat.js';
 import type { LlmConfig } from './assistant/llmConfig.js';
+import type { GeocoderConfig } from './geocoderConfig.js';
 import type { Members } from './members.js';
 import type { Strange } from './strange.js';
 import type { Reconciler } from './reconcile/service.js';
@@ -72,6 +73,7 @@ export interface HomeGroupsDeps {
   assistant: Assistant;
   /** Подключение помощника: провайдер, модель, ключ (только полный вход). */
   llmConfig: LlmConfig;
+  geocoderConfig: GeocoderConfig;
   /** Чат помощника: вопросы по базе, только чтение. */
   chat: Chat;
   /** Настройки бота из интерфейса (только полный вход). */
@@ -128,7 +130,7 @@ const CONTENT_TYPES: Record<string, string> = {
 
 class BodyTooLarge extends Error {}
 
-const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode|bot\/extra-questions|bot\/send-extra-questions|assistant\/enabled|assistant\/llm|assistant\/llm-test)$/;
+const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode|bot\/extra-questions|bot\/send-extra-questions|assistant\/enabled|assistant\/llm|assistant\/llm-test|geocoder|geocoder-test)$/;
 const CREATE_PATH = /^\/api\/v1\/(requests|groups|people|coordinators)\/create$/;
 /** `POST /api/v1/groups/5/update`: правка и удаление записей справочника. */
 const MANAGE_PATH = /^\/api\/v1\/(groups|coordinators|people)\/(\d{1,15})\/(update|delete)$/;
@@ -688,7 +690,14 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       sendJson(res, 200, result);
       return;
     }
+    if (action === 'geocoder-test') {
+      const result = await deps.geocoderConfig.test(call.body);
+      logger.info({ actor: call.actor, ok: result.ok }, 'домашние группы: проверка ключа геокодера');
+      sendJson(res, 200, result);
+      return;
+    }
     const handlers: Record<string, () => Promise<{ ok: true } | { ok: false; error: ActionError['error']; message: string }>> = {
+      'geocoder': () => deps.geocoderConfig.save(call.body, call.actor),
       'prompts/save': () => deps.settings.savePrompt(call.body, call.actor),
       'prompts/activate': () => deps.settings.activatePrompt(call.body, call.actor),
       'staff/suggest': () => deps.staff.suggestLogin(call.body),
@@ -764,6 +773,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       '/api/v1/settings/prompts': () => deps.settings.prompts(),
       '/api/v1/settings/staff': () => deps.staff.view(),
       '/api/v1/settings/bot': () => deps.botSettings.view(),
+      '/api/v1/settings/geocoder': () => deps.geocoderConfig.view(),
       '/api/v1/settings/assistant': async () => ({ ...(await deps.assistant.view()), llm: await deps.llmConfig.view() }),
     };
     const settingsRoute = Object.hasOwn(settingsRead, path) ? settingsRead[path] : undefined;

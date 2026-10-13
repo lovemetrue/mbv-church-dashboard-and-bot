@@ -51,6 +51,8 @@ export function fixtureResponse(path: string): unknown {
       return buildSettingsBot();
     case 'settings/assistant':
       return buildSettingsAssistant();
+    case 'settings/geocoder':
+      return { keySet: true, keySource: 'env', keyHint: 'a1b2', keyUnreadable: false, usedToday: 42, dailyLimit: 900 };
     case 'settings/health':
       return buildSettingsHealth();
     case 'settings/errors':
@@ -132,6 +134,9 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
     return { ok: true };
   }
   if (clean === 'settings/assistant/llm-test') return buildLlmTestResult((body ?? {}) as Parameters<typeof buildLlmTestResult>[0]);
+  // Ключ геокодера: в демо сохранение «получается», а проверка отвечает успехом.
+  if (clean === 'settings/geocoder') return { ok: true };
+  if (clean === 'settings/geocoder-test') return { ok: true, ms: 420 };
   // Массовое действие: в демо все выбранные «обработаны», ничего не пропущено.
   if (clean === 'requests/bulk') return { ok: true, done: ((body ?? {}) as { ids?: number[] }).ids?.length ?? 0, skipped: 0 };
   const input = (body ?? {}) as { fullName?: string; email?: string; id?: number };

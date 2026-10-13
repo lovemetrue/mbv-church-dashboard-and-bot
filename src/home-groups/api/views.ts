@@ -4,6 +4,7 @@ import type { StoredHint } from '../../db/repos/hints.repo.js';
 import type { StrangeMarkRow } from '../../db/repos/strange.repo.js';
 import { diffSnapshots, inputSnapshot, type InputSnapshot } from '../plan/signature.js';
 import { streetName } from '../plan/street.js';
+import { addressKey } from '../geocode.js';
 import { gistOf } from '../reconcile/gist.js';
 import { reconcileOf } from '../reconcile/plan.js';
 import { baseHash, needsOf, anyNeed, scriptFactsOf, type AssistantCandidate, type RawBrief } from '../assistant/brief.js';
@@ -53,6 +54,8 @@ export interface ViewsInput {
   activeProposals?: ReadonlyMap<number, { groupId: number | null; source: 'script' | 'agent' | 'manual'; inputHash?: string | null; inputSnapshot?: InputSnapshot | null }>;
   /** Сколько человек утвердил сервис в группу после последней обратной связи ведущего. */
   placedNew?: ReadonlyMap<number, number>;
+  /** Кэш координат адресов (ключ — `addressKey`); нет записи или null — адрес не геокодирован или не найден. */
+  geo?: ReadonlyMap<string, { lat: number; lon: number } | null>;
   /** Настройки подбора: автоматический ли он и когда запускали в последний раз. */
   matching?: { auto: boolean; lastRun: MatchingStatus['lastRun'] };
 }
@@ -285,6 +288,8 @@ export function buildViewsWithPlan(
   const generatedAt = now.toISOString();
   const settings = { ...engine.DEFAULT_SETTINGS, defaultCapacity };
 
+  const coordsOf = (address: string | null | undefined) => input.geo?.get(addressKey(address) ?? '') ?? null;
+
   // ── группы ────────────────────────────────────────────────────────────────
   const planGroups: PlanGroup[] = input.groups.map((g) => {
     const when = engine.parseGroupWhen(g.day, g.time);
@@ -300,6 +305,7 @@ export function buildViewsWithPlan(
       // В подбор идёт только название улицы без дома: «Рылеева 30» и «ул. Рылеева, 32» — одна улица. Пустой адрес —
       // подбор откатывается на метро или ориентир (`metro`).
       street: streetName(g.address),
+      coords: coordsOf(g.address),
       // Утверждённых сервисом после обратной связи ведущий в число ещё не внёс — добавляем сами.
       people: effectivePeople(g.people, input.placedNew?.get(g.id) ?? 0),
       capacity: defaultCapacity,
@@ -399,6 +405,7 @@ export function buildViewsWithPlan(
       days: resolved.when.days,
       slot: resolved.when.slot,
       street: streetOf(r).text,
+      coords: coordsOf(streetOf(r).text),
       rejectedGroupIds: [...(input.rejectedGroups?.get(r.id) ?? [])],
       avoidDays: resolved.when.avoidDays,
       avoidSlots: resolved.when.avoidSlots,

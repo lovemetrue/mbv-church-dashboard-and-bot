@@ -4,13 +4,14 @@ import { useAppNav } from '../../shared/nav';
 import { AssistantSection } from './AssistantSection';
 import { AuditSection } from './AuditSection';
 import { BotSection } from './BotSection';
+import { GeocoderSection } from './GeocoderSection';
 import { ErrorsSection } from './ErrorsSection';
 import { HealthSection } from './HealthSection';
 import { PromptsSection } from './PromptsSection';
 import { UsersSection } from './UsersSection';
 import styles from './Settings.module.css';
 
-export const SECTION_IDS = ['health', 'errors', 'audit', 'prompts', 'bot', 'assistant', 'users'] as const;
+export const SECTION_IDS = ['health', 'errors', 'audit', 'prompts', 'bot', 'assistant', 'geocoder', 'users'] as const;
 export type SectionId = (typeof SECTION_IDS)[number];
 const DEFAULT_SECTION: SectionId = 'health';
 
@@ -19,7 +20,7 @@ export function parseSection(v: string | null): SectionId {
 }
 
 /** Разделы, которые после первого открытия не размонтируются, а прячутся: в них бывает несохранённая правка. */
-const KEEP_MOUNTED: ReadonlySet<SectionId> = new Set(['prompts', 'bot', 'assistant']);
+const KEEP_MOUNTED: ReadonlySet<SectionId> = new Set(['prompts', 'bot', 'assistant', 'geocoder']);
 
 const VIEWS: Record<SectionId, () => JSX.Element> = {
   health: HealthSection,
@@ -28,6 +29,7 @@ const VIEWS: Record<SectionId, () => JSX.Element> = {
   prompts: PromptsSection,
   bot: BotSection,
   assistant: AssistantSection,
+  geocoder: GeocoderSection,
   users: UsersSection,
 };
 

@@ -59,7 +59,7 @@ export function accuracyOf(kind: string, precision: string, name: string): GeoAc
 /** Адреса без города Яндекс ищет по всей России, поэтому достраиваем город и подсказываем центр поиска. */
 const HAS_CITY = /петербург|спб|санкт|ленинградск|гатчин|всеволожск|колпино|петергоф|пушкин|кронштадт|сестрорецк|ломоносов|мурино|кудрово/i;
 
-type YandexObject = { name?: string; Point?: { pos?: string }; metaDataProperty?: { GeocoderMetaData?: { kind?: string; precision?: string } } };
+type YandexObject = { name?: string; Point?: { pos?: string }; metaDataProperty?: { GeocoderMetaData?: { kind?: string; precision?: string; text?: string } } };
 
 export function createYandexGeocoder(apiKey: string, fetchImpl: typeof fetch = fetch): Geocoder {
   /** Один запрос к Яндексу: первый подходящий из трёх ответов (первый бывает слишком крупным, а второй — нужным домом). */
@@ -83,7 +83,7 @@ export function createYandexGeocoder(apiKey: string, fetchImpl: typeof fetch = f
       const accuracy = found ? accuracyOf(meta?.kind ?? '', meta?.precision ?? '', found.name ?? '') : null;
       // Яндекс отдаёт «долгота широта» через пробел.
       const [lon, lat] = (found?.Point?.pos ?? '').split(' ').map(Number);
-      if (accuracy !== null && Number.isFinite(lat) && Number.isFinite(lon)) return { kind: 'found', point: { lat: lat!, lon: lon!, accuracy } };
+      if (accuracy !== null && Number.isFinite(lat) && Number.isFinite(lon)) return { kind: 'found', point: { lat: lat!, lon: lon!, accuracy, matched: meta?.text ?? found?.name ?? null } };
     }
     return { kind: 'missing' };
   }

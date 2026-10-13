@@ -13,6 +13,9 @@ export interface WorkSubject {
   phone: string | null;
   ageLabel: string | null;
   place: string | null;
+  /** Улица и дом, удобное время: у «другого обращения» их в списке нет (null), правка всё равно возможна. */
+  address: string | null;
+  schedule: string | null;
   note: string | null;
   responsible: string | null;
   callback: boolean;
@@ -30,6 +33,8 @@ export function subjectOfRequest(r: RequestItem): WorkSubject {
     phone: r.phone,
     ageLabel: r.ageLabel,
     place: r.place,
+    address: r.streetInfo.text,
+    schedule: r.scheduleInfo.text,
     note: r.note,
     responsible: r.responsible,
     callback: r.callback,
@@ -46,6 +51,8 @@ export function subjectOfOther(o: OtherItem): WorkSubject {
     phone: o.phone,
     ageLabel: o.ageLabel,
     place: o.place,
+    address: null,
+    schedule: null,
     note: o.note,
     responsible: o.responsible,
     callback: o.callback,

@@ -11,7 +11,7 @@ import { EditForm } from '../EditForm';
 import manage from '../Manage.module.css';
 import styles from './Members.module.css';
 import { personEditSpec } from './personSpec';
-import { refreshAfterMembers } from './refresh';
+import { refreshAfterContact, refreshAfterMembers } from './refresh';
 
 const t = ru.members.person;
 
@@ -43,32 +43,32 @@ export function PersonGroups({ p }: { p: PersonItem }) {
   );
 }
 
-function PersonEditDialog({ p, personId, onClose, onSaved }: { p: PersonItem; personId: number; onClose: () => void; onSaved: () => void }) {
+function PersonEditDialog({ p, path, onClose, onSaved }: { p: PersonItem; path: string; onClose: () => void; onSaved: () => void }) {
   const guard = useGuardedClose(onClose);
   return (
     <Modal title={t.editTitle(p.fio)} onClose={guard.close}>
       <EditForm
         spec={personEditSpec(p)}
-        path={`persons/${personId}/update`}
+        path={path}
         onClose={guard.close}
         onSaved={onSaved}
         onBusyChange={guard.setBusy}
-        refresh={refreshAfterMembers}
+        refresh={p.personId === null ? refreshAfterContact : refreshAfterMembers}
       />
     </Modal>
   );
 }
 
 /**
- * Правка и удаление карточки. Править можно только внесённую вручную (ключ p<id>): у участника и у заявки
- * данные принадлежат регистрации и заявке, и менять их надо там, о чём и подсказка. Удаляет только полный вход
- * (кнопку прячет `DeleteRecord`).
+ * Правка и удаление карточки. Править можно любого человека: у внесённой вручную (p<id>) данные лежат в самой
+ * карточке, у регистрации и человека из заявки (u<id>, r<id>) — в регистрации и заявках, и правка идёт в обе
+ * стороны. Удалять можно только внесённую вручную, и только полным входом (кнопку прячет `DeleteRecord`).
  */
 export function PersonActions({ p, onDeleted }: { p: PersonItem; onDeleted: () => void }) {
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
-  if (p.personId === null) return <p className={styles.readOnly}>{t.readOnlyHint}</p>;
   const personId = p.personId;
+  const path = personId === null ? `people/${p.key}/update` : `persons/${personId}/update`;
   return (
     <>
       <div className={manage.actions}>
@@ -81,14 +81,16 @@ export function PersonActions({ p, onDeleted }: { p: PersonItem; onDeleted: () =
         >
           {t.edit}
         </Button>
-        <DeleteRecord
-          label={t.delete}
-          ariaLabel={t.deleteAria(p.fio)}
-          title={t.deleteTitle(p.fio)}
-          text={t.deleteText}
-          path={`persons/${personId}/delete`}
-          onDeleted={onDeleted}
-        />
+        {personId !== null && (
+          <DeleteRecord
+            label={t.delete}
+            ariaLabel={t.deleteAria(p.fio)}
+            title={t.deleteTitle(p.fio)}
+            text={t.deleteText}
+            path={`persons/${personId}/delete`}
+            onDeleted={onDeleted}
+          />
+        )}
       </div>
       {saved && (
         <p className={manage.saved} role="status">
@@ -98,7 +100,7 @@ export function PersonActions({ p, onDeleted }: { p: PersonItem; onDeleted: () =
       {editing && (
         <PersonEditDialog
           p={p}
-          personId={personId}
+          path={path}
           onClose={() => setEditing(false)}
           onSaved={() => {
             setEditing(false);

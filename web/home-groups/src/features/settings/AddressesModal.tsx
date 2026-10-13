@@ -46,6 +46,19 @@ export function AddressesModal({ onClose }: { onClose: () => void }) {
     }
   }
 
+  async function reject(address: string) {
+    if (busy) return;
+    setBusy(address);
+    setError(null);
+    try {
+      await actions.reject(address);
+    } catch (e) {
+      setError(llmErrorText(e, { network: t.rejectError, forbidden: t.rejectError, other: t.rejectError }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <Modal title={t.title} onClose={onClose} wide>
       <p className={styles.muted}>{t.intro}</p>
@@ -68,7 +81,7 @@ export function AddressesModal({ onClose }: { onClose: () => void }) {
               {error}
             </p>
           )}
-          <AddressTable rows={query.data.items.filter((r) => matches(filter, r))} busy={busy} onOpen={open} onRetry={(a) => void retry(a)} />
+          <AddressTable rows={query.data.items.filter((r) => matches(filter, r))} busy={busy} onOpen={open} onRetry={(a) => void retry(a)} onReject={(a) => void reject(a)} />
         </>
       )}
       <div className={styles.dialogFoot}>
@@ -78,7 +91,15 @@ export function AddressesModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function AddressTable({ rows, busy, onOpen, onRetry }: { rows: AddressRowView[]; busy: string | null; onOpen: (s: AddressSourceView) => void; onRetry: (address: string) => void }) {
+interface AddressTableProps {
+  rows: AddressRowView[];
+  busy: string | null;
+  onOpen: (s: AddressSourceView) => void;
+  onRetry: (address: string) => void;
+  onReject: (address: string) => void;
+}
+
+function AddressTable({ rows, busy, onOpen, onRetry, onReject }: AddressTableProps) {
   if (rows.length === 0) return <p className={styles.muted}>{t.empty}</p>;
   return (
     <div className={styles.tableWrap}>
@@ -87,6 +108,7 @@ function AddressTable({ rows, busy, onOpen, onRetry }: { rows: AddressRowView[];
           <tr>
             <th scope="col">{t.colAddress}</th>
             <th scope="col">{t.colState}</th>
+            <th scope="col">{t.colMatched}</th>
             <th scope="col">{t.colSources}</th>
             <th scope="col">{t.colAction}</th>
           </tr>
@@ -99,6 +121,28 @@ function AddressTable({ rows, busy, onOpen, onRetry }: { rows: AddressRowView[];
                 <Pill tone={r.state === 'found' ? 'ok' : r.state === 'missing' ? 'crit' : 'human'}>{t.states[r.state]}</Pill>
                 {r.state === 'found' && r.accuracy && r.accuracy !== 'house' && (
                   <span className={styles.accuracyNote}>{t.accuracy[r.accuracy]}</span>
+                )}
+              </td>
+              <td>
+                {r.state === 'found' ? (
+                  <>
+                    {r.matched ?? <span className={styles.muted}>{t.matchedUnknown}</span>}
+                    {r.lat !== null && r.lon !== null && (
+                      <>
+                        {' '}
+                        <a
+                          href={`https://yandex.ru/maps/?pt=${r.lon},${r.lat}&z=16&l=map`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={t.onMapAria(r.address)}
+                        >
+                          {t.onMap}
+                        </a>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  '—'
                 )}
               </td>
               <td>
@@ -116,6 +160,11 @@ function AddressTable({ rows, busy, onOpen, onRetry }: { rows: AddressRowView[];
                 <Button size="sm" disabled={busy !== null} aria-label={t.retryAria(r.address)} onClick={() => onRetry(r.address)}>
                   {busy === r.address ? t.retrying : t.retry}
                 </Button>
+                {r.state === 'found' && (
+                  <Button size="sm" disabled={busy !== null} aria-label={t.notAddressAria(r.address)} onClick={() => onReject(r.address)}>
+                    {t.notAddress}
+                  </Button>
+                )}
               </td>
             </tr>
           ))}

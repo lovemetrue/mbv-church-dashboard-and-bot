@@ -2,6 +2,7 @@ import type { Pool, PoolClient } from 'pg';
 import { groupCode } from '../../core/groups.js';
 import { PASSING_STATUSES } from '../../core/matching.js';
 import { normalizePhone } from '../../core/phone.js';
+import { writeToUser, type ContactPatch } from './contacts.repo.js';
 import { diffSnapshots, parseSnapshot, type InputSnapshot } from '../../home-groups/plan/signature.js';
 
 /**
@@ -17,9 +18,12 @@ export type RejectReason = 'time' | 'far' | 'age' | 'declined' | 'other';
 export const REJECT_REASONS: readonly RejectReason[] = ['time', 'far', 'age', 'declined', 'other'];
 
 /** Поля заявки, которые координатор правит вручную; `null` или пустая строка очищают поле (кроме ФИО). */
-export interface RequestEdit { fio?: string | null; phone?: string | null; age?: string | null; place?: string | null; note?: string | null }
-const EDIT_LIMITS: Record<keyof RequestEdit, number> = { fio: 200, phone: 40, age: 60, place: 200, note: 1000 };
-const EDIT_COLUMNS: Record<keyof RequestEdit, string> = { fio: 'fio', phone: 'phone', age: 'age', place: 'place', note: 'note' };
+export interface RequestEdit { fio?: string | null; phone?: string | null; age?: string | null; place?: string | null; note?: string | null; address?: string | null; schedule?: string | null }
+const EDIT_LIMITS: Record<keyof RequestEdit, number> = { fio: 200, phone: 40, age: 60, place: 200, note: 1000, address: 200, schedule: 200 };
+// Адрес и время — правка координатора (`manual_*`): она главнее ответа анкеты, так же как в «Параметрах подбора».
+const EDIT_COLUMNS: Record<keyof RequestEdit, string> = {
+  fio: 'fio', phone: 'phone', age: 'age', place: 'place', note: 'note', address: 'manual_street', schedule: 'manual_schedule',
+};
 
 /** Итог звонка человеку: что координатор записывает после разговора. */
 export type CallResult = 'reached' | 'no_answer' | 'later' | 'refused';
@@ -273,8 +277,9 @@ export class PlacementRepo {
     return this.tx(async (c) => {
       const state = await this.lockOpenRequest(c, requestId);
       if (PlacementRepo.isFailure(state)) return state;
-      const { rows } = await c.query<Record<keyof RequestEdit, string | null>>(
-        'SELECT fio, phone, age, place, note FROM requests WHERE id = $1', [requestId],
+      const { rows } = await c.query<Record<keyof RequestEdit, string | null> & { user_id: number | null }>(
+        `SELECT fio, phone, age, place, note, manual_street AS address, manual_schedule AS schedule, user_id
+           FROM requests WHERE id = $1`, [requestId],
       );
       const old = rows[0]!;
       const changed = keys.filter((k) => (clean[k] ?? null) !== (old[k] ?? null));
@@ -292,6 +297,12 @@ export class PlacementRepo {
           WHERE id = $1`,
         [requestId, ...values],
       );
+      // У человека есть регистрация: те же данные там и в других его заявках, иначе карточка в «Людях» разойдётся с заявкой.
+      if (old.user_id !== null) {
+        const shared: ContactPatch = {};
+        for (const k of changed) if (k !== 'note') (shared as Record<string, string | null>)[k] = clean[k] ?? null;
+        await writeToUser(c, old.user_id, shared);
+      }
       await this.audit(c, actor, 'request.edit', requestId, {}, { fields: changed }, null);
       return { ok: true } as const;
     });

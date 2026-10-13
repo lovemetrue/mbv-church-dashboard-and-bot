@@ -41,9 +41,21 @@ describe('Карточка заявки: «Править данные»', () =>
     expect(within(form).getByRole('textbox', { name: 'Телефон' })).toHaveValue(PHONE);
     expect(within(form).getByRole('textbox', { name: 'Возраст' })).toHaveValue('46 и старше');
     expect(within(form).getByRole('textbox', { name: 'Район и метро' })).toHaveValue('Ладожская');
+    expect(within(form).getByRole('textbox', { name: 'Улица и дом' })).toBeInTheDocument();
+    expect(within(form).getByRole('textbox', { name: 'Удобное время' })).toBeInTheDocument();
     expect(within(form).getByRole('textbox', { name: 'Комментарий' })).toHaveValue('Просила звонить после 18:00.');
-    expect(within(form).getByText('Район и возраст влияют на подбор — предложение пересчитается')).toBeInTheDocument();
+    expect(within(form).getByText(/Район, адрес, возраст и время влияют на подбор/)).toBeInTheDocument();
     expect(within(form).getByRole('textbox', { name: 'ФИО' })).toHaveFocus();
+  });
+
+  test('адрес и время уходят вместе с остальным, а в подтверждении только названия полей', async () => {
+    const { fetchMock, section } = await openEdit(5);
+    const { user, form } = await openForm(section);
+    await user.type(within(form).getByRole('textbox', { name: 'Улица и дом' }), 'Коллонтай 5');
+    await user.type(within(form).getByRole('textbox', { name: 'Удобное время' }), 'среда');
+    await user.click(within(form).getByRole('button', { name: 'Сохранить' }));
+    expect(await within(section).findByText('Сохранено: адрес, время.')).toBeInTheDocument();
+    expect(posts(fetchMock)[0]!.body).toEqual({ address: 'Коллонтай 5', schedule: 'среда' });
   });
 
   test('пока ничего не изменено, «Сохранить» отключена', async () => {

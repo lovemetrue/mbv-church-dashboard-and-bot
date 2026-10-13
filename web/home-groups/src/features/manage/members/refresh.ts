@@ -12,6 +12,11 @@ export function refreshAfterMembers(client: QueryClient): Promise<unknown> {
   return Promise.all([queryKeys.groups, queryKeys.people].map((queryKey) => client.invalidateQueries({ queryKey })));
 }
 
+/** Контакты человека лежат и в заявках, и от них зависит подбор: перечитывается всё, что их показывает. */
+export function refreshAfterContact(client: QueryClient): Promise<unknown> {
+  return Promise.all([queryKeys.groups, queryKeys.people, queryKeys.requests, queryKeys.today].map((queryKey) => client.invalidateQueries({ queryKey })));
+}
+
 /** 409 здесь значит одно: человек уже в составе. Общий разбор сказал бы «Не получилось». */
 export function explainMemberError(e: unknown): string | null {
   return e instanceof ApiError && (e.status === 409 || e.code === 'conflict') ? ru.members.errors.conflict : null;

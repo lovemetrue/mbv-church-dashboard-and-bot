@@ -18,6 +18,7 @@ import type { GeocoderConfig } from './geocoderConfig.js';
 import type { MapConfig } from './mapConfig.js';
 import type { AddressTableView } from './contracts.js';
 import type { Members } from './members.js';
+import type { Contacts } from './contacts.js';
 import type { Strange } from './strange.js';
 import type { Reconciler } from './reconcile/service.js';
 import { registrationCardPage } from '../dashboard/registrationCard.js';
@@ -83,6 +84,8 @@ export interface HomeGroupsDeps {
   manager: Manager;
   /** Состав групп вручную. */
   members: Members;
+  /** Правка контактов человека из справочника (регистрация и человек из заявки). */
+  contacts: Contacts;
   /** Метка «Странный человек». */
   strange: Strange;
   /** Разбор «других обращений» по справочникам групп и людей. */
@@ -93,7 +96,7 @@ export interface HomeGroupsDeps {
   llmConfig: LlmConfig;
   geocoderConfig: GeocoderConfig;
   /** Таблица адресов геокодера и повтор по одному адресу. */
-  geocodeAddresses: { table(): Promise<AddressTableView>; retry(body: unknown): Promise<{ ok: true } | { ok: false; error: ActionError['error']; message: string }> };
+  geocodeAddresses: { table(): Promise<AddressTableView>; retry(body: unknown): Promise<{ ok: true } | { ok: false; error: ActionError['error']; message: string }>; reject(body: unknown): Promise<{ ok: true } | { ok: false; error: ActionError['error']; message: string }> };
   /** Ключ Яндекс.Карт и счётчик открытий карты. */
   mapConfig: MapConfig;
   /** Чат помощника: вопросы по базе, только чтение. */
@@ -152,7 +155,7 @@ const CONTENT_TYPES: Record<string, string> = {
 
 class BodyTooLarge extends Error {}
 
-const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode|bot\/extra-questions|bot\/send-extra-questions|assistant\/enabled|assistant\/llm|assistant\/llm-test|geocoder|geocoder-test|geocoder-retry|map)$/;
+const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode|bot\/extra-questions|bot\/send-extra-questions|assistant\/enabled|assistant\/llm|assistant\/llm-test|geocoder|geocoder-test|geocoder-retry|geocoder-reject|map)$/;
 const MAP_LOADED_PATH = '/api/v1/map/loaded';
 const CREATE_PATH = /^\/api\/v1\/(requests|groups|people|coordinators)\/create$/;
 /** `POST /api/v1/groups/5/update`: правка и удаление записей справочника. */
@@ -164,6 +167,8 @@ const MEMBER_ADD_PATH = /^\/api\/v1\/groups\/(\d{1,15})\/members\/create$/;
 const MEMBER_PATH = /^\/api\/v1\/members\/(\d{1,15})\/(update|delete)$/;
 /** Карточка человека, внесённая вручную: правка любым входом, удаление только полным. */
 const PERSON_EDIT_PATH = /^\/api\/v1\/persons\/(\d{1,15})\/(update|delete)$/;
+/** Контакты человека из справочника: регистрация (u12) или человек из заявки (r345). Любой вход. */
+const CONTACT_PATH = /^\/api\/v1\/people\/([ur]\d{1,15})\/update$/;
 const BULK_PATH = '/api/v1/requests/bulk';
 const PERSON_STRANGE_PATH = '/api/v1/people/strange';
 const RECONCILE_READY_PATH = '/api/v1/requests/reconcile-ready';
@@ -585,6 +590,20 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     sendJson(res, 200, outcome);
   }
 
+  async function handleContact(req: IncomingMessage, res: ServerResponse, key: string, sid: string | undefined): Promise<void> {
+    const call = await readAuthedJson(req, res, sid);
+    if (!call) return;
+    const outcome = await deps.contacts.update(key, call.body, call.actor);
+    if (!outcome.ok) {
+      sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
+      return;
+    }
+    // Данные человека лежат и в регистрации, и в заявках, и от адреса зависит подбор: пересчитываются все снимки.
+    deps.invalidateViews();
+    logger.info({ actor: call.actor, key }, 'домашние группы: правка данных человека');
+    sendJson(res, 200, { ok: true } satisfies ActionOk);
+  }
+
   /** Чат помощника. Тела вопросов и ответов в журнал не пишутся: в них имена и данные людей. */
   async function handleAssistantChat(req: IncomingMessage, res: ServerResponse, sid: string | undefined): Promise<void> {
     const call = await readAuthedJson(req, res, sid);
@@ -722,6 +741,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     const handlers: Record<string, () => Promise<{ ok: true } | { ok: false; error: ActionError['error']; message: string }>> = {
       'geocoder': () => deps.geocoderConfig.save(call.body, call.actor),
       'geocoder-retry': () => deps.geocodeAddresses.retry(call.body),
+      'geocoder-reject': () => deps.geocodeAddresses.reject(call.body),
       'map': () => deps.mapConfig.save(call.body, call.actor),
       'prompts/save': () => deps.settings.savePrompt(call.body, call.actor),
       'prompts/activate': () => deps.settings.activatePrompt(call.body, call.actor),
@@ -766,6 +786,8 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     if (memberEdit) { await handleMember(req, res, memberEdit[2] === 'update' ? 'update' : 'remove', Number(memberEdit[1]), sid); return; }
     const personEdit = req.method === 'POST' ? PERSON_EDIT_PATH.exec(path) : null;
     if (personEdit) { await handlePersonCard(req, res, Number(personEdit[1]), personEdit[2]!, sid); return; }
+    const contact = req.method === 'POST' ? CONTACT_PATH.exec(path) : null;
+    if (contact) { await handleContact(req, res, contact[1]!, sid); return; }
     if (req.method === 'POST' && path === MAP_LOADED_PATH) {
       // Открытие карты считает любой вход: карта нужна и координаторам, а расход общий.
       const call = await readAuthedJson(req, res, sid);

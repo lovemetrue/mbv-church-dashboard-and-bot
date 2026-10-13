@@ -36,19 +36,45 @@ describe('карточка человека: группы', () => {
 });
 
 describe('карточка человека: правка и удаление карточки, внесённой вручную', () => {
-  test.each([['u1'], ['r1']])('у %s правки нет, вместо неё подсказка, где менять данные', async (key) => {
+  test.each([['u1'], ['r1']])('у %s есть «Править», но нет «Удалить»: регистрацию и заявку не стирают', async (key) => {
     stubFetchWithFixtures();
     const card = await personCard(key);
-    expect(within(card).getByText('Данные правятся в регистрации или в заявке.')).toBeInTheDocument();
-    expect(within(card).queryByRole('button', { name: /Править карточку/ })).not.toBeInTheDocument();
+    expect(await within(card).findByRole('button', { name: /Править карточку/ })).toBeInTheDocument();
     expect(within(card).queryByRole('button', { name: /Удалить карточку/ })).not.toBeInTheDocument();
   });
 
-  test('у карточки «Внесён вручную» есть «Править» и нет подсказки про регистрацию', async () => {
+  test('регистрация: в форме адрес и удобное время вместо заметки, на сервер уходит только изменённое', async () => {
+    const fetchMock = stubFetchWithFixtures({ 'people/u1/update': () => json({ ok: true }) });
+    const user = userEvent.setup();
+    const card = await personCard('u1');
+    await user.click(await within(card).findByRole('button', { name: 'Править карточку: Дарья Ефимова' }));
+    const dialog = await screen.findByRole('dialog', { name: /^Правка карточки/ });
+    expect(within(dialog).queryByRole('textbox', { name: 'Заметка' })).not.toBeInTheDocument();
+    expect(within(dialog).getByText(/сохранятся и в регистрации, и во всех заявках/)).toBeInTheDocument();
+    await user.type(within(dialog).getByRole('textbox', { name: 'Улица и дом' }), 'Коллонтай 5');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Удобное время' }), 'среда вечером');
+    await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
+    await waitFor(() =>
+      expect(posts(fetchMock)).toEqual([{ path: 'people/u1/update', body: { fields: { address: 'Коллонтай 5', schedule: 'среда вечером' } } }]),
+    );
+  });
+
+  test('после правки человека перечитываются и заявки', async () => {
+    const fetchMock = stubFetchWithFixtures({ 'people/r1/update': () => json({ ok: true }) });
+    const user = userEvent.setup();
+    const card = await personCard('r1');
+    await user.click(await within(card).findByRole('button', { name: /Править карточку/ }));
+    const dialog = await screen.findByRole('dialog', { name: /^Правка карточки/ });
+    const before = getsOf(fetchMock, 'requests');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Возраст' }), '7');
+    await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
+    await waitFor(() => expect(getsOf(fetchMock, 'requests')).toBeGreaterThan(before));
+  });
+
+  test('у карточки «Внесён вручную» есть «Править» и «Заметка», но нет адреса и времени', async () => {
     stubFetchWithFixtures();
     const card = await personCard('p1');
     expect(within(card).getByRole('button', { name: 'Править карточку: Нина Воронцова' })).toBeInTheDocument();
-    expect(within(card).queryByText('Данные правятся в регистрации или в заявке.')).not.toBeInTheDocument();
     expect(within(card).getByText('Внесён вручную')).toBeInTheDocument();
   });
 

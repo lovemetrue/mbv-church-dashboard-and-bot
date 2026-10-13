@@ -30,6 +30,7 @@ export function buildAddressTable(input: Entries, cache: ReadonlyMap<string, Geo
       accuracy: entry?.accuracy ?? null,
       lat: entry?.lat ?? null,
       lon: entry?.lon ?? null,
+      matched: entry?.matched ?? null,
       sources: [source],
     });
   }
@@ -63,6 +64,25 @@ export function createAddressRetry(deps: {
     const r = await deps.geocoderFor(apiKey).geocode(address.trim());
     if (r.kind === 'failed') return { ok: false, error: 'unavailable', message: `Яндекс не принял запрос: ${r.message}.` };
     await deps.store.save(key, r.kind === 'found' ? r.point : null, r.kind === 'found' ? r.point.accuracy : null);
+    deps.invalidate();
+    return { ok: true };
+  };
+}
+
+/**
+ * «Это не адрес»: Яндекс иногда принимает за улицу обычное слово («среда с 18:00»). Запись в кэше становится «не нашёлся»,
+ * и ни карта, ни подбор эту точку больше не используют; повторный запрос к Яндексу не делается. Поправленный текст в
+ * карточке даёт новый ключ и определяется заново.
+ */
+export function createAddressReject(deps: { load: () => Promise<Entries>; store: GeocodeStore; invalidate: () => void }) {
+  return async (body: unknown): Promise<Outcome> => {
+    const address = typeof body === 'object' && body !== null ? (body as { address?: unknown }).address : undefined;
+    const key = typeof address === 'string' ? addressKey(address) : null;
+    if (key === null) return { ok: false, error: 'bad_request', message: 'Укажите адрес.' };
+    if (!addressEntries(await deps.load()).some((e) => addressKey(e.address) === key)) {
+      return { ok: false, error: 'not_found', message: 'Такого адреса сейчас нет ни в одной карточке: возможно, его уже поправили.' };
+    }
+    await deps.store.save(key, null, null);
     deps.invalidate();
     return { ok: true };
   };

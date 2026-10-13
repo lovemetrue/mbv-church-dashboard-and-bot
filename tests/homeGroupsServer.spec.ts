@@ -118,6 +118,9 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
       updatePerson: async (id: number, body: unknown, actor: string) => { actionCalls.push({ name: 'person.update', id, body, actor }); return outcome; },
       deletePerson: async (id: number, actor: string) => { actionCalls.push({ name: 'person.delete', id, body: undefined, actor }); return outcome; },
     } as never,
+    contacts: {
+      update: async (key: string, body: unknown, actor: string) => { actionCalls.push({ name: 'contact.update', key, body, actor } as never); return outcome; },
+    } as never,
     chat: {
       ask: async (body: unknown, actor: string) => { chatCalls.push({ body, actor }); return chatOutcome; },
       history: async (actor: string) => { chatCalls.push({ body: 'history', actor }); return { messages: [{ role: 'user', content: 'Где перебор?' }, { role: 'assistant', content: 'В ДГ-0001.' }] }; },
@@ -146,6 +149,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
     geocodeAddresses: {
       table: async () => ({ generatedAt: 'g', items: [{ address: 'ул. Тест, 1', state: 'missing', lat: null, lon: null, sources: [{ kind: 'group', id: '7', label: 'Группа №7' }] }] }),
       retry: async (body: unknown) => { llmCalls.push({ name: 'geo-retry', body }); return { ok: true }; },
+      reject: async (body: unknown) => { llmCalls.push({ name: 'geo-reject', body }); return { ok: true }; },
     } as never,
     mapConfig: {
       view: async () => ({ keySet: mapKey !== null, keyHint: mapKey ? mapKey.slice(-4) : null, keyUnreadable: false, loadsThisMonth: 3, monthlyLimit: 100 }),
@@ -1269,6 +1273,18 @@ describe('состав группы и карточки людей', () => {
     expect(app.invalidations()).toBe(inv + 3);
   });
 
+  test('контакты человека (u<id>, r<id>): правит любой вход, ключ передаётся как есть, список перечитывается', async () => {
+    const reg = await signIn(REGULAR);
+    const inv = app.invalidations();
+    expect((await post(reg, 'people/u12/update', { fields: { address: 'Коллонтай 5' } })).status).toBe(200);
+    expect(app.actionCalls.at(-1)).toMatchObject({ name: 'contact.update', key: 'u12', actor: REGULAR.login });
+    expect((await post(reg, 'people/r345/update', { fields: { fio: 'Анна' } })).status).toBe(200);
+    expect(app.actionCalls.at(-1)).toMatchObject({ key: 'r345' });
+    expect(app.invalidations()).toBe(inv + 2);
+    expect((await post(reg, 'people/p3/update', { fields: { fio: 'Анна' } })).status).toBe(404);
+    expect((await fetch(`${app.base}/api/v1/people/u12/update`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).status).toBe(401);
+  });
+
   test('карточка человека: правит любой вход, удаляет только полный', async () => {
     const reg = await signIn(REGULAR);
     expect((await post(reg, 'persons/3/update', { fields: { fio: 'Анна' } })).status).toBe(200);
@@ -1455,6 +1471,9 @@ describe('помощник по разбору заявок', () => {
     expect(table.items[0]).toMatchObject({ address: 'ул. Тест, 1', state: 'missing', sources: [{ kind: 'group', id: '7' }] });
     expect((await post(sup, 'settings/geocoder-retry', { address: 'ул. Тест, 1' })).status).toBe(200);
     expect(app.llmCalls.at(-1)).toEqual({ name: 'geo-retry', body: { address: 'ул. Тест, 1' } });
+    expect((await post(await signIn(REGULAR), 'settings/geocoder-reject', { address: 'ул. Тест, 1' })).status).toBe(403);
+    expect((await post(sup, 'settings/geocoder-reject', { address: 'ул. Тест, 1' })).status).toBe(200);
+    expect(app.llmCalls.at(-1)).toEqual({ name: 'geo-reject', body: { address: 'ул. Тест, 1' } });
   });
 
   test('ключ карты: настройки и сохранение только у полного входа, а страница получает ключ и расход при любом входе', async () => {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import type { GeocodeEntry } from '../src/db/repos/geocode.repo.js';
 import { addressKey, type Geocoder, type GeocodeStore } from '../src/home-groups/geocode.js';
-import { buildAddressTable, createAddressRetry } from '../src/home-groups/geocodeAddresses.js';
+import { buildAddressTable, createAddressReject, createAddressRetry } from '../src/home-groups/geocodeAddresses.js';
 
 const group = (id: number, address: string | null, status = 'Функционирует', leader = 'Ольга') => ({ id, no: id, leader, address, status });
 const request = (id: number, address: string | null, over: Partial<{ type: string; status: string; manual_street: string | null; fio: string | null }> = {}) =>
@@ -17,13 +17,14 @@ const input = {
 describe('таблица адресов геокодера', () => {
   test('каждый адрес один раз, у него все карточки, где он записан, и состояние; сверху те, что требуют внимания', () => {
     const cache = new Map<string, GeocodeEntry>([
-      [addressKey('ул. Рылеева, 32')!, { lat: 59.94, lon: 30.35, accuracy: 'street' }],
+      [addressKey('ул. Рылеева, 32')!, { lat: 59.94, lon: 30.35, accuracy: 'street', matched: 'Россия, Санкт-Петербург, улица Рылеева' }],
       [addressKey('Колизей')!, null],
     ]);
     const t = buildAddressTable(input, cache, new Date('2026-10-13T10:00:00Z'));
     expect(t.items.map((i) => [i.address, i.state])).toEqual([['Колизей', 'missing'], ['пр. Мира, 5', 'waiting'], ['ул. Рылеева, 32', 'found']]);
     const ryleeva = t.items.find((i) => i.state === 'found')!;
-    expect(ryleeva).toMatchObject({ lat: 59.94, lon: 30.35, accuracy: 'street' });
+    expect(ryleeva).toMatchObject({ lat: 59.94, lon: 30.35, accuracy: 'street', matched: 'Россия, Санкт-Петербург, улица Рылеева' });
+    expect(t.items.find((i) => i.state === 'missing')!.matched).toBeNull();
     expect(ryleeva.sources).toEqual([
       { kind: 'group', id: '1', label: 'Группа №1, Ольга' },
       { kind: 'request', id: '10', label: 'Заявка №10, Человек 10' },
@@ -76,5 +77,29 @@ describe('повтор по одному адресу', () => {
     const broken = make({ geocoderFor: () => ({ geocode: async () => ({ kind: 'failed', message: 'Геокодер ответил 403' }) }) });
     expect(await broken.retry({ address: 'Колизей' })).toMatchObject({ ok: false, message: expect.stringContaining('403') });
     expect(broken.store.rows.size).toBe(0);
+  });
+});
+
+describe('«Это не адрес»', () => {
+  const make = () => {
+    const rows = new Map<string, GeocodeEntry>();
+    const store: GeocodeStore = { all: async () => new Map(rows), save: async (k, p) => { rows.set(k, p); }, countSince: async () => 0 };
+    let invalidated = 0;
+    return { rows, reject: createAddressReject({ load: async () => ({ ...input, requests: [...input.requests, request(13, 'среда с 18:00')] }), store, invalidate: () => { invalidated += 1; } }), invalidated: () => invalidated };
+  };
+
+  test('найденный адрес становится «не нашёлся» без запроса к Яндексу, виды сбрасываются', async () => {
+    const { rows, reject, invalidated } = make();
+    rows.set(addressKey('среда с 18:00')!, { lat: 1, lon: 2, accuracy: 'street', matched: 'улица Средняя' });
+    expect(await reject({ address: 'среда с 18:00' })).toEqual({ ok: true });
+    expect(rows.get(addressKey('среда с 18:00')!)).toBeNull();
+    expect(invalidated()).toBe(1);
+  });
+
+  test('адрес, которого нет ни в одной карточке, и пустое тело отклоняются, кэш не трогается', async () => {
+    const { rows, reject } = make();
+    expect(await reject({ address: 'чужой адрес 5' })).toMatchObject({ ok: false, error: 'not_found' });
+    expect(await reject({})).toMatchObject({ ok: false, error: 'bad_request' });
+    expect(rows.size).toBe(0);
   });
 });

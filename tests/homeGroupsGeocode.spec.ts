@@ -51,7 +51,7 @@ describe('Яндекс.Геокодер', () => {
   test('«долгота широта» разбирается в правильном порядке, к очищенному адресу достраивается город', async () => {
     let asked = '';
     const geocoder = createYandexGeocoder('KEY', (async (url: URL) => { asked = String(url); return new Response(JSON.stringify(reply('30.30 59.93', 'house'))); }) as unknown as typeof fetch);
-    expect(await geocoder.geocode('ул. Рылеева, 32 😊)))')).toEqual({ kind: 'found', point: { lat: 59.93, lon: 30.3, accuracy: 'house' } });
+    expect(await geocoder.geocode('ул. Рылеева, 32 😊)))')).toEqual({ kind: 'found', point: { lat: 59.93, lon: 30.3, accuracy: 'house', matched: 'объект' } });
     expect(decodeURIComponent(asked.replaceAll('+', ' '))).toContain('geocode=Санкт-Петербург, ул. Рылеева, 32&');
     expect(asked).toContain('apikey=KEY');
   });
@@ -84,7 +84,7 @@ describe('Яндекс.Геокодер', () => {
       ] } } },
     ];
     const geocoder = createYandexGeocoder('K', (async (url: URL) => { queries.push(decodeURIComponent(String(url).replaceAll('+', ' '))); return new Response(JSON.stringify(responses.shift())); }) as unknown as typeof fetch);
-    expect(await geocoder.geocode('Колотай 5/1')).toEqual({ kind: 'found', point: { lat: 60.1, lon: 30.5, accuracy: 'house' } });
+    expect(await geocoder.geocode('Колотай 5/1')).toEqual({ kind: 'found', point: { lat: 60.1, lon: 30.5, accuracy: 'house', matched: 'Колотай 5/1' } });
     expect(queries).toHaveLength(2);
     expect(queries[0]).toContain('geocode=Санкт-Петербург, Колотай 5/1&');
     expect(queries[1]).toContain('geocode=Колотай 5/1&');

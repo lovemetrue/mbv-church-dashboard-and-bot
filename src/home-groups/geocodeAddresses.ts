@@ -27,6 +27,7 @@ export function buildAddressTable(input: Entries, cache: ReadonlyMap<string, Geo
     rows.set(key, {
       address: address.trim(),
       state: !cache.has(key) ? 'waiting' : entry ? 'found' : 'missing',
+      accuracy: entry?.accuracy ?? null,
       lat: entry?.lat ?? null,
       lon: entry?.lon ?? null,
       sources: [source],
@@ -61,7 +62,7 @@ export function createAddressRetry(deps: {
     }
     const r = await deps.geocoderFor(apiKey).geocode(address.trim());
     if (r.kind === 'failed') return { ok: false, error: 'unavailable', message: `Яндекс не принял запрос: ${r.message}.` };
-    await deps.store.save(key, r.kind === 'found' ? r.point : null, r.kind === 'found' ? r.precision : null);
+    await deps.store.save(key, r.kind === 'found' ? r.point : null, r.kind === 'found' ? r.point.accuracy : null);
     deps.invalidate();
     return { ok: true };
   };

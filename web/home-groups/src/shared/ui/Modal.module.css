@@ -20,6 +20,10 @@
   box-shadow: var(--shadow);
   min-width: 0;
 }
+.wide {
+  width: min(1180px, 100%);
+  max-height: min(90vh, 900px);
+}
 .panel:focus {
   /* Панель — контейнер: фокус на ней служит только точкой отсчёта для Tab, кольцо не нужно. */
   outline: none;

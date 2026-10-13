@@ -17,13 +17,13 @@ const input = {
 describe('таблица адресов геокодера', () => {
   test('каждый адрес один раз, у него все карточки, где он записан, и состояние; сверху те, что требуют внимания', () => {
     const cache = new Map<string, GeocodeEntry>([
-      [addressKey('ул. Рылеева, 32')!, { lat: 59.94, lon: 30.35 }],
+      [addressKey('ул. Рылеева, 32')!, { lat: 59.94, lon: 30.35, accuracy: 'street' }],
       [addressKey('Колизей')!, null],
     ]);
     const t = buildAddressTable(input, cache, new Date('2026-10-13T10:00:00Z'));
     expect(t.items.map((i) => [i.address, i.state])).toEqual([['Колизей', 'missing'], ['пр. Мира, 5', 'waiting'], ['ул. Рылеева, 32', 'found']]);
     const ryleeva = t.items.find((i) => i.state === 'found')!;
-    expect(ryleeva).toMatchObject({ lat: 59.94, lon: 30.35 });
+    expect(ryleeva).toMatchObject({ lat: 59.94, lon: 30.35, accuracy: 'street' });
     expect(ryleeva.sources).toEqual([
       { kind: 'group', id: '1', label: 'Группа №1, Ольга' },
       { kind: 'request', id: '10', label: 'Заявка №10, Человек 10' },
@@ -40,7 +40,7 @@ describe('повтор по одному адресу', () => {
     const store: GeocodeStore & { rows: typeof rows } = { rows, all: async () => new Map(rows), save: async (k, p) => { rows.set(k, p); }, countSince: async () => used };
     return store;
   };
-  const found: Geocoder = { geocode: async () => ({ kind: 'found', point: { lat: 1, lon: 2 }, precision: 'exact' }) };
+  const found: Geocoder = { geocode: async () => ({ kind: 'found', point: { lat: 1, lon: 2, accuracy: 'area' } }) };
   const make = (over: Partial<Parameters<typeof createAddressRetry>[0]> = {}) => {
     const store = memory();
     let invalidated = 0;
@@ -51,7 +51,7 @@ describe('повтор по одному адресу', () => {
   test('одним запросом записывает ответ в кэш и сбрасывает снимок, чтобы подбор увидел новые координаты', async () => {
     const { retry, store, invalidated } = make();
     expect(await retry({ address: 'Колизей' })).toEqual({ ok: true });
-    expect(store.rows.get(addressKey('Колизей')!)).toEqual({ lat: 1, lon: 2 });
+    expect(store.rows.get(addressKey('Колизей')!)).toEqual({ lat: 1, lon: 2, accuracy: 'area' });
     expect(invalidated()).toBe(1);
   });
 

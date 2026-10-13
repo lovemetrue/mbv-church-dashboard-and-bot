@@ -1,11 +1,25 @@
-import type { GeocodeEntry, GeoPoint } from '../db/repos/geocode.repo.js';
+import type { GeoAccuracy, GeocodeEntry, GeoPoint } from '../db/repos/geocode.repo.js';
+
+/**
+ * Адрес как его пишут люди: со смайликами, скобками-улыбками («Гражданский проспект)))»), точками и запятыми на краях. Лишние
+ * знаки убираем и в запросе, и в ключе кэша, иначе один и тот же адрес с разным «мусором» тратил бы разные запросы.
+ * Остаются буквы, цифры, пробелы и знаки, нужные адресу: запятая, точка, дефис, косая черта, «№», кавычки.
+ */
+export function cleanAddress(raw: string | null | undefined): string {
+  return (raw ?? '')
+    // Скобки уходят вместе со смайликами: «(кв. 5)» читается и без них, а «)))» — просто эмоция.
+    .replace(/[^\p{L}\p{N}\s,.\-/№'"«»]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s,.\-/]+|[\s,.\-/]+$/g, '')
+    .trim();
+}
 
 /**
  * Ключ адреса для кэша: регистр, лишние пробелы и знаки не должны плодить повторные запросы к геокодеру
  * («ул. Рылеева, 32» и «ул Рылеева 32» — один адрес).
  */
 export function addressKey(raw: string | null | undefined): string | null {
-  const key = (raw ?? '').toLowerCase().replaceAll('ё', 'е').replace(/[,;.()«»"]/g, ' ').replace(/\s+/g, ' ').trim();
+  const key = cleanAddress(raw).toLowerCase().replaceAll('ё', 'е').replace(/[,;.()«»"]/g, ' ').replace(/\s+/g, ' ').trim();
   return key.length >= 3 ? key : null;
 }
 
@@ -19,51 +33,76 @@ export function distanceMeters(a: GeoPoint, b: GeoPoint): number {
 }
 
 /** Результат одного запроса: точка, «не нашли» (кэшируем) или сбой (не кэшируем, повторим позже). */
-export type GeocodeResult = { kind: 'found'; point: GeoPoint; precision: string } | { kind: 'missing' } | { kind: 'failed'; message: string };
+export type GeocodeResult = { kind: 'found'; point: GeoPoint & { accuracy: GeoAccuracy } } | { kind: 'missing' } | { kind: 'failed'; message: string };
 
 export interface Geocoder { geocode(address: string): Promise<GeocodeResult> }
 
 /**
- * Точность, при которой точка годится для расстояния. «street» и «other» — это середина улицы или центр города: по ним
- * «рядом» не определить, такие адреса остаются на сравнении по названию улицы.
+ * Что считать найденным. Берём не только дом, но и центр улицы (дома в адресе нет) и центр посёлка или района (улицы нет):
+ * человек, написавший «Юкки», живёт в Юкки, и для подбора этого достаточно. Не годятся слишком крупные объекты: страна,
+ * область, район области и сам Санкт-Петербург целиком: центр города ничего не говорит о том, кто рядом.
+ * Точность хранится вместе с точкой: по грубой точке расстояние считается с поправкой.
  */
-const USABLE_PRECISION = new Set(['exact', 'number', 'near', 'range']);
+const HOUSE_KINDS = new Set(['house', 'entrance', 'metro', 'airport', 'railway_station', 'vegetation', 'hydro', 'other']);
+const STREET_KINDS = new Set(['street']);
+const AREA_KINDS = new Set(['locality', 'district']);
+
+export function accuracyOf(kind: string, precision: string, name: string): GeoAccuracy | null {
+  if (kind === 'house') return precision === 'other' ? null : 'house';
+  if (HOUSE_KINDS.has(kind)) return 'house';
+  if (STREET_KINDS.has(kind)) return 'street';
+  // Город-миллионник целиком (и «Ленинградская область» как locality) — слишком грубо.
+  if (AREA_KINDS.has(kind)) return /^(санкт-петербург|ленинградская область)$/i.test(name.trim()) ? null : 'area';
+  return null;
+}
 
 /** Адреса без города Яндекс ищет по всей России, поэтому достраиваем город и подсказываем центр поиска. */
 const HAS_CITY = /петербург|спб|санкт|ленинградск|гатчин|всеволожск|колпино|петергоф|пушкин|кронштадт|сестрорецк|ломоносов|мурино|кудрово/i;
 
+type YandexObject = { name?: string; Point?: { pos?: string }; metaDataProperty?: { GeocoderMetaData?: { kind?: string; precision?: string } } };
+
 export function createYandexGeocoder(apiKey: string, fetchImpl: typeof fetch = fetch): Geocoder {
-  return {
-    async geocode(address) {
-      const query = HAS_CITY.test(address) ? address : `Санкт-Петербург, ${address}`;
-      const url = new URL('https://geocode-maps.yandex.ru/v1/');
-      url.search = new URLSearchParams({
-        apikey: apiKey, geocode: query, format: 'json', results: '1', lang: 'ru_RU', ll: '30.3351,59.9343', spn: '1.5,1.0',
-      }).toString();
-      let res: Response;
-      try {
-        res = await fetchImpl(url, { signal: AbortSignal.timeout(10_000) });
-      } catch (err) {
-        return { kind: 'failed', message: err instanceof Error ? err.message : String(err) };
-      }
-      // 403 — ключ неверный или лимит исчерпан, 429 — слишком часто: это не «адрес не найден», кэшировать нельзя.
-      if (!res.ok) return { kind: 'failed', message: `Геокодер ответил ${res.status}` };
-      const body = (await res.json().catch(() => null)) as {
-        response?: { GeoObjectCollection?: { featureMember?: { GeoObject?: { Point?: { pos?: string }; metaDataProperty?: { GeocoderMetaData?: { precision?: string } } } }[] } };
-      } | null;
-      const found = body?.response?.GeoObjectCollection?.featureMember?.[0]?.GeoObject;
-      const precision = found?.metaDataProperty?.GeocoderMetaData?.precision ?? '';
+  /** Один запрос к Яндексу: первый подходящий из трёх ответов (первый бывает слишком крупным, а второй — нужным домом). */
+  async function lookup(query: string): Promise<GeocodeResult> {
+    const url = new URL('https://geocode-maps.yandex.ru/v1/');
+    url.search = new URLSearchParams({
+      apikey: apiKey, geocode: query, format: 'json', results: '3', lang: 'ru_RU', ll: '30.3351,59.9343', spn: '1.5,1.0',
+    }).toString();
+    let res: Response;
+    try {
+      res = await fetchImpl(url, { signal: AbortSignal.timeout(10_000) });
+    } catch (err) {
+      return { kind: 'failed', message: err instanceof Error ? err.message : String(err) };
+    }
+    // 403 — ключ неверный или лимит исчерпан, 429 — слишком часто: это не «адрес не найден», кэшировать нельзя.
+    if (!res.ok) return { kind: 'failed', message: `Геокодер ответил ${res.status}` };
+    const body = (await res.json().catch(() => null)) as { response?: { GeoObjectCollection?: { featureMember?: { GeoObject?: YandexObject }[] } } } | null;
+    for (const member of body?.response?.GeoObjectCollection?.featureMember ?? []) {
+      const found = member.GeoObject;
+      const meta = found?.metaDataProperty?.GeocoderMetaData;
+      const accuracy = found ? accuracyOf(meta?.kind ?? '', meta?.precision ?? '', found.name ?? '') : null;
       // Яндекс отдаёт «долгота широта» через пробел.
       const [lon, lat] = (found?.Point?.pos ?? '').split(' ').map(Number);
-      if (!found || !USABLE_PRECISION.has(precision) || !Number.isFinite(lat) || !Number.isFinite(lon)) return { kind: 'missing' };
-      return { kind: 'found', point: { lat: lat!, lon: lon! }, precision };
+      if (accuracy !== null && Number.isFinite(lat) && Number.isFinite(lon)) return { kind: 'found', point: { lat: lat!, lon: lon!, accuracy } };
+    }
+    return { kind: 'missing' };
+  }
+
+  return {
+    async geocode(address) {
+      const clean = cleanAddress(address);
+      if (HAS_CITY.test(clean)) return lookup(clean);
+      // Сначала с Санкт-Петербургом: короткие «Рылеева 32» без него уходят куда угодно. Но деревня или посёлок области с
+      // таким префиксом может не найтись, поэтому при неудаче спрашиваем ещё раз как написано (центр поиска и так в Петербурге).
+      const first = await lookup(`Санкт-Петербург, ${clean}`);
+      return first.kind === 'missing' ? lookup(clean) : first;
     },
   };
 }
 
 export interface GeocodeStore {
   all(): Promise<Map<string, GeocodeEntry>>;
-  save(key: string, point: GeoPoint | null, precision: string | null): Promise<void>;
+  save(key: string, point: GeoPoint | null, accuracy: GeoAccuracy | null): Promise<void>;
   /** Сколько запросов уже сделано за последние `hours` часов (для суточного лимита). */
   countSince(hours: number): Promise<number>;
 }
@@ -93,7 +132,7 @@ export async function geocodePending(
   for (const [key, address] of [...todo].slice(0, budget)) {
     const r = await geocoder.geocode(address);
     if (r.kind === 'failed') return { done, failed: r.message };
-    await store.save(key, r.kind === 'found' ? r.point : null, r.kind === 'found' ? r.precision : null);
+    await store.save(key, r.kind === 'found' ? r.point : null, r.kind === 'found' ? r.point.accuracy : null);
     done += 1;
     await sleep(pauseMs);
   }

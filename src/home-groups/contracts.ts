@@ -514,6 +514,8 @@ export interface AddressRowView {
   /** Адрес как записан (по нему же идёт повтор). */
   address: string;
   state: 'found' | 'missing' | 'waiting';
+  /** Насколько точна точка: дом, середина улицы (дома нет) или центр посёлка/района (улицы нет); null — не найден. */
+  accuracy: 'house' | 'street' | 'area' | null;
   lat: number | null;
   lon: number | null;
   /** Карточки, где этот адрес записан (один и тот же адрес может быть у нескольких). */
@@ -1007,7 +1009,7 @@ export interface GroupItem extends GroupBrief {
   /** Координаты адреса группы (см. `GeoState`). */
   addressGeo: GeoState;
   /** Точка адреса группы для карты; null — адреса нет или он не нашёлся. */
-  coords: { lat: number; lon: number } | null;
+  coords: { lat: number; lon: number; accuracy?: 'house' | 'street' | 'area' } | null;
   /**
    * Сколько человек утвердил сервис после последней обратной связи ведущего. Они уже добавлены к
    * `people`: ведущий обновит число сам, и счётчик обнулится (считаем только утверждённых позже).

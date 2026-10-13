@@ -107,6 +107,8 @@ describe('«Настройки»: геокодер', () => {
     expect(within(dialog).queryByText('Комендантский пр.')).toBeNull();
     await user.selectOptions(within(dialog).getByLabelText('Показать'), 'found');
     expect(within(dialog).getByText('Комендантский пр.')).toBeInTheDocument();
+    // Адрес без дома найден по центру улицы — это видно в строке, чтобы не принять точку за дом.
+    expect(within(dialog).getByText(/центр улицы/)).toBeInTheDocument();
     expect(within(dialog).queryByText('ул. Несуществующая, 99')).toBeNull();
   });
 

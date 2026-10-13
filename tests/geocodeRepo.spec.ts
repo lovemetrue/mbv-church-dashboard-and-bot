@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { GeocodeRepo } from '../src/db/repos/geocode.repo.js';
@@ -10,14 +11,31 @@ afterAll(async () => { await db.end(); });
 beforeEach(async () => { await truncateAll(db); });
 
 describe('кэш координат', () => {
-  test('точка и «не нашли» читаются обратно, повторная запись заменяет прежнюю', async () => {
-    await repo.save('рылеева 32', { lat: 59.94, lon: 30.35 }, 'exact');
+  test('точка с точностью и «не нашли» читаются обратно, повторная запись заменяет прежнюю', async () => {
+    await repo.save('рылеева 32', { lat: 59.94, lon: 30.35 }, 'house');
+    await repo.save('юкки', { lat: 60.1, lon: 30.3 }, 'area');
     await repo.save('потерянная 9', null, null);
-    expect(await repo.all()).toEqual(new Map([['рылеева 32', { lat: 59.94, lon: 30.35 }], ['потерянная 9', null]]));
-    await repo.save('рылеева 32', { lat: 1, lon: 2 }, 'number');
-    expect((await repo.all()).get('рылеева 32')).toEqual({ lat: 1, lon: 2 });
-    expect(await repo.countSince(24)).toBe(2);
+    expect(await repo.all()).toEqual(new Map([
+      ['рылеева 32', { lat: 59.94, lon: 30.35, accuracy: 'house' }],
+      ['юкки', { lat: 60.1, lon: 30.3, accuracy: 'area' }],
+      ['потерянная 9', null],
+    ]));
+    await repo.save('рылеева 32', { lat: 1, lon: 2 }, 'street');
+    expect((await repo.all()).get('рылеева 32')).toEqual({ lat: 1, lon: 2, accuracy: 'street' });
+    expect(await repo.countSince(24)).toBe(3);
     await db.query("UPDATE geocode_cache SET fetched_at = now() - interval '2 days' WHERE address_key = 'потерянная 9'");
-    expect(await repo.countSince(24)).toBe(1);
+    expect(await repo.countSince(24)).toBe(2);
+  });
+
+  test('записи старого вида (точность Яндекса exact, number…) читаются как «дом»', async () => {
+    await db.query(`INSERT INTO geocode_cache (address_key, found, lat, lon, accuracy) VALUES ('старый', true, 1, 2, 'exact'), ('ближний', true, 3, 4, 'near')`);
+    expect(await repo.all()).toEqual(new Map([['старый', { lat: 1, lon: 2, accuracy: 'house' }], ['ближний', { lat: 3, lon: 4, accuracy: 'house' }]]));
+  });
+
+  test('миграция 037 сбрасывает только «не нашлось»: найденные адреса остаются, ненайденные запросятся заново', async () => {
+    await repo.save('найден', { lat: 1, lon: 2 }, 'house');
+    await repo.save('не нашёлся', null, null);
+    await db.query(readFileSync(new URL('../migrations/037_geocode_requery_missing.sql', import.meta.url), 'utf8'));
+    expect([...(await repo.all()).keys()]).toEqual(['найден']);
   });
 });

@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'vitest';
-import { addressKey, createYandexGeocoder, distanceMeters, geocodePending, type Geocoder, type GeocodeStore } from '../src/home-groups/geocode.js';
+import { addressKey, cleanAddress, createYandexGeocoder, distanceMeters, geocodePending, type Geocoder, type GeocodeStore } from '../src/home-groups/geocode.js';
 import { addressStats, addressesOf } from '../src/home-groups/geocodeJob.js';
 import type { GeocodeEntry } from '../src/db/repos/geocode.repo.js';
 
-const reply = (pos: string, precision: string) => ({
-  response: { GeoObjectCollection: { featureMember: [{ GeoObject: { Point: { pos }, metaDataProperty: { GeocoderMetaData: { precision } } } }] } },
+const reply = (pos: string, kind: string, precision = 'exact', name = 'объект') => ({
+  response: { GeoObjectCollection: { featureMember: [{ GeoObject: { name, Point: { pos }, metaDataProperty: { GeocoderMetaData: { kind, precision } } } }] } },
 });
 const fakeFetch = (status: number, body: unknown) => (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
 
@@ -24,19 +24,46 @@ describe('расстояние', () => {
   });
 });
 
+describe('очистка адреса', () => {
+  test('смайлики, «)))» и знаки на краях уходят, а нужные адресу знаки остаются', () => {
+    expect(cleanAddress('Гражданский проспект)))')).toBe('Гражданский проспект');
+    expect(cleanAddress('😊 ул. Рылеева, 32 ✨')).toBe('ул. Рылеева, 32');
+    expect(cleanAddress(' ,пр. Мира, д. 5/2, кв. 3. ')).toBe('пр. Мира, д. 5/2, кв. 3');
+    expect(cleanAddress('Суворовский пр/9-ая Советская')).toBe('Суворовский пр/9-ая Советская');
+    expect(cleanAddress('Школьная (рядом с метро «Чёрная речка»)')).toBe('Школьная рядом с метро «Чёрная речка»');
+  });
+
+  test('один и тот же адрес с разным «мусором» — один ключ кэша и один запрос', () => {
+    expect(addressKey('Гражданский проспект)))')).toBe(addressKey('гражданский  проспект 😊'));
+    expect(addressKey('😊')).toBeNull();
+  });
+});
+
 describe('Яндекс.Геокодер', () => {
-  test('«долгота широта» разбирается в правильном порядке, к адресу достраивается город', async () => {
+  test('«долгота широта» разбирается в правильном порядке, к очищенному адресу достраивается город', async () => {
     let asked = '';
-    const geocoder = createYandexGeocoder('KEY', (async (url: URL) => { asked = String(url); return new Response(JSON.stringify(reply('30.30 59.93', 'exact'))); }) as unknown as typeof fetch);
-    expect(await geocoder.geocode('ул. Рылеева, 32')).toEqual({ kind: 'found', point: { lat: 59.93, lon: 30.3 }, precision: 'exact' });
-    expect(decodeURIComponent(asked.replaceAll('+', ' '))).toContain('geocode=Санкт-Петербург, ул. Рылеева, 32');
+    const geocoder = createYandexGeocoder('KEY', (async (url: URL) => { asked = String(url); return new Response(JSON.stringify(reply('30.30 59.93', 'house'))); }) as unknown as typeof fetch);
+    expect(await geocoder.geocode('ул. Рылеева, 32 😊)))')).toEqual({ kind: 'found', point: { lat: 59.93, lon: 30.3, accuracy: 'house' } });
+    expect(decodeURIComponent(asked.replaceAll('+', ' '))).toContain('geocode=Санкт-Петербург, ул. Рылеева, 32&');
     expect(asked).toContain('apikey=KEY');
   });
 
-  test('середина улицы и центр города (street, other) для расстояния не годятся — адрес «не найден»', async () => {
-    for (const precision of ['street', 'other']) {
-      expect(await createYandexGeocoder('K', fakeFetch(200, reply('30 59', precision))).geocode('Рылеева')).toEqual({ kind: 'missing' });
-    }
+  test('только улица без дома — середина улицы, только посёлок или район — их центр: точность запоминается', async () => {
+    const at = async (kind: string, precision = 'street', name = 'Юкки') => (await createYandexGeocoder('K', fakeFetch(200, reply('30 59', kind, precision, name))).geocode('адрес'));
+    expect(await at('street', 'street', 'улица Рылеева')).toMatchObject({ kind: 'found', point: { accuracy: 'street' } });
+    expect(await at('locality', 'other', 'Юкки')).toMatchObject({ kind: 'found', point: { accuracy: 'area' } });
+    expect(await at('district', 'other', 'Приморский район')).toMatchObject({ kind: 'found', point: { accuracy: 'area' } });
+    expect(await at('house', 'near', 'Рылеева 32')).toMatchObject({ kind: 'found', point: { accuracy: 'house' } });
+    expect(await at('metro', 'other', 'метро Беговая')).toMatchObject({ kind: 'found', point: { accuracy: 'house' } });
+  });
+
+  test('слишком крупное — страна, область, район области, весь Петербург — и неточный дом не годятся: «не найден»', async () => {
+    const at = async (kind: string, precision: string, name: string) => (await createYandexGeocoder('K', fakeFetch(200, reply('30 59', kind, precision, name))).geocode('адрес'));
+    expect(await at('locality', 'other', 'Санкт-Петербург')).toEqual({ kind: 'missing' });
+    expect(await at('province', 'other', 'Ленинградская область')).toEqual({ kind: 'missing' });
+    expect(await at('area', 'other', 'Тосненский район')).toEqual({ kind: 'missing' });
+    expect(await at('country', 'other', 'Россия')).toEqual({ kind: 'missing' });
+    expect(await at('house', 'other', 'какой-то дом')).toEqual({ kind: 'missing' });
   });
 
   test('лимит и неверный ключ (403/429) — это сбой, а не «не найден»: кэшировать нельзя', async () => {
@@ -52,7 +79,7 @@ describe('дозаполнение кэша', () => {
     const rows = new Map<string, GeocodeEntry>();
     return { rows, all: async () => new Map(rows), save: async (k, p) => { rows.set(k, p); }, countSince: async () => used };
   };
-  const found: Geocoder = { geocode: async () => ({ kind: 'found', point: { lat: 1, lon: 2 }, precision: 'exact' }) };
+  const found: Geocoder = { geocode: async () => ({ kind: 'found', point: { lat: 1, lon: 2, accuracy: 'house' } }) };
 
   test('спрашивает только то, чего нет в кэше, и один адрес один раз', async () => {
     const store = memory();

@@ -277,6 +277,17 @@ describe('оценка совпадения: считается только п�
     expect(scoreOf(r, group({ street: 'ул. Рылеева', coords: null }))).toBe(100);
   });
 
+  test('грубая точка (улица без дома, центр посёлка) считается с поправкой и подписана «около»; точная — как раньше', () => {
+    const r = request({ street: 'Юкки', coords: { lat: 60.0, lon: 30.25, accuracy: 'area' } });
+    // Около 2,4 км по прямой, но у центра посёлка поправка 2 км: это «рядом», а не «в километрах».
+    const near = group({ street: 'ул. Парковая', coords: { lat: 60.021, lon: 30.25, accuracy: 'house' } });
+    expect(scoreOf(r, near)).toBe(100);
+    expect(reasonsOf(r, near)).toContain('адрес рядом: около 2,3 км');
+    const exact = request({ street: 'ул. Парковая', coords: { lat: 60.0, lon: 30.25, accuracy: 'house' } });
+    expect(scoreOf(exact, near)).toBe(91);
+    expect(reasonsOf(exact, near)).toContain('адрес в 2,3 км');
+  });
+
   test('возраст группы неизвестен → половина веса возраста и причина', () => {
     const r = request();
     const g = group({ ageRange: null });

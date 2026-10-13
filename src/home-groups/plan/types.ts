@@ -31,7 +31,7 @@ export interface PlanGroup {
    */
   street: string | null;
   /** Координаты адреса группы (из кэша геокодера); null — адреса нет или его не нашли. */
-  coords?: { lat: number; lon: number } | null;
+  coords?: { lat: number; lon: number; accuracy?: 'house' | 'street' | 'area' } | null;
   /** Участников сейчас; null — неизвестно (тогда считаем, что места есть, и ставим пометку). */
   people: number | null;
   /** Вместимость; если в базе не задана, сервер подставляет значение по умолчанию (10). */
@@ -57,7 +57,7 @@ export interface PlanRequest {
   slot: Slot | null;
   street: string | null;
   /** Координаты адреса человека (из кэша геокодера); null — адреса нет или его не нашли. */
-  coords?: { lat: number; lon: number } | null;
+  coords?: { lat: number; lon: number; accuracy?: 'house' | 'street' | 'area' } | null;
   /** Для этапа B (отказ из обзвона): сейчас пусто. */
   rejectedGroupIds: number[];
   /**

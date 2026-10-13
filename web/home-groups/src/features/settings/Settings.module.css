@@ -617,3 +617,31 @@
 .linkBtn:hover {
   text-decoration-thickness: 2px;
 }
+
+/* Таблица адресов на компьютере: колонки с запасом под ссылки на карточки; на телефоне работают карточки журнала (.audit). */
+@media (min-width: 701px) {
+  .addrTable {
+    table-layout: fixed;
+  }
+  .addrTable th:nth-child(1) {
+    width: 26%;
+  }
+  .addrTable th:nth-child(2) {
+    width: 15%;
+  }
+  .addrTable th:nth-child(3) {
+    width: 40%;
+  }
+  .addrTable th:nth-child(4) {
+    width: 19%;
+  }
+  .addrTable td:nth-child(4) button {
+    white-space: nowrap;
+  }
+}
+.accuracyNote {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}

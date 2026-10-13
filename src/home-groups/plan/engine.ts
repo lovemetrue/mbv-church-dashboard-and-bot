@@ -131,15 +131,21 @@ function slotPart(r: PlanRequest, g: PlanGroup, settings: PlanSettings, timeUnkn
 /** Расстояние словами: «350 м», «2,4 км». */
 const distanceText = (m: number): string => (m < 1000 ? `${Math.round(m / 10) * 10} м` : `${(m / 1000).toFixed(1).replace('.', ',')} км`);
 
+/** Поправка на неточность точки: середина улицы может быть в километре от дома, а центр посёлка — ещё дальше. */
+const TOLERANCE_M = { house: 0, street: 600, area: 2000 } as const;
+
 /**
  * Близость по координатам: домашняя группа может быть в соседнем квартале, а названия улиц у них разные. Ступени — по
- * пешей доступности: до полукилометра как «рядом», дальше доля падает, за шесть километров — ноль.
+ * пешей доступности: до полукилометра как «рядом», дальше доля падает, за шесть километров — ноль. Если точка грубая (адрес
+ * без дома или только посёлок), из расстояния вычитается поправка, а в причине стоит «около».
  */
-function distancePart(weight: number, meters: number): Part {
-  const text = distanceText(meters);
+function distancePart(weight: number, rawMeters: number, a: PlanRequest['coords'], b: PlanGroup['coords']): Part {
+  const tolerance = TOLERANCE_M[a?.accuracy ?? 'house'] + TOLERANCE_M[b?.accuracy ?? 'house'];
+  const meters = Math.max(0, rawMeters - tolerance);
+  const text = `${tolerance > 0 ? 'около ' : ''}${distanceText(rawMeters)}`;
   if (meters <= 500) return { weight, share: 1, reason: { tone: 'good', text: `адрес рядом: ${text}` } };
   if (meters <= 1500) return { weight, share: 0.75, reason: { tone: 'good', text: `адрес близко: ${text}` } };
-  if (meters <= 3000) return { weight, share: 0.5, reason: { tone: 'neutral', text: `адрес в ${text}` } };
+  if (meters <= 3000) return { weight, share: 0.5, reason: { tone: 'neutral', text: `адрес ${tolerance > 0 ? '' : 'в '}${text}` } };
   if (meters <= 6000) return { weight, share: 0.25, reason: { tone: 'plain', text: `адрес далеко: ${text}` } };
   return { weight, share: 0, reason: { tone: 'plain', text: `адрес очень далеко: ${text}` } };
 }
@@ -147,7 +153,7 @@ function distancePart(weight: number, meters: number): Part {
 function streetPart(r: PlanRequest, g: PlanGroup, settings: PlanSettings): Part {
   const weight = settings.weights.street;
   // Координаты точнее названия улицы, но есть не у всех адресов (не нашли, ключа геокодера нет): тогда — как раньше.
-  if (r.coords && g.coords) return distancePart(weight, distanceMeters(r.coords, g.coords));
+  if (r.coords && g.coords) return distancePart(weight, distanceMeters(r.coords, g.coords), r.coords, g.coords);
   if (g.street === null) {
     // Адреса у группы нет — сверяем по метро или ориентиру. Человек мог назвать станцию и в «улице», и в «районе».
     if (g.metro === null) return { weight, share: 0.5, reason: { tone: 'neutral', text: 'у группы нет адреса и метро' } };

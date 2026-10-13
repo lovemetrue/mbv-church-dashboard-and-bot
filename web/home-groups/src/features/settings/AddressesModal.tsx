@@ -47,7 +47,7 @@ export function AddressesModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <Modal title={t.title} onClose={onClose}>
+    <Modal title={t.title} onClose={onClose} wide>
       <p className={styles.muted}>{t.intro}</p>
       {query.isPending && <LoadingState lines={4} />}
       {query.isError && !query.data && <ErrorState error={query.error} onRetry={() => void query.refetch()} />}
@@ -82,7 +82,7 @@ function AddressTable({ rows, busy, onOpen, onRetry }: { rows: AddressRowView[];
   if (rows.length === 0) return <p className={styles.muted}>{t.empty}</p>;
   return (
     <div className={styles.tableWrap}>
-      <table className={styles.audit}>
+      <table className={`${styles.audit} ${styles.addrTable}`}>
         <thead>
           <tr>
             <th scope="col">{t.colAddress}</th>
@@ -97,6 +97,9 @@ function AddressTable({ rows, busy, onOpen, onRetry }: { rows: AddressRowView[];
               <td>{r.address}</td>
               <td>
                 <Pill tone={r.state === 'found' ? 'ok' : r.state === 'missing' ? 'crit' : 'human'}>{t.states[r.state]}</Pill>
+                {r.state === 'found' && r.accuracy && r.accuracy !== 'house' && (
+                  <span className={styles.accuracyNote}>{t.accuracy[r.accuracy]}</span>
+                )}
               </td>
               <td>
                 <ul className={styles.plainList}>

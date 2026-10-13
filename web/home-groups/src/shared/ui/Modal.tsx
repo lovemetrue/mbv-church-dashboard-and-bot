@@ -8,6 +8,8 @@ interface ModalProps {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  /** Широкое окно для таблиц: на компьютере занимает почти весь экран, на телефоне всё равно шторка. */
+  wide?: boolean;
 }
 
 const FOCUSABLE = 'a[href], button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])';
@@ -22,7 +24,7 @@ const FOCUSABLE = 'a[href], button:not(:disabled), input:not(:disabled), textare
  * перехватываем клавишу раньше и ставим preventDefault, по которому Drawer её пропускает.
  * Фокус заперт внутри окна и возвращается туда, откуда пришёл.
  */
-export function Modal({ title, onClose, children }: ModalProps) {
+export function Modal({ title, onClose, children, wide = false }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -69,7 +71,7 @@ export function Modal({ title, onClose, children }: ModalProps) {
 
   return createPortal(
     <div className={styles.scrim} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={panelRef} className={styles.panel} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
+      <div ref={panelRef} className={`${styles.panel} ${wide ? styles.wide : ''}`} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <header className={styles.head}>
           <h2 id={titleId} className={styles.title}>
             {title}

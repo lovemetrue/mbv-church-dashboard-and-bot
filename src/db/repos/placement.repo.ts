@@ -18,11 +18,12 @@ export type RejectReason = 'time' | 'far' | 'age' | 'declined' | 'other';
 export const REJECT_REASONS: readonly RejectReason[] = ['time', 'far', 'age', 'declined', 'other'];
 
 /** Поля заявки, которые координатор правит вручную; `null` или пустая строка очищают поле (кроме ФИО). */
-export interface RequestEdit { fio?: string | null; phone?: string | null; age?: string | null; place?: string | null; note?: string | null; address?: string | null; schedule?: string | null }
-const EDIT_LIMITS: Record<keyof RequestEdit, number> = { fio: 200, phone: 40, age: 60, place: 200, note: 1000, address: 200, schedule: 200 };
+export interface RequestEdit { fio?: string | null; phone?: string | null; age?: string | null; place?: string | null; note?: string | null; address?: string | null; schedule?: string | null; hobby?: string | null; profession?: string | null; family?: string | null }
+const EDIT_LIMITS: Record<keyof RequestEdit, number> = { fio: 200, phone: 40, age: 60, place: 200, note: 1000, address: 200, schedule: 200, hobby: 200, profession: 200, family: 200 };
 // Адрес и время — правка координатора (`manual_*`): она главнее ответа анкеты, так же как в «Параметрах подбора».
 const EDIT_COLUMNS: Record<keyof RequestEdit, string> = {
   fio: 'fio', phone: 'phone', age: 'age', place: 'place', note: 'note', address: 'manual_street', schedule: 'manual_schedule',
+  hobby: 'hobby', profession: 'profession', family: 'family_status',
 };
 
 /** Итог звонка человеку: что координатор записывает после разговора. */
@@ -278,7 +279,7 @@ export class PlacementRepo {
       const state = await this.lockOpenRequest(c, requestId);
       if (PlacementRepo.isFailure(state)) return state;
       const { rows } = await c.query<Record<keyof RequestEdit, string | null> & { user_id: number | null }>(
-        `SELECT fio, phone, age, place, note, manual_street AS address, manual_schedule AS schedule, user_id
+        `SELECT fio, phone, age, place, note, manual_street AS address, manual_schedule AS schedule, hobby, profession, family_status AS family, user_id
            FROM requests WHERE id = $1`, [requestId],
       );
       const old = rows[0]!;

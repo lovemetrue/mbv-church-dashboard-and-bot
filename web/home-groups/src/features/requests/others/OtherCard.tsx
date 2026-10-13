@@ -4,6 +4,7 @@ import { ru } from '../../../shared/i18n/ru';
 import { AgeTag, Drawer, DrawerSection, KeyValue, Pill, StrangeBadge, StrangeBanner, type KvRow } from '../../../shared/ui';
 import { DeleteRequestSection } from '../../manage';
 import { subjectOfOther } from '../work/subject';
+import { HeaderTools } from '../work/HeaderTools';
 import { WorkPlace } from '../work/WorkPlace';
 import { STATE_LABEL, STATE_TONE } from './OtherList';
 import styles from './Others.module.css';
@@ -25,6 +26,11 @@ export function OtherCard({ item, onClose, onClosed }: { item: OtherItem; onClos
   const contacts: KvRow[] = [
     { label: ru.requests.phone, value: item.phone ? <span className="num">{formatPhone(item.phone)}</span> : noValue },
     { label: ru.requests.place, value: item.place ?? noValue },
+    ...(item.address ? [{ label: ru.contact.fields.address, value: item.address }] : []),
+    ...(item.schedule ? [{ label: ru.contact.fields.schedule, value: item.schedule }] : []),
+    ...(item.hobby ? [{ label: ru.contact.fields.hobby, value: item.hobby }] : []),
+    ...(item.profession ? [{ label: ru.contact.fields.profession, value: item.profession }] : []),
+    ...(item.family ? [{ label: ru.contact.fields.family, value: item.family }] : []),
     { label: ru.requests.source, value: item.source },
     { label: ru.requests.status, value: item.status },
     ...(item.waitingDays != null && item.state === 'open' ? [{ label: ru.requests.waiting, value: `${item.waitingDays} дн.` }] : []),
@@ -48,6 +54,7 @@ export function OtherCard({ item, onClose, onClosed }: { item: OtherItem; onClos
           {item.ageLabel && <AgeTag>{item.ageLabel}</AgeTag>}
         </>
       }
+      tools={<HeaderTools subject={subjectOfOther(item)} />}
       onClose={onClose}
     >
       <StrangeBanner mark={item.strange} />

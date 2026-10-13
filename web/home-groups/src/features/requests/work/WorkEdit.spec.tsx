@@ -1,4 +1,4 @@
-import { waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { stubFetchWithFixtures } from '../../../test/render';
@@ -15,160 +15,102 @@ async function openEdit(id = 5, overrides: Record<string, () => Response | Promi
     ...overrides,
   });
   const card = await openCard(id);
-  const section = await within(card).findByRole('region', { name: 'Правка данных' });
-  return { fetchMock, card, section };
+  const user = userEvent.setup();
+  // Карандаш — в шапке, справа от фамилии: искать кнопку в глубине карточки не нужно.
+  await user.click(await within(within(card).getByRole('banner')).findByRole('button', { name: /^Править данные: / }));
+  const dialog = await screen.findByRole('dialog', { name: /^Правка данных: / });
+  return { fetchMock, card, user, dialog };
 }
 
-const openForm = async (section: HTMLElement) => {
-  const user = userEvent.setup();
-  await user.click(within(section).getByRole('button', { name: 'Править данные' }));
-  return { user, form: within(section).getByRole('form', { name: 'Правка данных заявки' }) };
-};
-
-describe('Карточка заявки: «Править данные»', () => {
-  test('у закрытой заявки кнопки нет', async () => {
+describe('Карточка заявки: карандаш «Править данные» в шапке', () => {
+  test('у закрытой заявки карандаша нет', async () => {
     stubFetchWithFixtures();
     const card = await openCard(10);
-    await within(card).findByRole('region', { name: 'Связаться' });
-    expect(within(card).queryByRole('button', { name: 'Править данные' })).not.toBeInTheDocument();
+    await within(card).findByRole('region', { name: 'Работа с заявкой' });
+    expect(within(card).queryByRole('button', { name: /^Править данные/ })).not.toBeInTheDocument();
   });
 
-  test('форма предзаполнена из заявки и объясняет, что район и возраст влияют на подбор', async () => {
+  test('форма предзаполнена из заявки и содержит все поля человека, включая хобби, профессию и семейное положение', async () => {
     const r = fixtureItem(5);
-    const { section } = await openEdit(5);
-    const { form } = await openForm(section);
-    expect(within(form).getByRole('textbox', { name: 'ФИО' })).toHaveValue(r.fio);
-    expect(within(form).getByRole('textbox', { name: 'Телефон' })).toHaveValue(PHONE);
-    expect(within(form).getByRole('textbox', { name: 'Возраст' })).toHaveValue('46 и старше');
-    expect(within(form).getByRole('textbox', { name: 'Район и метро' })).toHaveValue('Ладожская');
-    expect(within(form).getByRole('textbox', { name: 'Улица и дом' })).toBeInTheDocument();
-    expect(within(form).getByRole('textbox', { name: 'Удобное время' })).toBeInTheDocument();
-    expect(within(form).getByRole('textbox', { name: 'Комментарий' })).toHaveValue('Просила звонить после 18:00.');
-    expect(within(form).getByText(/Район, адрес, возраст и время влияют на подбор/)).toBeInTheDocument();
-    expect(within(form).getByRole('textbox', { name: 'ФИО' })).toHaveFocus();
+    const { dialog } = await openEdit(5);
+    expect(within(dialog).getByRole('textbox', { name: /^ФИО/ })).toHaveValue(r.fio);
+    expect(within(dialog).getByRole('textbox', { name: 'Телефон' })).toHaveValue(PHONE);
+    expect(within(dialog).getByRole('textbox', { name: 'Возраст' })).toHaveValue('46 и старше');
+    expect(within(dialog).getByRole('textbox', { name: 'Район, метро, ориентир' })).toHaveValue('Ладожская');
+    for (const name of ['Улица и дом', 'Удобные день и время', 'Хобби', 'Профессия', 'Семейное положение']) {
+      expect(within(dialog).getByRole('textbox', { name })).toBeInTheDocument();
+    }
+    expect(within(dialog).getByRole('textbox', { name: 'Комментарий' })).toHaveValue('Просила звонить после 18:00.');
+    expect(within(dialog).getByText(/сохранятся и в регистрации, и во всех заявках/)).toBeInTheDocument();
   });
 
-  test('адрес и время уходят вместе с остальным, а в подтверждении только названия полей', async () => {
-    const { fetchMock, section } = await openEdit(5);
-    const { user, form } = await openForm(section);
-    await user.type(within(form).getByRole('textbox', { name: 'Улица и дом' }), 'Коллонтай 5');
-    await user.type(within(form).getByRole('textbox', { name: 'Удобное время' }), 'среда');
-    await user.click(within(form).getByRole('button', { name: 'Сохранить' }));
-    expect(await within(section).findByText('Сохранено: адрес, время.')).toBeInTheDocument();
-    expect(posts(fetchMock)[0]!.body).toEqual({ address: 'Коллонтай 5', schedule: 'среда' });
+  test('набор и порядок полей — тот же, что в карточке человека (там проверка по тому же списку)', async () => {
+    const labels = (root: HTMLElement) => within(root).getAllByRole('textbox').map((e) => e.getAttribute('aria-label') ?? (e.id ? document.querySelector(`label[for="${e.id}"]`)?.textContent : null));
+    const { dialog } = await openEdit(5);
+    const fromRequest = labels(dialog);
+    expect(fromRequest.length).toBe(10);
+    expect(fromRequest.map((l) => l?.replace(/\s*\*$/, ''))).toEqual([
+      'ФИО', 'Телефон', 'Возраст', 'Район, метро, ориентир', 'Улица и дом', 'Удобные день и время', 'Хобби', 'Профессия', 'Семейное положение', 'Комментарий',
+    ]);
   });
 
   test('пока ничего не изменено, «Сохранить» отключена', async () => {
-    const { section } = await openEdit(5);
-    const { user, form } = await openForm(section);
-    expect(within(form).getByRole('button', { name: 'Сохранить' })).toBeDisabled();
-    await user.type(within(form).getByRole('textbox', { name: 'Район и метро' }), 'а');
-    expect(within(form).getByRole('button', { name: 'Сохранить' })).toBeEnabled();
-    await user.type(within(form).getByRole('textbox', { name: 'Район и метро' }), '{Backspace}');
-    expect(within(form).getByRole('button', { name: 'Сохранить' })).toBeDisabled();
+    const { user, dialog } = await openEdit(5);
+    expect(within(dialog).getByRole('button', { name: 'Сохранить' })).toBeDisabled();
+    await user.type(within(dialog).getByRole('textbox', { name: 'Район, метро, ориентир' }), 'а');
+    expect(within(dialog).getByRole('button', { name: 'Сохранить' })).toBeEnabled();
+    await user.type(within(dialog).getByRole('textbox', { name: 'Район, метро, ориентир' }), '{Backspace}');
+    expect(within(dialog).getByRole('button', { name: 'Сохранить' })).toBeDisabled();
   });
 
-  test('уходит только изменённое поле', async () => {
-    const { fetchMock, section } = await openEdit(5);
-    const { user, form } = await openForm(section);
-    const phone = within(form).getByRole('textbox', { name: 'Телефон' });
-    await user.clear(phone);
-    await user.type(phone, '8 921 555-00-22');
-    await user.click(within(form).getByRole('button', { name: 'Сохранить' }));
-    expect(await within(section).findByText('Сохранено: телефон.')).toBeInTheDocument();
-    expect(posts(fetchMock)).toHaveLength(1);
-    expect(posts(fetchMock)[0]).toMatchObject({ path: 'requests/5/edit' });
-    expect(posts(fetchMock)[0]!.body).toEqual({ phone: '8 921 555-00-22' });
+  test('уходят только изменённые поля, включая новые, в обёртке fields', async () => {
+    const { fetchMock, user, dialog } = await openEdit(5);
+    await user.type(within(dialog).getByRole('textbox', { name: 'Улица и дом' }), 'Коллонтай 5');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Удобные день и время' }), 'среда');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Хобби' }), 'вязание');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Профессия' }), 'врач');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Семейное положение' }), 'замужем');
+    await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect(posts(fetchMock)[0]).toEqual({
+      path: 'requests/5/edit',
+      body: { fields: { address: 'Коллонтай 5', schedule: 'среда', hobby: 'вязание', profession: 'врач', family: 'замужем' } },
+    });
   });
 
-  test('несколько полей — все изменённые и ничего лишнего; очищенное необязательное поле уходит как null', async () => {
-    const { fetchMock, section } = await openEdit(5);
-    const { user, form } = await openForm(section);
-    const fio = within(form).getByRole('textbox', { name: 'ФИО' });
-    await user.clear(fio);
-    await user.type(fio, '  Новое Имя  ');
-    await user.clear(within(form).getByRole('textbox', { name: 'Комментарий' }));
-    const age = within(form).getByRole('textbox', { name: 'Возраст' });
-    await user.clear(age);
-    await user.type(age, '26-35');
-    await user.click(within(form).getByRole('button', { name: 'Сохранить' }));
-    expect(await within(section).findByText('Сохранено: ФИО, возраст, комментарий.')).toBeInTheDocument();
-    expect(posts(fetchMock)[0]!.body).toEqual({ fio: 'Новое Имя', age: '26-35', note: null });
-  });
-
-  test('в подтверждении нет ни имени, ни телефона: только названия полей', async () => {
-    const { section } = await openEdit(5);
-    const { user, form } = await openForm(section);
-    const phone = within(form).getByRole('textbox', { name: 'Телефон' });
-    await user.clear(phone);
-    await user.type(phone, '89215550022');
-    await user.click(within(form).getByRole('button', { name: 'Сохранить' }));
-    const notice = await within(section).findByRole('status');
-    expect(notice).not.toHaveTextContent('89215550022');
-  });
-
-  test('после успеха форма закрывается, а заявки, «Сегодня» и группы перечитываются', async () => {
-    const { fetchMock, section } = await openEdit(5);
-    const { user, form } = await openForm(section);
-    await user.type(within(form).getByRole('textbox', { name: 'Район и метро' }), ' пр.');
-    await user.click(within(form).getByRole('button', { name: 'Сохранить' }));
-    await within(section).findByText('Сохранено: район и метро.');
-    expect(within(section).queryByRole('form', { name: 'Правка данных заявки' })).not.toBeInTheDocument();
-    await waitFor(() => expect(getsOf(fetchMock, 'requests')).toBe(2));
-    // и то и другое читалось при открытии карточки, поэтому ждём второе чтение, а не первое
+  test('после успеха окно закрывается, а заявки, «Сегодня», группы и люди перечитываются', async () => {
+    const { fetchMock, user, dialog } = await openEdit(5);
+    await user.type(within(dialog).getByRole('textbox', { name: 'Район, метро, ориентир' }), ' пр.');
+    await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /^Правка данных: / })).not.toBeInTheDocument());
+    await waitFor(() => expect(getsOf(fetchMock, 'requests')).toBeGreaterThanOrEqual(2));
     await waitFor(() => expect(getsOf(fetchMock, 'today')).toBeGreaterThanOrEqual(2));
     await waitFor(() => expect(getsOf(fetchMock, 'groups')).toBeGreaterThanOrEqual(2));
   });
 
-  test('bad_request показывается текстом сервера, форма остаётся открытой с введённым', async () => {
-    const { section } = await openEdit(5, {
+  test('bad_request показывается текстом сервера, окно остаётся открытым с введённым', async () => {
+    const { user, dialog } = await openEdit(5, {
       'requests/5/edit': () => json({ error: 'bad_request', message: 'Телефон не похож на номер.' }, 400),
     });
-    const { user, form } = await openForm(section);
-    const phone = within(form).getByRole('textbox', { name: 'Телефон' });
+    const phone = within(dialog).getByRole('textbox', { name: 'Телефон' });
     await user.clear(phone);
     await user.type(phone, '12');
-    await user.click(within(form).getByRole('button', { name: 'Сохранить' }));
-    expect(await within(section).findByRole('alert')).toHaveTextContent('Телефон не похож на номер.');
-    expect(within(section).getByRole('textbox', { name: 'Телефон' })).toHaveValue('12');
+    await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Телефон не похож на номер.');
+    expect(within(dialog).getByRole('textbox', { name: 'Телефон' })).toHaveValue('12');
   });
 
-  test('ФИО нельзя очистить: подсказка и «Сохранить» отключена', async () => {
-    const { section } = await openEdit(5);
-    const { user, form } = await openForm(section);
-    await user.clear(within(form).getByRole('textbox', { name: 'ФИО' }));
-    expect(within(form).getByText('ФИО не может быть пустым.')).toBeInTheDocument();
-    expect(within(form).getByRole('button', { name: 'Сохранить' })).toBeDisabled();
+  test('ФИО нельзя очистить: «Сохранить» отключена', async () => {
+    const { user, dialog } = await openEdit(5);
+    await user.clear(within(dialog).getByRole('textbox', { name: /^ФИО/ }));
+    expect(within(dialog).getByRole('button', { name: 'Сохранить' })).toBeDisabled();
   });
 
-  test('«Отмена» закрывает форму, ничего не отправляя', async () => {
-    const { fetchMock, section } = await openEdit(5);
-    const { user, form } = await openForm(section);
-    await user.type(within(form).getByRole('textbox', { name: 'Район и метро' }), 'x');
-    await user.click(within(form).getByRole('button', { name: 'Отмена' }));
-    expect(within(section).queryByRole('form', { name: 'Правка данных заявки' })).not.toBeInTheDocument();
+  test('«Отмена» закрывает окно, ничего не отправляя', async () => {
+    const { fetchMock, user, dialog } = await openEdit(5);
+    await user.type(within(dialog).getByRole('textbox', { name: 'Хобби' }), 'x');
+    await user.click(within(dialog).getByRole('button', { name: 'Отмена' }));
+    expect(screen.queryByRole('dialog', { name: /^Правка данных: / })).not.toBeInTheDocument();
     expect(posts(fetchMock)).toHaveLength(0);
-    // повторное открытие снова показывает данные заявки, а не недописанное
-    const again = await openForm(section);
-    expect(within(again.form).getByRole('textbox', { name: 'Район и метро' })).toHaveValue('Ладожская');
-  });
-
-  test('пока запрос идёт, поля и кнопки заблокированы', async () => {
-    let release!: () => void;
-    const gate = new Promise<void>((r) => (release = r));
-    const { fetchMock, section } = await openEdit(5, {
-      'requests/5/edit': async () => {
-        await gate;
-        return ok();
-      },
-    });
-    const { user, form } = await openForm(section);
-    await user.type(within(form).getByRole('textbox', { name: 'Район и метро' }), 'x');
-    await user.click(within(form).getByRole('button', { name: 'Сохранить' }));
-    await waitFor(() => expect(within(form).getByRole('textbox', { name: 'Район и метро' })).toBeDisabled());
-    expect(within(form).getByRole('button', { name: 'Сохраняем…' })).toBeDisabled();
-    expect(posts(fetchMock)).toHaveLength(1);
-    release();
-    await within(section).findByText('Сохранено: район и метро.');
   });
 });

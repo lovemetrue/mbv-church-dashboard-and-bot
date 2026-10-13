@@ -59,6 +59,19 @@
   flex: 1;
   min-width: 0;
 }
+/* Название и значки действий в одну строку; на узком экране значки уходят под название, а не обрезаются. */
+.titleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+.tools {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
 .title {
   font-size: 18px;
   letter-spacing: -0.01em;

@@ -8,8 +8,14 @@ import { demoStrangeOf } from './strange';
 
 /** Обращение без метки: метка накладывается при сборке (`buildOthers`), потому что её можно поставить в демо. */
 type BaseOther = Omit<OtherItem, 'strange'>;
+type RawOther = Omit<BaseOther, 'address' | 'schedule' | 'hobby' | 'profession' | 'family'>;
 
+/** Анкетные поля у большинства демо-обращений пусты: подставляем их здесь, чтобы не повторять в каждой записи. */
 function baseOthers(): BaseOther[] {
+  return rawOthers().map((o) => ({ address: null, schedule: null, hobby: null, profession: null, family: null, ...o }));
+}
+
+function rawOthers(): RawOther[] {
   return [
     {
       id: 201,

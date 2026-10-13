@@ -13,9 +13,11 @@ export interface WorkSubject {
   phone: string | null;
   ageLabel: string | null;
   place: string | null;
-  /** Улица и дом, удобное время: у «другого обращения» их в списке нет (null), правка всё равно возможна. */
   address: string | null;
   schedule: string | null;
+  hobby: string | null;
+  profession: string | null;
+  family: string | null;
   note: string | null;
   responsible: string | null;
   callback: boolean;
@@ -35,6 +37,9 @@ export function subjectOfRequest(r: RequestItem): WorkSubject {
     place: r.place,
     address: r.streetInfo.text,
     schedule: r.scheduleInfo.text,
+    hobby: r.hobby,
+    profession: r.profession,
+    family: r.family,
     note: r.note,
     responsible: r.responsible,
     callback: r.callback,
@@ -51,8 +56,11 @@ export function subjectOfOther(o: OtherItem): WorkSubject {
     phone: o.phone,
     ageLabel: o.ageLabel,
     place: o.place,
-    address: null,
-    schedule: null,
+    address: o.address,
+    schedule: o.schedule,
+    hobby: o.hobby,
+    profession: o.profession,
+    family: o.family,
     note: o.note,
     responsible: o.responsible,
     callback: o.callback,

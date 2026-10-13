@@ -14,6 +14,7 @@ import styles from './Requests.module.css';
 import { useRequestActions, type RequestActionsState } from './useRequestActions';
 import { useRequestParams, type ParamField } from './useRequestParams';
 import { subjectOfRequest } from './work/subject';
+import { HeaderTools } from './work/HeaderTools';
 import { WorkPlace } from './work/WorkPlace';
 import { DeleteRequestSection } from '../manage';
 import { AssistantNoteBlock } from './assistant/AssistantNoteBlock';
@@ -499,9 +500,16 @@ export function RequestCard({
   // Состояние действий держим здесь, а не в кнопках: после «Утвердить» кнопки пропадают,
   // а подтверждение должно остаться на экране.
   const act = useRequestActions(r);
+  // Группа, о которой речь: куда человека утвердили, а пока не утвердили — какую предлагает подбор.
+  const group = r.bucket === 'done' ? r.finalGroup : (proposalOf(r)?.main.group ?? null);
   const contacts: KvRow[] = [
     { label: ru.requests.phone, value: r.phone ? <span className="num">{formatPhone(r.phone)}</span> : noValue },
     { label: ru.requests.place, value: r.place ?? noValue },
+    { label: ru.contact.fields.address, value: r.streetInfo.text ?? noValue },
+    { label: ru.contact.fields.schedule, value: r.scheduleInfo.text ?? noValue },
+    ...(r.hobby ? [{ label: ru.contact.fields.hobby, value: r.hobby }] : []),
+    ...(r.profession ? [{ label: ru.contact.fields.profession, value: r.profession }] : []),
+    ...(r.family ? [{ label: ru.contact.fields.family, value: r.family }] : []),
     { label: ru.requests.source, value: r.source },
     { label: ru.requests.status, value: r.status },
     ...(r.waitingDays != null ? [{ label: ru.requests.waiting, value: `${r.waitingDays} дн.` }] : []),
@@ -524,6 +532,7 @@ export function RequestCard({
           {r.ageLabel && <AgeTag>{r.ageLabel}</AgeTag>}
         </>
       }
+      tools={<HeaderTools subject={subjectOfRequest(r)} group={group} />}
       onClose={onClose}
     >
       <StrangeBanner mark={r.strange} />

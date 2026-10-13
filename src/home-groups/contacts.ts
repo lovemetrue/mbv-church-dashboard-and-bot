@@ -10,7 +10,7 @@ type Fail = { ok: false; error: ActionError['error']; message: string };
 export type ContactOutcome = { ok: true } | Fail;
 const bad = (message: string): Fail => ({ ok: false, error: 'bad_request', message });
 
-const LIMITS: Record<(typeof CONTACT_FIELDS)[number], number> = { fio: 200, phone: 40, age: 60, place: 200, address: 200, schedule: 200 };
+const LIMITS: Record<(typeof CONTACT_FIELDS)[number], number> = { fio: 200, phone: 40, age: 60, place: 200, address: 200, schedule: 200, hobby: 200, profession: 200, family: 200, note: 1000 };
 const KEY = /^([ur])(\d{1,15})$/;
 
 /** Тело `{fields: {…}}` → правка; текст — понятная ошибка. Пустая строка очищает поле (кроме ФИО). */

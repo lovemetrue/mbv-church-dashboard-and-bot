@@ -1,5 +1,6 @@
 import type { MemberAddBody, PersonItem } from '@contracts';
 import { phoneDigits } from '../../../entities/format';
+import type { ContactName } from '../../contact/contactSpec';
 
 /** Сколько людей показывать в списке выбора сразу: длиннее список на телефоне не пролистать, а поиск сузит его. */
 export const SEARCH_LIMIT = 50;
@@ -39,7 +40,7 @@ export function searchPeople(people: readonly PersonItem[], query: string, limit
 /** Что собрано в окне «Добавить человека»; строки как в полях. */
 export type AddForm =
   | { mode: 'directory'; personKey: string | null; joinedOn: string; note: string }
-  | { mode: 'new'; fio: string; phone: string; age: string; place: string; joinedOn: string; note: string };
+  | { mode: 'new'; person: Record<ContactName, string>; joinedOn: string; note: string };
 
 const clean = (s: string): string | undefined => {
   const t = s.trim();
@@ -58,12 +59,14 @@ export function buildAddBody(form: AddForm): MemberAddBody | null {
   if (form.mode === 'directory') {
     return form.personKey ? { personKey: form.personKey, ...common } : null;
   }
-  const fio = clean(form.fio);
+  const fio = clean(form.person.fio);
   if (!fio) return null;
-  const phone = clean(form.phone);
-  const age = clean(form.age);
-  const place = clean(form.place);
-  return { newPerson: { fio, ...(phone ? { phone } : {}), ...(age ? { age } : {}), ...(place ? { place } : {}) }, ...common };
+  const extra: Record<string, string> = {};
+  for (const [k, v] of Object.entries(form.person)) {
+    const t = k === 'fio' ? undefined : clean(v);
+    if (t) extra[k] = t;
+  }
+  return { newPerson: { fio, ...extra }, ...common };
 }
 
 /** Сегодня по местному времени служителя («2026-10-11»): `toISOString` вернул бы дату по UTC, и вечером день сдвинулся бы. */

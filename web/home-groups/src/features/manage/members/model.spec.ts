@@ -2,6 +2,8 @@ import type { PersonItem } from '@contracts';
 import { describe, expect, test } from 'vitest';
 import { buildAddBody, formatDayMonth, formatDayMonthYear, isFutureDate, normalizeText, searchPeople, todayIso } from './model';
 
+const NO_PERSON = { fio: '', phone: '', age: '', place: '', address: '', schedule: '', hobby: '', profession: '', family: '', note: '' };
+
 const person = (over: Partial<PersonItem>): PersonItem => ({
   strange: null,
   key: 'u1',
@@ -87,14 +89,14 @@ describe('тело запроса «добавить человека»', () => 
   });
 
   test('новый человек уходит как newPerson без personKey, а пустые поля отбрасываются', () => {
-    const body = buildAddBody({ mode: 'new', fio: ' Анна Лебедева ', phone: '', age: '34', place: ' Купчино ', joinedOn: '2026-09-02', note: '' });
-    expect(body).toEqual({ newPerson: { fio: 'Анна Лебедева', age: '34', place: 'Купчино' }, joinedOn: '2026-09-02' });
+    const body = buildAddBody({ mode: 'new', person: { ...NO_PERSON, fio: ' Анна Лебедева ', age: '34', place: ' Купчино ', hobby: ' бег ', family: 'замужем' }, joinedOn: '2026-09-02', note: '' });
+    expect(body).toEqual({ newPerson: { fio: 'Анна Лебедева', age: '34', place: 'Купчино', hobby: 'бег', family: 'замужем' }, joinedOn: '2026-09-02' });
     expect(body).not.toHaveProperty('personKey');
   });
 
   test('без выбранного человека и без ФИО тела нет', () => {
     expect(buildAddBody({ mode: 'directory', personKey: null, joinedOn: '', note: '' })).toBeNull();
-    expect(buildAddBody({ mode: 'new', fio: '  ', phone: '', age: '', place: '', joinedOn: '', note: '' })).toBeNull();
+    expect(buildAddBody({ mode: 'new', person: { ...NO_PERSON, fio: '  ' }, joinedOn: '', note: '' })).toBeNull();
   });
 });
 

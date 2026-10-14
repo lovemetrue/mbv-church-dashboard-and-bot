@@ -1,5 +1,5 @@
 import type { Pool } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import { composeService, engine } from '../src/home-groups/composition.js';
 import { LlmError, type LlmClient, type LlmRequest } from '../src/platform/llm/deepseek.js';
 import { setupTestDb, truncateAll } from './helpers/testDb.js';
@@ -130,9 +130,9 @@ describe('помощник: разбор непонятных заявок', () 
     const svc = compose(new FakeLlm(() => new LlmError('network', 'Нет связи с сервисом помощника.')));
     await svc.assistant.setEnabled(true, 'boss');
     expect(await svc.assistant.run('boss')).toEqual({ ok: false, error: 'unavailable', message: 'Нет связи с сервисом помощника.' });
-    await new Promise((r) => setTimeout(r, 50));
+    // Ошибка пишется в фоне, без ожидания ответа: на медленной машине 50 мс не хватало, поэтому ждём саму запись, а не время.
+    await vi.waitFor(async () => expect((await db.query('SELECT 1 FROM system_errors')).rowCount).toBeGreaterThan(0), { timeout: 3000, interval: 25 });
     const rows = (await db.query('SELECT service, message FROM system_errors')).rows;
-    expect(rows.length).toBeGreaterThan(0);
     expect(JSON.stringify(rows)).not.toMatch(/дуба|Мария|911/);
   });
 

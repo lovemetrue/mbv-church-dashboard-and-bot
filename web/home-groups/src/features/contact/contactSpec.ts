@@ -1,6 +1,6 @@
 import { formatPhone } from '../../entities/format';
 import { ru } from '../../shared/i18n/ru';
-import type { EditSpec } from '../manage/editSpec';
+import type { EditField, EditSpec } from '../manage/editSpec';
 
 const f = ru.contact.fields;
 
@@ -21,21 +21,25 @@ export interface ContactValues {
   note: string | null;
 }
 
-/** Порядок и подписи полей — единственное место: форма правки у людей и у заявок строится только отсюда. */
+/** Порядок и подписи полей — единственное место: формы правки и добавления человека строятся только отсюда. */
+export const CONTACT_FIELD_DEFS: EditField[] = [
+  { name: 'fio', label: f.fio, kind: 'text', required: true, wide: true },
+  { name: 'phone', label: f.phone, kind: 'text', inputMode: 'tel', placeholder: f.phonePlaceholder },
+  { name: 'age', label: f.age, kind: 'text', placeholder: f.agePlaceholder },
+  { name: 'place', label: f.place, kind: 'text', wide: true, placeholder: f.placePlaceholder },
+  { name: 'address', label: f.address, kind: 'text', wide: true, placeholder: f.addressPlaceholder },
+  { name: 'schedule', label: f.schedule, kind: 'text', wide: true, placeholder: f.schedulePlaceholder },
+  { name: 'hobby', label: f.hobby, kind: 'text' },
+  { name: 'profession', label: f.profession, kind: 'text' },
+  { name: 'family', label: f.family, kind: 'text', wide: true },
+  { name: 'note', label: f.note, kind: 'textarea', wide: true },
+];
+
+export type ContactName = 'fio' | 'phone' | 'age' | 'place' | 'address' | 'schedule' | 'hobby' | 'profession' | 'family' | 'note';
+
 export function contactEditSpec(v: ContactValues): EditSpec {
   return {
-    fields: [
-      { name: 'fio', label: f.fio, kind: 'text', required: true, wide: true },
-      { name: 'phone', label: f.phone, kind: 'text', inputMode: 'tel', placeholder: f.phonePlaceholder },
-      { name: 'age', label: f.age, kind: 'text', placeholder: f.agePlaceholder },
-      { name: 'place', label: f.place, kind: 'text', wide: true, placeholder: f.placePlaceholder },
-      { name: 'address', label: f.address, kind: 'text', wide: true, placeholder: f.addressPlaceholder },
-      { name: 'schedule', label: f.schedule, kind: 'text', wide: true, placeholder: f.schedulePlaceholder },
-      { name: 'hobby', label: f.hobby, kind: 'text' },
-      { name: 'profession', label: f.profession, kind: 'text' },
-      { name: 'family', label: f.family, kind: 'text', wide: true },
-      { name: 'note', label: f.note, kind: 'textarea', wide: true },
-    ],
+    fields: CONTACT_FIELD_DEFS,
     initial: {
       fio: v.fio,
       phone: v.phone ? formatPhone(v.phone) : '',

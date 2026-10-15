@@ -514,6 +514,43 @@ describe('план: выбор группы', () => {
     expect(entry.alternatives.map((a) => a.groupId)).not.toContain(entry.main.groupId);
   });
 
+  test('потенциальная группа в подбор не идёт, а после перевода в «Функционирует» предлагается сразу, даже без числа участников', () => {
+    const r = request();
+    const potential = group({ id: 85, status: 'Потенциальная', people: null, isNew: true });
+    expect(planFor([r], [potential]).entries.get(r.id)).toMatchObject({ kind: 'none' });
+    const opened = { ...potential, status: 'Функционирует' };
+    expect(proposal(planFor([r], [opened]).entries.get(r.id)).main.groupId).toBe(85);
+  });
+
+  test('первым запасным идёт лучшая из новых групп, даже если старые оценены выше', () => {
+    const r = request();
+    // Три старые группы в том же районе лучше новой (она в соседнем), но новую человек должен увидеть вторым вариантом.
+    const old = [1, 2, 3].map((n) => group({ id: 80 + n, people: n }));
+    const fresh = group({ id: 90, district: 'Выборгский', people: 1, isNew: true });
+    const entry = proposal(planFor([r], [...old, fresh]).entries.get(r.id));
+    expect(entry.main.groupId).not.toBe(90);
+    expect(entry.alternatives[0]!.groupId).toBe(90);
+    expect(entry.alternatives).toHaveLength(2);
+  });
+
+  test('если главная — новая группа, первым запасным идёт лучшая из остальных новых, а не она сама', () => {
+    const r = request();
+    const newA = group({ id: 91, people: 1, isNew: true });
+    const newB = group({ id: 92, district: 'Выборгский', people: 1, isNew: true });
+    const old = group({ id: 93, district: 'Невский', people: 3 });
+    const entry = proposal(planFor([r], [newA, newB, old]).entries.get(r.id));
+    expect(entry.main.groupId).toBe(91);
+    expect(entry.alternatives.map((a) => a.groupId)[0]).toBe(92);
+    expect(entry.alternatives.map((a) => a.groupId)).not.toContain(91);
+  });
+
+  test('новых групп нет — запасные как прежде', () => {
+    const groups = [1, 2, 3].map((n) => group({ id: 95 + n, people: n }));
+    const r = request();
+    const entry = proposal(planFor([r], groups).entries.get(r.id));
+    expect(entry.alternatives).toHaveLength(2);
+  });
+
   test('запасные берутся только из групп, где ещё есть место', () => {
     const r1 = request({ id: 70, fio: 'Первая Пётр', ageRange: [30, 35] });
     const r2 = request({ id: 71, fio: 'Вторая Анна', ageRange: [30, 35] });

@@ -13,7 +13,7 @@ import {
   ErrorState,
   KeyValue,
   LoadingState,
-  NewGroupIcon,
+  GroupMarks,
   Pill,
   StrangeBadge,
   type KvRow,
@@ -98,7 +98,7 @@ function GroupsList({ ids, district, age, onOpen }: { ids: readonly number[]; di
           <button type="button" className={styles.prow} data-group={g.id} onClick={() => onOpen(g.id)}>
             <span className={styles.prowMain}>
               <b>{g.code}</b>
-              {g.isNew && <NewGroupIcon />}
+              <GroupMarks g={g} />
               <span className={styles.prowLeader}>{g.leader}</span>
             </span>
             <span className={styles.prowSub}>
@@ -148,7 +148,7 @@ function GroupCardBody({ id, onBack }: { id: number; onBack: () => void }) {
       <DrawerSection>
         <p className={styles.cardCode}>
           <b>{g.code}</b>
-          {g.isNew && <NewGroupIcon />}
+          <GroupMarks g={g} />
         </p>
         <KeyValue rows={rows} />
       </DrawerSection>

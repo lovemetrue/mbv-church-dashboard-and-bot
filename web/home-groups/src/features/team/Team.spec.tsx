@@ -49,11 +49,11 @@ function open(team: TeamView | (() => Response) = view(), role: Me['role'] = 'su
 const section = (name: string) => screen.getByRole('region', { name });
 
 describe('«Команда»: вкладка', () => {
-  test('вкладка «Команда» стоит после «Заявок» и открывается обоим входам', async () => {
+  test('вкладка «Команда» стоит после «Заявок» и «Групп» и открывается обоим входам', async () => {
     open(view(), 'admin');
     const tabs = screen.getByRole('tablist', { name: 'Разделы' });
     const names = within(tabs).getAllByRole('tab').map((t) => t.textContent);
-    expect(names[2]).toBe('Команда');
+    expect(names[3]).toBe('Команда');
     expect(within(tabs).getByRole('tab', { name: 'Команда' })).toHaveAttribute('aria-selected', 'true');
     expect(await screen.findByRole('region', { name: 'Итоги по заявкам' })).toBeInTheDocument();
   });

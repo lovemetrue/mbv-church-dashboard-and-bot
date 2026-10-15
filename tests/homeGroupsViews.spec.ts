@@ -21,7 +21,7 @@ function group(over: Partial<DashboardGroup> & { id: number }): DashboardGroup {
   return {
     no: over.id, leader: `Ведущий ${over.id}`, phone: null, phones: [], open_to_new: null, age: null,
     district: 'Приморский', metro: null, address: null, composition: null, day: null, time: null, people: null,
-    coordinator: null, co_leader: null, co_leader_phone: null, feedback_at: null, comment: null, training: null,
+    coordinator: null, co_leader: null, co_leader_phone: null, feedback_at: null, opened_on: null, comment: null, training: null,
     format: 'Молодежная', status: 'Функционирует', checked: null, source: 'таблица', campaign_registered: false,
     do_not_refer: false, leader_user_id: null,
     ...over,
@@ -1459,4 +1459,73 @@ describe('день недели, время и улица: что уходит �
     expect(out.views.groups.items[0]!.address).toBe('ул. Рылеева, д. 32, кв. 5');
   });
 
+});
+
+describe('значки групп: росток и увядший листочек', () => {
+  const items = (groups: DashboardGroup[]) => new Map(build({ groups }).views.groups.items.map((g) => [g.id, g]));
+  // «Сегодня» 2026-10-10: открытая 11 июня ещё в первых четырёх месяцах (они кончатся 11 октября), открытая 10 июня — уже нет.
+
+  test('потенциальная — новая, но не увядшая: людей в ней ещё и не должно быть', () => {
+    expect(items([group({ id: 1, status: 'Потенциальная', people: 0 })]).get(1)).toMatchObject({ isNew: true, empty: false });
+  });
+
+  test('первые четыре месяца после открытия росток у всех, сколько бы ни было людей, и увядшей не бывает даже без людей', () => {
+    const m = items([
+      group({ id: 1, opened_on: '2026-06-11', people: 8 }),
+      group({ id: 2, opened_on: '2026-09-01', people: 0 }),
+      group({ id: 3, opened_on: '2026-06-11', people: 1 }),
+    ]);
+    expect(m.get(1)).toMatchObject({ isNew: true, empty: false });
+    expect(m.get(2)).toMatchObject({ isNew: true, empty: false });
+    expect(m.get(3)).toMatchObject({ isNew: true, empty: false });
+  });
+
+  test('через четыре месяца: набралось три человека — отметки нет, не набралось — росток становится увядшим', () => {
+    const m = items([
+      group({ id: 1, opened_on: '2026-06-10', people: 8 }),
+      group({ id: 2, opened_on: '2026-06-10', people: 3 }),
+      group({ id: 3, opened_on: '2026-06-10', people: 2 }),
+      group({ id: 4, opened_on: '2026-06-10', people: 0 }),
+    ]);
+    expect(m.get(1)).toMatchObject({ isNew: false, empty: false });
+    expect(m.get(2)).toMatchObject({ isNew: false, empty: false });
+    expect(m.get(3)).toMatchObject({ isNew: false, empty: true });
+    expect(m.get(4)).toMatchObject({ isNew: false, empty: true });
+  });
+
+  test('у старой группы без даты открытия: без людей — увядший листочек, а с одним-двумя людьми отметки нет', () => {
+    const m = items([
+      group({ id: 1, opened_on: null, people: 0 }),
+      group({ id: 2, opened_on: null, people: null }),
+      group({ id: 3, opened_on: null, people: 2 }),
+      group({ id: 4, opened_on: null, people: 8 }),
+    ]);
+    expect(m.get(1)).toMatchObject({ isNew: false, empty: true });
+    expect(m.get(2)).toMatchObject({ isNew: false, empty: true });
+    expect(m.get(3)).toMatchObject({ isNew: false, empty: false });
+    expect(m.get(4)).toMatchObject({ isNew: false, empty: false });
+  });
+
+  test('«Кампания» по-прежнему считается новой, а закрытая группа без людей не увядшая', () => {
+    const m = items([group({ id: 1, status: 'Кампания', people: 0 }), group({ id: 2, status: 'Закрыта', people: 0 })]);
+    expect(m.get(1)).toMatchObject({ isNew: true, empty: false });
+    expect(m.get(2)).toMatchObject({ isNew: false, empty: false });
+  });
+
+  test('людей для порога считают и по ручному составу, и по утверждённым заявкам', () => {
+    const { views } = build({
+      groups: [group({ id: 5, opened_on: '2026-06-10', people: 1 }), group({ id: 6, opened_on: null, people: 0 }), group({ id: 7, opened_on: null, people: 0 })],
+      members: [
+        { id: 1, group_id: 5, personKey: 'p1', full_name: 'Нина', phone: null, joined_on: null, note: null },
+        { id: 2, group_id: 5, personKey: 'p2', full_name: 'Анна', phone: null, joined_on: null, note: null },
+        { id: 3, group_id: 5, personKey: 'p3', full_name: 'Вера', phone: null, joined_on: null, note: null },
+        { id: 4, group_id: 6, personKey: 'p4', full_name: 'Зоя', phone: null, joined_on: null, note: null },
+      ],
+      requests: [request({ id: 10, status: 'Исполнена', group_id: 7 })],
+    });
+    const m = new Map(views.groups.items.map((g) => [g.id, g]));
+    expect(m.get(5)).toMatchObject({ isNew: false, empty: false });
+    expect(m.get(6)!.empty).toBe(false);
+    expect(m.get(7)!.empty).toBe(false);
+  });
 });

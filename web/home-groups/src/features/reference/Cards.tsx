@@ -4,7 +4,7 @@ import { registrationCardUrl, registrationQrUrl } from '../../shared/api/base';
 import { useGroups } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
 import { useAppNav } from '../../shared/nav';
-import { Button, Drawer, DrawerSection, KeyValue, LoadingState, Meter, NewGroupIcon, Pill, StrangeBadge, StrangeBanner, type KvRow } from '../../shared/ui';
+import { Button, Drawer, DrawerSection, KeyValue, LoadingState, GroupMarks, Meter, Pill, StrangeBadge, StrangeBanner, type KvRow } from '../../shared/ui';
 import { LinkButton } from '../create';
 import { StrangeSection } from '../strange';
 import { CoordinatorActions, DeletePersonSection, GroupActions, MembersSection, PersonActions, PersonGroups } from '../manage';
@@ -82,10 +82,10 @@ export function GroupCard({ g, onClose }: { g: GroupItem; onClose: () => void })
       title={
         <>
           {`Группа ${groupLabel(g)}`}
-          {g.isNew && (
+          {(g.isNew || g.empty) && (
             <>
               {' '}
-              <NewGroupIcon />
+              <GroupMarks g={g} />
             </>
           )}
         </>

@@ -103,6 +103,7 @@ export const groupsConfig: EntityConfig<GroupItem> = {
     // Служебное, как `_key`: в столбцы и фильтры не попадает, нужно только таблице для пометки.
     _placedNew: g.placedNew,
     _isNew: g.isNew ? 1 : 0,
+    _isEmpty: g.empty ? 1 : 0,
     'Мест свободно': g.free,
     Вместимость: g.capacity,
     Статус: g.status,

@@ -595,3 +595,31 @@
   margin: 0 0 8px;
   font-size: 16px;
 }
+
+/* «Срочно нужна группа»: на всю ширину под верхним рядом, список остальных районов — мелким шрифтом. */
+.urgent {
+  display: grid;
+  gap: 8px;
+}
+.urgentTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 18px;
+}
+.urgentRest {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  font-size: 13px;
+}
+.urgentRest li {
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
+}

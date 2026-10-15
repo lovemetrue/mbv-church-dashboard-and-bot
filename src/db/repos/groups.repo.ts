@@ -32,6 +32,8 @@ export interface GroupInput extends HomeGroupInput {
   coLeader?: string | null;
   coLeaderPhone?: string | null;
   feedbackAt?: string | null;
+  /** Дата открытия; пусто — не менять и не задавать (дату поставит база при открытии группы). */
+  openedOn?: string | null;
   comment?: string | null;
   training?: string | null;
   checked?: boolean | null;
@@ -61,6 +63,8 @@ export interface GroupRow {
   co_leader: string | null;
   co_leader_phone: string | null;
   feedback_at: string | null;
+  /** Когда группа открылась: от этой даты считаются первые четыре месяца «новой» (миграция 040). null — неизвестно. */
+  opened_on: string | null;
   comment: string | null;
   training: string | null;
   format: string;
@@ -98,6 +102,7 @@ export interface DashboardGroup {
   co_leader: string | null;
   co_leader_phone: string | null;
   feedback_at: string | null;
+  opened_on: string | null;
   comment: string | null;
   training: string | null;
   format: string;
@@ -116,7 +121,7 @@ export interface DashboardGroup {
 const COLUMNS = `no, leader, open_to_new, phone, phones, age, district, metro, address,
                  composition, day, "time", people, coordinator, feedback_at, comment,
                  training, format, status, checked, campaign_registered, source, added_by,
-                 added_platform, co_leader, co_leader_phone, do_not_refer`;
+                 added_platform, co_leader, co_leader_phone, do_not_refer, opened_on`;
 
 // Колонки типа date приходят строкой «2026-08-20» — так настроен пул (src/db/pool.ts).
 
@@ -137,7 +142,7 @@ export class GroupsRepo {
   ): Promise<GroupRow> {
     const { rows } = await this.db.query<GroupRow>(
       `INSERT INTO groups (${COLUMNS})
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
        RETURNING *`,
       [
         input.no ?? null,
@@ -167,6 +172,7 @@ export class GroupsRepo {
         input.coLeader ?? null,
         input.coLeaderPhone ?? null,
         input.doNotRefer ?? false,
+        input.openedOn ?? null,
       ],
     );
     const row = rows[0]!;
@@ -191,6 +197,7 @@ export class GroupsRepo {
          training = $18, format = $19, status = $20, checked = $21, campaign_registered = $22,
          co_leader = $23, co_leader_phone = $24,
          do_not_refer = COALESCE($25, do_not_refer),
+         opened_on = $26,
          source = CASE WHEN source = 'таблица' THEN 'ui' ELSE source END
        WHERE id = $1 AND archived_at IS NULL
        RETURNING *`,
@@ -220,6 +227,7 @@ export class GroupsRepo {
         input.coLeader ?? null,
         input.coLeaderPhone ?? null,
         input.doNotRefer ?? null,
+        input.openedOn ?? null,
       ],
     );
     const row = rows[0];
@@ -342,6 +350,7 @@ export class GroupsRepo {
       co_leader: r.co_leader,
       co_leader_phone: r.co_leader_phone,
       feedback_at: r.feedback_at,
+      opened_on: r.opened_on,
       comment: r.comment,
       training: r.training,
       format: r.format,

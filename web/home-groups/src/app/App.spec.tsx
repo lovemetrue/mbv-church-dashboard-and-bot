@@ -19,8 +19,8 @@ describe('оболочка', () => {
     const tabs = screen.getByRole('tablist', { name: 'Разделы' });
     const names = within(tabs).getAllByRole('tab').map((t) => t.textContent);
     expect(names[0]).toBe('Сегодня');
-    expect(names[3]).toBe('Справочник');
-    expect(names).toHaveLength(4);
+    // «Группы» стоят сразу после «Заявок»: у распределителей заявки, у координаторов группы.
+    expect(names.map((n) => n?.replace(/\d+$/, '').trim())).toEqual(['Сегодня', 'Заявки', 'Группы', 'Команда', 'Справочник']);
     expect(within(tabs).getByRole('tab', { name: 'Сегодня' })).toHaveAttribute('aria-selected', 'true');
     // Число открытых берём из тех же фикстур: оно растёт вместе с демо-заявками.
     const open = openCount(buildRequests().counters);

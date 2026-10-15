@@ -101,6 +101,7 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
       { name: 'coLeaderPhone', label: t.newCoLeaderPhone, kind: 'text', inputMode: 'tel', hint: m.group.writeOnlyHint },
       
       { name: 'feedbackAt', label: t.feedbackAt, kind: 'date', hint: `${feedbackNow(g.verifiedDaysAgo)} ${keep}` },
+      { name: 'openedOn', label: t.openedOn, kind: 'date', hint: m.group.openedOnHint },
       { name: 'comment', label: t.comment, kind: 'textarea', wide: true },
       { name: 'doNotRefer', label: m.group.doNotRefer, kind: 'checkbox', wide: true, hint: m.group.doNotReferHint },
     ],
@@ -120,6 +121,7 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
       coLeaderPhone: '',
       address: g.address ?? '',
       feedbackAt: '',
+      openedOn: g.openedOn ?? '',
       comment: g.comment ?? '',
       doNotRefer: g.doNotRefer ? '1' : '',
     },

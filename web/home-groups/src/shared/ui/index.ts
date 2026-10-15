@@ -12,5 +12,7 @@ export { Popover } from './Popover';
 export { AgeTag } from './AgeTag';
 export { Modal } from './Modal';
 export { NewGroupIcon } from './NewGroupIcon';
+export { WiltedLeafIcon } from './WiltedLeafIcon';
+export { GroupMarks } from './GroupMarks';
 export { Tip, type TipAria } from './Tip';
 export { StrangeBadge, StrangeBanner } from './StrangeBadge';

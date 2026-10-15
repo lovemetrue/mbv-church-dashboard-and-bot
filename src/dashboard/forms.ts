@@ -114,6 +114,8 @@ export function parseGroupForm(form: URLSearchParams): Parsed<GroupInput> {
 
   const feedbackAt = date(form, 'feedbackAt');
   if (feedbackAt === 'invalid') return { ok: false, error: 'Дата обратной связи — в виде 2026-08-27.' };
+  const openedOn = date(form, 'openedOn');
+  if (openedOn === 'invalid') return { ok: false, error: 'Дата открытия — в виде 2026-08-27.' };
 
   return {
     ok: true,
@@ -136,6 +138,7 @@ export function parseGroupForm(form: URLSearchParams): Parsed<GroupInput> {
       coLeader: text(form, 'coLeader'),
       coLeaderPhone: phoneText(form, 'coLeaderPhone'),
       feedbackAt,
+      openedOn,
       comment: text(form, 'comment'),
       training: text(form, 'training'),
       // Чекбокс приходит только когда отмечен; пустое поле здесь значит «нет».

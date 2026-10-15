@@ -19,7 +19,6 @@ import { downloadCsv, toCsv } from '../../shared/csv';
 import { ru } from '../../shared/i18n/ru';
 import { ENTITY_IDS, useAppNav, type EntityId } from '../../shared/nav';
 import { Button, Chip, ErrorState, LoadingState, Popover } from '../../shared/ui';
-import { GroupsMap } from './GroupsMap';
 import { CoordinatorCard, GroupCard, PersonCard } from './Cards';
 import { coordinatorsConfig, groupsConfig, peopleConfig, type EntityConfig } from './config';
 import { FilterPanel, OP_SYMBOL } from './FilterPanel';
@@ -59,14 +58,7 @@ export function ReferenceScreen() {
         ))}
       </div>
       {nav.entity === 'groups' && (
-        <EntityView
-          key="groups"
-          config={groupsConfig}
-          query={groups}
-          items={groups.data?.items}
-          renderCard={(g, close) => <GroupCard g={g} onClose={close} />}
-          extra={<GroupsMap groups={groups.data?.items ?? []} />}
-        />
+        <GroupsWorkplace />
       )}
       {nav.entity === 'people' && (
         <EntityView
@@ -87,6 +79,23 @@ export function ReferenceScreen() {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Таблица групп: одна и та же в «Справочнике → Группы» и на вкладке «Группы». Отборы, столбцы, сортировка и сохранённые
+ * виды общие (хранятся по имени справочника `groups`), поэтому настроенное в одном месте видно и в другом.
+ */
+export function GroupsWorkplace() {
+  const groups = useGroups();
+  return (
+    <EntityView
+      key="groups"
+      config={groupsConfig}
+      query={groups}
+      items={groups.data?.items}
+      renderCard={(g, close) => <GroupCard g={g} onClose={close} />}
+    />
   );
 }
 

@@ -298,17 +298,16 @@ export function buildViewsWithPlan(
   for (const r of input.requests) if (r.status === DONE && r.group_id !== null) bump(r.group_id);
   const headcount = (g: { id: number; people: number | null }): number =>
     Math.max(effectivePeople(g.people, input.placedNew?.get(g.id) ?? 0) ?? 0, memberCounts.get(g.id) ?? 0);
-  // Группа «новая» (росток): потенциальная, из кампании или открытая меньше четырёх месяцев назад (дата открытия — `opened_on`).
-  // Первые четыре месяца росток у всех, сколько бы людей ни было. У старых групп даты открытия нет — они не новые.
-  const inNewWindow = (g: { opened_on: string | null }): boolean =>
-    !!g.opened_on && (addMonthsIso(g.opened_on, NEW_GROUP_MONTHS) ?? '') > today;
+  // Росток — признак новизны действующей группы: только «Функционирует» и только первые четыре месяца после открытия, сколько бы
+  // людей ни было (дата — `opened_on`, её ставит база при переводе в «Функционирует»). «На паузе», «Потенциальная», «Кампания» и
+  // прочие ростка не получают. У старых групп даты открытия нет — они не новые.
   const isNewGroup = (g: { status: string; opened_on: string | null }): boolean =>
-    g.status === 'Потенциальная' || g.status === 'Кампания' || inNewWindow(g);
-  // «Увядший листочек» (поле `empty`): когда срок новой группы вышел, а людей мало. Росток снимается, если набралось хотя бы
-  // три человека; не набралось (у группы с известной датой открытия) — росток становится увядшим. Без людей совсем увядший
-  // листочек и у старых групп без даты. У новой, потенциальной и закрытой группы его нет.
+    g.status === 'Функционирует' && !!g.opened_on && (addMonthsIso(g.opened_on, NEW_GROUP_MONTHS) ?? '') > today;
+  // Оранжевый росток (поле `empty`) — тоже только у «Функционирует», когда срок новой группы вышел, а людей мало. Если набралось
+  // хотя бы три человека, отметка просто снимается; не набралось (у группы с датой открытия) — росток оранжевый. Совсем без людей
+  // он оранжевый и у старых групп без даты. У новой группы его нет.
   const isWiltedGroup = (g: { id: number; status: string; opened_on: string | null; people: number | null }): boolean => {
-    if (g.status === 'Потенциальная' || g.status === 'Закрыта' || isNewGroup(g)) return false;
+    if (g.status !== 'Функционирует' || isNewGroup(g)) return false;
     const n = headcount(g);
     return n === 0 || (!!g.opened_on && n < NEW_GROUP_MIN_PEOPLE);
   };

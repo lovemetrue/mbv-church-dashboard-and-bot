@@ -164,8 +164,8 @@ describe('«Справочник»: экран', () => {
     const user = userEvent.setup();
     renderAt(<App />, '/?tab=reference');
     const table = await screen.findByRole('table');
-    // Подписи значков («Новая группа», «В группе пока никого нет») входят в текст ячейки (их читает скринридер), для сравнения имён их убираем.
-    const firstCol = () => dataRows().map((r) => within(r).getAllByRole('cell')[1]!.textContent?.replace('Новая группа', '').replace('В группе пока никого нет', ''));
+    // Подписи значков («Новая группа», «Группа не набрала людей») входят в текст ячейки (их читает скринридер), для сравнения имён их убираем.
+    const firstCol = () => dataRows().map((r) => within(r).getAllByRole('cell')[1]!.textContent?.replace('Новая группа', '').replace('Группа не набрала людей', ''));
     await user.click(within(table).getByRole('button', { name: 'Сортировать по столбцу «Ведущий»' }));
     expect(firstCol()[0]).toBe('Андрей М.');
     expect(within(table).getByRole('columnheader', { name: /Ведущий/ })).toHaveAttribute('aria-sort', 'ascending');

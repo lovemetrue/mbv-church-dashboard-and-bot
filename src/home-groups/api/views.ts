@@ -85,7 +85,7 @@ const DEFAULT_TIME_ZONE = 'Europe/Moscow';
 
 /** Статусы, после которых заявка в план не идёт (совпадает с `CLOSED_STATUSES` в репозитории). */
 const DONE = 'Исполнена';
-/** Сколько месяцев после открытия группа считается новой и сколько человек в ней должно набраться, чтобы росток снялся. */
+/** Сколько месяцев после открытия группа считается новой и сколько человек должно набраться к этому сроку, чтобы росток снялся, а не завял. */
 const NEW_GROUP_MONTHS = 4;
 const NEW_GROUP_MIN_PEOPLE = 3;
 const CANCELLED = 'Аннулирована';
@@ -298,16 +298,20 @@ export function buildViewsWithPlan(
   for (const r of input.requests) if (r.status === DONE && r.group_id !== null) bump(r.group_id);
   const headcount = (g: { id: number; people: number | null }): number =>
     Math.max(effectivePeople(g.people, input.placedNew?.get(g.id) ?? 0) ?? 0, memberCounts.get(g.id) ?? 0);
-  // Группа «новая» (росток): потенциальная, из кампании или открытая недавно (дата открытия — `opened_on`). Росток снимается,
-  // когда выполнены оба условия: прошло четыре месяца И в группе набралось хотя бы три человека; пока не хватает любого из них,
-  // группа остаётся новой. У старых групп даты открытия нет — они не новые.
-  const isNewGroup = (g: { id: number; status: string; opened_on: string | null; people: number | null }): boolean =>
-    g.status === 'Потенциальная' ||
-    g.status === 'Кампания' ||
-    (!!g.opened_on && ((addMonthsIso(g.opened_on, NEW_GROUP_MONTHS) ?? '') > today || headcount(g) < NEW_GROUP_MIN_PEOPLE));
-  // «Увядший листочек» — в группе никого нет (у потенциальной людей ещё и не должно быть, закрытая нас не интересует).
-  const isEmptyGroup = (g: { id: number; status: string; people: number | null }): boolean =>
-    g.status !== 'Потенциальная' && g.status !== 'Закрыта' && headcount(g) === 0;
+  // Группа «новая» (росток): потенциальная, из кампании или открытая меньше четырёх месяцев назад (дата открытия — `opened_on`).
+  // Первые четыре месяца росток у всех, сколько бы людей ни было. У старых групп даты открытия нет — они не новые.
+  const inNewWindow = (g: { opened_on: string | null }): boolean =>
+    !!g.opened_on && (addMonthsIso(g.opened_on, NEW_GROUP_MONTHS) ?? '') > today;
+  const isNewGroup = (g: { status: string; opened_on: string | null }): boolean =>
+    g.status === 'Потенциальная' || g.status === 'Кампания' || inNewWindow(g);
+  // «Увядший листочек» (поле `empty`): когда срок новой группы вышел, а людей мало. Росток снимается, если набралось хотя бы
+  // три человека; не набралось (у группы с известной датой открытия) — росток становится увядшим. Без людей совсем увядший
+  // листочек и у старых групп без даты. У новой, потенциальной и закрытой группы его нет.
+  const isWiltedGroup = (g: { id: number; status: string; opened_on: string | null; people: number | null }): boolean => {
+    if (g.status === 'Потенциальная' || g.status === 'Закрыта' || isNewGroup(g)) return false;
+    const n = headcount(g);
+    return n === 0 || (!!g.opened_on && n < NEW_GROUP_MIN_PEOPLE);
+  };
   const coordsOf = (address: string | null | undefined) => input.geo?.get(addressKey(address) ?? '') ?? null;
   // Есть запись с точкой — «found», запись «не нашли» — «missing», записи нет (не спрашивали или геокодер выключен) — null.
   const geoStateOf = (address: string | null | undefined): 'found' | 'missing' | null => {
@@ -363,7 +367,7 @@ export function buildViewsWithPlan(
       free: Math.max(0, p.capacity - (p.people ?? 0)),
       format: nonBlank(g.format),
       isNew: isNewGroup(g),
-      empty: isEmptyGroup(g),
+      empty: isWiltedGroup(g),
     };
   };
 

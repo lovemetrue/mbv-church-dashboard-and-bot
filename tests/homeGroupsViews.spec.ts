@@ -1463,79 +1463,69 @@ describe('день недели, время и улица: что уходит �
 
 describe('значки групп: росток и увядший листочек', () => {
   const items = (groups: DashboardGroup[]) => new Map(build({ groups }).views.groups.items.map((g) => [g.id, g]));
+  // «Сегодня» 2026-10-10: открытая 11 июня ещё в первых четырёх месяцах (они кончатся 11 октября), открытая 10 июня — уже нет.
 
-  test('потенциальная — новая, но не «пустая»: людей в ней ещё и не должно быть', () => {
-    const g = items([group({ id: 1, status: 'Потенциальная', people: 0 })]).get(1)!;
-    expect(g).toMatchObject({ isNew: true, empty: false });
+  test('потенциальная — новая, но не увядшая: людей в ней ещё и не должно быть', () => {
+    expect(items([group({ id: 1, status: 'Потенциальная', people: 0 })]).get(1)).toMatchObject({ isNew: true, empty: false });
   });
 
-  test('первые четыре месяца после открытия группа новая, сколько бы в ней ни было людей', () => {
+  test('первые четыре месяца после открытия росток у всех, сколько бы ни было людей, и увядшей не бывает даже без людей', () => {
     const m = items([
       group({ id: 1, opened_on: '2026-06-11', people: 8 }),
       group({ id: 2, opened_on: '2026-09-01', people: 0 }),
+      group({ id: 3, opened_on: '2026-06-11', people: 1 }),
     ]);
-    // «Сегодня» 2026-10-10: открытая 11 июня ещё в первых четырёх месяцах (они кончатся 11 октября).
-    expect(m.get(1)!.isNew).toBe(true);
-    expect(m.get(2)).toMatchObject({ isNew: true, empty: true });
+    expect(m.get(1)).toMatchObject({ isNew: true, empty: false });
+    expect(m.get(2)).toMatchObject({ isNew: true, empty: false });
+    expect(m.get(3)).toMatchObject({ isNew: true, empty: false });
   });
 
-  test('росток снимается, только когда прошло четыре месяца И набралось хотя бы три человека', () => {
+  test('через четыре месяца: набралось три человека — отметки нет, не набралось — росток становится увядшим', () => {
     const m = items([
       group({ id: 1, opened_on: '2026-06-10', people: 8 }),
       group({ id: 2, opened_on: '2026-06-10', people: 3 }),
       group({ id: 3, opened_on: '2026-06-10', people: 2 }),
       group({ id: 4, opened_on: '2026-06-10', people: 0 }),
     ]);
-    expect(m.get(1)!.isNew).toBe(false);
-    expect(m.get(2)!.isNew).toBe(false);
-    // Четыре месяца прошли, но людей меньше трёх: группа всё ещё новая, а без людей — ещё и «пустая».
-    expect(m.get(3)!.isNew).toBe(true);
-    expect(m.get(4)).toMatchObject({ isNew: true, empty: true });
+    expect(m.get(1)).toMatchObject({ isNew: false, empty: false });
+    expect(m.get(2)).toMatchObject({ isNew: false, empty: false });
+    expect(m.get(3)).toMatchObject({ isNew: false, empty: true });
+    expect(m.get(4)).toMatchObject({ isNew: false, empty: true });
+  });
+
+  test('у старой группы без даты открытия: без людей — увядший листочек, а с одним-двумя людьми отметки нет', () => {
+    const m = items([
+      group({ id: 1, opened_on: null, people: 0 }),
+      group({ id: 2, opened_on: null, people: null }),
+      group({ id: 3, opened_on: null, people: 2 }),
+      group({ id: 4, opened_on: null, people: 8 }),
+    ]);
+    expect(m.get(1)).toMatchObject({ isNew: false, empty: true });
+    expect(m.get(2)).toMatchObject({ isNew: false, empty: true });
+    expect(m.get(3)).toMatchObject({ isNew: false, empty: false });
+    expect(m.get(4)).toMatchObject({ isNew: false, empty: false });
+  });
+
+  test('«Кампания» по-прежнему считается новой, а закрытая группа без людей не увядшая', () => {
+    const m = items([group({ id: 1, status: 'Кампания', people: 0 }), group({ id: 2, status: 'Закрыта', people: 0 })]);
+    expect(m.get(1)).toMatchObject({ isNew: true, empty: false });
+    expect(m.get(2)).toMatchObject({ isNew: false, empty: false });
   });
 
   test('людей для порога считают и по ручному составу, и по утверждённым заявкам', () => {
     const { views } = build({
-      groups: [group({ id: 5, opened_on: '2026-06-10', people: 1 })],
+      groups: [group({ id: 5, opened_on: '2026-06-10', people: 1 }), group({ id: 6, opened_on: null, people: 0 }), group({ id: 7, opened_on: null, people: 0 })],
       members: [
         { id: 1, group_id: 5, personKey: 'p1', full_name: 'Нина', phone: null, joined_on: null, note: null },
         { id: 2, group_id: 5, personKey: 'p2', full_name: 'Анна', phone: null, joined_on: null, note: null },
         { id: 3, group_id: 5, personKey: 'p3', full_name: 'Вера', phone: null, joined_on: null, note: null },
+        { id: 4, group_id: 6, personKey: 'p4', full_name: 'Зоя', phone: null, joined_on: null, note: null },
       ],
-    });
-    expect(views.groups.items.find((g) => g.id === 5)!.isNew).toBe(false);
-  });
-
-  test('у старой группы даты открытия нет: она не новая', () => {
-    expect(items([group({ id: 1, opened_on: null, people: 8 })]).get(1)).toMatchObject({ isNew: false, empty: false });
-  });
-
-  test('«Кампания» по-прежнему считается новой', () => {
-    expect(items([group({ id: 1, status: 'Кампания', people: 2 })]).get(1)!.isNew).toBe(true);
-  });
-
-  test('увядший листочек: людей нет — и у старой группы тоже; есть число, ручной состав или утверждённый — нет', () => {
-    const m = items([
-      group({ id: 1, people: 0 }),
-      group({ id: 2, people: null }),
-      group({ id: 3, people: 4 }),
-      group({ id: 4, people: 0 }),
-      group({ id: 5, people: 0 }),
-      group({ id: 6, status: 'Закрыта', people: 0 }),
-    ]);
-    expect(m.get(1)!.empty).toBe(true);
-    expect(m.get(2)!.empty).toBe(true);
-    expect(m.get(3)!.empty).toBe(false);
-    expect(m.get(6)!.empty).toBe(false);
-  });
-
-  test('люди из ручного состава и утверждённые заявкой снимают «пустую» группу', () => {
-    const { views } = build({
-      groups: [group({ id: 4, people: 0 }), group({ id: 5, people: 0 })],
-      members: [{ id: 1, group_id: 4, personKey: 'p1', full_name: 'Нина', phone: null, joined_on: null, note: null }],
-      requests: [request({ id: 10, status: 'Исполнена', group_id: 5 })],
+      requests: [request({ id: 10, status: 'Исполнена', group_id: 7 })],
     });
     const m = new Map(views.groups.items.map((g) => [g.id, g]));
-    expect(m.get(4)!.empty).toBe(false);
-    expect(m.get(5)!.empty).toBe(false);
+    expect(m.get(5)).toMatchObject({ isNew: false, empty: false });
+    expect(m.get(6)!.empty).toBe(false);
+    expect(m.get(7)!.empty).toBe(false);
   });
 });

@@ -34,6 +34,6 @@ describe('вкладка «Группы»', () => {
     expect(items.some((g) => g.isNew)).toBe(true);
     expect(items.some((g) => g.empty)).toBe(true);
     expect((await screen.findAllByRole('img', { name: 'Новая группа' })).length).toBeGreaterThan(0);
-    expect((await screen.findAllByRole('img', { name: 'В группе пока никого нет' })).length).toBeGreaterThan(0);
+    expect((await screen.findAllByRole('img', { name: 'Группа не набрала людей' })).length).toBeGreaterThan(0);
   });
 });

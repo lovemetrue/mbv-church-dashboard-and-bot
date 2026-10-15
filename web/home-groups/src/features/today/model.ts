@@ -250,6 +250,7 @@ const INSIDE_EXCEPTIONS: Record<string, string> = {
 export function inDistrict(district: string): string {
   const fixed = INSIDE_EXCEPTIONS[district];
   if (fixed) return fixed;
-  if (/(ий|ый|ой)$/.test(district)) return `в ${district.slice(0, -1)}м районе`;
+  // «Приморский» → «Приморском», «Центральный» → «Центральном»: у прилагательных на -ий/-ый/-ой меняются два последних знака.
+  if (/(ий|ый|ой)$/.test(district)) return `в ${district.slice(0, -2)}ом районе`;
   return `в районе ${district}`;
 }

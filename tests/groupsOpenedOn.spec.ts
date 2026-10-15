@@ -24,6 +24,15 @@ describe('дата открытия группы ставится базой', (
     expect(await opened(fromSheet.id)).toBeNull();
   });
 
+  test('дату ставит только «Функционирует»: заведённая на паузе или в кампании она не получает, а возобновление с паузы новым открытием не считается', async () => {
+    const paused = await repo.create({ ...base, status: 'На паузе' }, 'ui');
+    const campaign = await repo.create({ ...base, status: 'Кампания' }, 'ui');
+    expect(await opened(paused.id)).toBeNull();
+    expect(await opened(campaign.id)).toBeNull();
+    await repo.update(paused.id, { ...base, status: 'Функционирует' });
+    expect(await opened(paused.id)).toBeNull();
+  });
+
   test('потенциальная даты не имеет, а при переводе в «Функционирует» получает сегодняшнюю', async () => {
     const g = await repo.create({ ...base, status: 'Потенциальная' }, 'ui');
     expect(await opened(g.id)).toBeNull();
@@ -58,6 +67,15 @@ describe('дата открытия группы ставится базой', (
     await db.query('DROP FUNCTION IF EXISTS groups_set_opened_on() CASCADE');
     await db.query(readFileSync(new URL('../migrations/040_groups_opened_on.sql', import.meta.url), 'utf8'));
     expect(await opened(g.id)).toBeNull();
+  });
+});
+
+describe('миграция 041', () => {
+  test('перезапись триггера применяется к уже существующей базе без ошибок и сохраняет правило', async () => {
+    await db.query(readFileSync(new URL('../migrations/041_opened_on_only_functioning.sql', import.meta.url), 'utf8'));
+    const g = await repo.create({ ...base, status: 'Потенциальная' }, 'ui');
+    await repo.update(g.id, { ...base, status: 'Функционирует' });
+    expect(await opened(g.id)).toBe(await today());
   });
 });
 

@@ -6,7 +6,7 @@ import { currentSearch, renderAt, stubFetchWithFixtures } from '../../test/rende
 import { App } from '../../app/App';
 import { buildGroups, buildRequests, buildToday } from '../../fixtures/build';
 import { TodayContent } from './TodayScreen';
-import { cellSummary, hiddenNote, inDistrict, urgentDistricts } from './model';
+import { cellSummary, hiddenNote, urgentDistricts } from './model';
 
 const NOW = new Date(2026, 9, 9, 9, 0);
 
@@ -108,50 +108,31 @@ describe('«Сегодня»: счётчики и обзвон', () => {
 });
 
 describe('«Сегодня»: виджеты верхнего ряда', () => {
-  test('виджет «Нужна помощь» показывает число заявок и ведёт на фильтр «нужна помощь»', async () => {
+  test('виджет «Нужна помощь» — только число, без подписей и списков; нажатие ведёт на фильтр «нужна помощь»', async () => {
     const user = userEvent.setup();
-    renderAt(<TodayContent data={buildToday()} now={NOW} />);
+    const data = buildToday();
+    renderAt(<TodayContent data={data} now={NOW} />);
     const widget = screen.getByRole('region', { name: 'Нужна помощь в сопоставлении' });
-    expect(within(widget).getByText(String(buildToday().counters.human))).toBeInTheDocument();
-    await user.click(within(widget).getByRole('button', { name: 'Открыть список' }));
+    expect(within(widget).getByText(String(data.counters.human))).toBeInTheDocument();
+    expect(within(widget).queryByRole('list')).not.toBeInTheDocument();
+    expect(within(widget).getAllByRole('button')).toHaveLength(1);
+    await user.click(within(widget).getByRole('button', { name: /Открыть список/ }));
     expect(currentSearch().get('tab')).toBe('requests');
     expect(currentSearch().get('bucket')).toBe('human');
   });
 
-  test('в виджете «Нужна помощь» не больше трёх ситуаций, остальные — в списке', () => {
-    const many = Array.from({ length: 12 }, (_, i) => ({ requestId: 100 + i, fio: `Человек ${i + 1}`, place: null, reason: 'Место не распознано' }));
-    renderAt(<TodayContent data={{ ...buildToday(), clusters: [], singles: many }} now={NOW} />);
-    const widget = screen.getByRole('region', { name: 'Нужна помощь в сопоставлении' });
-    expect(within(widget).getAllByRole('listitem')).toHaveLength(3);
-  });
-
-  test('ситуация из виджета «Нужна помощь» открывает свою заявку', async () => {
-    const user = userEvent.setup();
-    const singles = [{ requestId: 8, fio: 'Станислав Ким', place: null, reason: 'Место не распознано' }];
-    renderAt(<TodayContent data={{ ...buildToday(), clusters: [], singles }} now={NOW} />);
-    await user.click(screen.getByRole('button', { name: /Станислав Ким/ }));
-    expect(currentSearch().get('tab')).toBe('requests');
-    expect(currentSearch().get('req')).toBe('8');
-  });
-
-  test('если помощь не нужна, вместо ситуаций — спокойное сообщение', () => {
-    const data = { ...buildToday(), clusters: [], singles: [] };
-    renderAt(<TodayContent data={data} now={NOW} />);
-    expect(screen.getByText('Таких заявок нет: система справилась со всеми.')).toBeInTheDocument();
-  });
-
-  test('виджет «Утверждено» показывает число, прирост за сегодня и ведёт на «Утверждено»', async () => {
+  test('виджет «Утверждено» — только число, без прироста за сегодня; нажатие открывает «Утверждено»', async () => {
     const user = userEvent.setup();
     const data = { ...buildToday(), approvedToday: 2 };
     renderAt(<TodayContent data={data} now={NOW} />);
     const widget = screen.getByRole('region', { name: 'Утверждено' });
     expect(within(widget).getByText(String(data.counters.done))).toBeInTheDocument();
-    expect(within(widget).getByText('сегодня: +2')).toBeInTheDocument();
-    await user.click(within(widget).getByRole('button', { name: 'Открыть список' }));
+    expect(within(widget).queryByText(/сегодня/)).not.toBeInTheDocument();
+    await user.click(within(widget).getByRole('button', { name: /Открыть список/ }));
     expect(currentSearch().get('bucket')).toBe('done');
   });
 
-  test('«Срочно нужна группа»: назван район, где не хватает больше всего мест, и сколько людей остаётся без места', () => {
+  test('«Срочно нужна группа»: только названия районов, где не хватает мест, — сначала где не хватает больше всего, без цифр', () => {
     const data = matrixData(
       [
         { district: 'Приморский', cells: [mkCell('26–35', 3, 1), mkCell('36–45', 1, 0)] },
@@ -163,34 +144,23 @@ describe('«Сегодня»: виджеты верхнего ряда', () => {
     );
     renderAt(<TodayContent data={data} now={NOW} />);
     const widget = screen.getByRole('region', { name: 'Срочно нужна группа' });
-    expect(within(widget).getByText('в Невском районе')).toBeInTheDocument();
-    expect(within(widget).getByText('ждут 6 человек, свободных мест 0: не хватает 6 человек')).toBeInTheDocument();
-    // Приморский — следующий (ждут 4, мест 1); Выборгский, где мест больше, чем людей, и неопределённый район в список не попадают.
-    const more = within(widget).getByRole('list', { name: 'Другие районы, где не хватает групп' });
-    expect(within(more).getByText('Приморский')).toBeInTheDocument();
-    expect(within(more).queryByText('Выборгский')).not.toBeInTheDocument();
-    expect(within(widget).queryByText('Район не определён')).not.toBeInTheDocument();
-  });
-
-  test('«Срочно нужна группа»: если мест хватает везде, так и сказано, а кнопки нет', () => {
-    const data = matrixData([{ district: 'Невский', cells: [mkCell('26–35', 1, 4)] }], ['26–35']);
-    renderAt(<TodayContent data={data} now={NOW} />);
-    const widget = screen.getByRole('region', { name: 'Срочно нужна группа' });
-    expect(within(widget).getByText(/хватает мест/)).toBeInTheDocument();
+    expect(within(widget).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Невский', 'Приморский']);
+    expect(within(widget).queryByText(/\d/)).not.toBeInTheDocument();
     expect(within(widget).queryByRole('button')).not.toBeInTheDocument();
   });
 
-  test('«Открыть группы» из виджета ведёт на вкладку «Группы»', async () => {
-    const user = userEvent.setup();
-    const data = matrixData([{ district: 'Невский', cells: [mkCell('26–35', 2, 0)] }], ['26–35']);
-    renderAt(<TodayContent data={data} now={NOW} />);
-    await user.click(within(screen.getByRole('region', { name: 'Срочно нужна группа' })).getByRole('button', { name: 'Открыть группы' }));
-    expect(currentSearch().get('tab')).toBe('groups');
+  test('«Срочно нужна группа»: больше пяти районов не показывается', () => {
+    const rows = ['А', 'Б', 'В', 'Г', 'Д', 'Е', 'Ж'].map((d, i) => ({ district: d, cells: [mkCell('26–35', 10 - i, 0)] }));
+    renderAt(<TodayContent data={matrixData(rows, ['26–35'])} now={NOW} />);
+    expect(within(screen.getByRole('region', { name: 'Срочно нужна группа' })).getAllByRole('listitem')).toHaveLength(5);
   });
 
-  test('если сегодня никого не утвердили, так и написано', () => {
-    renderAt(<TodayContent data={{ ...buildToday(), approvedToday: 0 }} now={NOW} />);
-    expect(screen.getByText('сегодня пока никого')).toBeInTheDocument();
+  test('«Срочно нужна группа»: если мест хватает везде, так и сказано', () => {
+    const data = matrixData([{ district: 'Невский', cells: [mkCell('26–35', 1, 4)] }], ['26–35']);
+    renderAt(<TodayContent data={data} now={NOW} />);
+    const widget = screen.getByRole('region', { name: 'Срочно нужна группа' });
+    expect(within(widget).getByText('Везде хватает мест.')).toBeInTheDocument();
+    expect(within(widget).queryByRole('listitem')).not.toBeInTheDocument();
   });
 
   test('показатель «Предложено автоматически» берёт данные из «Заявок», а пока они не пришли — не рисуется', async () => {
@@ -575,15 +545,4 @@ describe('«Срочно нужна группа»: расчёт', () => {
   test('«Район не определён» не в счёте, как и районы, где мест хватает', () => {
     expect(urgentDistricts([row('Район не определён', [mkCell('26–35', 9, 0)]), row('Невский', [mkCell('26–35', 1, 1)])])).toEqual([]);
   });
-
-  test.each([
-    ['Приморский', 'в Приморском районе'],
-    ['Центральный', 'в Центральном районе'],
-    ['Петродворцовый', 'в Петродворцовом районе'],
-    ['Ленинградская область', 'в Ленинградской области'],
-    ['Онлайн', 'онлайн'],
-  ])('«%s» → «%s»', (district, expected) => {
-    expect(inDistrict(district)).toBe(expected);
-  });
 });
-

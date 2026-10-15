@@ -29,7 +29,7 @@
 /* ── верхний ряд: приветствие со счётчиками и два виджета ─────────────────── */
 .top {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
   align-items: stretch;
 }
@@ -596,30 +596,36 @@
   font-size: 16px;
 }
 
-/* «Срочно нужна группа»: на всю ширину под верхним рядом, список остальных районов — мелким шрифтом. */
+/* Число в компактном виджете — кнопка: нажатие открывает список. */
+.widgetNumBtn {
+  align-self: flex-start;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-family: var(--mono);
+  font-size: 44px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  min-height: var(--tap);
+}
+.widgetNumBtn:hover {
+  text-decoration: underline;
+}
+
+/* «Срочно нужна группа»: бледно-розовый полупрозрачный фон поверх обычной панели, чтобы блок был заметен, но не кричал. */
 .urgent {
-  display: grid;
-  gap: 8px;
-}
-.urgentTop {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 12px;
-  margin: 0;
-  font-size: 18px;
+  flex-direction: column;
+  gap: 8px;
+  background: linear-gradient(var(--urgent-bg), var(--urgent-bg)), var(--surface);
 }
-.urgentRest {
-  list-style: none;
+.urgentList {
   margin: 0;
   padding: 0;
+  list-style: none;
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px 20px;
-  font-size: 13px;
-}
-.urgentRest li {
-  display: inline-flex;
-  gap: 6px;
-  align-items: baseline;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 14px;
 }

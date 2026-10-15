@@ -987,11 +987,12 @@ describe('удобное время, улица и «заявка как при�
     expect(views.requests.items[0]!.log.map((l) => l.text)).toContain('Уточнено вручную: улица, удобное время · mbv_admin');
   });
 
-  test('группа кампании помечена как новая, обычная — нет', () => {
-    const { views } = build({ groups: [group({ id: 1, status: 'Кампания' }), group({ id: 2 })] });
+  test('новой считается только действующая группа с недавней датой открытия: «Кампания» без даты и обычная старая — нет', () => {
+    const { views } = build({ groups: [group({ id: 1, status: 'Кампания' }), group({ id: 2 }), group({ id: 3, opened_on: '2026-10-01' })] });
     const byId = new Map(views.groups.items.map((g) => [g.id, g]));
-    expect(byId.get(1)!.isNew).toBe(true);
+    expect(byId.get(1)!.isNew).toBe(false);
     expect(byId.get(2)!.isNew).toBe(false);
+    expect(byId.get(3)!.isNew).toBe(true);
   });
 });
 
@@ -1461,26 +1462,32 @@ describe('день недели, время и улица: что уходит �
 
 });
 
-describe('значки групп: росток и увядший листочек', () => {
+describe('значки групп: зелёный и оранжевый росток', () => {
   const items = (groups: DashboardGroup[]) => new Map(build({ groups }).views.groups.items.map((g) => [g.id, g]));
   // «Сегодня» 2026-10-10: открытая 11 июня ещё в первых четырёх месяцах (они кончатся 11 октября), открытая 10 июня — уже нет.
 
-  test('потенциальная — новая, но не увядшая: людей в ней ещё и не должно быть', () => {
-    expect(items([group({ id: 1, status: 'Потенциальная', people: 0 })]).get(1)).toMatchObject({ isNew: true, empty: false });
+  test('росток только у «Функционирует»: потенциальная, на паузе, кампания и закрытая его не получают, даже со свежей датой', () => {
+    const m = items(['Потенциальная', 'На паузе', 'Кампания', 'Закрыта', 'Недвижимость', 'Функционирует'].map((status, i) => group({ id: i + 1, status, opened_on: '2026-09-01', people: 0 })));
+    expect([...m.values()].map((g) => [g.status, g.isNew, g.empty])).toEqual([
+      ['Потенциальная', false, false],
+      ['На паузе', false, false],
+      ['Кампания', false, false],
+      ['Закрыта', false, false],
+      ['Недвижимость', false, false],
+      ['Функционирует', true, false],
+    ]);
   });
 
-  test('первые четыре месяца после открытия росток у всех, сколько бы ни было людей, и увядшей не бывает даже без людей', () => {
+  test('первые четыре месяца после открытия росток у всех, сколько бы ни было людей, оранжевого нет даже без людей', () => {
     const m = items([
       group({ id: 1, opened_on: '2026-06-11', people: 8 }),
       group({ id: 2, opened_on: '2026-09-01', people: 0 }),
       group({ id: 3, opened_on: '2026-06-11', people: 1 }),
     ]);
-    expect(m.get(1)).toMatchObject({ isNew: true, empty: false });
-    expect(m.get(2)).toMatchObject({ isNew: true, empty: false });
-    expect(m.get(3)).toMatchObject({ isNew: true, empty: false });
+    for (const id of [1, 2, 3]) expect(m.get(id)).toMatchObject({ isNew: true, empty: false });
   });
 
-  test('через четыре месяца: набралось три человека — отметки нет, не набралось — росток становится увядшим', () => {
+  test('через четыре месяца: набралось три человека — отметки нет, не набралось — оранжевый росток', () => {
     const m = items([
       group({ id: 1, opened_on: '2026-06-10', people: 8 }),
       group({ id: 2, opened_on: '2026-06-10', people: 3 }),
@@ -1493,7 +1500,7 @@ describe('значки групп: росток и увядший листоче
     expect(m.get(4)).toMatchObject({ isNew: false, empty: true });
   });
 
-  test('у старой группы без даты открытия: без людей — увядший листочек, а с одним-двумя людьми отметки нет', () => {
+  test('у старой группы без даты открытия: без людей — оранжевый, с одним-двумя людьми отметки нет', () => {
     const m = items([
       group({ id: 1, opened_on: null, people: 0 }),
       group({ id: 2, opened_on: null, people: null }),
@@ -1506,9 +1513,9 @@ describe('значки групп: росток и увядший листоче
     expect(m.get(4)).toMatchObject({ isNew: false, empty: false });
   });
 
-  test('«Кампания» по-прежнему считается новой, а закрытая группа без людей не увядшая', () => {
-    const m = items([group({ id: 1, status: 'Кампания', people: 0 }), group({ id: 2, status: 'Закрыта', people: 0 })]);
-    expect(m.get(1)).toMatchObject({ isNew: true, empty: false });
+  test('оранжевого нет у групп на паузе и закрытых, даже если людей нет', () => {
+    const m = items([group({ id: 1, status: 'На паузе', people: 0 }), group({ id: 2, status: 'Закрыта', people: 0 })]);
+    expect(m.get(1)).toMatchObject({ isNew: false, empty: false });
     expect(m.get(2)).toMatchObject({ isNew: false, empty: false });
   });
 

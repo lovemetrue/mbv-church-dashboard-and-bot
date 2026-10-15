@@ -363,10 +363,10 @@ describe('создание и параметры подбора через HTTP 
     } finally { app.server.close(); }
   });
 
-  test('созданная группа появляется в справочнике с кодом, source=ui', async () => {
+  test('созданная действующая группа появляется в справочнике с кодом, source=ui и ростком: дату открытия ставит база', async () => {
     const app = await startAdmin();
     try {
-      const ok = await app.post('groups/create', { fields: { leader: 'Иван Петров', district: 'Приморский', format: 'Основная церковь', status: 'Кампания', people: '4' } });
+      const ok = await app.post('groups/create', { fields: { leader: 'Иван Петров', district: 'Приморский', format: 'Основная церковь', status: 'Функционирует', people: '4' } });
       expect(ok.status).toBe(200);
       const { id } = await ok.json() as { id: number };
       const group = (await app.get('groups')).items.find((g: { id: number }) => g.id === id);

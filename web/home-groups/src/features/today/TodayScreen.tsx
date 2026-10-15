@@ -89,9 +89,8 @@ export function TodayContent({ data, now }: { data: TodayView; now: Date }) {
         </section>
         <HelpWidget data={data} />
         <ApprovedWidget data={data} />
+        <UrgentWidget data={data} />
       </div>
-
-      <UrgentWidget data={data} />
 
       <section className={`${styles.panel} ${styles.matrixPanel}`} aria-labelledby="today-matrix">
         <h3 id="today-matrix" className={styles.h3}>

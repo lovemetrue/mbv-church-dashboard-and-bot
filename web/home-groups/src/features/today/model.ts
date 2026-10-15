@@ -240,17 +240,3 @@ export function urgentDistricts(matrix: readonly MatrixRow[]): UrgentDistrict[] 
     .filter((d) => d.deficit > 0)
     .sort((a, b) => b.deficit - a.deficit || b.demand - a.demand || a.district.localeCompare(b.district, 'ru'));
 }
-
-const INSIDE_EXCEPTIONS: Record<string, string> = {
-  'Ленинградская область': 'в Ленинградской области',
-  Онлайн: 'онлайн',
-};
-
-/** «в Приморском районе», «в Ленинградской области», «онлайн»: район нужен в предложном падеже для «Срочно нужна группа …». */
-export function inDistrict(district: string): string {
-  const fixed = INSIDE_EXCEPTIONS[district];
-  if (fixed) return fixed;
-  // «Приморский» → «Приморском», «Центральный» → «Центральном»: у прилагательных на -ий/-ый/-ой меняются два последних знака.
-  if (/(ий|ый|ой)$/.test(district)) return `в ${district.slice(0, -2)}ом районе`;
-  return `в районе ${district}`;
-}

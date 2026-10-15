@@ -7,6 +7,7 @@ import { LoadingState } from '../shared/ui';
 import { AssistantChat } from '../features/assistant-chat';
 import { isRegistrationPath, RegistrationPage } from '../features/create/RegistrationPage';
 import { RequestsScreen } from '../features/requests/RequestsScreen';
+import { GroupsScreen } from '../features/groups/GroupsScreen';
 import { ReferenceScreen } from '../features/reference/ReferenceScreen';
 import { SettingsScreen } from '../features/settings/SettingsScreen';
 import { TeamScreen } from '../features/team/TeamScreen';
@@ -57,6 +58,7 @@ function Shell() {
       <main id={PANEL_ID} role="tabpanel" aria-labelledby={tabDomId(nav.tab)} tabIndex={-1} className={styles.main}>
         {nav.tab === 'today' && <TodayScreen />}
         {nav.tab === 'requests' && <RequestsScreen />}
+        {nav.tab === 'groups' && <GroupsScreen />}
         {nav.tab === 'team' && <TeamScreen />}
         {nav.tab === 'reference' && <ReferenceScreen />}
         {nav.tab === 'settings' && <SettingsRoute />}

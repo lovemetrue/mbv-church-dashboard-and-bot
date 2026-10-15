@@ -2,7 +2,7 @@ import type { Row, RowGroup, SortState } from '../../shared/filters';
 import { healthTone } from '../../entities/format';
 import { ru } from '../../shared/i18n/ru';
 import type { StrangeMark } from '@contracts';
-import { EmptyState, NewGroupIcon, StrangeBadge, TableScroll } from '../../shared/ui';
+import { EmptyState, GroupMarks, StrangeBadge, TableScroll } from '../../shared/ui';
 import { displayCell } from './config';
 import styles from './Reference.module.css';
 
@@ -40,18 +40,18 @@ function Cell({ column, value, row }: { column: string; value: Row[string]; row:
     );
   }
   if (column === 'Ведущий' || column === 'Код') {
-    const isNew = Number(row['_isNew'] ?? 0) > 0;
+    const marks = { isNew: Number(row['_isNew'] ?? 0) > 0, empty: Number(row['_isEmpty'] ?? 0) > 0 };
     if (column === 'Код') {
       return (
         <>
-          {isNew && <NewGroupIcon size={14} />} {text}
+          <GroupMarks g={marks} size={14} /> {text}
         </>
       );
     }
     // Ширина ограничена, чтобы длинное ФИО не раздвигало таблицу; полное имя доступно в подсказке.
     return (
       <span className={styles.leaderCell}>
-        {isNew && <NewGroupIcon size={14} />}
+        <GroupMarks g={marks} size={14} />
         <span className={styles.leaderName} title={text.length > LEADER_TITLE_FROM ? text : undefined}>
           {text}
         </span>

@@ -2,14 +2,15 @@ import type { TodayView } from '@contracts';
 import { useState } from 'react';
 import { greeting } from '../../entities/format';
 import { FORMS, plural } from '../../entities/plural';
-import { useRequests, useToday } from '../../shared/api/queries';
+import { useGroups, useRequests, useToday } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
 import { useAppNav } from '../../shared/nav';
 import { Button, ErrorState, LoadingState, Tip } from '../../shared/ui';
 import { CellPanel } from './CellPanel';
 import { Matrix, type CellRef } from './Matrix';
 import { useMatrixPrefs } from './prefs';
-import { ApprovedWidget, HelpWidget } from './Widgets';
+import { GroupsMap } from '../reference/GroupsMap';
+import { ApprovedWidget, HelpWidget, UrgentWidget } from './Widgets';
 import styles from './Today.module.css';
 
 export function TodayScreen() {
@@ -27,6 +28,7 @@ export function TodayScreen() {
 export function TodayContent({ data, now }: { data: TodayView; now: Date }) {
   const nav = useAppNav();
   const requests = useRequests();
+  const groups = useGroups();
   const [prefs, setPrefs] = useMatrixPrefs();
   const [selected, setSelected] = useState<CellRef | null>(null);
   const { counters } = data;
@@ -89,12 +91,17 @@ export function TodayContent({ data, now }: { data: TodayView; now: Date }) {
         <ApprovedWidget data={data} />
       </div>
 
+      <UrgentWidget data={data} />
+
       <section className={`${styles.panel} ${styles.matrixPanel}`} aria-labelledby="today-matrix">
         <h3 id="today-matrix" className={styles.h3}>
           {ru.today.matrixTitle}
         </h3>
         <Matrix data={data} prefs={prefs} onPrefs={setPrefs} selected={selected} onOpen={setSelected} />
       </section>
+
+      {/* Карта групп переехала сюда из «Справочника»: открывать её нужно там, где смотрят, где людям не хватает групп. */}
+      <GroupsMap groups={groups.data?.items ?? []} />
 
       {selected && selectedCell && (
         <CellPanel

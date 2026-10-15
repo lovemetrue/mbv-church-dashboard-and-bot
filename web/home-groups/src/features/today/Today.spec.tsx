@@ -6,7 +6,7 @@ import { currentSearch, renderAt, stubFetchWithFixtures } from '../../test/rende
 import { App } from '../../app/App';
 import { buildGroups, buildRequests, buildToday } from '../../fixtures/build';
 import { TodayContent } from './TodayScreen';
-import { cellSummary, hiddenNote } from './model';
+import { cellSummary, hiddenNote, inDistrict, urgentDistricts } from './model';
 
 const NOW = new Date(2026, 9, 9, 9, 0);
 
@@ -149,6 +149,43 @@ describe('«Сегодня»: виджеты верхнего ряда', () => {
     expect(within(widget).getByText('сегодня: +2')).toBeInTheDocument();
     await user.click(within(widget).getByRole('button', { name: 'Открыть список' }));
     expect(currentSearch().get('bucket')).toBe('done');
+  });
+
+  test('«Срочно нужна группа»: назван район, где не хватает больше всего мест, и сколько людей остаётся без места', () => {
+    const data = matrixData(
+      [
+        { district: 'Приморский', cells: [mkCell('26–35', 3, 1), mkCell('36–45', 1, 0)] },
+        { district: 'Невский', cells: [mkCell('26–35', 6, 0)] },
+        { district: 'Выборгский', cells: [mkCell('26–35', 1, 5)] },
+        { district: 'Район не определён', cells: [mkCell('26–35', 9, 0)] },
+      ],
+      ['26–35', '36–45'],
+    );
+    renderAt(<TodayContent data={data} now={NOW} />);
+    const widget = screen.getByRole('region', { name: 'Срочно нужна группа' });
+    expect(within(widget).getByText('в Невском районе')).toBeInTheDocument();
+    expect(within(widget).getByText('ждут 6 человек, свободных мест 0: не хватает 6 человек')).toBeInTheDocument();
+    // Приморский — следующий (ждут 4, мест 1); Выборгский, где мест больше, чем людей, и неопределённый район в список не попадают.
+    const more = within(widget).getByRole('list', { name: 'Другие районы, где не хватает групп' });
+    expect(within(more).getByText('Приморский')).toBeInTheDocument();
+    expect(within(more).queryByText('Выборгский')).not.toBeInTheDocument();
+    expect(within(widget).queryByText('Район не определён')).not.toBeInTheDocument();
+  });
+
+  test('«Срочно нужна группа»: если мест хватает везде, так и сказано, а кнопки нет', () => {
+    const data = matrixData([{ district: 'Невский', cells: [mkCell('26–35', 1, 4)] }], ['26–35']);
+    renderAt(<TodayContent data={data} now={NOW} />);
+    const widget = screen.getByRole('region', { name: 'Срочно нужна группа' });
+    expect(within(widget).getByText(/хватает мест/)).toBeInTheDocument();
+    expect(within(widget).queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  test('«Открыть группы» из виджета ведёт на вкладку «Группы»', async () => {
+    const user = userEvent.setup();
+    const data = matrixData([{ district: 'Невский', cells: [mkCell('26–35', 2, 0)] }], ['26–35']);
+    renderAt(<TodayContent data={data} now={NOW} />);
+    await user.click(within(screen.getByRole('region', { name: 'Срочно нужна группа' })).getByRole('button', { name: 'Открыть группы' }));
+    expect(currentSearch().get('tab')).toBe('groups');
   });
 
   test('если сегодня никого не утвердили, так и написано', () => {
@@ -513,3 +550,40 @@ describe('«Сегодня» в приложении', () => {
     await waitFor(() => expect(screen.getByRole('region', { name: 'Нужна помощь в сопоставлении' })).toBeInTheDocument());
   });
 });
+
+describe('«Срочно нужна группа»: расчёт', () => {
+  const row = (district: string, cells: MatrixCell[], supplyTotal?: number): MatrixRow => ({ district, supplyTotal: supplyTotal ?? cells.reduce((s, c) => s + c.supply, 0), cells });
+
+  test('нехватка — это спрос минус свободные места района; сначала где не хватает больше, при равенстве — где больше ждущих', () => {
+    const list = urgentDistricts([
+      row('А', [mkCell('26–35', 4, 2)]),
+      row('Б', [mkCell('26–35', 5, 3)]),
+      row('В', [mkCell('26–35', 2, 0)]),
+      row('Г', [mkCell('26–35', 6, 6)]),
+    ]);
+    // Нехватка у всех троих по два человека, поэтому порядок решает число ждущих: Б (5), А (4), В (2).
+    expect(list.map((d) => d.deficit)).toEqual([2, 2, 2]);
+    expect(list.map((d) => d.district)).toEqual(['Б', 'А', 'В']);
+  });
+
+  test('места района считаются без двойного счёта: берётся supplyTotal, а не сумма по возрастным клеткам', () => {
+    // Группа с двумя возрастами стоит в обеих клетках (supply 5 + 5), но мест в районе всего 5.
+    const list = urgentDistricts([row('Невский', [mkCell('18–25', 4, 5), mkCell('26–35', 4, 5)], 5)]);
+    expect(list).toEqual([{ district: 'Невский', demand: 8, supply: 5, deficit: 3 }]);
+  });
+
+  test('«Район не определён» не в счёте, как и районы, где мест хватает', () => {
+    expect(urgentDistricts([row('Район не определён', [mkCell('26–35', 9, 0)]), row('Невский', [mkCell('26–35', 1, 1)])])).toEqual([]);
+  });
+
+  test.each([
+    ['Приморский', 'в Приморском районе'],
+    ['Центральный', 'в Центральном районе'],
+    ['Петродворцовый', 'в Петродворцовом районе'],
+    ['Ленинградская область', 'в Ленинградской области'],
+    ['Онлайн', 'онлайн'],
+  ])('«%s» → «%s»', (district, expected) => {
+    expect(inDistrict(district)).toBe(expected);
+  });
+});
+

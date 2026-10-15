@@ -213,3 +213,43 @@ export function parsePrefs(raw: string | null): MatrixPrefs {
     return DEFAULT_PREFS;
   }
 }
+
+/** Район, где спрос не покрыт: ждут больше человек, чем свободных мест. */
+export interface UrgentDistrict {
+  district: string;
+  /** Открытых заявок в районе (все возрасты, включая «возраст не указан»). */
+  demand: number;
+  /** Свободных мест в принимающих группах района (без двойного счёта: см. `MatrixRow.supplyTotal`). */
+  supply: number;
+  /** Сколько человек остаётся без места: спрос минус места. Всегда больше нуля. */
+  deficit: number;
+}
+
+/**
+ * Где группа нужна срочнее всего. По строкам таблицы «Сегодня»: спрос (открытые заявки) минус свободные места района; остаются
+ * только районы, где человек больше, чем мест. Первыми — где не хватает больше всего, при равенстве — где больше ждущих.
+ * Строка «Район не определён» не в счёте: группу в «никаком районе» не откроешь, а такие заявки сначала нужно разобрать.
+ */
+export function urgentDistricts(matrix: readonly MatrixRow[]): UrgentDistrict[] {
+  return matrix
+    .filter((row) => !isUnknownDistrict(row.district))
+    .map((row) => {
+      const demand = row.cells.reduce((sum, c) => sum + c.demand, 0);
+      return { district: row.district, demand, supply: row.supplyTotal, deficit: demand - row.supplyTotal };
+    })
+    .filter((d) => d.deficit > 0)
+    .sort((a, b) => b.deficit - a.deficit || b.demand - a.demand || a.district.localeCompare(b.district, 'ru'));
+}
+
+const INSIDE_EXCEPTIONS: Record<string, string> = {
+  'Ленинградская область': 'в Ленинградской области',
+  Онлайн: 'онлайн',
+};
+
+/** «в Приморском районе», «в Ленинградской области», «онлайн»: район нужен в предложном падеже для «Срочно нужна группа …». */
+export function inDistrict(district: string): string {
+  const fixed = INSIDE_EXCEPTIONS[district];
+  if (fixed) return fixed;
+  if (/(ий|ый|ой)$/.test(district)) return `в ${district.slice(0, -1)}м районе`;
+  return `в районе ${district}`;
+}

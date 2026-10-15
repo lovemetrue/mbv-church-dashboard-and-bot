@@ -100,6 +100,8 @@ export function groupBrief(g: RawGroup): GroupBrief {
     free: freeOf(g),
     format: g.format,
     isNew: g.isNew,
+    // «Увядший листочек»: людей нет (потенциальные и закрытые не в счёт), как считает сервер.
+    empty: g.status !== 'Потенциальная' && g.status !== 'Закрыта' && (g.people ?? 0) === 0,
   };
 }
 
@@ -528,6 +530,7 @@ export function buildGroups(): GroupsView {
     composition: g.composition,
     coordinator: g.coordinator,
     verifiedDaysAgo: g.verifiedDaysAgo,
+    openedOn: g.isNew ? '2026-08-20' : null,
     comment: g.comment,
     health: healthOf(g),
     addressGeo: g.street ? 'found' : null,

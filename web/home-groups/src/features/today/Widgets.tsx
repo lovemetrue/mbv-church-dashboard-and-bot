@@ -3,6 +3,7 @@ import { FORMS, plural } from '../../entities/plural';
 import { ru } from '../../shared/i18n/ru';
 import { useAppNav } from '../../shared/nav';
 import { Button } from '../../shared/ui';
+import { inDistrict, urgentDistricts } from './model';
 import styles from './Today.module.css';
 
 /** Сколько ситуаций мелким шрифтом в виджете; остальные — в списке «Заявок» (на живых данных их под сотню). */
@@ -84,6 +85,51 @@ export function ApprovedWidget({ data }: { data: TodayView }) {
           {ru.today.approvedOpen}
         </Button>
       </div>
+    </section>
+  );
+}
+
+/**
+ * «Срочно нужна группа в…»: район, где людей ждёт больше, чем свободных мест (спрос есть, групп нет или они заполнены).
+ * Считается по той же таблице, что и «Сегодня», поэтому цифры совпадают с клетками матрицы. Остальные районы с нехваткой —
+ * мелким списком; по клику открывается список групп вкладки «Группы».
+ */
+export function UrgentWidget({ data }: { data: TodayView }) {
+  const nav = useAppNav();
+  const list = urgentDistricts(data.matrix);
+  const [top, ...rest] = list;
+  return (
+    <section className={`${styles.panel} ${styles.urgent}`} aria-labelledby="today-urgent">
+      <h3 id="today-urgent" className={styles.widgetTitle}>
+        {ru.today.urgentTitle}
+      </h3>
+      {top ? (
+        <>
+          <p className={styles.urgentTop}>
+            <b>{inDistrict(top.district)}</b>
+            <span className={styles.widgetCaption}>
+              {ru.today.urgentLine(plural(top.demand, FORMS.person), top.supply, plural(top.deficit, FORMS.person))}
+            </span>
+          </p>
+          {rest.length > 0 && (
+            <ul className={styles.urgentRest} aria-label={ru.today.urgentMoreLabel}>
+              {rest.slice(0, 3).map((d) => (
+                <li key={d.district}>
+                  <b>{d.district}</b>
+                  <span className={styles.widgetCaption}>{ru.today.urgentShort(d.demand, d.supply)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className={styles.widgetAct}>
+            <Button size="sm" onClick={() => nav.goTab('groups')}>
+              {ru.today.urgentOpen}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <p className={styles.widgetCaption}>{ru.today.urgentNone}</p>
+      )}
     </section>
   );
 }

@@ -21,7 +21,7 @@ function group(over: Partial<DashboardGroup> & { id: number }): DashboardGroup {
   return {
     no: over.id, leader: `Ведущий ${over.id}`, phone: null, phones: [], open_to_new: null, age: null,
     district: 'Приморский', metro: null, address: null, composition: null, day: null, time: null, people: null,
-    coordinator: null, co_leader: null, co_leader_phone: null, feedback_at: null, comment: null, training: null,
+    coordinator: null, co_leader: null, co_leader_phone: null, feedback_at: null, opened_on: null, comment: null, training: null,
     format: 'Молодежная', status: 'Функционирует', checked: null, source: 'таблица', campaign_registered: false,
     do_not_refer: false, leader_user_id: null,
     ...over,
@@ -1459,4 +1459,59 @@ describe('день недели, время и улица: что уходит �
     expect(out.views.groups.items[0]!.address).toBe('ул. Рылеева, д. 32, кв. 5');
   });
 
+});
+
+describe('значки групп: росток и увядший листочек', () => {
+  const items = (groups: DashboardGroup[]) => new Map(build({ groups }).views.groups.items.map((g) => [g.id, g]));
+
+  test('потенциальная — новая, но не «пустая»: людей в ней ещё и не должно быть', () => {
+    const g = items([group({ id: 1, status: 'Потенциальная', people: 0 })]).get(1)!;
+    expect(g).toMatchObject({ isNew: true, empty: false });
+  });
+
+  test('первые четыре месяца после открытия группа новая, сколько бы в ней ни было людей', () => {
+    const m = items([
+      group({ id: 1, opened_on: '2026-06-11', people: 8 }),
+      group({ id: 2, opened_on: '2026-06-10', people: 8 }),
+      group({ id: 3, opened_on: '2026-09-01', people: 0 }),
+    ]);
+    // «Сегодня» 2026-10-10: открытая 11 июня ещё новая (четыре месяца кончатся 11 октября), открытая 10 июня — уже нет.
+    expect(m.get(1)!.isNew).toBe(true);
+    expect(m.get(2)!.isNew).toBe(false);
+    expect(m.get(3)).toMatchObject({ isNew: true, empty: true });
+  });
+
+  test('у старой группы даты открытия нет: она не новая', () => {
+    expect(items([group({ id: 1, opened_on: null, people: 8 })]).get(1)).toMatchObject({ isNew: false, empty: false });
+  });
+
+  test('«Кампания» по-прежнему считается новой', () => {
+    expect(items([group({ id: 1, status: 'Кампания', people: 2 })]).get(1)!.isNew).toBe(true);
+  });
+
+  test('увядший листочек: людей нет — и у старой группы тоже; есть число, ручной состав или утверждённый — нет', () => {
+    const m = items([
+      group({ id: 1, people: 0 }),
+      group({ id: 2, people: null }),
+      group({ id: 3, people: 4 }),
+      group({ id: 4, people: 0 }),
+      group({ id: 5, people: 0 }),
+      group({ id: 6, status: 'Закрыта', people: 0 }),
+    ]);
+    expect(m.get(1)!.empty).toBe(true);
+    expect(m.get(2)!.empty).toBe(true);
+    expect(m.get(3)!.empty).toBe(false);
+    expect(m.get(6)!.empty).toBe(false);
+  });
+
+  test('люди из ручного состава и утверждённые заявкой снимают «пустую» группу', () => {
+    const { views } = build({
+      groups: [group({ id: 4, people: 0 }), group({ id: 5, people: 0 })],
+      members: [{ id: 1, group_id: 4, personKey: 'p1', full_name: 'Нина', phone: null, joined_on: null, note: null }],
+      requests: [request({ id: 10, status: 'Исполнена', group_id: 5 })],
+    });
+    const m = new Map(views.groups.items.map((g) => [g.id, g]));
+    expect(m.get(4)!.empty).toBe(false);
+    expect(m.get(5)!.empty).toBe(false);
+  });
 });

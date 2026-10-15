@@ -23,7 +23,7 @@ import type {
   Day, PlanEngineApi, PlanEntry, PlanEntryProposal, PlanGroup, PlanOutput, PlanRequest, ScoredGroup, Slot,
 } from '../plan/types.js';
 import { buildTeam } from './team.js';
-import { daysSince, localIsoDate, validIsoDate } from './dates.js';
+import { addMonthsIso, daysSince, localIsoDate, validIsoDate } from './dates.js';
 
 /** Уже загруженные строки: функция ниже ничего не читает из базы и не знает про сеть. */
 export interface ViewsInput {
@@ -85,6 +85,8 @@ const DEFAULT_TIME_ZONE = 'Europe/Moscow';
 
 /** Статусы, после которых заявка в план не идёт (совпадает с `CLOSED_STATUSES` в репозитории). */
 const DONE = 'Исполнена';
+/** Сколько месяцев после открытия группа считается новой. */
+const NEW_GROUP_MONTHS = 4;
 const CANCELLED = 'Аннулирована';
 
 /** Порядок на экране «Заявки»: сначала то, что требует звонка. Отказов в списке нет. */
@@ -288,6 +290,16 @@ export function buildViewsWithPlan(
   const generatedAt = now.toISOString();
   const settings = { ...engine.DEFAULT_SETTINGS, defaultCapacity };
 
+  // Группа «новая» (росток): потенциальная, из кампании или открытая меньше четырёх месяцев назад (дата открытия — `opened_on`).
+  // Сколько в ней людей, не важно: первые четыре месяца она остаётся новой. У старых групп даты нет — они не новые.
+  const isNewGroup = (g: { status: string; opened_on: string | null }): boolean =>
+    g.status === 'Потенциальная' || g.status === 'Кампания' || (!!g.opened_on && (addMonthsIso(g.opened_on, NEW_GROUP_MONTHS) ?? '') > today);
+  // Есть ли в группе люди: число из таблицы, ручной состав или утверждённые сервисом. «Увядший листочек» — когда никого нет
+  // (у потенциальной людей ещё и не должно быть, закрытая нас не интересует).
+  const groupsWithPeople = new Set<number>([
+    ...(input.members ?? []).map((m) => m.group_id),
+    ...input.requests.filter((r) => r.status === DONE && r.group_id !== null).map((r) => r.group_id as number),
+  ]);
   const coordsOf = (address: string | null | undefined) => input.geo?.get(addressKey(address) ?? '') ?? null;
   // Есть запись с точкой — «found», запись «не нашли» — «missing», записи нет (не спрашивали или геокодер выключен) — null.
   const geoStateOf = (address: string | null | undefined): 'found' | 'missing' | null => {
@@ -320,6 +332,7 @@ export function buildViewsWithPlan(
       acceptsNew: g.open_to_new?.trim().toUpperCase() !== 'НЕТ',
       doNotRefer: g.do_not_refer,
       verifiedDaysAgo: daysSince(validIsoDate(g.feedback_at), today),
+      isNew: isNewGroup(g),
     };
   });
   const planGroupById = new Map(planGroups.map((g) => [g.id, g]));
@@ -341,7 +354,8 @@ export function buildViewsWithPlan(
       capacity: p.capacity,
       free: Math.max(0, p.capacity - (p.people ?? 0)),
       format: nonBlank(g.format),
-      isNew: g.status === 'Кампания',
+      isNew: isNewGroup(g),
+      empty: g.status !== 'Потенциальная' && g.status !== 'Закрыта' && (p.people ?? 0) === 0 && !groupsWithPeople.has(p.id),
     };
   };
 
@@ -729,6 +743,7 @@ export function buildViewsWithPlan(
       composition: nonBlank(g.composition),
       coordinator: nonBlank(g.coordinator),
       verifiedDaysAgo: p.verifiedDaysAgo,
+      openedOn: validIsoDate(g.opened_on),
       comment: nonBlank(g.comment),
       health: groupHealth(g, p),
       addressGeo: geoStateOf(g.address),

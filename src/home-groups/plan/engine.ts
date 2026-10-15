@@ -222,6 +222,17 @@ export function match(r: PlanRequest, groups: readonly PlanGroup[], settings: Pl
   return { ranked, excluded, known };
 }
 
+/**
+ * Запасные варианты: первым идёт лучшая из НОВЫХ групп (кроме главной), потом следующая по оценке. Так под самой подходящей
+ * группой координатор всегда видит самую подходящую из новых: их надо наполнять людьми, а старые и так заполнены.
+ */
+function pickAlternatives(ordered: readonly ScoredGroup[], main: ScoredGroup, groupById: ReadonlyMap<number, PlanGroup>): ScoredGroup[] {
+  const rest = ordered.filter((c) => c !== main);
+  const bestNew = rest.find((c) => groupById.get(c.groupId)?.isNew === true);
+  if (!bestNew) return rest.slice(0, 2);
+  return [bestNew, ...rest.filter((c) => c !== bestNew)].slice(0, 2);
+}
+
 // ── план на всю очередь ─────────────────────────────────────────────────────
 
 interface Work {
@@ -318,7 +329,7 @@ export function buildPlan(input: PlanInput): PlanOutput {
       main,
       confidence: Math.round(main.score * (settings.confidenceFloor + (settings.confidenceSpan * knownParams) / 4)),
       knownParams,
-      alternatives: ordered.filter((c) => c !== main).slice(0, 2),
+      alternatives: pickAlternatives(ordered, main, groupById),
       displaced,
     };
     decided.set(request.id, proposal);

@@ -42,12 +42,13 @@ afterEach(() => vi.unstubAllGlobals());
 
 async function openMap(overrides: Parameters<typeof stubFetchWithFixtures>[0] = {}) {
   const fetchMock = stubFetchWithFixtures({ me: () => json({ role: 'super' }), 'map/loaded': () => json({ apiKey: 'demo-map-key', loadsThisMonth: 8, monthlyLimit: 100 }), ...overrides });
-  renderAt(<App />, '/?tab=reference');
+  // Карта переехала из «Справочника» на «Сегодня»: смотреть, где не хватает групп, удобнее там же, где «Срочно нужна группа».
+  renderAt(<App />, '/');
   const box = await screen.findByRole('region', { name: 'Карта групп' });
   return { box, fetchMock };
 }
 
-describe('«Справочник → Группы»: карта', () => {
+describe('«Сегодня»: карта групп', () => {
   test('карта не грузится сама: пока не нажали «Показать карту», скрипт Яндекса не запрашивается и открытие не считается', async () => {
     const { box, fetchMock } = await openMap();
     await within(box).findByRole('button', { name: /Показать карту \(открытий в месяце: 7 из 100\)/ });

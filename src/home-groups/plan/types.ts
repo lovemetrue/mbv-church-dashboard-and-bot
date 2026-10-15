@@ -43,6 +43,8 @@ export interface PlanGroup {
   doNotRefer: boolean;
   /** Дней с последней обратной связи; null — не было. */
   verifiedDaysAgo: number | null;
+  /** Новая группа (первые четыре месяца после открытия, кампания): подбор предлагает лучшую из таких вторым вариантом. */
+  isNew?: boolean;
 }
 
 export interface PlanRequest {

@@ -4,7 +4,7 @@ import { BUCKET_LABEL } from '../../entities/buckets';
 import { formatDateShort, formatPhone, groupLabel } from '../../entities/format';
 import { useGroups } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
-import { AgeTag, Button, Drawer, DrawerSection, KeyValue, NewGroupIcon, Pill, StrangeBadge, StrangeBanner, type KvRow } from '../../shared/ui';
+import { AgeTag, Button, Drawer, DrawerSection, GroupMarks, KeyValue, Pill, StrangeBadge, StrangeBanner, type KvRow } from '../../shared/ui';
 import { CandidateCard } from './CandidateCard';
 import { DataChanges, useChangesDisclosure } from './DataChanges';
 import { SavedTag } from './SavedTag';
@@ -117,7 +117,7 @@ function DisplacedVariant({
     <article className={styles.cand}>
       <div className={styles.candHead}>
         <b>Группа {groupLabel(g)}</b>
-        {g.isNew && <NewGroupIcon />}
+        <GroupMarks g={g} />
         <span className={styles.note}>{[g.leader, g.format].filter(Boolean).join(' · ')}</span>
       </div>
       <p className={styles.note}>{ru.requests.alt.displacedBy(displaced.takenBy.join(', '))}</p>

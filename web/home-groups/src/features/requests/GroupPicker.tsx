@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import type { GroupBrief, GroupItem, RequestItem } from '@contracts';
 import { useGroups } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
-import { Button, ErrorState, LoadingState, NewGroupIcon } from '../../shared/ui';
+import { Button, ErrorState, GroupMarks, LoadingState } from '../../shared/ui';
 import { proposalOf } from './model';
 import styles from './Requests.module.css';
 
@@ -73,7 +73,7 @@ function OptionRow({
       <label className={`${styles.choice} ${o.blocked ? styles.choiceOff : ''}`}>
         <input type="radio" name="other-group" checked={selected} disabled={o.blocked !== null} onChange={onPick} />
         <span className={styles.choiceBody}>
-          <b>{g.code}</b> {g.isNew && <NewGroupIcon />} <span>{g.leader}</span>{' '}
+          <b>{g.code}</b> <GroupMarks g={g} /> <span>{g.leader}</span>{' '}
           <span className={styles.note}>{where}</span>{' '}
           <span className={g.free > 0 ? styles.note : styles.noSeats}>
             {o.blocked ?? (g.free > 0 ? a.pickSeats(g.free, g.capacity) : a.pickNoSeats)}

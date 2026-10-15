@@ -43,3 +43,19 @@ export function validIsoDate(iso: string | null | undefined): string | null {
   if (!iso) return null;
   return dayNumber(iso) === null ? null : iso.trim();
 }
+
+/**
+ * Дата через `months` календарных месяцев («2026-06-30» + 4 → «2026-10-30»). Если в итоговом месяце такого числа нет,
+ * берётся его последний день («2026-10-31» + 4 → «2027-02-28»). Не дата → null.
+ */
+export function addMonthsIso(iso: string, months: number): string | null {
+  const m = ISO_DATE.exec(iso.trim());
+  if (!m || dayNumber(iso) === null) return null;
+  const total = Number(m[1]) * 12 + (Number(m[2]) - 1) + months;
+  const year = Math.floor(total / 12);
+  const month = total % 12;
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const day = Math.min(Number(m[3]), lastDay);
+  const p = (n: number, w = 2) => String(n).padStart(w, '0');
+  return `${p(year, 4)}-${p(month + 1)}-${p(day)}`;
+}

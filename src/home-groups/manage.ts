@@ -23,7 +23,7 @@ const fail = (error: 'bad_request' | 'not_found', message: string): ActionOutcom
  */
 const GROUP_EDITABLE = [
   'leader', 'district', 'format', 'status', 'people', 'day', 'time', 'composition', 'coordinator', 'coLeader',
-  'feedbackAt', 'comment', 'age', 'metro', 'openToNew', 'training', 'no', 'checked', 'doNotRefer',
+  'feedbackAt', 'openedOn', 'comment', 'age', 'metro', 'openToNew', 'training', 'no', 'checked', 'doNotRefer',
   'phone', 'address', 'coLeaderPhone',
 ] as const;
 const GROUP_FLAGS = ['checked', 'doNotRefer'] as const;
@@ -37,7 +37,7 @@ function groupToFields(g: GroupRow): URLSearchParams {
   const put = (k: string, v: string | number | null | undefined) => { if (v !== null && v !== undefined && String(v) !== '') f.set(k, String(v)); };
   put('leader', g.leader); put('district', g.district); put('format', g.format); put('status', g.status);
   put('people', g.people); put('day', g.day); put('time', g.time); for (const c of splitComposition(g.composition)) f.append('composition', c);
-  put('coordinator', g.coordinator); put('coLeader', g.co_leader); put('feedbackAt', g.feedback_at);
+  put('coordinator', g.coordinator); put('coLeader', g.co_leader); put('feedbackAt', g.feedback_at); put('openedOn', g.opened_on);
   put('comment', g.comment); put('age', g.age); put('metro', g.metro); put('openToNew', g.open_to_new);
   put('training', g.training); put('no', g.no);
   if (g.checked) f.set('checked', '1');

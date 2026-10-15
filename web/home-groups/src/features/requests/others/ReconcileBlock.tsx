@@ -98,6 +98,7 @@ export function ReconcileBlock({
             <OtherGroupPicker
               chosen={extras}
               onAdd={addOther}
+              leaderName={rec.leaderName}
               onRemove={(id) => setExtras((prev) => prev.filter((g) => g.id !== id))}
             />
           )}

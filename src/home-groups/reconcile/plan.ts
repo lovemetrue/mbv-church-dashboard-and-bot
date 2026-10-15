@@ -46,6 +46,11 @@ export function readyGroupOf(r: DashboardRequest, groups: readonly DashboardGrou
 }
 
 export function reconcileOf(r: DashboardRequest, groups: readonly DashboardGroup[]): OtherReconcile | null {
+  const base = reconcileBase(r, groups);
+  return base && { ...base, leaderName: base.kind === 'member' ? (r.leader_name?.trim() || null) : null };
+}
+
+function reconcileBase(r: DashboardRequest, groups: readonly DashboardGroup[]): OtherReconcile | null {
   const kind = reconcileKindOf(r.type);
   if (!kind) return null;
   if (r.user_id === null) {

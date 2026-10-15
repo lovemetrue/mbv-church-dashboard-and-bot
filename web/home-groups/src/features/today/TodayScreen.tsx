@@ -1,92 +1,38 @@
 import type { TodayView } from '@contracts';
 import { useState } from 'react';
-import { greeting } from '../../entities/format';
-import { FORMS, plural } from '../../entities/plural';
-import { useGroups, useRequests, useToday } from '../../shared/api/queries';
+import { useGroups, useToday } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
-import { useAppNav } from '../../shared/nav';
-import { Button, ErrorState, LoadingState, Tip } from '../../shared/ui';
+import { ErrorState, LoadingState } from '../../shared/ui';
 import { CellPanel } from './CellPanel';
 import { Matrix, type CellRef } from './Matrix';
 import { useMatrixPrefs } from './prefs';
 import { GroupsMap } from '../reference/GroupsMap';
-import { ApprovedWidget, HelpWidget, UrgentWidget } from './Widgets';
+import { ApprovedWidget, CallbackWidget, HelpWidget, ReadyWidget, UrgentWidget } from './Widgets';
 import styles from './Today.module.css';
 
 export function TodayScreen() {
   const query = useToday();
   if (query.isPending) return <LoadingState lines={5} />;
   if (query.isError) return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;
-  return <TodayContent data={query.data} now={new Date()} />;
+  return <TodayContent data={query.data} />;
 }
 
 /**
- * «Пульт»: верхний ряд (приветствие, счётчики и два виджета), под ним таблица на всю ширину.
- * Сводку по заявкам (сколько закреплено, кто первый в очереди) берём из того же запроса, что и экран
- * «Заявки»: он уже в кэше, а пока не пришёл — этих мест просто нет.
+ * «Пульт»: верхний ряд компактных виджетов (число и подпись), под ним таблица на всю ширину.
  */
-export function TodayContent({ data, now }: { data: TodayView; now: Date }) {
-  const nav = useAppNav();
-  const requests = useRequests();
+export function TodayContent({ data }: { data: TodayView; now?: Date }) {
   const groups = useGroups();
   const [prefs, setPrefs] = useMatrixPrefs();
   const [selected, setSelected] = useState<CellRef | null>(null);
-  const { counters } = data;
-  const queue = counters.ready + counters.callback;
-  const matching = requests.data?.matching;
   const selectedCell = selected
     ? data.matrix.find((r) => r.district === selected.district)?.cells.find((c) => c.age === selected.age)
     : undefined;
 
-  // Очередь обзвона в списке идёт «перезвонить», потом «готово»; первая из неё открывается сразу.
-  const startCall = () => {
-    const first = requests.data?.items.find((i) => i.bucket === 'callback') ?? requests.data?.items.find((i) => i.bucket === 'ready');
-    nav.goQueue(first?.id);
-  };
-
   return (
     <div className={styles.page}>
       <div className={styles.top}>
-        <section className={`${styles.panel} ${styles.areaHero}`} aria-labelledby="today-hello">
-          <div className={styles.hero}>
-            <div>
-              <h2 id="today-hello" className={styles.hello}>
-                {greeting(now)}
-              </h2>
-              <p className={styles.sub}>
-                {queue > 0 ? ru.today.distributed(plural(queue, FORMS.request)) : ru.today.nobodyToCall}
-              </p>
-            </div>
-            <Button variant="primary" size="big" disabled={queue === 0} onClick={startCall}>
-              {queue === 0 ? ru.today.queueEmpty : ru.today.startCall(queue)}
-            </Button>
-          </div>
-          <div className={styles.counters} role="group" aria-label={ru.today.countersLabel}>
-            <button type="button" className={`${styles.counter} ${styles.counterReady}`} onClick={() => nav.goBucket('ready')}>
-              <span className={`${styles.counterNum} num`}>{counters.ready}</span>
-              <span className={styles.counterLabel}>{ru.today.readyTitle}</span>
-              <span className={styles.counterHint}>{ru.today.readyHint}</span>
-            </button>
-            <button type="button" className={`${styles.counter} ${styles.counterCb}`} onClick={() => nav.goBucket('callback')}>
-              <span className={`${styles.counterNum} num`}>{counters.callback}</span>
-              <span className={styles.counterLabel}>{ru.today.callbackTitle}</span>
-              <span className={styles.counterHint}>{ru.today.callbackHint}</span>
-            </button>
-          </div>
-          {matching && (
-            <p className={styles.saved}>
-              <Tip text={ru.today.savedHint}>
-                {(aria) => (
-                  // tabIndex=0: подсказка должна открываться и с клавиатуры, а текст сам по себе не фокусируется.
-                  // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
-                  <span tabIndex={0} {...aria} className={`${styles.savedText} num`}>
-                    {ru.today.savedLabel(matching.saved, counters.ready + counters.callback + counters.human)}
-                  </span>
-                )}
-              </Tip>
-            </p>
-          )}
-        </section>
+        <ReadyWidget data={data} />
+        <CallbackWidget data={data} />
         <HelpWidget data={data} />
         <ApprovedWidget data={data} />
         <UrgentWidget data={data} />

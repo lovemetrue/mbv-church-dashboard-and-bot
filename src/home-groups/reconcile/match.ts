@@ -34,15 +34,20 @@ export interface Subject {
 /** Слова, которые ничего не говорят о человеке: союзы между супругами. */
 const STOP = new Set(['и', 'с', 'а']);
 
-/** Слова имени: нижний регистр, «ё»→«е», «й»→«и», без знаков; союзы выброшены. Инициалы («П.») остаются однобуквенными словами. */
+/**
+ * Слова имени: нижний регистр, «ё»→«е», «й»→«и», без знаков; союзы выброшены. Инициалы («П.») остаются однобуквенными словами.
+ * «и» между супругами — союз (строчная и без точки), а «И.» или «И» заглавной — инициал («Петров И.»): их различаем по написанию.
+ */
 export function nameTokens(raw: string | null | undefined): string[] {
   if (!raw) return [];
-  return raw
-    .toLowerCase()
-    .replaceAll('ё', 'е')
-    .replaceAll('й', 'и')
-    .split(/[^\p{L}]+/u)
-    .filter((t) => t !== '' && !STOP.has(t));
+  const out: string[] = [];
+  for (const m of raw.matchAll(/(\p{L}+)(\.?)/gu)) {
+    const word = m[1]!;
+    const lower = word.toLowerCase();
+    if (STOP.has(lower) && word === lower && m[2] === '') continue;
+    out.push(lower.replaceAll('ё', 'е').replaceAll('й', 'и'));
+  }
+  return out;
 }
 
 /**
@@ -78,14 +83,60 @@ function phoneKeys(texts: readonly (string | null | undefined)[]): Set<string> {
 
 const hasToken = (tokens: readonly string[], t: string): boolean => tokens.some((x) => sameToken(x, t));
 
+/**
+ * Слово похоже на фамилию: окончание -ов/-ев/-ин/-ын/-ский/-цкий/-ых/-ко/-ук/-юк/-як/-дзе (после замены «й»→«и»), от пяти букв.
+ * Нужно, чтобы вероятное совпадение шло по фамилии, а не по распространённому имени: иначе «Мария Петрова» цеплялась бы за
+ * каждого ведущего Марию. Мужские имена на -ин («Константин», «Валентин») фамилиями не считаем.
+ */
+const SURNAME_END = /(ов|ова|ев|ева|ин|ина|ын|ына|ски|ска|цки|цка|ых|их|ко|ук|юк|як|дзе)$/;
+const FIRST_NAMES_LIKE_SURNAMES = new Set([
+  'константин', 'валентин', 'мартин', 'марина', 'ирина', 'алина', 'полина', 'карина', 'арина', 'дарина', 'кристина', 'альбина',
+  'регина', 'ангелина', 'валентина', 'екатерина', 'катерина', 'алевтина', 'эвелина', 'виталина', 'снежана', 'любовь',
+]);
+export const looksLikeSurname = (t: string): boolean => t.length >= 5 && SURNAME_END.test(t) && !FIRST_NAMES_LIKE_SURNAMES.has(t);
+
+/** Слова длиной от семи букв, отличающиеся одной буквой (опечатка, пропуск, лишняя): «Ишмуратова»/«Измуратова». */
+export function closeToken(a: string, b: string): boolean {
+  if (Math.min(a.length, b.length) < 7 || Math.abs(a.length - b.length) > 1) return false;
+  if (a === b) return true;
+  const [long, short] = a.length >= b.length ? [a, b] : [b, a];
+  let i = 0;
+  while (i < short.length && long[i] === short[i]) i += 1;
+  if (long.length === short.length) return long.slice(i + 1) === short.slice(i + 1);
+  return long.slice(i + 1) === short.slice(i);
+}
+
 function matchName(subject: readonly string[], leader: readonly string[]): Tier | null {
   const full = subject.filter((t) => t.length > 1);
   const initials = subject.filter((t) => t.length === 1);
-  if (full.length >= 2) return full.every((t) => hasToken(leader, t)) ? 'exact' : null;
+  const leaderFull = leader.filter((t) => t.length > 1);
+  const leaderInitials = leader.filter((t) => t.length === 1);
+  // Все слова человека нашлись у ведущего.
+  if (full.length >= 2 && full.every((t) => hasToken(leader, t))) return 'exact';
+  // Ведущий в справочнике записан с инициалом («Ишмуратова Л.»): фамилия совпала, а имя человека начинается на этот инициал.
+  if (full.length >= 2 && leaderInitials.length > 0) {
+    const named = full.filter((t) => t.length >= 4 && hasToken(leaderFull, t));
+    const rest = full.filter((t) => !named.includes(t));
+    if (named.length >= 1 && rest.every((t) => leaderInitials.includes(t[0]!))) return 'exact';
+  }
   if (full.length === 1 && full[0]!.length >= 4 && hasToken(leader, full[0]!) && initials.length > 0) {
     // «Малявин П.»: фамилия нашлась, а инициал должен подойти к другому слову ведущего.
     const rest = leader.filter((t) => !sameToken(t, full[0]!));
-    return rest.some((t) => initials.some((i) => t.startsWith(i))) ? 'likely' : null;
+    if (rest.some((t) => initials.some((i) => t.startsWith(i)))) return 'likely';
+  }
+  // Вероятное: совпала фамилия (в том числе с опечаткой), а имена не противоречат. Так находятся «Коновалов и Маруфов» (ведущим
+  // записан один из супругов), одна фамилия без имени и «Измуратова Лилия» вместо «Ишмуратова Лилия». Однофамильцы с другим
+  // именем («Малявин Павел» и «Малявин Андрей») не подходят: у обоих осталось по неподошедшему имени. Человек подтверждает
+  // вероятное сам: сверху предложено, но не записано.
+  const near = (a: string, b: string): boolean => sameToken(a, b) || closeToken(a, b);
+  // Если человек назвал инициал, решает правило выше: «Малявин П.» не подходит «Малявину Андрею».
+  const hit = initials.length === 0 && full.some((t) => looksLikeSurname(t) && leaderFull.some((l) => near(l, t)));
+  if (hit) {
+    const spareMine = full.filter((t) => !leaderFull.some((l) => near(l, t)));
+    const spareTheirs = leaderFull.filter((l) => !full.some((t) => near(l, t)));
+    // Ведущий записан с инициалом, который не подошёл к имени человека («Ишмуратова Л.» и «Ишмуратова Анна»): это другой человек.
+    const contradicted = leaderInitials.length > 0 && spareMine.some((t) => !looksLikeSurname(t));
+    if (!contradicted && (spareMine.every(looksLikeSurname) || spareTheirs.every(looksLikeSurname))) return 'likely';
   }
   return null;
 }

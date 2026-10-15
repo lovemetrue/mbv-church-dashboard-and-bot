@@ -810,6 +810,8 @@ export interface OtherReconcile {
   /** Что нашли и что делать, словами. */
   text: string;
   candidates: ReconcileCandidate[];
+  /** Ведущий, которого назвал человек (у «уже в группе»); null — не называл или это обращение ведущего. */
+  leaderName?: string | null;
 }
 
 export interface OtherItem {

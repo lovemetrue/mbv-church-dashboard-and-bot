@@ -460,7 +460,7 @@ describe('«Другие обращения»: блок «Разбор»', () =>
     expect(radios[0]).toBeChecked();
     const submit = within(block).getByRole('button', { name: 'Внести в состав и закрыть' });
     expect(submit).toBeDisabled();
-    const select = await within(block).findByRole('combobox', { name: 'Добавить группу из справочника' });
+    const select = await within(block).findByRole('listbox', { name: 'Добавить группу из справочника' });
     await user.selectOptions(select, within(select).getByRole('option', { name: 'ДГ-0027 · Андрей М. · Приморский' }));
     expect(submit).toBeEnabled();
   });
@@ -469,7 +469,7 @@ describe('«Другие обращения»: блок «Разбор»', () =>
     const { card } = await openOtherCard(209);
     const block = recBlock(card);
     expect(within(block).getAllByRole('checkbox')).toHaveLength(1);
-    expect(await within(block).findByRole('combobox', { name: 'Добавить группу из справочника' })).toBeInTheDocument();
+    expect(await within(block).findByRole('listbox', { name: 'Добавить группу из справочника' })).toBeInTheDocument();
     expect(within(block).getByRole('button', { name: 'Связать с группой и закрыть' })).toBeDisabled();
   });
 
@@ -486,7 +486,7 @@ describe('«Другие обращения»: блок «Разбор»', () =>
     const { card } = await openOtherCard(207);
     const block = recBlock(card);
     await user.click(within(block).getByRole('checkbox', { name: 'Другие группы…' }));
-    const select = await within(block).findByRole('combobox', { name: 'Добавить группу из справочника' });
+    const select = await within(block).findByRole('listbox', { name: 'Добавить группу из справочника' });
     expect(within(select).getAllByRole('option').length).toBeGreaterThan(10);
     await user.type(within(block).getByRole('searchbox', { name: 'Найти группу' }), 'невский');
     const names = within(select).getAllByRole('option').map((o) => o.textContent);
@@ -521,7 +521,7 @@ describe('«Другие обращения»: блок «Разбор»', () =>
     const { card, fetchMock } = await openOtherCard(207, { ...overrides, 'requests/207/reconcile': reply({ ok: true, already: false }) });
     const block = recBlock(card);
     await user.click(within(block).getByRole('checkbox', { name: 'Другие группы…' }));
-    const select = await within(block).findByRole('combobox', { name: 'Добавить группу из справочника' });
+    const select = await within(block).findByRole('listbox', { name: 'Добавить группу из справочника' });
     // пока в списке ничего не добавлено, отправлять нечего
     expect(within(block).getByRole('button', { name: 'Внести в состав и закрыть' })).toBeDisabled();
     await user.selectOptions(select, within(select).getByRole('option', { name: /ДГ-0035/ }));
@@ -552,7 +552,7 @@ describe('«Другие обращения»: блок «Разбор»', () =>
     const likely = within(block).getByRole('checkbox', { name: /ДГ-0040/ });
     await user.click(likely);
     await user.click(within(block).getByRole('checkbox', { name: 'Другие группы…' }));
-    const select = await within(block).findByRole('combobox', { name: 'Добавить группу из справочника' });
+    const select = await within(block).findByRole('listbox', { name: 'Добавить группу из справочника' });
     await user.selectOptions(select, within(select).getByRole('option', { name: /ДГ-0035/ }));
     expect(within(block).getByRole('button', { name: 'Внести в состав групп (2) и закрыть' })).toBeEnabled();
     // снятая и вновь поставленная галочка: группа в запросе один раз
@@ -569,7 +569,7 @@ describe('«Другие обращения»: блок «Разбор»', () =>
     const { card } = await openOtherCard(207);
     const block = recBlock(card);
     await user.click(within(block).getByRole('checkbox', { name: 'Другие группы…' }));
-    const select = await within(block).findByRole('combobox', { name: 'Добавить группу из справочника' });
+    const select = await within(block).findByRole('listbox', { name: 'Добавить группу из справочника' });
     await user.selectOptions(select, within(select).getByRole('option', { name: /ДГ-0040/ }));
     expect(within(block).getByRole('checkbox', { name: /ДГ-0040/ })).toBeChecked();
     expect(within(block).queryByRole('list', { name: 'Добавленные группы' })).not.toBeInTheDocument();
@@ -580,7 +580,7 @@ describe('«Другие обращения»: блок «Разбор»', () =>
     const user = userEvent.setup();
     const { card } = await openOtherCard(203);
     const block = recBlock(card);
-    const select = await within(block).findByRole('combobox', { name: 'Добавить группу из справочника' });
+    const select = await within(block).findByRole('listbox', { name: 'Добавить группу из справочника' });
     await user.selectOptions(select, within(select).getByRole('option', { name: /ДГ-0027/ }));
     expect(within(block).getByRole('button', { name: 'Внести в состав и закрыть' })).toBeEnabled();
     await user.click(within(block).getByRole('checkbox', { name: 'Другие группы…' }));

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { greeting, formatDateFull, formatDateShort, formatPhone, groupLabel, groupLine, healthTone, phoneDigits } from './format';
+import { formatDateFull, formatDateShort, formatPhone, groupLabel, groupLine, healthTone, phoneDigits } from './format';
 import { plural, pluralForm, FORMS } from './plural';
 import { BUCKET_LABEL, isBucketFilter, openCount } from './buckets';
 
@@ -51,14 +51,6 @@ describe('форматы', () => {
     expect(groupLabel({ no: null, code: 'ДГ-0112' })).toBe('ДГ-0112');
     expect(groupLine({ no: 12, code: 'x', leader: 'Ольга К.', whenText: 'Вт, вечер' })).toBe('№12 · Ольга К. · Вт, вечер');
     expect(groupLine({ no: 12, code: 'x', leader: 'Ольга К.', whenText: null })).toBe('№12 · Ольга К.');
-  });
-
-  test('приветствие зависит от часа', () => {
-    const at = (h: number) => greeting(new Date(2026, 9, 9, h, 0));
-    expect(at(8)).toBe('Доброе утро.');
-    expect(at(13)).toBe('Добрый день.');
-    expect(at(20)).toBe('Добрый вечер.');
-    expect(at(2)).toBe('Доброй ночи.');
   });
 
   test('здоровье окрашивается по порогам 80 и 60', () => {

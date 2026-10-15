@@ -73,30 +73,18 @@ export const ru = {
   },
 
   today: {
-    greetingMorning: 'Доброе утро.',
-    greetingDay: 'Добрый день.',
-    greetingEvening: 'Добрый вечер.',
-    greetingNight: 'Доброй ночи.',
     urgentTitle: 'Срочно нужна группа',
     urgentNone: 'Везде хватает мест.',
-    distributed: (n: string) => `Система распределила ${n}. От вас — звонки и подтверждение.`,
-    nobodyToCall: 'Звонить сегодня некому.',
-    startCall: (n: number) => `▶ Начать обзвон (${n})`,
-    queueEmpty: 'Очередь пуста',
     readyTitle: 'Готово к утверждению',
-    readyHint: 'группа подобрана, остался звонок',
     callbackTitle: 'Перезвонить',
-    callbackHint: 'просили перезвонить или не дозвонились',
-    countersLabel: 'Что ждёт вас сегодня',
+    readyOpenLabel: (n: number) => `Готово к утверждению: ${n}. Открыть список`,
+    callbackOpenLabel: (n: number) => `Перезвонить: ${n}. Открыть список`,
     // Виджеты верхнего ряда
     helpTitle: 'Нужна помощь в сопоставлении',
     helpOpenLabel: (n: number) => `Нужна помощь в сопоставлении: ${n}. Открыть список`,
 
     approvedTitle: 'Утверждено',
     approvedOpenLabel: (n: number) => `Утверждено: ${n}. Открыть список`,
-    savedLabel: (n: number, total: number) => `Предложено автоматически: ${n} из ${total}`,
-    savedHint:
-      'Предложенная группа не меняется сама, пока подходит. Новые заявки получают предложение автоматически или кнопкой на экране «Заявки».',
     // Матрица
     matrixTitle: 'Спрос и предложение по районам',
     matrixLabel: 'Таблица: районы и возрастные группы, спрос и свободные места',

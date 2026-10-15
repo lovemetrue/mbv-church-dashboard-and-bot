@@ -58,14 +58,17 @@ const mkCell = (age: string, demand: number, supply: number, extra: Partial<Matr
   ...extra,
 });
 
-describe('«Сегодня»: счётчики и обзвон', () => {
-  test('показывает два счётчика, и «Перезвонить» без звонков честно равно 0', async () => {
-    renderAt(<App />);
-    const group = await screen.findByRole('group', { name: 'Что ждёт вас сегодня' });
-    const ready = within(group).getByRole('button', { name: /Готово к утверждению/ });
-    const callback = within(group).getByRole('button', { name: /Перезвонить/ });
-    expect(ready).toHaveTextContent(String(buildRequests().counters.ready));
-    expect(callback).toHaveTextContent(/^0/);
+describe('«Сегодня»: счётчики', () => {
+  test('«Готово к утверждению» и «Перезвонить» — компактные виджеты: подпись и число, без приветствия и кнопки обзвона', async () => {
+    const data = buildToday();
+    renderAt(<TodayContent data={data} />);
+    const ready = screen.getByRole('region', { name: 'Готово к утверждению' });
+    expect(within(ready).getByText(String(data.counters.ready))).toBeInTheDocument();
+    const callback = screen.getByRole('region', { name: 'Перезвонить' });
+    expect(within(callback).getByText(String(data.counters.callback))).toBeInTheDocument();
+    expect(screen.queryByText(/Доброе утро|Добрый день|Добрый вечер|Доброй ночи/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /обзвон/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Предложено автоматически/)).not.toBeInTheDocument();
   });
 
   test('счётчик «Готово к утверждению» ведёт на «Заявки» с этим фильтром', async () => {
@@ -76,34 +79,11 @@ describe('«Сегодня»: счётчики и обзвон', () => {
     expect(currentSearch().get('bucket')).toBe('ready');
   });
 
-  test('приветствие зависит от времени суток и обходится без имени', () => {
-    const data = buildToday();
-    const { unmount } = renderAt(<TodayContent data={data} now={new Date(2026, 9, 9, 20, 0)} />);
-    expect(screen.getByRole('heading', { name: 'Добрый вечер.' })).toBeInTheDocument();
-    unmount();
-    renderAt(<TodayContent data={data} now={new Date(2026, 9, 9, 7, 0)} />);
-    expect(screen.getByRole('heading', { name: 'Доброе утро.' })).toBeInTheDocument();
-  });
-
-  test('«Начать обзвон» ведёт в «Заявки» с отбором «К обзвону» и открывает первую заявку очереди', async () => {
-    const view = buildRequests();
-    const first = view.items.find((i) => i.bucket === 'callback' || i.bucket === 'ready')!;
-    stubFetchWithFixtures({ requests: () => json({ ...view, matching: { ...view.matching, saved: 3 } }) });
+  test('счётчик «Перезвонить» ведёт на «Заявки» с отбором «Перезвонить»', async () => {
     const user = userEvent.setup();
-    renderAt(<TodayContent data={buildToday()} now={NOW} />);
-    await screen.findByText(/Предложено автоматически/); // заявки загружены
-    await user.click(screen.getByRole('button', { name: /Начать обзвон \(\d+\)/ }));
-    expect(currentSearch().get('tab')).toBe('requests');
-    expect(currentSearch().get('bucket')).toBe('queue');
-    expect(currentSearch().get('req')).toBe(String(first.id));
-  });
-
-  test('если очередь пуста, кнопка отключена и подписана «Очередь пуста»', () => {
-    const base = buildToday();
-    const data = { ...base, counters: { ...base.counters, ready: 0, callback: 0 } };
-    renderAt(<TodayContent data={data} now={NOW} />);
-    expect(screen.getByText('Звонить сегодня некому.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Очередь пуста/ })).toBeDisabled();
+    renderAt(<App />);
+    await user.click(await screen.findByRole('button', { name: /Перезвонить: \d+/ }));
+    expect(currentSearch().get('bucket')).toBe('callback');
   });
 });
 
@@ -132,7 +112,7 @@ describe('«Сегодня»: виджеты верхнего ряда', () => {
     expect(currentSearch().get('bucket')).toBe('done');
   });
 
-  test('«Срочно нужна группа»: только названия районов, где не хватает мест, — сначала где не хватает больше всего, без цифр', () => {
+  test('«Срочно нужна группа»: район и одно число — сколько мест не хватает, сначала где не хватает больше всего', () => {
     const data = matrixData(
       [
         { district: 'Приморский', cells: [mkCell('26–35', 3, 1), mkCell('36–45', 1, 0)] },
@@ -144,8 +124,7 @@ describe('«Сегодня»: виджеты верхнего ряда', () => {
     );
     renderAt(<TodayContent data={data} now={NOW} />);
     const widget = screen.getByRole('region', { name: 'Срочно нужна группа' });
-    expect(within(widget).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Невский', 'Приморский']);
-    expect(within(widget).queryByText(/\d/)).not.toBeInTheDocument();
+    expect(within(widget).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Невский6', 'Приморский3']);
     expect(within(widget).queryByRole('button')).not.toBeInTheDocument();
   });
 
@@ -161,26 +140,6 @@ describe('«Сегодня»: виджеты верхнего ряда', () => {
     const widget = screen.getByRole('region', { name: 'Срочно нужна группа' });
     expect(within(widget).getByText('Везде хватает мест.')).toBeInTheDocument();
     expect(within(widget).queryByRole('listitem')).not.toBeInTheDocument();
-  });
-
-  test('показатель «Предложено автоматически» берёт данные из «Заявок», а пока они не пришли — не рисуется', async () => {
-    const view = buildRequests();
-    stubFetchWithFixtures({ requests: () => json({ ...view, matching: { ...view.matching, saved: 7 } }) });
-    renderAt(<TodayContent data={buildToday()} now={NOW} />);
-    expect(screen.queryByText(/Предложено автоматически/)).not.toBeInTheDocument();
-    const c = view.counters;
-    expect(await screen.findByText(`Предложено автоматически: 7 из ${c.ready + c.callback + c.human}`)).toBeInTheDocument();
-  });
-
-  test('показатель «Предложено автоматически» объясняет себя подсказкой при фокусе с клавиатуры', async () => {
-    const view = buildRequests();
-    stubFetchWithFixtures({ requests: () => json({ ...view, matching: { ...view.matching, saved: 7 } }) });
-    const user = userEvent.setup();
-    renderAt(<TodayContent data={buildToday()} now={NOW} />);
-    const saved = await screen.findByText(/Предложено автоматически/);
-    await user.tab(); // доходим до первой фокусируемой кнопки; показатель — после неё
-    saved.closest<HTMLElement>('[tabindex]')!.focus();
-    expect(await screen.findByRole('tooltip')).toHaveTextContent('Предложенная группа не меняется сама, пока подходит');
   });
 });
 

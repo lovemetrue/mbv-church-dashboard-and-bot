@@ -1472,13 +1472,37 @@ describe('значки групп: росток и увядший листоче
   test('первые четыре месяца после открытия группа новая, сколько бы в ней ни было людей', () => {
     const m = items([
       group({ id: 1, opened_on: '2026-06-11', people: 8 }),
-      group({ id: 2, opened_on: '2026-06-10', people: 8 }),
-      group({ id: 3, opened_on: '2026-09-01', people: 0 }),
+      group({ id: 2, opened_on: '2026-09-01', people: 0 }),
     ]);
-    // «Сегодня» 2026-10-10: открытая 11 июня ещё новая (четыре месяца кончатся 11 октября), открытая 10 июня — уже нет.
+    // «Сегодня» 2026-10-10: открытая 11 июня ещё в первых четырёх месяцах (они кончатся 11 октября).
     expect(m.get(1)!.isNew).toBe(true);
+    expect(m.get(2)).toMatchObject({ isNew: true, empty: true });
+  });
+
+  test('росток снимается, только когда прошло четыре месяца И набралось хотя бы три человека', () => {
+    const m = items([
+      group({ id: 1, opened_on: '2026-06-10', people: 8 }),
+      group({ id: 2, opened_on: '2026-06-10', people: 3 }),
+      group({ id: 3, opened_on: '2026-06-10', people: 2 }),
+      group({ id: 4, opened_on: '2026-06-10', people: 0 }),
+    ]);
+    expect(m.get(1)!.isNew).toBe(false);
     expect(m.get(2)!.isNew).toBe(false);
-    expect(m.get(3)).toMatchObject({ isNew: true, empty: true });
+    // Четыре месяца прошли, но людей меньше трёх: группа всё ещё новая, а без людей — ещё и «пустая».
+    expect(m.get(3)!.isNew).toBe(true);
+    expect(m.get(4)).toMatchObject({ isNew: true, empty: true });
+  });
+
+  test('людей для порога считают и по ручному составу, и по утверждённым заявкам', () => {
+    const { views } = build({
+      groups: [group({ id: 5, opened_on: '2026-06-10', people: 1 })],
+      members: [
+        { id: 1, group_id: 5, personKey: 'p1', full_name: 'Нина', phone: null, joined_on: null, note: null },
+        { id: 2, group_id: 5, personKey: 'p2', full_name: 'Анна', phone: null, joined_on: null, note: null },
+        { id: 3, group_id: 5, personKey: 'p3', full_name: 'Вера', phone: null, joined_on: null, note: null },
+      ],
+    });
+    expect(views.groups.items.find((g) => g.id === 5)!.isNew).toBe(false);
   });
 
   test('у старой группы даты открытия нет: она не новая', () => {

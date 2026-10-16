@@ -691,6 +691,10 @@ export interface TeamView {
   generatedAt: string;
   totals: {
     open: number;
+    /** Все заявки в подбор, включая исполненные и аннулированные, — как «Всего заявок» в старом дашборде. */
+    all: number;
+    /** Из них исполненных. */
+    done: number;
     unassigned: number;
     callback: number;
     over7: number;

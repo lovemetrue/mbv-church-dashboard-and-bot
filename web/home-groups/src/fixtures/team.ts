@@ -54,6 +54,8 @@ export function buildTeam(): TeamView {
     generatedAt,
     totals: {
       open: open.length,
+      all: items.length,
+      done: items.filter((r) => r.bucket === 'done').length,
       unassigned: open.filter((r) => !r.responsible?.trim()).length,
       callback: open.filter((r) => r.bucket === 'callback').length,
       over7: open.filter((r) => (r.waitingDays ?? 0) > STUCK_DAYS).length,

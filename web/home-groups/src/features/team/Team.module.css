@@ -331,3 +331,12 @@
   font-size: 13px;
   overflow-wrap: anywhere;
 }
+
+.tileNote {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}

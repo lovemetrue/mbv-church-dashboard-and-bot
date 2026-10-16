@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { findGroups, nameTokens, planReconcile, sameToken, type LeaderGroup } from '../src/home-groups/reconcile/match.js';
+import { closeToken, findGroups, looksLikeSurname, nameTokens, planReconcile, sameToken, type LeaderGroup } from '../src/home-groups/reconcile/match.js';
 
 const g = (id: number, leader: string, phones: string[] = [], coLeader: string | null = null): LeaderGroup => ({ id, leader, coLeader, phones });
 
@@ -128,5 +128,61 @@ describe('что делать с обращением', () => {
   test('имя не указано и телефон ничего не нашёл — «ведущий не указан»', () => {
     expect(planReconcile({ name: null, phones: ['89990000000'] }, GROUPS)).toEqual({ status: 'noleader', candidates: [] });
     expect(planReconcile({ name: '  ', phones: [] }, GROUPS).status).toBe('noleader');
+  });
+});
+
+describe('ведущий записан не так, как назвал человек', () => {
+  const REF: LeaderGroup[] = [
+    g(50, 'Ишмуратова Л.'),
+    g(51, 'Коновалов Дмитрий'),
+    g(52, 'Ишмуратова Лилия'),
+    g(53, 'Мария Сидорова'),
+    g(54, 'Петров Олег'),
+  ];
+
+  test('в справочнике инициал, человек назвал полное имя: фамилия и первая буква сошлись — точно', () => {
+    const found = findGroups({ name: 'Ишмуратова Лилия', phones: [] }, [REF[0]!]);
+    expect(found).toEqual([{ groupId: 50, tier: 'exact', by: 'name', role: 'leader' }]);
+    // Другая первая буква — не она.
+    expect(findGroups({ name: 'Ишмуратова Анна', phones: [] }, [REF[0]!])).toEqual([]);
+  });
+
+  test('назвали двух супругов, в справочнике один из них: вероятное совпадение по фамилии, решает человек', () => {
+    expect(findGroups({ name: 'Коновалов и Маруфов', phones: [] }, REF)).toEqual([{ groupId: 51, tier: 'likely', by: 'name', role: 'leader' }]);
+    expect(planReconcile({ name: 'Коновалов и Маруфов', phones: [] }, REF).status).toBe('choose');
+  });
+
+  test('назвали только фамилию: вероятное совпадение с каждой группой этого ведущего', () => {
+    const plan = planReconcile({ name: 'Ишмуратова', phones: [] }, REF);
+    expect(plan.status).toBe('choose');
+    expect(plan.candidates.map((c) => c.groupId)).toEqual([50, 52]);
+  });
+
+  test('опечатка в длинной фамилии («Измуратова») — вероятное совпадение', () => {
+    expect(findGroups({ name: 'Измуратова Лилия', phones: [] }, [REF[2]!])).toEqual([{ groupId: 52, tier: 'likely', by: 'name', role: 'leader' }]);
+  });
+
+  test('одинаковое имя без общей фамилии не подходит: «Мария Петрова» — не группа Марии Сидоровой', () => {
+    expect(findGroups({ name: 'Мария Петрова', phones: [] }, REF)).toEqual([]);
+    expect(planReconcile({ name: 'Мария Петрова', phones: [] }, REF).status).toBe('none');
+  });
+
+  test('однофамилец с другим именем не подходит, а назвавший только инициал не цепляет чужого ведущего', () => {
+    expect(findGroups({ name: 'Петров Иван', phones: [] }, REF)).toEqual([]);
+    expect(findGroups({ name: 'Петров И.', phones: [] }, REF)).toEqual([]);
+  });
+
+  test('похожее на фамилию слово: -ов, -ин, -ский — да; женские имена на -ина и «Константин» — нет', () => {
+    for (const t of ['коновалов', 'кузьмина', 'ишмуратова', 'дубовицка', 'клименко']) expect(looksLikeSurname(t)).toBe(true);
+    for (const t of ['марина', 'константин', 'екатерина', 'лилия', 'павел']) expect(looksLikeSurname(t)).toBe(false);
+  });
+
+  test('одна буква разницы у длинных слов — опечатка, у коротких — другое слово', () => {
+    expect(closeToken('ишмуратова', 'измуратова')).toBe(true);
+    expect(closeToken('ишмуратова', 'ишмуратов')).toBe(true);
+    expect(closeToken('ишмуратова', 'ишмуратовы')).toBe(true);
+    expect(closeToken('павлов', 'павлова')).toBe(false);
+    expect(closeToken('ишмуратова', 'ишмурадова')).toBe(true);
+    expect(closeToken('ишмуратова', 'иванова')).toBe(false);
   });
 });

@@ -29,16 +29,13 @@
 /* ── верхний ряд: приветствие со счётчиками и два виджета ─────────────────── */
 .top {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 16px;
   align-items: stretch;
 }
 @media (max-width: 1000px) {
   .top {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
-  .areaHero {
-    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 @media (max-width: 640px) {
@@ -142,6 +139,9 @@
   font-size: 44px;
   font-weight: 600;
   line-height: 1;
+}
+.numAccent {
+  color: var(--accent);
 }
 .numWarn {
   color: var(--warn);
@@ -619,6 +619,14 @@
   flex-direction: column;
   gap: 8px;
   background: linear-gradient(var(--urgent-bg), var(--urgent-bg)), var(--surface);
+}
+.urgentRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.urgentNum {
+  font-weight: 600;
 }
 .urgentList {
   margin: 0;

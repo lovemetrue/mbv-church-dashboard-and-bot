@@ -8,7 +8,19 @@ import styles from './Others.module.css';
 const r = ru.requests.others.reconcile;
 
 const label = (g: GroupBrief) => r.candidate(g.code, g.leader, g.district);
-const matches = (g: GroupBrief, q: string) => !q || [g.code, g.leader, g.district, g.metro ?? ''].join(' ').toLowerCase().includes(q);
+const norm = (t: string) => t.toLowerCase().replaceAll('ё', 'е').replaceAll('й', 'и');
+
+/**
+ * Каждое слово запроса должно найтись в коде, ведущем, районе или метро: порядок слов не важен («Дмитрий Коновалов» найдёт
+ * «Коновалов Дмитрий»), падеж и «ё/е» не мешают. Слово, начало которого совпало с началом слова ведущего, тоже подходит,
+ * иначе по половине фамилии («иши») ничего бы не появлялось, пока человек пишет.
+ */
+export const matches = (g: GroupBrief, q: string) => {
+  const words = norm(q).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  if (words.length === 0) return true;
+  const hay = norm([g.code, g.leader, g.district, g.metro ?? ''].join(' '));
+  return words.every((w) => hay.includes(w) || (w.length >= 4 && hay.split(/[^\p{L}\p{N}]+/u).some((h) => h.length >= 4 && (h.startsWith(w.slice(0, -1)) || w.startsWith(h.slice(0, -1))))));
+};
 
 /**
  * «Другие группы…»: список групп из того же запроса, что у выбора другой группы при утверждении заявки
@@ -21,13 +33,16 @@ export function OtherGroupPicker({
   chosen,
   onAdd,
   onRemove,
+  leaderName,
 }: {
   chosen: readonly GroupBrief[];
   onAdd: (g: GroupBrief) => void;
   onRemove: (id: number) => void;
+  /** Как человек назвал ведущего: сразу ищем по этому имени, чтобы нужная группа была перед глазами. */
+  leaderName?: string | null;
 }) {
   const query = useGroups();
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(leaderName ?? '');
   const searchId = useId();
   const selectId = useId();
   const chosenId = useId();
@@ -40,7 +55,7 @@ export function OtherGroupPicker({
   if (query.isPending) return <LoadingState lines={2} />;
   if (query.isError) return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;
 
-  const q = search.trim().toLowerCase();
+  const q = search.trim();
   // Уже добавленные в списке не предлагаем: второй раз их не добавить, а выбор пропал бы без объяснений.
   const taken = new Set(chosen.map((g) => g.id));
   const shown = groups.filter((g) => !taken.has(g.id) && matches(g, q));
@@ -81,6 +96,8 @@ export function OtherGroupPicker({
       <select
         id={selectId}
         className={styles.field}
+        // Список виден сразу и сужается по мере набора: раскрывать выпадающий список, чтобы увидеть подсказки, не нужно.
+        size={Math.min(6, Math.max(2, shown.length + 1))}
         value=""
         onChange={(e) => {
           const g = groups.find((x) => String(x.id) === e.target.value);

@@ -1,18 +1,6 @@
 import { ru } from '../shared/i18n/ru';
 
 /**
- * Приветствие по времени суток. Берём час на устройстве служителя, а не серверный:
- * служитель видит экран у себя, а сервер может стоять в другом часовом поясе.
- */
-export function greeting(now: Date): string {
-  const h = now.getHours();
-  if (h >= 5 && h < 12) return ru.today.greetingMorning;
-  if (h >= 12 && h < 18) return ru.today.greetingDay;
-  if (h >= 18 && h < 23) return ru.today.greetingEvening;
-  return ru.today.greetingNight;
-}
-
-/**
  * Дата из ISO («2026-10-09» или с временем) в «09.10». Разбираем строку руками, а не через Date:
  * `new Date('2026-10-09')` — это полночь по UTC, и в минусовых поясах день сдвигается назад
  * (в плюсовых это не видно, но ту же ловушку CLAUDE.md описывает для `DATE` в базе).

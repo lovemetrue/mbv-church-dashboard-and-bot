@@ -4,66 +4,60 @@ import { useAppNav } from '../../shared/nav';
 import { urgentDistricts } from './model';
 import styles from './Today.module.css';
 
-/** «Готово к утверждению»: число заявок, у которых группа подобрана и остался звонок. Нажатие открывает список. */
-export function ReadyWidget({ data }: { data: TodayView }) {
-  const nav = useAppNav();
+/** Один показатель сдвоенного виджета: подпись и число; число — кнопка, если у показателя есть список. */
+function Stat({ id, title, value, tone, big, aria, onOpen }: {
+  id: string; title: string; value: number; tone?: string; big?: boolean; aria?: string; onOpen?: () => void;
+}) {
+  const cls = `${big ? styles.statBig : styles.statSmall} ${tone ?? ''} num`;
   return (
-    <section className={`${styles.panel} ${styles.widget}`} aria-labelledby="today-ready">
-      <h3 id="today-ready" className={styles.widgetTitle}>
-        {ru.today.readyTitle}
+    <section className={styles.stat} aria-labelledby={id}>
+      <h3 id={id} className={styles.widgetTitle}>
+        {title}
       </h3>
-      <button type="button" className={`${styles.widgetNumBtn} ${styles.numOk} num`} aria-label={ru.today.readyOpenLabel(data.counters.ready)} onClick={() => nav.goBucket('ready')}>
-        {data.counters.ready}
-      </button>
+      {onOpen ? (
+        <button type="button" className={`${styles.widgetNumBtn} ${cls}`} aria-label={aria} onClick={onOpen}>
+          {value}
+        </button>
+      ) : (
+        <span className={cls}>{value}</span>
+      )}
     </section>
   );
 }
 
-/** «Перезвонить»: число заявок, где просили перезвонить или не дозвонились. */
-export function CallbackWidget({ data }: { data: TodayView }) {
-  const nav = useAppNav();
+/** «Всего заявок» и «Исполнено»: общее число без вычитаний (заявки в подбор и другие обращения), рядом — сколько исполнено. */
+export function TotalWidget({ data }: { data: TodayView }) {
   return (
-    <section className={`${styles.panel} ${styles.widget}`} aria-labelledby="today-callback">
-      <h3 id="today-callback" className={styles.widgetTitle}>
-        {ru.today.callbackTitle}
-      </h3>
-      <button type="button" className={`${styles.widgetNumBtn} ${styles.numAccent} num`} aria-label={ru.today.callbackOpenLabel(data.counters.callback)} onClick={() => nav.goBucket('callback')}>
-        {data.counters.callback}
-      </button>
-    </section>
+    <div className={`${styles.panel} ${styles.pair}`}>
+      <Stat id="today-total" title={ru.today.totalTitle} value={data.requestsAll} big />
+      <Stat id="today-total-done" title={ru.today.totalDoneTitle} value={data.requestsDone} tone={styles.numOk} />
+    </div>
   );
 }
 
-/**
- * «Нужна помощь в сопоставлении»: только число заявок, с которыми система не справилась сама. Нажатие ведёт к списку в «Заявках»
- * (корзина «Нужна помощь»): подробности и ситуации живут там, на «Сегодня» их не повторяем.
- */
-export function HelpWidget({ data }: { data: TodayView }) {
+/** «Готово к утверждению» и «Утверждено»: число заявок с подобранной группой и число уже утверждённых. */
+export function ReadyApprovedWidget({ data }: { data: TodayView }) {
   const nav = useAppNav();
   return (
-    <section className={`${styles.panel} ${styles.widget}`} aria-labelledby="today-help">
-      <h3 id="today-help" className={styles.widgetTitle}>
-        {ru.today.helpTitle}
-      </h3>
-      <button type="button" className={`${styles.widgetNumBtn} ${styles.numWarn} num`} aria-label={ru.today.helpOpenLabel(data.counters.human)} onClick={() => nav.goBucket('human')}>
-        {data.counters.human}
-      </button>
-    </section>
+    <div className={`${styles.panel} ${styles.pair}`}>
+      <Stat id="today-ready" title={ru.today.readyTitle} value={data.counters.ready} tone={styles.numOk} big
+        aria={ru.today.readyOpenLabel(data.counters.ready)} onOpen={() => nav.goBucket('ready')} />
+      <Stat id="today-approved" title={ru.today.approvedTitle} value={data.counters.done} tone={styles.numOk}
+        aria={ru.today.approvedOpenLabel(data.counters.done)} onOpen={() => nav.goBucket('done')} />
+    </div>
   );
 }
 
-/** «Утверждено»: только число человек, уже определённых в группы. Нажатие открывает список утверждённых. */
-export function ApprovedWidget({ data }: { data: TodayView }) {
+/** «Нужна помощь в сопоставлении» и «Перезвонить»: то, что делают люди, а не система. */
+export function HelpCallbackWidget({ data }: { data: TodayView }) {
   const nav = useAppNav();
   return (
-    <section className={`${styles.panel} ${styles.widget}`} aria-labelledby="today-approved">
-      <h3 id="today-approved" className={styles.widgetTitle}>
-        {ru.today.approvedTitle}
-      </h3>
-      <button type="button" className={`${styles.widgetNumBtn} ${styles.numOk} num`} aria-label={ru.today.approvedOpenLabel(data.counters.done)} onClick={() => nav.goBucket('done')}>
-        {data.counters.done}
-      </button>
-    </section>
+    <div className={`${styles.panel} ${styles.pair}`}>
+      <Stat id="today-help" title={ru.today.helpTitle} value={data.counters.human} tone={styles.numWarn} big
+        aria={ru.today.helpOpenLabel(data.counters.human)} onOpen={() => nav.goBucket('human')} />
+      <Stat id="today-callback" title={ru.today.callbackTitle} value={data.counters.callback} tone={styles.numAccent}
+        aria={ru.today.callbackOpenLabel(data.counters.callback)} onOpen={() => nav.goBucket('callback')} />
+    </div>
   );
 }
 

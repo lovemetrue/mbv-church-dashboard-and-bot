@@ -298,6 +298,10 @@ export interface TodayView {
   /** «Распределено X из Y»: готово + перезвонить + утверждено из всех, кроме отказов. */
   assigned: number;
   total: number;
+  /** Все обращения: заявки в подбор и «другие обращения» (в любом состоянии), как «Всего заявок» в старом дашборде. */
+  requestsAll: number;
+  /** Из них исполненные: утверждённые в группу и обработанные «другие обращения». */
+  requestsDone: number;
   ageColumns: string[];
   matrix: MatrixRow[];
   clusters: Cluster[];
@@ -691,10 +695,6 @@ export interface TeamView {
   generatedAt: string;
   totals: {
     open: number;
-    /** Все заявки в подбор, включая исполненные и аннулированные, — как «Всего заявок» в старом дашборде. */
-    all: number;
-    /** Из них исполненных. */
-    done: number;
     unassigned: number;
     callback: number;
     over7: number;

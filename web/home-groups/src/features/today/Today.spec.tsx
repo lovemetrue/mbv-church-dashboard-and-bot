@@ -59,7 +59,22 @@ const mkCell = (age: string, demand: number, supply: number, extra: Partial<Matr
 });
 
 describe('«Сегодня»: счётчики', () => {
-  test('«Готово к утверждению» и «Перезвонить» — компактные виджеты: подпись и число, без приветствия и кнопки обзвона', async () => {
+  test('«Всего заявок» — общее число (заявки в подбор и другие обращения), «Исполнено» рядом: исполненные не вычитаются', () => {
+    const data = { ...buildToday(), requestsAll: 120, requestsDone: 64 };
+    renderAt(<TodayContent data={data} />);
+    expect(within(screen.getByRole('region', { name: 'Всего заявок' })).getByText('120')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'Исполнено' })).getByText('64')).toBeInTheDocument();
+  });
+
+  test('виджеты сдвоены: «Всего / Исполнено», «Готово / Утверждено», «Нужна помощь / Перезвонить»', () => {
+    renderAt(<TodayContent data={buildToday()} />);
+    const pairOf = (title: string) => screen.getByRole('region', { name: title }).parentElement!;
+    expect(pairOf('Всего заявок')).toBe(pairOf('Исполнено'));
+    expect(pairOf('Готово к утверждению')).toBe(pairOf('Утверждено'));
+    expect(pairOf('Нужна помощь в сопоставлении')).toBe(pairOf('Перезвонить'));
+  });
+
+  test('«Готово к утверждению» и «Перезвонить» — подпись и число, без приветствия и кнопки обзвона', async () => {
     const data = buildToday();
     renderAt(<TodayContent data={data} />);
     const ready = screen.getByRole('region', { name: 'Готово к утверждению' });

@@ -16,9 +16,8 @@ export function Tiles({ totals }: { totals: TeamView['totals'] }) {
   const nav = useAppNav();
   // Сервер старой версии мог не прислать поле: показываем ноль, а не «undefined».
   const otherOpen = totals.otherOpen ?? 0;
-  const tiles: { label: string; value: number; note?: string; tone?: 'warn' | 'ok'; open?: { aria: string; go: () => void } }[] = [
-    // Общее число, а не только открытые: исполненные из него не вычитаются, а показаны рядом мелкой цифрой.
-    { label: t.tileOpen, value: totals.all ?? totals.open, note: t.tileOpenDone(totals.done ?? 0) },
+  const tiles: { label: string; value: number; tone?: 'warn' | 'ok'; open?: { aria: string; go: () => void } }[] = [
+    { label: t.tileOpen, value: totals.open },
     { label: t.tileUnassigned, value: totals.unassigned, tone: totals.unassigned > 0 ? 'warn' : undefined },
     { label: t.tileCallback, value: totals.callback },
     { label: t.tileOver7, value: totals.over7, tone: totals.over7 > 0 ? 'warn' : undefined },
@@ -43,7 +42,6 @@ export function Tiles({ totals }: { totals: TeamView['totals'] }) {
               ) : (
                 tile.value
               )}
-              {tile.note && <small className={styles.tileNote}>{tile.note}</small>}
             </dd>
           </div>
         ))}

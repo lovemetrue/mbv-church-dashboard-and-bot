@@ -399,6 +399,12 @@ describe('экран «Сегодня»', () => {
     expect(views.today.total).toBe(5);
   });
 
+  test('«всего заявок» — общее число: заявки в подбор (в том числе исполненные и аннулированные) и другие обращения', () => {
+    const { views } = build({ groups, requests });
+    expect(views.today.requestsAll).toBe(7);
+    expect(views.today.requestsDone).toBe(2);
+  });
+
   test('«перезвонить» входит в распределённых', () => {
     const entry: PlanEntry = {
       kind: 'proposal', main: { groupId: 1, score: 90, reasons: [] }, confidence: 90, knownParams: 3,

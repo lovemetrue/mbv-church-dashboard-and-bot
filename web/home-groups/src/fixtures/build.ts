@@ -438,6 +438,8 @@ export function buildToday(): TodayView {
     counters,
     assigned: counters.ready + counters.callback + counters.done,
     total: items.length,
+    requestsAll: items.length + buildOthers().length,
+    requestsDone: counters.done + buildOthers().filter((o) => o.state === 'done').length,
     approvedToday: 2,
     ageColumns,
     matrix,

@@ -7,7 +7,7 @@ import { CellPanel } from './CellPanel';
 import { Matrix, type CellRef } from './Matrix';
 import { useMatrixPrefs } from './prefs';
 import { GroupsMap } from '../reference/GroupsMap';
-import { ApprovedWidget, CallbackWidget, HelpWidget, ReadyWidget, UrgentWidget } from './Widgets';
+import { HelpCallbackWidget, ReadyApprovedWidget, TotalWidget, UrgentWidget } from './Widgets';
 import styles from './Today.module.css';
 
 export function TodayScreen() {
@@ -31,10 +31,9 @@ export function TodayContent({ data }: { data: TodayView; now?: Date }) {
   return (
     <div className={styles.page}>
       <div className={styles.top}>
-        <ReadyWidget data={data} />
-        <CallbackWidget data={data} />
-        <HelpWidget data={data} />
-        <ApprovedWidget data={data} />
+        <TotalWidget data={data} />
+        <ReadyApprovedWidget data={data} />
+        <HelpCallbackWidget data={data} />
         <UrgentWidget data={data} />
       </div>
 

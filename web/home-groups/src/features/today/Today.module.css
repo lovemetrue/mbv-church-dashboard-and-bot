@@ -29,7 +29,7 @@
 /* ── верхний ряд: приветствие со счётчиками и два виджета ─────────────────── */
 .top {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
   align-items: stretch;
 }
@@ -636,4 +636,34 @@
   flex-direction: column;
   gap: 2px;
   font-size: 14px;
+}
+
+/* Сдвоенный виджет: главный показатель крупно, второй рядом поменьше. */
+.pair {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 14px;
+}
+.stat {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+.stat + .stat {
+  padding-left: 14px;
+  border-left: 1px solid var(--line-soft);
+}
+.statBig,
+.statSmall {
+  font-family: var(--mono);
+  font-weight: 600;
+  line-height: 1;
+}
+.statBig {
+  font-size: 44px;
+}
+.statSmall {
+  font-size: 30px;
 }

@@ -75,6 +75,8 @@ export const ru = {
   today: {
     urgentTitle: 'Срочно нужна группа',
     urgentNone: 'Везде хватает мест.',
+    totalTitle: 'Всего заявок',
+    totalDoneTitle: 'Исполнено',
     readyTitle: 'Готово к утверждению',
     callbackTitle: 'Перезвонить',
     readyOpenLabel: (n: number) => `Готово к утверждению: ${n}. Открыть список`,
@@ -720,8 +722,7 @@ export const ru = {
     },
     staleError: 'Не удалось обновить данные. Показаны прежние.',
     tilesLabel: 'Итоги по заявкам',
-    tileOpen: 'Всего заявок',
-    tileOpenDone: (n: number) => `исполнено ${n}`,
+    tileOpen: 'Открытых заявок',
     tileUnassigned: 'Никто не взял',
     tileCallback: 'Ждут звонка',
     tileOver7: 'Ждут больше недели',

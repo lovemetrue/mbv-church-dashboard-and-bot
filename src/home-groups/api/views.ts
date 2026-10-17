@@ -640,6 +640,7 @@ export function buildViewsWithPlan(
   }
   // Остальные обращения: всё, что не идёт в подбор, и аннулированные «хочу в группу» (чтобы вернуть в работу).
   const otherAll = input.requests.filter((r) => r.type !== 'join_group' || bucketById.get(r.id) === 'cancelled');
+  const nonJoin = input.requests.filter((r) => r.type !== 'join_group');
   const otherState = (r: DashboardRequest): OtherItem['state'] => (r.status === DONE ? 'done' : r.status === CANCELLED ? 'cancelled' : 'open');
   const otherItem = (r: DashboardRequest): OtherItem => ({
     id: r.id,
@@ -887,6 +888,11 @@ export function buildViewsWithPlan(
       // «Распределено X из Y»: отказ из знаменателя убираем — человек ушёл, распределять его не надо.
       assigned: counters.ready + counters.callback + counters.done,
       total: joinRequests.length - counters.cancelled,
+      // Общее число без вычитаний: исполненные остаются в нём. «Другие обращения» берём из полного списка, а не из
+      // урезанного списка закрытых (OTHER_CLOSED_LIMIT): иначе число росло бы и падало с лимитом.
+      // Аннулированные «хочу в группу» есть и в joinRequests, и в otherAll: считаем только обращения не из подбора.
+      requestsAll: joinRequests.length + nonJoin.length,
+      requestsDone: counters.done + nonJoin.filter((r) => otherState(r) === 'done').length,
       ageColumns: summary.ageColumns,
       matrix: summary.matrix,
       clusters: summary.clusters,

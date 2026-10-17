@@ -17,11 +17,6 @@ describe('сводка для руководителя координаторо�
     expect(t.totals).toMatchObject({ open: 1, unassigned: 1 });
   });
 
-  test('«Всего заявок» — общее число: исполненные не вычитаются, а считаются отдельно', () => {
-    const t = buildTeam([item({ id: 1 }), item({ id: 2, bucket: 'done' }), item({ id: 3, bucket: 'done' }), item({ id: 4, bucket: 'cancelled' })], [], AT);
-    expect(t.totals).toMatchObject({ all: 4, done: 2, open: 1 });
-  });
-
   test('сроки ожидания раскладываются по корзинам, включая «дата неизвестна»', () => {
     const t = buildTeam([
       item({ id: 1, waitingDays: 0 }), item({ id: 2, waitingDays: 2 }), item({ id: 3, waitingDays: 3 }), item({ id: 4, waitingDays: 7 }),
@@ -75,7 +70,7 @@ describe('сводка для руководителя координаторо�
 
   test('пустые данные не ломают сводку', () => {
     const t = buildTeam([], [], AT);
-    expect(t.totals).toEqual({ open: 0, all: 0, done: 0, unassigned: 0, callback: 0, over7: 0, approvedWeek: 0, otherOpen: 0 });
+    expect(t.totals).toEqual({ open: 0, unassigned: 0, callback: 0, over7: 0, approvedWeek: 0, otherOpen: 0 });
     expect(t.workload).toEqual([]);
     expect(t.stuck).toEqual([]);
   });

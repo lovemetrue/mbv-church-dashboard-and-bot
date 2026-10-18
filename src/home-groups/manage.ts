@@ -11,22 +11,19 @@ import { fieldsToForm } from './create.js';
  * Правка и удаление записей справочника из нового интерфейса: группы, координаторы, заявки.
  *
  * Проверки — те же функции, что у форм старого дашборда. Отличие одно: правка частичная. Интерфейс присылает
- * только изменённые поля, остальное берётся из базы. Поэтому телефоны ведущих, которые новый интерфейс нарочно
- * не показывает, не пропадают при сохранении и не уходят в браузер.
+ * только изменённые поля, остальное берётся из базы. Поэтому чужая правка, пришедшая между открытием формы и
+ * «Сохранить», не затирается старыми значениями из формы.
  * Удаление мягкое (запись скрывается, остаётся в базе); решает, кому оно доступно, сервер (`server.ts`).
  */
 const fail = (error: 'bad_request' | 'not_found', message: string): ActionOutcome => ({ ok: false, error, message });
 
-/**
- * Поля группы, которые можно менять отсюда. Телефоны ведущих сервер принимает, но обратно не отдаёт:
- * интерфейс их не показывает, а заполняет поле тот, кому есть что записать (новый номер). Адрес виден и правится как обычное поле.
- */
+/** Поля группы, которые можно менять отсюда. Телефоны и адрес видны в форме и правятся как обычные поля. */
 const GROUP_EDITABLE = [
   'leader', 'district', 'format', 'status', 'people', 'day', 'time', 'composition', 'coordinator', 'coLeader',
   'feedbackAt', 'openedOn', 'comment', 'age', 'metro', 'openToNew', 'training', 'no', 'checked', 'doNotRefer',
-  'phone', 'address', 'coLeaderPhone',
+  'phone', 'address', 'coLeaderPhone', 'campaignRegistered',
 ] as const;
-const GROUP_FLAGS = ['checked', 'doNotRefer'] as const;
+const GROUP_FLAGS = ['checked', 'doNotRefer', 'campaignRegistered'] as const;
 
 /** Состав хранится строкой «Смешанная, Семейная», а форма ждёт отдельные значения: иначе правка любого поля обнулила бы состав. */
 const splitComposition = (v: string | null | undefined): string[] => (v ?? '').split(',').map((x) => x.trim()).filter(Boolean);
@@ -78,7 +75,6 @@ export function createManager(deps: {
         ...(given.has('phone') ? {} : { phone: current.phone, phones: current.phones }),
         ...(given.has('address') ? {} : { address: current.address }),
         ...(given.has('coLeaderPhone') ? {} : { coLeaderPhone: current.co_leader_phone }),
-        campaignRegistered: current.campaign_registered,
         doNotRefer: given.has('doNotRefer') ? merged.has('doNotRefer') : current.do_not_refer,
       };
       const updated = await deps.groups.update(id, input);

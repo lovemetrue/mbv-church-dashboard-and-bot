@@ -10,10 +10,16 @@ export interface Option {
 export interface FieldSpec {
   name: string;
   label: string;
-  kind: 'text' | 'date' | 'textarea' | 'select';
+  /** checkbox — уходит «1», когда отмечен; multi — несколько галочек, одной строкой через запятую (см. `toggleInList`). */
+  kind: 'text' | 'date' | 'textarea' | 'select' | 'checkbox' | 'multi';
   required?: boolean;
-  /** Для select. */
+  /** Для select и multi. */
   options?: Option[];
+  /**
+   * Выбор в этом поле подставляет значения в другие поля, а само поле на сервер не уходит: так работает
+   * «Подобрать из зарегистрированных» — ФИО и телефон потом можно поправить руками.
+   */
+  fills?: (value: string) => Record<string, string>;
   /** На всю ширину окна, а не в половину. */
   wide?: boolean;
   placeholder?: string;
@@ -36,6 +42,9 @@ export interface FormSpec {
   address?: FieldSpec;
   initial: Record<string, string>;
 }
+
+/** Статус заявки, при котором человек уже в группе (как `DONE` на сервере). */
+const DONE_STATUS = 'Исполнена';
 
 const opts = (list: readonly string[]): Option[] => list.map((v) => ({ value: v, label: v }));
 
@@ -65,7 +74,33 @@ export function requestSpec(meta: FormMeta, now: Date = new Date()): FormSpec {
       { name: 'requestedAt', label: t.requestedAt, kind: 'date' },
       { name: 'responsible', label: t.responsible, kind: 'select', options: opts(meta.coordinators) },
       { name: 'source', label: t.source, kind: 'text', wide: true, autoComplete: 'off' },
+      // Куда человек уже ходит — только у исполненной заявки: так она сразу попадает в состав группы. У открытой
+      // заявки группу выбирает подбор («Утвердить»), и второе поле о том же разошлось бы с ним. Поэтому и
+      // текстового «Ходит в группу» из таблицы в форме нет: это то же самое, только без связи с группой.
+      {
+        name: 'groupId',
+        label: t.groupId,
+        kind: 'select',
+        wide: true,
+        options: meta.groups.map((g) => ({ value: String(g.id), label: `${g.leader} · ${g.code}` })),
+        emptyLabel: ru.create.groupNotSet,
+        showWhen: (v) => v['status'] === DONE_STATUS,
+      },
+      // Дальше — поля из таблицы церкви, как в форме старого дашборда: по ним служители ведут заявку вручную.
+      { name: 'ministry', label: t.ministry, kind: 'text', autoComplete: 'off' },
+      // Рекомендация — имя ведущего, как в таблице, а не номер: выбор из списка, чтобы не отправить человека не туда из-за опечатки.
+      {
+        name: 'recommended',
+        label: t.recommended,
+        kind: 'select',
+        options: uniqueLeaders(meta.groups).map((v) => ({ value: v, label: v })),
+        emptyLabel: ru.create.groupNotRecommended,
+      },
+      { name: 'recommendedAt', label: t.recommendedAt, kind: 'date' },
+      { name: 'attendance', label: t.attendance, kind: 'text', autoComplete: 'off' },
+      { name: 'cancelReason', label: t.cancelReason, kind: 'text', wide: true, autoComplete: 'off' },
       { name: 'note', label: t.note, kind: 'textarea', wide: true },
+      { name: 'extra', label: t.extra, kind: 'textarea', wide: true },
     ],
     initial: {
       type: known(types.map((x) => x.value), 'join_group'),
@@ -76,23 +111,52 @@ export function requestSpec(meta: FormMeta, now: Date = new Date()): FormSpec {
   };
 }
 
+/** Ведущие без повторов: у одного человека бывает две группы, а рекомендуют его по имени. */
+const uniqueLeaders = (groups: FormMeta['groups']): string[] => [...new Set(groups.map((g) => g.leader))];
+
 export function groupSpec(meta: FormMeta): FormSpec {
   const t = ru.create.groupFields;
+  const fields: FieldSpec[] = [
+    { name: 'leader', label: t.leader, kind: 'text', required: true, wide: true, autoComplete: 'off' },
+    { name: 'district', label: t.district, kind: 'select', required: true, options: opts(meta.districts) },
+    { name: 'format', label: t.format, kind: 'select', required: true, options: opts(meta.groupFormats) },
+    { name: 'status', label: t.status, kind: 'select', required: true, options: opts(meta.groupStatuses) },
+    { name: 'phone', label: t.phone, kind: 'text', inputMode: 'tel', autoComplete: 'off' },
+    { name: 'coLeader', label: t.coLeader, kind: 'text', autoComplete: 'off' },
+    { name: 'coLeaderPhone', label: t.coLeaderPhone, kind: 'text', inputMode: 'tel', autoComplete: 'off' },
+    { name: 'age', label: t.age, kind: 'select', options: opts(meta.ageGroups) },
+    { name: 'composition', label: t.composition, kind: 'multi', wide: true, options: opts(meta.compositions) },
+    { name: 'metro', label: t.metro, kind: 'text', autoComplete: 'off' },
+    { name: 'day', label: t.day, kind: 'select', options: opts(ru.create.days) },
+    { name: 'time', label: t.time, kind: 'text', placeholder: ru.create.timePlaceholder, autoComplete: 'off' },
+    { name: 'people', label: t.people, kind: 'text', inputMode: 'numeric', placeholder: ru.create.peoplePlaceholder, autoComplete: 'off' },
+    { name: 'openToNew', label: t.openToNew, kind: 'select', options: meta.openToNew },
+    { name: 'coordinator', label: t.coordinator, kind: 'select', options: opts(meta.coordinators) },
+    { name: 'training', label: t.training, kind: 'text', autoComplete: 'off' },
+    { name: 'feedbackAt', label: t.feedbackAt, kind: 'date' },
+    { name: 'no', label: t.no, kind: 'text', inputMode: 'numeric', autoComplete: 'off' },
+    { name: 'comment', label: t.comment, kind: 'textarea', wide: true },
+    { name: 'checked', label: t.checked, kind: 'checkbox' },
+    { name: 'campaignRegistered', label: t.campaignRegistered, kind: 'checkbox' },
+  ];
+  // Готовых вести группу из бота можно выбрать: ФИО и телефон подставятся и останутся правимыми.
+  // Список пуст — поле не рисуем: выбирать не из кого.
+  if (meta.leaderCandidates.length > 0) {
+    fields.splice(1, 0, {
+      name: 'leaderCandidate',
+      label: t.leaderCandidate,
+      kind: 'select',
+      wide: true,
+      options: meta.leaderCandidates.map((c) => ({ value: String(c.id), label: c.label })),
+      emptyLabel: ru.create.leaderCandidateEmpty,
+      fills: (value) => {
+        const c = meta.leaderCandidates.find((x) => String(x.id) === value);
+        return c ? { leader: c.fullName, ...(c.phone ? { phone: c.phone } : {}) } : {};
+      },
+    });
+  }
   return {
-    fields: [
-      { name: 'leader', label: t.leader, kind: 'text', required: true, wide: true, autoComplete: 'off' },
-      { name: 'district', label: t.district, kind: 'select', required: true, options: opts(meta.districts) },
-      { name: 'format', label: t.format, kind: 'select', required: true, options: opts(meta.groupFormats) },
-      { name: 'status', label: t.status, kind: 'select', required: true, options: opts(meta.groupStatuses) },
-      { name: 'phone', label: t.phone, kind: 'text', inputMode: 'tel', autoComplete: 'off' },
-      { name: 'age', label: t.age, kind: 'select', options: opts(meta.ageGroups) },
-      { name: 'metro', label: t.metro, kind: 'text', autoComplete: 'off' },
-      { name: 'day', label: t.day, kind: 'select', options: opts(ru.create.days) },
-      { name: 'time', label: t.time, kind: 'text', placeholder: ru.create.timePlaceholder, autoComplete: 'off' },
-      { name: 'people', label: t.people, kind: 'text', inputMode: 'numeric', placeholder: ru.create.peoplePlaceholder, autoComplete: 'off' },
-      { name: 'coordinator', label: t.coordinator, kind: 'select', options: opts(meta.coordinators) },
-      { name: 'comment', label: t.comment, kind: 'textarea', wide: true },
-    ],
+    fields,
     address: { name: 'address', label: t.address, kind: 'text', wide: true, autoComplete: 'off' },
     initial: { status: known(meta.groupStatuses, 'Функционирует') },
   };

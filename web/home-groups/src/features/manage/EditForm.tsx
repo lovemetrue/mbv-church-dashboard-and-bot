@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import type { QueryClient } from '@tanstack/react-query';
 import { ru } from '../../shared/i18n/ru';
+import { splitList, toggleInList } from '../../shared/multiValue';
 import { Button } from '../../shared/ui';
 import { blankRequired, changedFields, type EditField, type EditSpec } from './editSpec';
 import styles from './Manage.module.css';
@@ -86,6 +87,31 @@ export function EditForm({ spec: given, path, onClose, onSaved, onBusyChange, re
           </label>
           {hint}
         </div>
+      );
+    }
+
+    if (f.kind === 'multi') {
+      const value = values[f.name] ?? '';
+      const picked = new Set(splitList(value));
+      const options = f.options ?? [];
+      return (
+        <fieldset key={f.name} className={`${f.wide ? styles.fieldWide : styles.field} ${styles.multi}`} aria-describedby={describedBy}>
+          <legend>{f.label}</legend>
+          <div className={styles.multiList}>
+            {options.map((o) => (
+              <label key={o} className={styles.check}>
+                <input
+                  type="checkbox"
+                  checked={picked.has(o)}
+                  disabled={busy}
+                  onChange={(e) => change(f.name, toggleInList(value, o, e.target.checked, options))}
+                />
+                <span>{o}</span>
+              </label>
+            ))}
+          </div>
+          {hint}
+        </fieldset>
       );
     }
 

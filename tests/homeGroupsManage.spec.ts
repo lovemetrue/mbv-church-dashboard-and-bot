@@ -61,6 +61,21 @@ describe('правка группы из нового интерфейса', () 
     expect(JSON.stringify(await audits())).not.toMatch(/921|Новая/);
   });
 
+  test('поля старого дашборда (приём новых, обучение, № в реестре, возраст, «проверено», «40 дней») правятся и снимаются', async () => {
+    const id = await group();
+    expect(await manager().updateGroup(id, {
+      fields: { openToNew: 'По требованию', training: 'Да', no: '85', age: '25-40', checked: '1', campaignRegistered: '1' },
+    }, 'a')).toEqual({ ok: true });
+    expect(await g(id)).toMatchObject({
+      open_to_new: 'По требованию', training: 'Да', no: 85, age: '25-40', checked: true, campaign_registered: true, people: 5,
+    });
+    // Правка другого поля флажки не трогает: их значения берутся из базы.
+    await manager().updateGroup(id, { fields: { comment: 'x' } }, 'a');
+    expect(await g(id)).toMatchObject({ checked: true, campaign_registered: true });
+    await manager().updateGroup(id, { fields: { checked: '0', campaignRegistered: '0', openToNew: '' } }, 'a');
+    expect(await g(id)).toMatchObject({ checked: false, campaign_registered: false, open_to_new: null });
+  });
+
   test('пустое значение стирает адрес', async () => {
     const id = await group();
     await manager().updateGroup(id, { fields: { address: '' } }, 'a');

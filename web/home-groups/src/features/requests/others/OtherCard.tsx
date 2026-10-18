@@ -3,6 +3,7 @@ import { formatDateShort, formatPhone } from '../../../entities/format';
 import { ru } from '../../../shared/i18n/ru';
 import { AgeTag, Drawer, DrawerSection, KeyValue, Pill, StrangeBadge, StrangeBanner, type KvRow } from '../../../shared/ui';
 import { DeleteRequestSection } from '../../manage';
+import { tableRows } from '../tableRows';
 import { subjectOfOther } from '../work/subject';
 import { HeaderTools } from '../work/HeaderTools';
 import { WorkPlace } from '../work/WorkPlace';
@@ -35,7 +36,7 @@ export function OtherCard({ item, onClose, onClosed }: { item: OtherItem; onClos
     { label: ru.requests.status, value: item.status },
     ...(item.waitingDays != null && item.state === 'open' ? [{ label: ru.requests.waiting, value: `${item.waitingDays} дн.` }] : []),
     ...(item.responsible ? [{ label: ru.requests.responsible, value: item.responsible }] : []),
-    ...(item.note ? [{ label: ru.requests.note, value: item.note }] : []),
+    ...tableRows(item.table, { finalGroup: true }),
   ];
   return (
     <Drawer

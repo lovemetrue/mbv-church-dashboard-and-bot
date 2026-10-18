@@ -92,6 +92,10 @@ export interface RegisteredParticipant {
   family: string | null;
   /** Комментарий служителя к человеку (`admin_comment`). */
   note: string | null;
+  /** Кто ведущий — у тех, кто ответил «уже состою в группе». */
+  leader_name: string | null;
+  /** Как удобнее связаться: код бота (`telegram`, `max`, `call`) или текст из ручной регистрации. */
+  preferred_contact: string | null;
   /** С какой платформы пришёл. У заведённого вручную (has_chat = false) это условное значение. */
   platform: PlatformName;
 }
@@ -407,7 +411,7 @@ export class UsersRepo {
     const { rows } = await this.db.query<RegisteredParticipant>(
       `SELECT id, registration_no, full_name, phone, church, mdg_status, registered_at,
               chat_id <> '' AS has_chat, kit_issued_at, age, location, address_raw AS address, schedule_raw AS schedule,
-              hobby, profession, family_status AS family, admin_comment AS note, platform
+              hobby, profession, family_status AS family, admin_comment AS note, leader_name, preferred_contact, platform
          FROM users
         WHERE registration_no IS NOT NULL
         ORDER BY registration_no DESC`,

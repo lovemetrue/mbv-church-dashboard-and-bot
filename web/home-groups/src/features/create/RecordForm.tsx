@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { ru } from '../../shared/i18n/ru';
+import { splitList, toggleInList } from '../../shared/multiValue';
 import { Button } from '../../shared/ui';
 import styles from './Create.module.css';
 import type { FieldSpec, FormSpec } from './specs';
@@ -55,8 +56,8 @@ export function RecordForm({ spec, path, submitLabel, busyLabel, onClose, onCrea
     busyChange.current?.(busy);
   }, [busy]);
 
-  const change = (name: string, value: string) => {
-    setValues((v) => ({ ...v, [name]: value }));
+  const change = (name: string, value: string, fills?: Record<string, string>) => {
+    setValues((v) => ({ ...v, ...fills, [name]: value }));
     setServerError(null);
     setProblems((p) => (p[name] ? { ...p, [name]: '' } : p));
   };
@@ -77,6 +78,8 @@ export function RecordForm({ spec, path, submitLabel, busyLabel, onClose, onCrea
     }
     const fields: Record<string, string> = {};
     for (const f of all) {
+      // Поле-подсказка только заполняет соседние: серверу его значение ни к чему.
+      if (f.fills) continue;
       const v = (values[f.name] ?? '').trim();
       if (v) fields[f.name] = v;
     }
@@ -103,13 +106,54 @@ export function RecordForm({ spec, path, submitLabel, busyLabel, onClose, onCrea
     const setRef = (el: Control | null) => {
       refs.current[f.name] = el;
     };
+
+    if (f.kind === 'checkbox') {
+      return (
+        <div key={f.name} className={styles.fieldWide}>
+          <label className={styles.check} htmlFor={id}>
+            <input
+              id={id}
+              ref={setRef}
+              type="checkbox"
+              checked={Boolean(values[f.name])}
+              onChange={(e) => change(f.name, e.target.checked ? '1' : '')}
+            />
+            <span>{f.label}</span>
+          </label>
+        </div>
+      );
+    }
+
+    if (f.kind === 'multi') {
+      const value = values[f.name] ?? '';
+      const picked = new Set(splitList(value));
+      const options = (f.options ?? []).map((o) => o.value);
+      return (
+        <fieldset key={f.name} className={`${f.wide ? styles.fieldWide : styles.field} ${styles.multi}`}>
+          <legend>{f.label}</legend>
+          <div className={styles.multiList}>
+            {(f.options ?? []).map((o) => (
+              <label key={o.value} className={styles.check}>
+                <input
+                  type="checkbox"
+                  checked={picked.has(o.value)}
+                  onChange={(e) => change(f.name, toggleInList(value, o.value, e.target.checked, options))}
+                />
+                <span>{o.label}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      );
+    }
+
     return (
       <div key={f.name} className={f.wide ? styles.fieldWide : styles.field}>
         <label htmlFor={id} className={f.required ? styles.required : undefined}>
           {f.label}
         </label>
         {f.kind === 'select' ? (
-          <select {...common} ref={setRef} onChange={(e) => change(f.name, e.target.value)}>
+          <select {...common} ref={setRef} onChange={(e) => change(f.name, e.target.value, f.fills?.(e.target.value))}>
             <option value="">{f.emptyLabel ?? (f.required ? ru.create.choose : ru.create.notChosen)}</option>
             {(f.options ?? []).map((o) => (
               <option key={o.value} value={o.value}>

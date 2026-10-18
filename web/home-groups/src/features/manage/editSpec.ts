@@ -1,5 +1,6 @@
 import type { CoordinatorItem, FormMeta, GroupItem } from '@contracts';
 import { ru } from '../../shared/i18n/ru';
+import { optionsWithPicked } from '../../shared/multiValue';
 
 const m = ru.manage;
 
@@ -7,10 +8,11 @@ const m = ru.manage;
 export interface EditField {
   name: string;
   label: string;
-  kind: 'text' | 'select' | 'textarea' | 'date' | 'checkbox';
+  /** multi — несколько галочек, значение одной строкой через запятую (см. `toggleInList`). */
+  kind: 'text' | 'select' | 'textarea' | 'date' | 'checkbox' | 'multi';
   /** Пустое значение недопустимо: сервер всё равно отказал бы, поэтому «Сохранить» не включается. */
   required?: boolean;
-  /** Для select. */
+  /** Для select и multi. */
   options?: string[];
   /** Пояснение под полем. */
   hint?: string;
@@ -69,9 +71,9 @@ function feedbackNow(days: number | null): string {
  * (только собранное «Вт, вечер» и «дней назад»), поэтому эти поля пустые и отправляются, только если
  * их вписали; под ними подсказка с текущим значением.
  *
- * Телефоны ведущего и соведущего и адрес сервер только принимает: назад их не отдаёт (в карточке нельзя
- * показывать то, что не нужно всем координаторам). Поэтому три поля «Новый …» тоже пустые и пишущие:
- * непустое заменяет значение, пустое не отправляется вовсе (пустая строка стёрла бы его в базе).
+ * Телефоны ведущего и соведущего открываются с текущим значением: по ним координаторы обзванивают ведущих, и
+ * правка вслепую («впишите новый, текущий не показывается») только путала. Как и у остальных полей, уходит лишь
+ * изменённое; очищенное поле стирает номер.
  */
 export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
   const t = m.group.fields;
@@ -94,15 +96,21 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
         placeholder: m.group.timePlaceholder,
         hint: `${m.group.now(g.whenText ?? m.group.notSpecified)} ${keep}`,
       },
-      { name: 'composition', label: t.composition, kind: 'select', options: withCurrent(meta.compositions, g.composition) },
+      { name: 'composition', label: t.composition, kind: 'multi', wide: true, options: optionsWithPicked(meta.compositions, g.composition ?? '') },
+      { name: 'age', label: t.age, kind: 'select', options: withCurrent(meta.ageGroups, g.ageText) },
+      { name: 'openToNew', label: t.openToNew, kind: 'select', options: withCurrent(meta.openToNew.map((o) => o.value), g.openToNew) },
       { name: 'coordinator', label: t.coordinator, kind: 'select', options: withCurrent(meta.coordinators, g.coordinator) },
       { name: 'coLeader', label: t.coLeader, kind: 'text' },
-      { name: 'phone', label: t.newPhone, kind: 'text', inputMode: 'tel', hint: m.group.writeOnlyHint },
-      { name: 'coLeaderPhone', label: t.newCoLeaderPhone, kind: 'text', inputMode: 'tel', hint: m.group.writeOnlyHint },
+      { name: 'phone', label: t.phone, kind: 'text', inputMode: 'tel' },
+      { name: 'coLeaderPhone', label: t.coLeaderPhone, kind: 'text', inputMode: 'tel' },
       
       { name: 'feedbackAt', label: t.feedbackAt, kind: 'date', hint: `${feedbackNow(g.verifiedDaysAgo)} ${keep}` },
       { name: 'openedOn', label: t.openedOn, kind: 'date', hint: m.group.openedOnHint },
+      { name: 'training', label: t.training, kind: 'text' },
+      { name: 'no', label: t.no, kind: 'text', inputMode: 'numeric' },
       { name: 'comment', label: t.comment, kind: 'textarea', wide: true },
+      { name: 'checked', label: t.checked, kind: 'checkbox', wide: true },
+      { name: 'campaignRegistered', label: t.campaignRegistered, kind: 'checkbox', wide: true },
       { name: 'doNotRefer', label: m.group.doNotRefer, kind: 'checkbox', wide: true, hint: m.group.doNotReferHint },
     ],
     initial: {
@@ -115,10 +123,16 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
       day: g.day ?? '',
       time: '',
       composition: g.composition ?? '',
+      age: g.ageText ?? '',
+      openToNew: g.openToNew ?? '',
+      training: g.training ?? '',
+      no: g.no === null ? '' : String(g.no),
+      checked: g.checked ? '1' : '',
+      campaignRegistered: g.campaignRegistered ? '1' : '',
       coordinator: g.coordinator ?? '',
       coLeader: g.coLeader ?? '',
-      phone: '',
-      coLeaderPhone: '',
+      phone: g.phone ?? '',
+      coLeaderPhone: g.coLeaderPhone ?? '',
       address: g.address ?? '',
       feedbackAt: '',
       openedOn: g.openedOn ?? '',

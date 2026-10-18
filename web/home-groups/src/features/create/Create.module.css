@@ -136,6 +136,40 @@ textarea.control {
   font-size: 12px;
   color: var(--muted);
 }
+.check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--tap);
+  cursor: pointer;
+  font-weight: 600;
+}
+.check input {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  accent-color: var(--accent);
+}
+/* Галочки «Состава»: рамку и отступы fieldset снимаем, подпись — как у остальных полей. */
+.multi {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.multi legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.multiList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 18px;
+}
+.multiList .check {
+  font-weight: 500;
+}
 .addressBlock {
   margin: 16px 0 0;
   padding: 10px 12px 12px;

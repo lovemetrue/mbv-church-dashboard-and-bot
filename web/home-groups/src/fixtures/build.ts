@@ -48,7 +48,7 @@ import {
   type RawRequest,
 } from './raw';
 import { RAW_MANUAL_MEMBERS } from './members';
-import { buildOthers } from './others';
+import { buildOthers, emptyTable } from './others';
 import { requestExtras } from './requestExtras';
 import { demoStrangeOf, STRANGE_NO_PLAN } from './strange';
 
@@ -359,6 +359,7 @@ export function buildRequests(): RequestsView {
       finalGroupText: r.finalGroupText,
       responsible: entry?.responsible || null,
       note: r.note,
+      table: emptyTable(r.note),
       log: r.log,
     };
   });
@@ -522,12 +523,17 @@ export function buildGroups(): GroupsView {
     members: members.get(g.id) ?? [],
     coLeader: g.coLeader,
     phone: g.phone,
+    coLeaderPhone: g.coLeader ? '+7 921 000-11-44' : null,
     address: g.street,
     ageText: g.ages.join(', '),
     day: g.day,
     slot: g.slot,
     status: g.status,
     acceptsNew: g.acceptsNew,
+    openToNew: g.acceptsNew ? 'ДА' : 'НЕТ',
+    training: null,
+    checked: g.verifiedDaysAgo !== null,
+    campaignRegistered: false,
     doNotRefer: g.doNotRefer,
     composition: g.composition,
     coordinator: g.coordinator,
@@ -577,6 +583,9 @@ export function buildPeople(): PeopleView {
       profession: null,
       family: null,
       note: raw.note ?? null,
+      church: null,
+      leaderName: null,
+      preferredContact: null,
       addressGeo: raw.street ? 'found' : null,
       from: raw.source,
       // Заявка без участника (пришла из таблицы): карточки и QR регистрации у неё нет.
@@ -587,7 +596,7 @@ export function buildPeople(): PeopleView {
       requestId: raw.id,
     };
   });
-  const extras: PersonItem[] = RAW_EXTRA_PEOPLE.map((p) => ({ ...p, place: p.place ?? p.district, address: p.address ?? null, schedule: p.schedule ?? null, hobby: p.hobby ?? null, profession: p.profession ?? null, family: p.family ?? null, note: p.note ?? null, addressGeo: p.address ? ('found' as const) : null, personId: p.personId ?? null, groups: groupsOf(p.key), requestId: null, strange: demoStrangeOf(p.phone, p.key) }));
+  const extras: PersonItem[] = RAW_EXTRA_PEOPLE.map((p) => ({ ...p, place: p.place ?? p.district, address: p.address ?? null, schedule: p.schedule ?? null, hobby: p.hobby ?? null, profession: p.profession ?? null, family: p.family ?? null, note: p.note ?? null, church: p.church ?? null, leaderName: p.leaderName ?? null, preferredContact: p.preferredContact ?? null, addressGeo: p.address ? ('found' as const) : null, personId: p.personId ?? null, groups: groupsOf(p.key), requestId: null, strange: demoStrangeOf(p.phone, p.key) }));
   return { generatedAt: GENERATED_AT, items: [...fromRequests, ...extras] };
 }
 

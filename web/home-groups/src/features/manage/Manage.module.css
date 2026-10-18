@@ -128,6 +128,27 @@ textarea.control {
   accent-color: var(--accent);
 }
 
+/* Галочки «Состава»: рамку и отступы fieldset снимаем, подпись — как у остальных полей. */
+.multi {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.multi legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.multiList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 18px;
+}
+.multiList .check {
+  font-weight: 500;
+}
+
 .formError {
   margin: 10px 0 0;
   padding: 9px 11px;

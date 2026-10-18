@@ -3,16 +3,21 @@
  * «хочу в группу», которую можно вернуть в работу. Вымышленные данные.
  * Порядок как у сервера: открытые сверху (сначала «перезвонить», потом давно ждущие), затем закрытые.
  */
-import type { OtherItem } from '@contracts';
+import type { OtherItem, RequestTableFields } from '@contracts';
 import { demoStrangeOf } from './strange';
 
 /** Обращение без метки: метка накладывается при сборке (`buildOthers`), потому что её можно поставить в демо. */
 type BaseOther = Omit<OtherItem, 'strange'>;
-type RawOther = Omit<BaseOther, 'address' | 'schedule' | 'hobby' | 'profession' | 'family'>;
+type RawOther = Omit<BaseOther, 'address' | 'schedule' | 'hobby' | 'profession' | 'family' | 'table'>;
+
+/** Поля из таблицы церкви у демо-заявок пусты: их заполняют вручную. */
+export function emptyTable(note: string | null): RequestTableFields {
+  return { note, source: null, ministry: null, extra: null, recommended: null, recommendedAt: null, finalGroup: null, attendance: null };
+}
 
 /** Анкетные поля у большинства демо-обращений пусты: подставляем их здесь, чтобы не повторять в каждой записи. */
 function baseOthers(): BaseOther[] {
-  return rawOthers().map((o) => ({ address: null, schedule: null, hobby: null, profession: null, family: null, ...o }));
+  return rawOthers().map((o) => ({ address: null, schedule: null, hobby: null, profession: null, family: null, table: emptyTable(o.note), ...o }));
 }
 
 function rawOthers(): RawOther[] {

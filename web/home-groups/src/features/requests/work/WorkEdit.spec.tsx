@@ -44,14 +44,54 @@ describe('Карточка заявки: карандаш «Править да�
     expect(within(dialog).getByText(/сохранятся и в регистрации, и во всех заявках/)).toBeInTheDocument();
   });
 
-  test('набор и порядок полей — тот же, что в карточке человека (там проверка по тому же списку)', async () => {
+  test('сначала поля человека в том же порядке, что в карточке человека (там проверка по тому же списку), потом поля из таблицы церкви', async () => {
     const labels = (root: HTMLElement) => within(root).getAllByRole('textbox').map((e) => e.getAttribute('aria-label') ?? (e.id ? document.querySelector(`label[for="${e.id}"]`)?.textContent : null));
     const { dialog } = await openEdit(5);
     const fromRequest = labels(dialog);
-    expect(fromRequest.length).toBe(10);
     expect(fromRequest.map((l) => l?.replace(/\s*\*$/, ''))).toEqual([
       'ФИО', 'Телефон', 'Возраст', 'Район, метро, ориентир', 'Улица и дом', 'Удобные день и время', 'Хобби', 'Профессия', 'Семейное положение', 'Комментарий',
+      'Источник', 'Служение', 'Рекомендованная группа', 'Контроль посещения', 'Дополнительно',
     ]);
+    // Дата — не текстовое поле, поэтому в списке выше её нет.
+    expect(within(dialog).getByLabelText('Дата рекомендации')).toHaveAttribute('type', 'date');
+    // Куда человек ходит, задаёт утверждение в группу: текстового двойника в форме нет.
+    expect(within(dialog).queryByRole('textbox', { name: 'Ходит в группу' })).not.toBeInTheDocument();
+  });
+
+  test('карточка заявки показывает поля из таблицы церкви, а заметку и «Дополнительно» — отдельными строками', async () => {
+    const table = {
+      note: 'звонить вечером', source: null, ministry: 'Колизей 13:00', extra: 'из таблицы', recommended: 'Ольга К.',
+      recommendedAt: '2026-09-01', finalGroup: 'Ольга К.', attendance: 'ходит',
+    };
+    stubFetchWithFixtures({ requests: () => json(viewWith(5, { note: 'звонить вечером | из таблицы', table })) });
+    const card = await openCard(5);
+    const row = (label: string) => within(card).getByText(label, { selector: 'dt' }).nextElementSibling;
+    expect(row('Служение')).toHaveTextContent('Колизей 13:00');
+    expect(row('Рекомендованная группа')).toHaveTextContent('Ольга К. · 01.09.2026');
+    expect(row('Ходит в группу')).toHaveTextContent('Ольга К.');
+    expect(row('Контроль посещения')).toHaveTextContent('ходит');
+    expect(row('Заметка')).toHaveTextContent(/^звонить вечером$/);
+    expect(row('Дополнительно')).toHaveTextContent('из таблицы');
+  });
+
+  test('поля из таблицы церкви предзаполнены и уходят только изменённые; заметка — без «Дополнительно»', async () => {
+    const table = {
+      note: 'звонить вечером', source: 'Сайт церкви', ministry: 'Колизей 13:00', extra: 'из таблицы', recommended: null,
+      recommendedAt: null, finalGroup: null, attendance: null,
+    };
+    const { fetchMock, user, dialog } = await openEdit(5, {
+      requests: () => json(viewWith(5, { phone: PHONE, note: 'звонить вечером | из таблицы', table })),
+    });
+    // Показ склеивает заметку и «Дополнительно», а в форме они порознь: иначе сохранение заметки задвоило бы «Дополнительно».
+    expect(within(dialog).getByRole('textbox', { name: 'Комментарий' })).toHaveValue('звонить вечером');
+    expect(within(dialog).getByRole('textbox', { name: 'Дополнительно' })).toHaveValue('из таблицы');
+    expect(within(dialog).getByRole('textbox', { name: 'Служение' })).toHaveValue('Колизей 13:00');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Рекомендованная группа' }), 'Иван Петров');
+    await user.type(within(dialog).getByLabelText('Дата рекомендации'), '2026-09-01');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Контроль посещения' }), 'ходит');
+    await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect(posts(fetchMock)[0]!.body).toEqual({ fields: { recommended: 'Иван Петров', recommendedAt: '2026-09-01', attendance: 'ходит' } });
   });
 
   test('пока ничего не изменено, «Сохранить» отключена', async () => {

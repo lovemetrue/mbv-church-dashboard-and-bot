@@ -375,6 +375,66 @@ describe('создание и параметры подбора через HTTP 
     } finally { app.server.close(); }
   });
 
+  test('заявка создаётся со всеми полями старого дашборда: группа, служение, рекомендация, посещение, «Дополнительно»', async () => {
+    const groupId = (await db.query<{ id: number }>(`INSERT INTO groups (leader, district, format, status, source) VALUES ('Иван Петров', 'Приморский', 'Основная церковь', 'Функционирует', 'ui') RETURNING id`)).rows[0]!.id;
+    const app = await startAdmin();
+    try {
+      const ok = await app.post('requests/create', { fields: {
+        fio: 'Мария Иванова', type: 'join_group', status: 'На контроле', groupId: String(groupId), ministry: 'Колизей 13:00',
+        recommended: 'Иван Петров', recommendedAt: '2026-09-01', finalGroup: 'Иван Петров', cancelReason: 'переехала',
+        attendance: 'ходит', extra: 'из таблицы', source: 'Сайт церкви',
+      } });
+      expect(ok.status).toBe(200);
+      const { id } = await ok.json() as { id: number };
+      expect((await db.query(`SELECT status, group_id, ministry, recommended, recommended_at, final_group, cancel_reason, attendance, extra, source FROM requests WHERE id = $1`, [id])).rows[0]).toEqual({
+        status: 'На контроле', group_id: groupId, ministry: 'Колизей 13:00', recommended: 'Иван Петров', recommended_at: '2026-09-01',
+        final_group: 'Иван Петров', cancel_reason: 'переехала', attendance: 'ходит', extra: 'из таблицы', source: 'Сайт церкви',
+      });
+    } finally { app.server.close(); }
+  });
+
+  test('группа создаётся со всеми полями старого дашборда: состав через запятую, соведущий, приём новых, флажки', async () => {
+    const app = await startAdmin();
+    try {
+      const ok = await app.post('groups/create', { fields: {
+        leader: 'Иван Петров', district: 'Приморский', format: 'Основная церковь', status: 'Функционирует',
+        composition: 'Семейная, Мужская', coLeader: 'Анна Петрова', coLeaderPhone: '8 921 000-11-44', openToNew: 'По требованию',
+        training: 'Да', feedbackAt: '2026-09-10', no: '85', checked: '1', campaignRegistered: '1',
+      } });
+      expect(ok.status).toBe(200);
+      const { id } = await ok.json() as { id: number };
+      expect((await db.query(`SELECT composition, co_leader, co_leader_phone, open_to_new, training, feedback_at, no, checked, campaign_registered FROM groups WHERE id = $1`, [id])).rows[0]).toEqual({
+        // Порядок — как в списке составов, а не как прислали.
+        composition: 'Мужская, Семейная', co_leader: 'Анна Петрова', co_leader_phone: '+79210001144', open_to_new: 'По требованию',
+        training: 'Да', feedback_at: '2026-09-10', no: 85, checked: true, campaign_registered: true,
+      });
+    } finally { app.server.close(); }
+  });
+
+  test('правка заявки меняет поля из таблицы церкви, но не переносит их в регистрацию; плохая дата отклоняется', async () => {
+    const userId = (await db.query<{ id: number }>(`INSERT INTO users (platform, platform_user_id, chat_id, full_name) VALUES ('telegram', '1', '1', 'Мария') RETURNING id`)).rows[0]!.id;
+    const r = (await db.query<{ id: number }>(`INSERT INTO requests (user_id, type, status, fio, note, extra, origin) VALUES ($1, 'join_group', 'Новая', 'Мария', 'звонить вечером', 'старое', 'таблица') RETURNING id`, [userId])).rows[0]!.id;
+    const app = await startAdmin();
+    try {
+      const fields = { ministry: 'Колизей 13:00', recommended: 'Иван Петров', recommendedAt: '2026-09-01', attendance: 'ходит', extra: 'новое', source: 'Сайт' };
+      expect((await app.post(`requests/${r}/edit`, { fields })).status).toBe(200);
+      expect((await db.query(`SELECT ministry, recommended, recommended_at, attendance, extra, source, note, origin FROM requests WHERE id = $1`, [r])).rows[0]).toEqual({
+        ministry: 'Колизей 13:00', recommended: 'Иван Петров', recommended_at: '2026-09-01',
+        attendance: 'ходит', extra: 'новое', source: 'Сайт', note: 'звонить вечером', origin: 'ui',
+      });
+      const item = (await app.get('requests')).items.find((i: { id: number }) => i.id === r);
+      // В форму правки заметка и «Дополнительно» приходят порознь, хотя показываются вместе.
+      expect(item.table).toEqual({ note: 'звонить вечером', finalGroup: null, ...fields });
+      expect(item.log.map((l: { text: string }) => l.text)).toContain('Исправлено вручную: источник, служение, дополнительно, рекомендованная группа, дата рекомендации, контроль посещения · mbv_admin');
+      // «Ходит в группу» правкой не меняется: куда человек ходит, задаёт утверждение в группу.
+      expect((await app.post(`requests/${r}/edit`, { fields: { finalGroup: 'Иван Петров' } })).status).toBe(400);
+
+      const bad = await app.post(`requests/${r}/edit`, { fields: { recommendedAt: '2026-02-31' } });
+      expect(bad.status).toBe(400);
+      expect((await bad.json() as { message: string }).message).toContain('Дата рекомендации');
+    } finally { app.server.close(); }
+  });
+
   test.each([
     [{ leader: 'Х', district: 'Нет такого', format: 'Основная церковь', status: 'Функционирует' }, 'район'],
     [{ leader: 'Х', district: 'Приморский', format: 'Основная церковь', status: 'Функционирует', people: '500' }, 'Число человек'],
@@ -405,6 +465,40 @@ describe('создание и параметры подбора через HTTP 
       expect(meta.requestTypes.map((t: { value: string }) => t.value)).toContain('join_group');
       expect(meta.coordinators).toEqual(['Анна Координатор']);
       expect(meta.ageGroups).toContain('25-40');
+      expect(meta.openToNew.map((o: { value: string }) => o.value)).toEqual(['ДА', 'НЕТ', 'По требованию']);
+    } finally { app.server.close(); }
+  });
+
+  test('то, что вводят при создании, видно в карточках: у человека церковь, ведущий и способ связи, у группы — телефон соведущего', async () => {
+    await db.query(
+      `INSERT INTO users (platform, platform_user_id, chat_id, full_name, church, mdg_status, leader_name, preferred_contact, registration_no, complete)
+       VALUES ('telegram', '7', '7', 'Ирина Состоит', 'МБВ Колизей', 'member', 'Иван Петров', 'call', 4321, true)`);
+    await db.query(`INSERT INTO groups (leader, district, format, status, co_leader, co_leader_phone, source) VALUES ('Иван Петров', 'Приморский', 'Основная церковь', 'Функционирует', 'Анна', '+79210001144', 'ui')`);
+    const app = await startAdmin();
+    try {
+      const person = (await app.get('people')).items.find((p: { fio: string }) => p.fio === 'Ирина Состоит');
+      expect(person).toMatchObject({ church: 'МБВ Колизей', leaderName: 'Иван Петров', preferredContact: 'звонок' });
+      const group = (await app.get('groups')).items.find((g: { leader: string }) => g.leader === 'Иван Петров');
+      expect(group).toMatchObject({ coLeader: 'Анна', coLeaderPhone: '+7 921 000-11-44' });
+    } finally { app.server.close(); }
+  });
+
+  test('справочники форм отдают действующие группы и кандидатов в ведущие из бота (готов открыть или дать дом)', async () => {
+    const groupId = (await db.query<{ id: number }>(`INSERT INTO groups (leader, district, format, status, source) VALUES ('Иван Петров', 'Приморский', 'Основная церковь', 'Функционирует', 'ui') RETURNING id`)).rows[0]!.id;
+    await db.query(`INSERT INTO groups (leader, district, format, status, source, archived_at) VALUES ('Убранная', 'Приморский', 'Основная церковь', 'Закрыта', 'ui', now())`);
+    const add = (id: string, name: string, mdg: string) => db.query(
+      `INSERT INTO users (platform, platform_user_id, chat_id, full_name, phone, church, mdg_status, location, age, complete)
+       VALUES ('telegram', $1, $1, $2, '+79110001122', 'МБВ Колизей', $3, 'Приморский', '25-40', true) RETURNING id`, [id, name, mdg]);
+    const home = (await add('1', 'Ольга Домова', 'home')).rows[0]!.id as number;
+    await add('2', 'Пётр Участник', 'join');
+    const app = await startAdmin();
+    try {
+      const meta = await app.get('form-meta');
+      expect(meta.groups).toEqual([{ id: groupId, code: expect.stringMatching(/^ДГ-/), leader: 'Иван Петров' }]);
+      expect(meta.leaderCandidates).toEqual([{
+        id: home, fullName: 'Ольга Домова', phone: '+79110001122',
+        label: 'Ольга Домова · +79110001122 · МБВ Колизей · готов предоставить свой дом · Приморский · 25-40',
+      }]);
     } finally { app.server.close(); }
   });
 

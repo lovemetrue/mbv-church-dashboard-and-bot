@@ -15,9 +15,10 @@ import type { CoordinatorRow } from '../../db/repos/coordinators.repo.js';
 import { groupCode } from '../../core/groups.js';
 import { inputSignature } from '../plan/signature.js';
 import { formatPhone } from '../../core/phone.js';
+import { CONTACT_LABEL } from '../../core/csv.js';
 import type {
   Bucket, Candidate, Counters, CoordinatorItem, CoordinatorsView, GroupBrief, GroupItem, GroupsView,
-  HealthItem, LogEntry, MatchingStatus, NoPlan, StrangeMark, DataChange, OriginalField, ParamInfo, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, GroupMember, OtherItem, RequestsView, TeamView, TodayView,
+  HealthItem, LogEntry, MatchingStatus, NoPlan, StrangeMark, DataChange, OriginalField, ParamInfo, RequestTableFields, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, GroupMember, OtherItem, RequestsView, TeamView, TodayView,
 } from '../contracts.js';
 import type {
   Day, PlanEngineApi, PlanEntry, PlanEntryProposal, PlanGroup, PlanOutput, PlanRequest, ScoredGroup, Slot,
@@ -163,7 +164,11 @@ function auditText(a: AuditRow): string | null {
       return `Уточнено вручную: ${parts.join(', ') || 'параметры подбора'} · ${a.actor}`;
     }
     case 'request.edit': {
-      const names: Record<string, string> = { fio: 'ФИО', phone: 'телефон', age: 'возраст', place: 'район', note: 'комментарий' };
+      const names: Record<string, string> = {
+        fio: 'ФИО', phone: 'телефон', age: 'возраст', place: 'район', note: 'комментарий', address: 'улица и дом', schedule: 'удобное время',
+        hobby: 'хобби', profession: 'профессия', family: 'семья', source: 'источник', ministry: 'служение', extra: 'дополнительно',
+        recommended: 'рекомендованная группа', recommendedAt: 'дата рекомендации', finalGroup: 'ходит в группу', attendance: 'контроль посещения',
+      };
       const fields = Array.isArray(after['fields']) ? (after['fields'] as unknown[]).map((f) => names[String(f)] ?? String(f)) : [];
       return `Исправлено вручную: ${fields.join(', ') || 'данные заявки'} · ${a.actor}`;
     }
@@ -237,6 +242,14 @@ function originalFields(r: DashboardRequest): OriginalField[] {
     ['Вопрос или сообщение', nonBlank(r.text)],
   ];
   return rows.filter((row): row is [string, string] => row[1] !== null).map(([label, value]) => ({ label, value }));
+}
+
+function tableFieldsOf(r: DashboardRequest): RequestTableFields {
+  return {
+    note: nonBlank(r.note), source: nonBlank(r.source), ministry: nonBlank(r.ministry), extra: nonBlank(r.extra),
+    recommended: nonBlank(r.recommended), recommendedAt: validIsoDate(r.recommended_at), finalGroup: nonBlank(r.final_group),
+    attendance: nonBlank(r.attendance),
+  };
 }
 
 function sourceOfProposal(
@@ -635,6 +648,7 @@ export function buildViewsWithPlan(
       finalGroupText: bucket === 'done' && !finalBrief ? nonBlank(r.final_group) : null,
       responsible: nonBlank(r.responsible),
       note: joinParts([r.note, r.extra], ' | '),
+      table: tableFieldsOf(r),
       log: logOf(r, finalBrief),
     });
   }
@@ -666,6 +680,7 @@ export function buildViewsWithPlan(
     hobby: nonBlank(r.hobby), profession: nonBlank(r.profession), family: nonBlank(r.family),
     cancelReason: nonBlank(r.cancel_reason),
     original: originalFields(r),
+    table: tableFieldsOf(r),
     log: logOf(r, null),
   });
   const otherOpen = otherAll.filter((r) => otherState(r) === 'open').map(otherItem)
@@ -745,12 +760,17 @@ export function buildViewsWithPlan(
       ...b,
       coLeader: nonBlank(g.co_leader),
       phone: displayPhone(g.phones, g.phone),
+      coLeaderPhone: nonBlank(formatPhone(nonBlank(g.co_leader_phone))),
       address: nonBlank(g.address),
       ageText: nonBlank(g.age),
       day: p.day,
       slot: p.slot,
       status: g.status,
       acceptsNew: p.acceptsNew,
+      openToNew: nonBlank(g.open_to_new),
+      training: nonBlank(g.training),
+      checked: g.checked === true,
+      campaignRegistered: g.campaign_registered,
       doNotRefer: p.doNotRefer,
       composition: nonBlank(g.composition),
       coordinator: nonBlank(g.coordinator),
@@ -789,6 +809,8 @@ export function buildViewsWithPlan(
       address: nonBlank(u.address),
       schedule: nonBlank(u.schedule),
       hobby: nonBlank(u.hobby), profession: nonBlank(u.profession), family: nonBlank(u.family), note: nonBlank(u.note),
+      church: nonBlank(u.church), leaderName: nonBlank(u.leader_name),
+      preferredContact: u.preferred_contact ? (CONTACT_LABEL[u.preferred_contact] ?? u.preferred_contact) : null,
       addressGeo: geoStateOf(u.address),
       // Заведённый служителем вручную: платформа в записи условная, чата с ботом нет.
       from: !u.has_chat ? 'Форма регистрации' : u.platform === 'max' ? 'Бот · MAX' : 'Бот · Telegram',
@@ -815,6 +837,7 @@ export function buildViewsWithPlan(
       address: streetOf(r).text,
       schedule: scheduleOf(r).text,
       hobby: nonBlank(r.hobby), profession: nonBlank(r.profession), family: nonBlank(r.family), note: nonBlank(r.note),
+      church: null, leaderName: null, preferredContact: null,
       addressGeo: geoStateOf(streetOf(r).text),
       from: sourceLabel(r.origin, r.source),
       userId: r.user_id,
@@ -839,6 +862,7 @@ export function buildViewsWithPlan(
       address: nonBlank(p.address),
       schedule: nonBlank(p.schedule),
       hobby: nonBlank(p.hobby), profession: nonBlank(p.profession), family: nonBlank(p.family), note: nonBlank(p.note),
+      church: null, leaderName: null, preferredContact: null,
       addressGeo: geoStateOf(p.address),
       from: 'Внесён вручную',
       userId: null,

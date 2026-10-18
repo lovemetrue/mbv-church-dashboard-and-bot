@@ -25,6 +25,12 @@ function verifiedSentence(days: number | null): string {
   return `подтверждена ${verifiedText(days)}`;
 }
 
+/** «ДА» / «НЕТ» в таблице церкви пишут заглавными; в карточке — как в форме. */
+function openToNewText(v: string): string {
+  const up = v.trim().toUpperCase();
+  return up === 'ДА' ? ru.reference.yes : up === 'НЕТ' ? ru.reference.no : v;
+}
+
 export function GroupCard({ g, onClose }: { g: GroupItem; onClose: () => void }) {
   const nav = useAppNav();
   const tone = healthTone(g.health.score);
@@ -69,10 +75,17 @@ export function GroupCard({ g, onClose }: { g: GroupItem; onClose: () => void })
     { label: 'Состав', value: orNone(g.composition) },
     { label: 'Со-ведущий', value: orNone(g.coLeader) },
     { label: 'Телефон', value: g.phone ? <span className="num">{formatPhone(g.phone)}</span> : noValue },
+    ...(g.coLeaderPhone ? [{ label: 'Телефон соведущего', value: <span className="num">{formatPhone(g.coLeaderPhone)}</span> }] : []),
     { label: 'Адрес', value: g.address ? (g.addressGeo === 'found' ? `${g.address} · ${ru.reference.geoFound}` : g.addressGeo === 'missing' ? `${g.address} · ${ru.reference.geoMissing}` : g.address) : noValue },
     { label: 'Метро или ориентир', value: orNone(g.metro) },
     { label: 'Статус', value: g.status },
-    { label: 'Принимает новых', value: g.acceptsNew ? ru.reference.yes : ru.reference.no },
+    // «По требованию» из таблицы тоже показываем как записано: «да/нет» его бы потеряло.
+    { label: 'Принимает новых', value: g.openToNew ? openToNewText(g.openToNew) : g.acceptsNew ? ru.reference.yes : ru.reference.no },
+    // Поля, которые вводят при создании группы (как в старом дашборде): что заполнено, то и видно.
+    ...(g.training ? [{ label: 'Обучение', value: g.training }] : []),
+    ...(g.no !== null ? [{ label: '№ в реестре', value: <span className="num">{g.no}</span> }] : []),
+    { label: 'Данные проверены', value: g.checked ? ru.reference.yes : ru.reference.no },
+    { label: '«40 дней»', value: g.campaignRegistered ? ru.reference.campaignYes : ru.reference.no },
     ...(g.doNotRefer ? [{ label: 'Не направлять', value: <Pill tone="crit">{ru.reference.yes}</Pill> }] : []),
     ...(g.comment ? [{ label: 'Комментарий', value: g.comment }] : []),
   ];
@@ -166,7 +179,11 @@ export function PersonCard({ p, onClose }: { p: PersonItem; onClose: () => void 
     { label: ru.contact.fields.family, value: orNone(p.family) },
     { label: ru.contact.fields.note, value: orNone(p.note) },
     { label: 'Откуда', value: p.from },
+    // Ответы регистрации: то, что служитель вписал в форму (или человек — в боте), видно и потом.
+    ...(p.church ? [{ label: 'Церковь', value: p.church }] : []),
     { label: 'Малая группа', value: p.mdgLabel },
+    ...(p.leaderName ? [{ label: 'Кто ведущий', value: p.leaderName }] : []),
+    ...(p.preferredContact ? [{ label: 'Как удобнее связаться', value: p.preferredContact }] : []),
     { label: 'Дата', value: p.date ? formatDateFull(p.date) : noValue },
     ...(p.registrationNo !== null ? [{ label: ru.create.registration.numberRow, value: <span className="num">№{p.registrationNo}</span> }] : []),
   ];

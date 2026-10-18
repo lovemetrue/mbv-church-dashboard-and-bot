@@ -71,9 +71,9 @@ function feedbackNow(days: number | null): string {
  * (только собранное «Вт, вечер» и «дней назад»), поэтому эти поля пустые и отправляются, только если
  * их вписали; под ними подсказка с текущим значением.
  *
- * Телефоны ведущего и соведущего и адрес сервер только принимает: назад их не отдаёт (в карточке нельзя
- * показывать то, что не нужно всем координаторам). Поэтому три поля «Новый …» тоже пустые и пишущие:
- * непустое заменяет значение, пустое не отправляется вовсе (пустая строка стёрла бы его в базе).
+ * Телефоны ведущего и соведущего открываются с текущим значением: по ним координаторы обзванивают ведущих, и
+ * правка вслепую («впишите новый, текущий не показывается») только путала. Как и у остальных полей, уходит лишь
+ * изменённое; очищенное поле стирает номер.
  */
 export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
   const t = m.group.fields;
@@ -101,8 +101,8 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
       { name: 'openToNew', label: t.openToNew, kind: 'select', options: withCurrent(meta.openToNew.map((o) => o.value), g.openToNew) },
       { name: 'coordinator', label: t.coordinator, kind: 'select', options: withCurrent(meta.coordinators, g.coordinator) },
       { name: 'coLeader', label: t.coLeader, kind: 'text' },
-      { name: 'phone', label: t.newPhone, kind: 'text', inputMode: 'tel', hint: m.group.writeOnlyHint },
-      { name: 'coLeaderPhone', label: t.newCoLeaderPhone, kind: 'text', inputMode: 'tel', hint: m.group.writeOnlyHint },
+      { name: 'phone', label: t.phone, kind: 'text', inputMode: 'tel' },
+      { name: 'coLeaderPhone', label: t.coLeaderPhone, kind: 'text', inputMode: 'tel' },
       
       { name: 'feedbackAt', label: t.feedbackAt, kind: 'date', hint: `${feedbackNow(g.verifiedDaysAgo)} ${keep}` },
       { name: 'openedOn', label: t.openedOn, kind: 'date', hint: m.group.openedOnHint },
@@ -131,8 +131,8 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
       campaignRegistered: g.campaignRegistered ? '1' : '',
       coordinator: g.coordinator ?? '',
       coLeader: g.coLeader ?? '',
-      phone: '',
-      coLeaderPhone: '',
+      phone: g.phone ?? '',
+      coLeaderPhone: g.coLeaderPhone ?? '',
       address: g.address ?? '',
       feedbackAt: '',
       openedOn: g.openedOn ?? '',

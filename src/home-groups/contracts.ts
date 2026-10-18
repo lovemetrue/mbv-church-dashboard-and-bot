@@ -1055,6 +1055,8 @@ export interface GroupItem extends GroupBrief {
   members: GroupMember[];
   coLeader: string | null;
   phone: string | null;
+  /** Телефон соведущего, как записан. */
+  coLeaderPhone: string | null;
   /** Адрес группы (улица, дом) — как записал координатор. По нему подбор сопоставляет группу с адресом человека; если пусто, по `metro`. */
   address: string | null;
   ageText: string | null;
@@ -1129,6 +1131,10 @@ export interface PersonItem {
   family: string | null;
   /** Комментарий к человеку: у регистрации — служителя, у человека из заявки — комментарий заявки, у карточки — заметка. */
   note: string | null;
+  /** Из регистрации: церковь, кто ведущий («уже состою в группе»), как удобнее связаться. У заявок без регистрации — null. */
+  church: string | null;
+  leaderName: string | null;
+  preferredContact: string | null;
   /** Координаты этого адреса (см. `GeoState`). */
   addressGeo: GeoState;
   /** Откуда: «Бот · Telegram», «Таблица», «Форма регистрации». */

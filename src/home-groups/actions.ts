@@ -121,7 +121,7 @@ export function createActions(
       const out: Record<string, string | null> = {};
       for (const key of [
         'fio', 'phone', 'age', 'place', 'note', 'address', 'schedule', 'hobby', 'profession', 'family',
-        'source', 'ministry', 'extra', 'recommended', 'recommendedAt', 'finalGroup', 'attendance',
+        'source', 'ministry', 'extra', 'recommended', 'recommendedAt', 'attendance',
       ] as const) {
         const v = src[key];
         if (v === undefined) continue;

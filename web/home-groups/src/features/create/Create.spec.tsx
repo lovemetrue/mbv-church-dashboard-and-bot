@@ -154,26 +154,43 @@ describe('«+ Создать»: заявка', () => {
     });
   });
 
+  test('«Домашняя группа» есть только у исполненной заявки, а текстового «Ходит в группу» нет: поле о группе одно', async () => {
+    const fetchMock = stubFetchWithFixtures({ me: meOf(null), 'requests/create': () => json({ ok: true, id: 103 }) });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const dialog = await ready(await openForm(user, 'Заявка'));
+    expect(within(dialog).queryByRole('combobox', { name: 'Домашняя группа' })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('textbox', { name: 'Ходит в группу' })).not.toBeInTheDocument();
+    await user.type(within(dialog).getByRole('textbox', { name: 'ФИО' }), 'Мария Соколова');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Статус' }), 'Исполнена');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Домашняя группа' }), 'Андрей М. · ДГ-0002');
+    // Вернули статус — выбранная группа не уходит: у открытой заявки группу выбирает подбор.
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Статус' }), 'Новая');
+    expect(within(dialog).queryByRole('combobox', { name: 'Домашняя группа' })).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Создать заявку' }));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect(posts(fetchMock)[0]!.body.fields).not.toHaveProperty('groupId');
+  });
+
   test('поля старого дашборда: домашняя и рекомендованная группа — из списка, служение, посещение, причина, «Дополнительно»', async () => {
     const fetchMock = stubFetchWithFixtures({ me: meOf(null), 'requests/create': () => json({ ok: true, id: 102 }) });
     const user = userEvent.setup();
     renderAt(<App />, REFERENCE);
     const dialog = await ready(await openForm(user, 'Заявка'));
     await user.type(within(dialog).getByRole('textbox', { name: 'ФИО' }), 'Мария Соколова');
-    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Статус' }), 'На контроле');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Статус' }), 'Исполнена');
     await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Домашняя группа' }), 'Андрей М. · ДГ-0002');
     await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Рекомендованная группа' }), 'Ольга К.');
     await user.type(within(dialog).getByLabelText('Дата рекомендации'), '2026-09-01');
     await user.type(within(dialog).getByRole('textbox', { name: 'Служение' }), 'Колизей 13:00');
-    await user.type(within(dialog).getByRole('textbox', { name: 'Ходит в группу' }), 'Андрей М.');
     await user.type(within(dialog).getByRole('textbox', { name: 'Контроль посещения' }), 'ходит');
     await user.type(within(dialog).getByRole('textbox', { name: 'Причина аннулирования' }), 'нет');
     await user.type(within(dialog).getByRole('textbox', { name: 'Дополнительно' }), 'из таблицы');
     await user.click(within(dialog).getByRole('button', { name: 'Создать заявку' }));
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
     expect(posts(fetchMock)[0]!.body.fields).toMatchObject({
-      fio: 'Мария Соколова', status: 'На контроле', groupId: '2', recommended: 'Ольга К.', recommendedAt: '2026-09-01',
-      ministry: 'Колизей 13:00', finalGroup: 'Андрей М.', attendance: 'ходит', cancelReason: 'нет', extra: 'из таблицы',
+      fio: 'Мария Соколова', status: 'Исполнена', groupId: '2', recommended: 'Ольга К.', recommendedAt: '2026-09-01',
+      ministry: 'Колизей 13:00', attendance: 'ходит', cancelReason: 'нет', extra: 'из таблицы',
     });
   });
 

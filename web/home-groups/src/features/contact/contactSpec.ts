@@ -51,7 +51,6 @@ const TABLE_FIELD_DEFS: EditField[] = [
   { name: 'ministry', label: rf.ministry, kind: 'text' },
   { name: 'recommended', label: rf.recommended, kind: 'text' },
   { name: 'recommendedAt', label: rf.recommendedAt, kind: 'date' },
-  { name: 'finalGroup', label: rf.finalGroup, kind: 'text' },
   { name: 'attendance', label: rf.attendance, kind: 'text' },
   { name: 'extra', label: rf.extra, kind: 'textarea', wide: true },
 ];
@@ -67,7 +66,6 @@ export function contactEditSpec(v: ContactValues): EditSpec {
             ministry: t.ministry ?? '',
             recommended: t.recommended ?? '',
             recommendedAt: t.recommendedAt ?? '',
-            finalGroup: t.finalGroup ?? '',
             attendance: t.attendance ?? '',
             extra: t.extra ?? '',
           }

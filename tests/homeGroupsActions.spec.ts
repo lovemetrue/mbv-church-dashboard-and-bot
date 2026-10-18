@@ -416,16 +416,18 @@ describe('создание и параметры подбора через HTTP 
     const r = (await db.query<{ id: number }>(`INSERT INTO requests (user_id, type, status, fio, note, extra, origin) VALUES ($1, 'join_group', 'Новая', 'Мария', 'звонить вечером', 'старое', 'таблица') RETURNING id`, [userId])).rows[0]!.id;
     const app = await startAdmin();
     try {
-      const fields = { ministry: 'Колизей 13:00', recommended: 'Иван Петров', recommendedAt: '2026-09-01', finalGroup: 'Иван Петров', attendance: 'ходит', extra: 'новое', source: 'Сайт' };
+      const fields = { ministry: 'Колизей 13:00', recommended: 'Иван Петров', recommendedAt: '2026-09-01', attendance: 'ходит', extra: 'новое', source: 'Сайт' };
       expect((await app.post(`requests/${r}/edit`, { fields })).status).toBe(200);
-      expect((await db.query(`SELECT ministry, recommended, recommended_at, final_group, attendance, extra, source, note, origin FROM requests WHERE id = $1`, [r])).rows[0]).toEqual({
-        ministry: 'Колизей 13:00', recommended: 'Иван Петров', recommended_at: '2026-09-01', final_group: 'Иван Петров',
+      expect((await db.query(`SELECT ministry, recommended, recommended_at, attendance, extra, source, note, origin FROM requests WHERE id = $1`, [r])).rows[0]).toEqual({
+        ministry: 'Колизей 13:00', recommended: 'Иван Петров', recommended_at: '2026-09-01',
         attendance: 'ходит', extra: 'новое', source: 'Сайт', note: 'звонить вечером', origin: 'ui',
       });
       const item = (await app.get('requests')).items.find((i: { id: number }) => i.id === r);
       // В форму правки заметка и «Дополнительно» приходят порознь, хотя показываются вместе.
-      expect(item.table).toEqual({ note: 'звонить вечером', ...fields });
-      expect(item.log.map((l: { text: string }) => l.text)).toContain('Исправлено вручную: источник, служение, дополнительно, рекомендованная группа, дата рекомендации, ходит в группу, контроль посещения · mbv_admin');
+      expect(item.table).toEqual({ note: 'звонить вечером', finalGroup: null, ...fields });
+      expect(item.log.map((l: { text: string }) => l.text)).toContain('Исправлено вручную: источник, служение, дополнительно, рекомендованная группа, дата рекомендации, контроль посещения · mbv_admin');
+      // «Ходит в группу» правкой не меняется: куда человек ходит, задаёт утверждение в группу.
+      expect((await app.post(`requests/${r}/edit`, { fields: { finalGroup: 'Иван Петров' } })).status).toBe(400);
 
       const bad = await app.post(`requests/${r}/edit`, { fields: { recommendedAt: '2026-02-31' } });
       expect(bad.status).toBe(400);
@@ -464,6 +466,20 @@ describe('создание и параметры подбора через HTTP 
       expect(meta.coordinators).toEqual(['Анна Координатор']);
       expect(meta.ageGroups).toContain('25-40');
       expect(meta.openToNew.map((o: { value: string }) => o.value)).toEqual(['ДА', 'НЕТ', 'По требованию']);
+    } finally { app.server.close(); }
+  });
+
+  test('то, что вводят при создании, видно в карточках: у человека церковь, ведущий и способ связи, у группы — телефон соведущего', async () => {
+    await db.query(
+      `INSERT INTO users (platform, platform_user_id, chat_id, full_name, church, mdg_status, leader_name, preferred_contact, registration_no, complete)
+       VALUES ('telegram', '7', '7', 'Ирина Состоит', 'МБВ Колизей', 'member', 'Иван Петров', 'call', 4321, true)`);
+    await db.query(`INSERT INTO groups (leader, district, format, status, co_leader, co_leader_phone, source) VALUES ('Иван Петров', 'Приморский', 'Основная церковь', 'Функционирует', 'Анна', '+79210001144', 'ui')`);
+    const app = await startAdmin();
+    try {
+      const person = (await app.get('people')).items.find((p: { fio: string }) => p.fio === 'Ирина Состоит');
+      expect(person).toMatchObject({ church: 'МБВ Колизей', leaderName: 'Иван Петров', preferredContact: 'звонок' });
+      const group = (await app.get('groups')).items.find((g: { leader: string }) => g.leader === 'Иван Петров');
+      expect(group).toMatchObject({ coLeader: 'Анна', coLeaderPhone: '+7 921 000-11-44' });
     } finally { app.server.close(); }
   });
 

@@ -15,6 +15,7 @@ import type { CoordinatorRow } from '../../db/repos/coordinators.repo.js';
 import { groupCode } from '../../core/groups.js';
 import { inputSignature } from '../plan/signature.js';
 import { formatPhone } from '../../core/phone.js';
+import { CONTACT_LABEL } from '../../core/csv.js';
 import type {
   Bucket, Candidate, Counters, CoordinatorItem, CoordinatorsView, GroupBrief, GroupItem, GroupsView,
   HealthItem, LogEntry, MatchingStatus, NoPlan, StrangeMark, DataChange, OriginalField, ParamInfo, RequestTableFields, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, GroupMember, OtherItem, RequestsView, TeamView, TodayView,
@@ -759,6 +760,7 @@ export function buildViewsWithPlan(
       ...b,
       coLeader: nonBlank(g.co_leader),
       phone: displayPhone(g.phones, g.phone),
+      coLeaderPhone: nonBlank(formatPhone(nonBlank(g.co_leader_phone))),
       address: nonBlank(g.address),
       ageText: nonBlank(g.age),
       day: p.day,
@@ -807,6 +809,8 @@ export function buildViewsWithPlan(
       address: nonBlank(u.address),
       schedule: nonBlank(u.schedule),
       hobby: nonBlank(u.hobby), profession: nonBlank(u.profession), family: nonBlank(u.family), note: nonBlank(u.note),
+      church: nonBlank(u.church), leaderName: nonBlank(u.leader_name),
+      preferredContact: u.preferred_contact ? (CONTACT_LABEL[u.preferred_contact] ?? u.preferred_contact) : null,
       addressGeo: geoStateOf(u.address),
       // Заведённый служителем вручную: платформа в записи условная, чата с ботом нет.
       from: !u.has_chat ? 'Форма регистрации' : u.platform === 'max' ? 'Бот · MAX' : 'Бот · Telegram',
@@ -833,6 +837,7 @@ export function buildViewsWithPlan(
       address: streetOf(r).text,
       schedule: scheduleOf(r).text,
       hobby: nonBlank(r.hobby), profession: nonBlank(r.profession), family: nonBlank(r.family), note: nonBlank(r.note),
+      church: null, leaderName: null, preferredContact: null,
       addressGeo: geoStateOf(streetOf(r).text),
       from: sourceLabel(r.origin, r.source),
       userId: r.user_id,
@@ -857,6 +862,7 @@ export function buildViewsWithPlan(
       address: nonBlank(p.address),
       schedule: nonBlank(p.schedule),
       hobby: nonBlank(p.hobby), profession: nonBlank(p.profession), family: nonBlank(p.family), note: nonBlank(p.note),
+      church: null, leaderName: null, preferredContact: null,
       addressGeo: geoStateOf(p.address),
       from: 'Внесён вручную',
       userId: null,

@@ -13,6 +13,7 @@ import { ActionDialogs, ActionNoticeLine, isActionable, RequestActions } from '.
 import styles from './Requests.module.css';
 import { useRequestActions, type RequestActionsState } from './useRequestActions';
 import { useRequestParams, type ParamField } from './useRequestParams';
+import { tableRows } from './tableRows';
 import { subjectOfRequest } from './work/subject';
 import { HeaderTools } from './work/HeaderTools';
 import { WorkPlace } from './work/WorkPlace';
@@ -512,7 +513,7 @@ export function RequestCard({
     { label: ru.requests.status, value: r.status },
     ...(r.waitingDays != null ? [{ label: ru.requests.waiting, value: `${r.waitingDays} дн.` }] : []),
     ...(r.responsible ? [{ label: ru.requests.responsible, value: r.responsible }] : []),
-    ...(r.note ? [{ label: ru.requests.note, value: r.note }] : []),
+    ...tableRows(r.table, { finalGroup: r.bucket !== 'done' }),
   ];
   return (
     <Drawer

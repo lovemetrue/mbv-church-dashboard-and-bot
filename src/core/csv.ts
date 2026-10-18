@@ -26,7 +26,7 @@ const HEADERS = [
 /** Excel на русской локали ждёт разделителем точку с запятой. */
 const SEP = ';';
 
-const CONTACT_LABEL: Record<string, string> = {
+export const CONTACT_LABEL: Record<string, string> = {
   telegram: 'Telegram',
   max: 'MAX',
   call: 'звонок',

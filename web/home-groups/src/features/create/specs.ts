@@ -43,6 +43,9 @@ export interface FormSpec {
   initial: Record<string, string>;
 }
 
+/** Статус заявки, при котором человек уже в группе (как `DONE` на сервере). */
+const DONE_STATUS = 'Исполнена';
+
 const opts = (list: readonly string[]): Option[] => list.map((v) => ({ value: v, label: v }));
 
 /** Значение по умолчанию берём, только если сервер его знает: иначе он отказал бы в первой же отправке. */
@@ -71,7 +74,9 @@ export function requestSpec(meta: FormMeta, now: Date = new Date()): FormSpec {
       { name: 'requestedAt', label: t.requestedAt, kind: 'date' },
       { name: 'responsible', label: t.responsible, kind: 'select', options: opts(meta.coordinators) },
       { name: 'source', label: t.source, kind: 'text', wide: true, autoComplete: 'off' },
-      // Дальше — поля из таблицы церкви, как в форме старого дашборда: по ним служители ведут заявку вручную.
+      // Куда человек уже ходит — только у исполненной заявки: так она сразу попадает в состав группы. У открытой
+      // заявки группу выбирает подбор («Утвердить»), и второе поле о том же разошлось бы с ним. Поэтому и
+      // текстового «Ходит в группу» из таблицы в форме нет: это то же самое, только без связи с группой.
       {
         name: 'groupId',
         label: t.groupId,
@@ -79,7 +84,9 @@ export function requestSpec(meta: FormMeta, now: Date = new Date()): FormSpec {
         wide: true,
         options: meta.groups.map((g) => ({ value: String(g.id), label: `${g.leader} · ${g.code}` })),
         emptyLabel: ru.create.groupNotSet,
+        showWhen: (v) => v['status'] === DONE_STATUS,
       },
+      // Дальше — поля из таблицы церкви, как в форме старого дашборда: по ним служители ведут заявку вручную.
       { name: 'ministry', label: t.ministry, kind: 'text', autoComplete: 'off' },
       // Рекомендация — имя ведущего, как в таблице, а не номер: выбор из списка, чтобы не отправить человека не туда из-за опечатки.
       {
@@ -90,7 +97,6 @@ export function requestSpec(meta: FormMeta, now: Date = new Date()): FormSpec {
         emptyLabel: ru.create.groupNotRecommended,
       },
       { name: 'recommendedAt', label: t.recommendedAt, kind: 'date' },
-      { name: 'finalGroup', label: t.finalGroup, kind: 'text', autoComplete: 'off' },
       { name: 'attendance', label: t.attendance, kind: 'text', autoComplete: 'off' },
       { name: 'cancelReason', label: t.cancelReason, kind: 'text', wide: true, autoComplete: 'off' },
       { name: 'note', label: t.note, kind: 'textarea', wide: true },

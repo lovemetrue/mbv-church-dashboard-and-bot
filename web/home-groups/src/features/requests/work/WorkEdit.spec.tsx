@@ -50,10 +50,28 @@ describe('Карточка заявки: карандаш «Править да�
     const fromRequest = labels(dialog);
     expect(fromRequest.map((l) => l?.replace(/\s*\*$/, ''))).toEqual([
       'ФИО', 'Телефон', 'Возраст', 'Район, метро, ориентир', 'Улица и дом', 'Удобные день и время', 'Хобби', 'Профессия', 'Семейное положение', 'Комментарий',
-      'Источник', 'Служение', 'Рекомендованная группа', 'Ходит в группу', 'Контроль посещения', 'Дополнительно',
+      'Источник', 'Служение', 'Рекомендованная группа', 'Контроль посещения', 'Дополнительно',
     ]);
     // Дата — не текстовое поле, поэтому в списке выше её нет.
     expect(within(dialog).getByLabelText('Дата рекомендации')).toHaveAttribute('type', 'date');
+    // Куда человек ходит, задаёт утверждение в группу: текстового двойника в форме нет.
+    expect(within(dialog).queryByRole('textbox', { name: 'Ходит в группу' })).not.toBeInTheDocument();
+  });
+
+  test('карточка заявки показывает поля из таблицы церкви, а заметку и «Дополнительно» — отдельными строками', async () => {
+    const table = {
+      note: 'звонить вечером', source: null, ministry: 'Колизей 13:00', extra: 'из таблицы', recommended: 'Ольга К.',
+      recommendedAt: '2026-09-01', finalGroup: 'Ольга К.', attendance: 'ходит',
+    };
+    stubFetchWithFixtures({ requests: () => json(viewWith(5, { note: 'звонить вечером | из таблицы', table })) });
+    const card = await openCard(5);
+    const row = (label: string) => within(card).getByText(label, { selector: 'dt' }).nextElementSibling;
+    expect(row('Служение')).toHaveTextContent('Колизей 13:00');
+    expect(row('Рекомендованная группа')).toHaveTextContent('Ольга К. · 01.09.2026');
+    expect(row('Ходит в группу')).toHaveTextContent('Ольга К.');
+    expect(row('Контроль посещения')).toHaveTextContent('ходит');
+    expect(row('Заметка')).toHaveTextContent(/^звонить вечером$/);
+    expect(row('Дополнительно')).toHaveTextContent('из таблицы');
   });
 
   test('поля из таблицы церкви предзаполнены и уходят только изменённые; заметка — без «Дополнительно»', async () => {

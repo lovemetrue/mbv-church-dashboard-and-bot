@@ -20,20 +20,21 @@ export const REJECT_REASONS: readonly RejectReason[] = ['time', 'far', 'age', 'd
 /** Поля заявки, которые координатор правит вручную; `null` или пустая строка очищают поле (кроме ФИО). */
 export interface RequestEdit {
   fio?: string | null; phone?: string | null; age?: string | null; place?: string | null; note?: string | null; address?: string | null; schedule?: string | null; hobby?: string | null; profession?: string | null; family?: string | null;
-  source?: string | null; ministry?: string | null; extra?: string | null; recommended?: string | null; recommendedAt?: string | null; finalGroup?: string | null; attendance?: string | null;
+  source?: string | null; ministry?: string | null; extra?: string | null; recommended?: string | null; recommendedAt?: string | null; attendance?: string | null;
 }
 const EDIT_LIMITS: Record<keyof RequestEdit, number> = {
   fio: 200, phone: 40, age: 60, place: 200, note: 1000, address: 200, schedule: 200, hobby: 200, profession: 200, family: 200,
-  source: 200, ministry: 200, extra: 2000, recommended: 200, recommendedAt: 10, finalGroup: 200, attendance: 200,
+  source: 200, ministry: 200, extra: 2000, recommended: 200, recommendedAt: 10, attendance: 200,
 };
 // Адрес и время — правка координатора (`manual_*`): она главнее ответа анкеты, так же как в «Параметрах подбора».
 // Поля из таблицы церкви (источник, служение, рекомендация…) — свойство самой заявки: `writeToUser` берёт из правки
-// только поля человека, поэтому в регистрацию и другие его заявки они не уходят.
+// только поля человека, поэтому в регистрацию и другие его заявки они не уходят. «Ходит в группу» (текст из таблицы)
+// здесь не правится: куда человек ходит, задаёт утверждение в группу, и второе поле о том же разошлось бы с ним.
 const EDIT_COLUMNS: Record<keyof RequestEdit, string> = {
   fio: 'fio', phone: 'phone', age: 'age', place: 'place', note: 'note', address: 'manual_street', schedule: 'manual_schedule',
   hobby: 'hobby', profession: 'profession', family: 'family_status',
   source: 'source', ministry: 'ministry', extra: 'extra', recommended: 'recommended', recommendedAt: 'recommended_at',
-  finalGroup: 'final_group', attendance: 'attendance',
+  attendance: 'attendance',
 };
 
 /** Итог звонка человеку: что координатор записывает после разговора. */
@@ -298,7 +299,7 @@ export class PlacementRepo {
       if (PlacementRepo.isFailure(state)) return state;
       const { rows } = await c.query<Record<keyof RequestEdit, string | null> & { user_id: number | null }>(
         `SELECT fio, phone, age, place, note, manual_street AS address, manual_schedule AS schedule, hobby, profession, family_status AS family,
-                source, ministry, extra, recommended, recommended_at AS "recommendedAt", final_group AS "finalGroup", attendance, user_id
+                source, ministry, extra, recommended, recommended_at AS "recommendedAt", attendance, user_id
            FROM requests WHERE id = $1`, [requestId],
       );
       const old = rows[0]!;

@@ -45,6 +45,31 @@ async function openGroupEdit(user: User, rec = 1) {
 
 const saveButton = (dialog: HTMLElement) => within(dialog).getByRole('button', { name: 'Сохранить' });
 
+describe('карточки показывают то, что вводят при создании', () => {
+  test('карточка группы: телефоны ведущего и соведущего, приём новых как записан, обучение, № в реестре, «проверено», «40 дней»', async () => {
+    stubFetchWithFixtures({ groups: () => json(groupsWith(2, { openToNew: 'По требованию', training: 'Да', checked: true, campaignRegistered: true })) });
+    const card = await groupCard(2);
+    const row = (label: string) => within(card).getByText(label, { selector: 'dt' }).nextElementSibling;
+    expect(row('Телефон')).toHaveTextContent('+7 921 200 44 77');
+    expect(row('Телефон соведущего')).toHaveTextContent('+7 921 000 11 44');
+    expect(row('Принимает новых')).toHaveTextContent('По требованию');
+    expect(row('Обучение')).toHaveTextContent('Да');
+    expect(row('№ в реестре')).toHaveTextContent('27');
+    expect(row('Данные проверены')).toHaveTextContent('Да');
+    expect(row('«40 дней»')).toHaveTextContent('Зарегистрирован в кампании');
+  });
+
+  test('карточка человека: церковь, кто ведущий и как удобнее связаться из регистрации', async () => {
+    stubFetchWithFixtures();
+    renderAt(<App />, '/?tab=reference&ent=people&rec=u1');
+    const card = await screen.findByRole('dialog', { name: /Карточка человека/ });
+    const row = (label: string) => within(card).getByText(label, { selector: 'dt' }).nextElementSibling;
+    expect(row('Церковь')).toHaveTextContent('МБВ Колизей');
+    expect(row('Кто ведущий')).toHaveTextContent('Ольга К.');
+    expect(row('Как удобнее связаться')).toHaveTextContent('звонок вечером');
+  });
+});
+
 describe('правка группы', () => {
   test('форма открывается заполненной текущими значениями группы', async () => {
     stubFetchWithFixtures();
@@ -214,26 +239,29 @@ describe('правка группы', () => {
     expect(posts(fetchMock)).toHaveLength(0);
   });
 
-  test('поля нового телефона ведущего и соведущего пустые и с подсказкой, как заменять; адрес и метро показаны как есть', async () => {
+  test('телефоны ведущего и соведущего открываются с текущим значением; адрес и метро тоже показаны как есть', async () => {
+    stubFetchWithFixtures();
+    const user = userEvent.setup();
+    const { dialog } = await openGroupEdit(user, 2);
+    // По этим номерам координаторы обзванивают ведущих: править их вслепую нельзя.
+    expect(within(dialog).getByRole('textbox', { name: 'Телефон ведущего' })).toHaveValue('79212004477');
+    expect(within(dialog).getByRole('textbox', { name: 'Телефон соведущего' })).toHaveValue('+7 921 000-11-44');
+    expect(saveButton(dialog)).toBeDisabled();
+  });
+
+  test('адрес и метро показаны как есть, с подсказками про автоподбор', async () => {
     stubFetchWithFixtures();
     const user = userEvent.setup();
     const { dialog } = await openGroupEdit(user);
-    const hint = 'Текущее значение не показывается. Впишите, чтобы заменить; оставьте пустым, чтобы не менять.';
-    for (const name of ['Новый телефон ведущего', 'Новый телефон соведущего']) {
-      const field = within(dialog).getByRole('textbox', { name });
-      expect(field).toHaveValue('');
-      expect(field).toHaveAccessibleDescription(hint);
-    }
     // Адрес — обычное поле с текущим значением; подсказка говорит, что подбор идёт по нему, а при пустом — по метро.
     const address = within(dialog).getByRole('textbox', { name: 'Адрес' });
     expect(address).toHaveValue('Комендантский пр.');
     expect(address).toHaveAccessibleDescription(/Автоподбор сопоставляет группу с адресом человека сначала по этому полю/);
     expect(within(dialog).getByRole('textbox', { name: 'Метро или ориентир' })).toHaveAccessibleDescription(/Если адрес пуст/);
     expect(within(dialog).queryByText(/дашборд/i)).not.toBeInTheDocument();
-    expect(dialog.textContent).not.toMatch(/9112003145|911.?200.?31.?45/);
   });
 
-  test('пустые поля телефонов и нетронутый адрес в запрос не попадают: пустая строка стёрла бы значение в базе', async () => {
+  test('нетронутые телефоны и адрес в запрос не попадают: на сервере остаётся как было', async () => {
     const fetchMock = stubFetchWithFixtures({ 'groups/1/update': () => json({ ok: true }) });
     const user = userEvent.setup();
     const { dialog } = await openGroupEdit(user);
@@ -263,8 +291,10 @@ describe('правка группы', () => {
     const fetchMock = stubFetchWithFixtures({ 'groups/1/update': () => json({ ok: true }) });
     const user = userEvent.setup();
     const { dialog } = await openGroupEdit(user);
-    await user.type(within(dialog).getByRole('textbox', { name: 'Новый телефон ведущего' }), ' +7 911 111 22 33 ');
-    await user.type(within(dialog).getByRole('textbox', { name: 'Новый телефон соведущего' }), '+7 922 333 44 55');
+    const phone = within(dialog).getByRole('textbox', { name: 'Телефон ведущего' });
+    await user.clear(phone);
+    await user.type(phone, ' +7 911 111 22 33 ');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Телефон соведущего' }), '+7 922 333 44 55');
     const address = within(dialog).getByRole('textbox', { name: 'Адрес' });
     await user.clear(address);
     await user.type(address, 'ул. Садовая, 5');

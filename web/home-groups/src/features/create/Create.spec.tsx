@@ -154,6 +154,29 @@ describe('«+ Создать»: заявка', () => {
     });
   });
 
+  test('поля старого дашборда: домашняя и рекомендованная группа — из списка, служение, посещение, причина, «Дополнительно»', async () => {
+    const fetchMock = stubFetchWithFixtures({ me: meOf(null), 'requests/create': () => json({ ok: true, id: 102 }) });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const dialog = await ready(await openForm(user, 'Заявка'));
+    await user.type(within(dialog).getByRole('textbox', { name: 'ФИО' }), 'Мария Соколова');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Статус' }), 'На контроле');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Домашняя группа' }), 'Андрей М. · ДГ-0002');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Рекомендованная группа' }), 'Ольга К.');
+    await user.type(within(dialog).getByLabelText('Дата рекомендации'), '2026-09-01');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Служение' }), 'Колизей 13:00');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Ходит в группу' }), 'Андрей М.');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Контроль посещения' }), 'ходит');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Причина аннулирования' }), 'нет');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Дополнительно' }), 'из таблицы');
+    await user.click(within(dialog).getByRole('button', { name: 'Создать заявку' }));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect(posts(fetchMock)[0]!.body.fields).toMatchObject({
+      fio: 'Мария Соколова', status: 'На контроле', groupId: '2', recommended: 'Ольга К.', recommendedAt: '2026-09-01',
+      ministry: 'Колизей 13:00', finalGroup: 'Андрей М.', attendance: 'ходит', cancelReason: 'нет', extra: 'из таблицы',
+    });
+  });
+
   test('успех закрывает окно, перечитывает данные и показывает «Заявка №N создана» с кнопкой «Открыть»', async () => {
     const fetchMock = stubFetchWithFixtures({
       me: meOf(null),
@@ -315,6 +338,54 @@ describe('«+ Создать»: группа', () => {
     await user.click(within(notice).getByRole('button', { name: 'Открыть' }));
     expect(currentSearch().get('tab')).toBe('reference');
     expect(currentSearch().get('rec')).toBe('13');
+  });
+
+  test('поля старого дашборда: соведущий, состав галочками, приём новых, обучение, обратная связь, № в реестре и флажки', async () => {
+    const fetchMock = stubFetchWithFixtures({ me: meOf(null), 'groups/create': () => json({ ok: true, id: 14 }) });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const dialog = await ready(await openForm(user, 'Группа'));
+    await user.type(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' }), 'Ольга Крылова');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Район' }), 'Приморский');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Формат группы' }), 'Молодежная');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Со-ведущий' }), 'Анна Петрова');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Телефон соведущего' }), '+7 921 000-11-44');
+    const composition = within(dialog).getByRole('group', { name: 'Состав' });
+    await user.click(within(composition).getByRole('checkbox', { name: 'Семейная' }));
+    await user.click(within(composition).getByRole('checkbox', { name: 'Мужская' }));
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Приём новых' }), 'По требованию');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Обучение' }), 'Да');
+    await user.type(within(dialog).getByLabelText('Дата обратной связи'), '2026-09-10');
+    await user.type(within(dialog).getByRole('textbox', { name: '№ в реестре' }), '85');
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Данные проверены' }));
+    await user.click(within(dialog).getByRole('checkbox', { name: '«40 дней» — зарегистрирован в кампании' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Создать группу' }));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect(posts(fetchMock)[0]!.body.fields).toEqual({
+      leader: 'Ольга Крылова', district: 'Приморский', format: 'Молодежная', status: 'Функционирует',
+      coLeader: 'Анна Петрова', coLeaderPhone: '+7 921 000-11-44', composition: 'Мужская, Семейная', openToNew: 'По требованию',
+      training: 'Да', feedbackAt: '2026-09-10', no: '85', checked: '1', campaignRegistered: '1',
+    });
+  });
+
+  test('«Подобрать из зарегистрированных» подставляет ФИО и телефон, а сам выбор на сервер не уходит', async () => {
+    const fetchMock = stubFetchWithFixtures({ me: meOf(null), 'groups/create': () => json({ ok: true, id: 15 }) });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const dialog = await ready(await openForm(user, 'Группа'));
+    const pick = within(dialog).getByRole('combobox', { name: 'Подобрать из зарегистрированных' });
+    await user.selectOptions(pick, 'Ольга Домова · +79110001122 · МБВ Колизей · готов предоставить свой дом · Приморский · 25-40');
+    expect(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' })).toHaveValue('Ольга Домова');
+    expect(within(dialog).getByRole('textbox', { name: 'Телефон' })).toHaveValue('+79110001122');
+    // Подставленное правится как обычно.
+    await user.type(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' }), ' Ивановна');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Район' }), 'Приморский');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Формат группы' }), 'Молодежная');
+    await user.click(within(dialog).getByRole('button', { name: 'Создать группу' }));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect(posts(fetchMock)[0]!.body.fields).toEqual({
+      leader: 'Ольга Домова Ивановна', phone: '+79110001122', district: 'Приморский', format: 'Молодежная', status: 'Функционирует',
+    });
   });
 
   test('группа не отправляется, пока не выбраны район и формат', async () => {

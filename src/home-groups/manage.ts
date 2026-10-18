@@ -24,9 +24,9 @@ const fail = (error: 'bad_request' | 'not_found', message: string): ActionOutcom
 const GROUP_EDITABLE = [
   'leader', 'district', 'format', 'status', 'people', 'day', 'time', 'composition', 'coordinator', 'coLeader',
   'feedbackAt', 'openedOn', 'comment', 'age', 'metro', 'openToNew', 'training', 'no', 'checked', 'doNotRefer',
-  'phone', 'address', 'coLeaderPhone',
+  'phone', 'address', 'coLeaderPhone', 'campaignRegistered',
 ] as const;
-const GROUP_FLAGS = ['checked', 'doNotRefer'] as const;
+const GROUP_FLAGS = ['checked', 'doNotRefer', 'campaignRegistered'] as const;
 
 /** Состав хранится строкой «Смешанная, Семейная», а форма ждёт отдельные значения: иначе правка любого поля обнулила бы состав. */
 const splitComposition = (v: string | null | undefined): string[] => (v ?? '').split(',').map((x) => x.trim()).filter(Boolean);
@@ -78,7 +78,6 @@ export function createManager(deps: {
         ...(given.has('phone') ? {} : { phone: current.phone, phones: current.phones }),
         ...(given.has('address') ? {} : { address: current.address }),
         ...(given.has('coLeaderPhone') ? {} : { coLeaderPhone: current.co_leader_phone }),
-        campaignRegistered: current.campaign_registered,
         doNotRefer: given.has('doNotRefer') ? merged.has('doNotRefer') : current.do_not_refer,
       };
       const updated = await deps.groups.update(id, input);

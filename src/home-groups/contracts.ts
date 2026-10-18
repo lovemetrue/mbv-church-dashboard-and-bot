@@ -310,6 +310,23 @@ export interface TodayView {
 
 // ── Заявки ──────────────────────────────────────────────────────────────────
 
+/**
+ * Поля заявки из таблицы церкви — как записаны, для формы правки. Показ заявки склеивает «Примечание» и «Дополнительно»
+ * в одну заметку (`note`); править их надо по отдельности, иначе сохранение заметки дописало бы в неё «Дополнительно».
+ */
+export interface RequestTableFields {
+  note: string | null;
+  source: string | null;
+  ministry: string | null;
+  extra: string | null;
+  /** Рекомендованная группа — имя ведущего, как в таблице. */
+  recommended: string | null;
+  /** «2026-08-27» или null. */
+  recommendedAt: string | null;
+  finalGroup: string | null;
+  attendance: string | null;
+}
+
 export interface RequestItem {
   /** Метка «Странный человек» (на человеке заявки); null — нет. */
   strange: StrangeMark | null;
@@ -358,6 +375,7 @@ export interface RequestItem {
   finalGroupText: string | null;
   responsible: string | null;
   note: string | null;
+  table: RequestTableFields;
   log: LogEntry[];
 }
 
@@ -849,6 +867,7 @@ export interface OtherItem {
   family: string | null;
   cancelReason: string | null;
   original: OriginalField[];
+  table: RequestTableFields;
   log: LogEntry[];
 }
 
@@ -970,6 +989,15 @@ export interface FormMeta {
   churches: string[];
   /** Ответ про малую группу в регистрации (value → подпись). */
   mdgStatuses: { value: string; label: string }[];
+  /** «Приём новых» у группы (value — как в таблице церкви: «ДА», «НЕТ», «По требованию»). */
+  openToNew: { value: string; label: string }[];
+  /** Действующие группы для «Домашняя группа» и «Рекомендованная группа» в форме заявки. */
+  groups: { id: number; code: string; leader: string }[];
+  /**
+   * Зарегистрированные в боте, кто готов открыть группу или дать дом: выбор в форме группы подставляет ФИО и
+   * телефон ведущего (как «Подобрать из зарегистрированных» в старом дашборде). Подпись — профиль из анкеты.
+   */
+  leaderCandidates: { id: number; fullName: string; phone: string | null; label: string }[];
 }
 
 // ── Справочник ──────────────────────────────────────────────────────────────
@@ -1036,6 +1064,14 @@ export interface GroupItem extends GroupBrief {
   status: string;
   /** «Приём новых» не «Нет». */
   acceptsNew: boolean;
+  /** «Приём новых» как записан («ДА», «НЕТ», «По требованию»); null — не указан. Нужен форме правки. */
+  openToNew: string | null;
+  /** «Обучение» как записано в таблице церкви. */
+  training: string | null;
+  /** «Данные проверены». */
+  checked: boolean;
+  /** «40 дней» — ведущий зарегистрирован в кампании. */
+  campaignRegistered: boolean;
   doNotRefer: boolean;
   composition: string | null;
   coordinator: string | null;

@@ -1,4 +1,4 @@
-import type { OtherItem, RequestItem, StrangeMark } from '@contracts';
+import type { OtherItem, RequestItem, RequestTableFields, StrangeMark } from '@contracts';
 
 /**
  * Минимум полей, которые нужны блоку «Работа с заявкой»: заявка из подбора и «другое обращение»
@@ -19,6 +19,8 @@ export interface WorkSubject {
   profession: string | null;
   family: string | null;
   note: string | null;
+  /** Поля из таблицы церкви, как записаны: для формы правки. */
+  table: RequestTableFields;
   responsible: string | null;
   callback: boolean;
   /** Метка «Странный человек» на человеке записи; null — нет. */
@@ -41,6 +43,7 @@ export function subjectOfRequest(r: RequestItem): WorkSubject {
     profession: r.profession,
     family: r.family,
     note: r.note,
+    table: r.table,
     responsible: r.responsible,
     callback: r.callback,
     strange: r.strange,
@@ -62,6 +65,7 @@ export function subjectOfOther(o: OtherItem): WorkSubject {
     profession: o.profession,
     family: o.family,
     note: o.note,
+    table: o.table,
     responsible: o.responsible,
     callback: o.callback,
     strange: o.strange,

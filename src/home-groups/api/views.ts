@@ -17,7 +17,7 @@ import { inputSignature } from '../plan/signature.js';
 import { formatPhone } from '../../core/phone.js';
 import type {
   Bucket, Candidate, Counters, CoordinatorItem, CoordinatorsView, GroupBrief, GroupItem, GroupsView,
-  HealthItem, LogEntry, MatchingStatus, NoPlan, StrangeMark, DataChange, OriginalField, ParamInfo, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, GroupMember, OtherItem, RequestsView, TeamView, TodayView,
+  HealthItem, LogEntry, MatchingStatus, NoPlan, StrangeMark, DataChange, OriginalField, ParamInfo, RequestTableFields, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, GroupMember, OtherItem, RequestsView, TeamView, TodayView,
 } from '../contracts.js';
 import type {
   Day, PlanEngineApi, PlanEntry, PlanEntryProposal, PlanGroup, PlanOutput, PlanRequest, ScoredGroup, Slot,
@@ -163,7 +163,11 @@ function auditText(a: AuditRow): string | null {
       return `Уточнено вручную: ${parts.join(', ') || 'параметры подбора'} · ${a.actor}`;
     }
     case 'request.edit': {
-      const names: Record<string, string> = { fio: 'ФИО', phone: 'телефон', age: 'возраст', place: 'район', note: 'комментарий' };
+      const names: Record<string, string> = {
+        fio: 'ФИО', phone: 'телефон', age: 'возраст', place: 'район', note: 'комментарий', address: 'улица и дом', schedule: 'удобное время',
+        hobby: 'хобби', profession: 'профессия', family: 'семья', source: 'источник', ministry: 'служение', extra: 'дополнительно',
+        recommended: 'рекомендованная группа', recommendedAt: 'дата рекомендации', finalGroup: 'ходит в группу', attendance: 'контроль посещения',
+      };
       const fields = Array.isArray(after['fields']) ? (after['fields'] as unknown[]).map((f) => names[String(f)] ?? String(f)) : [];
       return `Исправлено вручную: ${fields.join(', ') || 'данные заявки'} · ${a.actor}`;
     }
@@ -237,6 +241,14 @@ function originalFields(r: DashboardRequest): OriginalField[] {
     ['Вопрос или сообщение', nonBlank(r.text)],
   ];
   return rows.filter((row): row is [string, string] => row[1] !== null).map(([label, value]) => ({ label, value }));
+}
+
+function tableFieldsOf(r: DashboardRequest): RequestTableFields {
+  return {
+    note: nonBlank(r.note), source: nonBlank(r.source), ministry: nonBlank(r.ministry), extra: nonBlank(r.extra),
+    recommended: nonBlank(r.recommended), recommendedAt: validIsoDate(r.recommended_at), finalGroup: nonBlank(r.final_group),
+    attendance: nonBlank(r.attendance),
+  };
 }
 
 function sourceOfProposal(
@@ -635,6 +647,7 @@ export function buildViewsWithPlan(
       finalGroupText: bucket === 'done' && !finalBrief ? nonBlank(r.final_group) : null,
       responsible: nonBlank(r.responsible),
       note: joinParts([r.note, r.extra], ' | '),
+      table: tableFieldsOf(r),
       log: logOf(r, finalBrief),
     });
   }
@@ -666,6 +679,7 @@ export function buildViewsWithPlan(
     hobby: nonBlank(r.hobby), profession: nonBlank(r.profession), family: nonBlank(r.family),
     cancelReason: nonBlank(r.cancel_reason),
     original: originalFields(r),
+    table: tableFieldsOf(r),
     log: logOf(r, null),
   });
   const otherOpen = otherAll.filter((r) => otherState(r) === 'open').map(otherItem)
@@ -751,6 +765,10 @@ export function buildViewsWithPlan(
       slot: p.slot,
       status: g.status,
       acceptsNew: p.acceptsNew,
+      openToNew: nonBlank(g.open_to_new),
+      training: nonBlank(g.training),
+      checked: g.checked === true,
+      campaignRegistered: g.campaign_registered,
       doNotRefer: p.doNotRefer,
       composition: nonBlank(g.composition),
       coordinator: nonBlank(g.coordinator),

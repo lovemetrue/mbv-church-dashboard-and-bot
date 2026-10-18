@@ -1,11 +1,12 @@
 import { parseGroupForm, parseRequestForm } from '../dashboard/forms.js';
-import { ALL_DISTRICTS, ALL_GROUP_STATUSES, COMPOSITIONS, FORMATS } from '../core/groups.js';
+import { ALL_DISTRICTS, ALL_GROUP_STATUSES, COMPOSITIONS, FORMATS, groupCode } from '../core/groups.js';
 import { allChurchOptions } from '../core/churches.js';
 import { AGE_GROUPS } from '../core/texts.js';
 import type { AuditRepo } from '../db/repos/audit.repo.js';
 import type { CoordinatorsRepo } from '../db/repos/coordinators.repo.js';
 import type { GroupsRepo } from '../db/repos/groups.repo.js';
 import { REQUEST_STATUSES, type RequestsRepo, type RequestWithUser } from '../db/repos/requests.repo.js';
+import type { LeaderCandidate, UsersRepo } from '../db/repos/users.repo.js';
 import type { ActionError, FormMeta } from './contracts.js';
 
 /**
@@ -86,8 +87,27 @@ const REQUEST_TYPES: FormMeta['requestTypes'] = [
   { value: 'already_leader', label: 'Уже ведёт группу' },
 ];
 
+/** Значения «Приём новых» — те же, что в таблице церкви и в форме старого дашборда. */
+const OPEN_TO_NEW: FormMeta['openToNew'] = [
+  { value: 'ДА', label: 'Да' },
+  { value: 'НЕТ', label: 'Нет' },
+  { value: 'По требованию', label: 'По требованию' },
+];
+
+const MDG_CANDIDATE_LABEL: Record<string, string> = { open: 'готов открыть Малую группу', home: 'готов предоставить свой дом' };
+
+/** Подпись кандидата в ведущие: весь профиль, который человек заполнил в боте, — как в старом дашборде. */
+function candidateLabel(c: LeaderCandidate): string {
+  return [c.full_name, c.phone, c.church, c.mdg_status ? MDG_CANDIDATE_LABEL[c.mdg_status] ?? c.mdg_status : null, c.location, c.age]
+    .filter(Boolean).join(' · ');
+}
+
 /** Справочники форм: серверные списки, чтобы интерфейс не держал свою копию (в старом дашборде они дублировались). */
-export function createFormMeta(coordinators: Pick<CoordinatorsRepo, 'listActive'>): () => Promise<FormMeta> {
+export function createFormMeta(deps: {
+  coordinators: Pick<CoordinatorsRepo, 'listActive'>;
+  groups: Pick<GroupsRepo, 'forDashboard'>;
+  users: Pick<UsersRepo, 'leaderCandidates'>;
+}): () => Promise<FormMeta> {
   return async () => ({
     districts: [...ALL_DISTRICTS],
     groupFormats: [...FORMATS],
@@ -96,8 +116,13 @@ export function createFormMeta(coordinators: Pick<CoordinatorsRepo, 'listActive'
     requestStatuses: [...REQUEST_STATUSES],
     requestTypes: REQUEST_TYPES,
     ageGroups: [...AGE_GROUPS],
-    coordinators: (await coordinators.listActive()).map((c) => c.name),
+    coordinators: (await deps.coordinators.listActive()).map((c) => c.name),
     churches: allChurchOptions(),
     mdgStatuses: MDG_STATUSES,
+    openToNew: OPEN_TO_NEW,
+    groups: (await deps.groups.forDashboard()).map((g) => ({ id: g.id, code: groupCode(g.id), leader: g.leader })),
+    leaderCandidates: (await deps.users.leaderCandidates())
+      .filter((c) => c.full_name)
+      .map((c) => ({ id: c.id, fullName: c.full_name!, phone: c.phone, label: candidateLabel(c) })),
   });
 }

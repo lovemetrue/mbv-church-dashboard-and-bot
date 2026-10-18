@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { App } from '../../app/App';
 import { currentSearch, renderAt, stubFetchWithFixtures } from '../../test/render';
+import { groupsWith } from '../requests/requestsTestKit';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -98,6 +99,57 @@ describe('правка группы', () => {
     expect(posts(fetchMock)[0]).toEqual({
       path: 'groups/1/update',
       body: { fields: { leader: 'Ольга Крылова', district: 'Выборгский', people: '10' } },
+    });
+  });
+
+  test('состав — галочками: отмеченные уходят одной строкой в порядке списка, а значение не из списка можно снять', async () => {
+    const fetchMock = stubFetchWithFixtures({ 'groups/5/update': () => json({ ok: true }), 'groups/1/update': () => json({ ok: true }) });
+    const user = userEvent.setup();
+    const { dialog } = await openGroupEdit(user, 5);
+    const box = within(dialog).getByRole('group', { name: 'Состав' });
+    await user.click(within(box).getByRole('checkbox', { name: 'Семейная' }));
+    await user.click(within(box).getByRole('checkbox', { name: 'Мужская' }));
+    await user.click(saveButton(dialog));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect(posts(fetchMock)[0]).toEqual({ path: 'groups/5/update', body: { fields: { composition: 'Мужская, Семейная' } } });
+  });
+
+  test('у состава не из списка галочка стоит, а её снятие очищает поле', async () => {
+    const fetchMock = stubFetchWithFixtures({ 'groups/1/update': () => json({ ok: true }) });
+    const user = userEvent.setup();
+    const { dialog } = await openGroupEdit(user, 1);
+    const old = within(within(dialog).getByRole('group', { name: 'Состав' })).getByRole('checkbox', { name: 'Студенты и молодые специалисты' });
+    expect(old).toBeChecked();
+    expect(saveButton(dialog)).toBeDisabled();
+    await user.click(old);
+    await user.click(saveButton(dialog));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect(posts(fetchMock)[0]).toEqual({ path: 'groups/1/update', body: { fields: { composition: '' } } });
+  });
+
+  test('поля старого дашборда — возраст, приём новых, обучение, № в реестре, «проверено», «40 дней» — заполнены и правятся', async () => {
+    const fetchMock = stubFetchWithFixtures({
+      groups: () => json(groupsWith(1, { campaignRegistered: true, training: 'Нет' })),
+      'groups/1/update': () => json({ ok: true }),
+    });
+    const user = userEvent.setup();
+    const { dialog } = await openGroupEdit(user, 1);
+    expect(within(dialog).getByRole('combobox', { name: 'Возраст' })).toHaveValue('18–25, 26–35');
+    expect(within(dialog).getByRole('textbox', { name: 'Обучение' })).toHaveValue('Нет');
+    expect(within(dialog).getByRole('combobox', { name: 'Приём новых' })).toHaveValue('ДА');
+    expect(within(dialog).getByRole('textbox', { name: '№ в реестре' })).toHaveValue('12');
+    expect(within(dialog).getByRole('checkbox', { name: 'Данные проверены' })).toBeChecked();
+    expect(within(dialog).getByRole('checkbox', { name: '«40 дней» — зарегистрирован в кампании' })).toBeChecked();
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Приём новых' }), 'По требованию');
+    await user.clear(within(dialog).getByRole('textbox', { name: 'Обучение' }));
+    await user.type(within(dialog).getByRole('textbox', { name: 'Обучение' }), 'Да');
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Данные проверены' }));
+    await user.click(within(dialog).getByRole('checkbox', { name: '«40 дней» — зарегистрирован в кампании' }));
+    await user.click(saveButton(dialog));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect(posts(fetchMock)[0]).toEqual({
+      path: 'groups/1/update',
+      body: { fields: { openToNew: 'По требованию', training: 'Да', checked: '0', campaignRegistered: '0' } },
     });
   });
 

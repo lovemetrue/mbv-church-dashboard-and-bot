@@ -48,7 +48,7 @@ import {
   type RawRequest,
 } from './raw';
 import { RAW_MANUAL_MEMBERS } from './members';
-import { buildOthers } from './others';
+import { buildOthers, emptyTable } from './others';
 import { requestExtras } from './requestExtras';
 import { demoStrangeOf, STRANGE_NO_PLAN } from './strange';
 
@@ -359,6 +359,7 @@ export function buildRequests(): RequestsView {
       finalGroupText: r.finalGroupText,
       responsible: entry?.responsible || null,
       note: r.note,
+      table: emptyTable(r.note),
       log: r.log,
     };
   });
@@ -528,6 +529,10 @@ export function buildGroups(): GroupsView {
     slot: g.slot,
     status: g.status,
     acceptsNew: g.acceptsNew,
+    openToNew: g.acceptsNew ? 'ДА' : 'НЕТ',
+    training: null,
+    checked: g.verifiedDaysAgo !== null,
+    campaignRegistered: false,
     doNotRefer: g.doNotRefer,
     composition: g.composition,
     coordinator: g.coordinator,

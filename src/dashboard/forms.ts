@@ -60,9 +60,13 @@ function phoneText(form: URLSearchParams, name: string): string | null {
   return raw ? (normalizePhone(raw) ?? raw) : null;
 }
 
-/** «Формат группы»: отмеченные галочками значения из списка, в порядке списка, через запятую. */
+/**
+ * «Формат группы»: отмеченные галочками значения из списка, в порядке списка, через запятую.
+ * Старый дашборд шлёт каждую галочку отдельным полем, новый интерфейс — одной строкой «Мужская, Семейная»
+ * (его тело — объект строк, повторить поле там нельзя); принимаем оба вида.
+ */
 function composition(form: URLSearchParams): string | null {
-  const picked = new Set(form.getAll('composition').map((v) => v.trim()));
+  const picked = new Set(form.getAll('composition').flatMap((v) => v.split(',')).map((v) => v.trim()));
   const kept = COMPOSITIONS.filter((c) => picked.has(c));
   return kept.length > 0 ? kept.join(', ') : null;
 }

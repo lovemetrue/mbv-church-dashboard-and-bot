@@ -1,5 +1,6 @@
 import type { CoordinatorItem, FormMeta, GroupItem } from '@contracts';
 import { ru } from '../../shared/i18n/ru';
+import { optionsWithPicked } from '../../shared/multiValue';
 
 const m = ru.manage;
 
@@ -7,10 +8,11 @@ const m = ru.manage;
 export interface EditField {
   name: string;
   label: string;
-  kind: 'text' | 'select' | 'textarea' | 'date' | 'checkbox';
+  /** multi — несколько галочек, значение одной строкой через запятую (см. `toggleInList`). */
+  kind: 'text' | 'select' | 'textarea' | 'date' | 'checkbox' | 'multi';
   /** Пустое значение недопустимо: сервер всё равно отказал бы, поэтому «Сохранить» не включается. */
   required?: boolean;
-  /** Для select. */
+  /** Для select и multi. */
   options?: string[];
   /** Пояснение под полем. */
   hint?: string;
@@ -94,7 +96,9 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
         placeholder: m.group.timePlaceholder,
         hint: `${m.group.now(g.whenText ?? m.group.notSpecified)} ${keep}`,
       },
-      { name: 'composition', label: t.composition, kind: 'select', options: withCurrent(meta.compositions, g.composition) },
+      { name: 'composition', label: t.composition, kind: 'multi', wide: true, options: optionsWithPicked(meta.compositions, g.composition ?? '') },
+      { name: 'age', label: t.age, kind: 'select', options: withCurrent(meta.ageGroups, g.ageText) },
+      { name: 'openToNew', label: t.openToNew, kind: 'select', options: withCurrent(meta.openToNew.map((o) => o.value), g.openToNew) },
       { name: 'coordinator', label: t.coordinator, kind: 'select', options: withCurrent(meta.coordinators, g.coordinator) },
       { name: 'coLeader', label: t.coLeader, kind: 'text' },
       { name: 'phone', label: t.newPhone, kind: 'text', inputMode: 'tel', hint: m.group.writeOnlyHint },
@@ -102,7 +106,11 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
       
       { name: 'feedbackAt', label: t.feedbackAt, kind: 'date', hint: `${feedbackNow(g.verifiedDaysAgo)} ${keep}` },
       { name: 'openedOn', label: t.openedOn, kind: 'date', hint: m.group.openedOnHint },
+      { name: 'training', label: t.training, kind: 'text' },
+      { name: 'no', label: t.no, kind: 'text', inputMode: 'numeric' },
       { name: 'comment', label: t.comment, kind: 'textarea', wide: true },
+      { name: 'checked', label: t.checked, kind: 'checkbox', wide: true },
+      { name: 'campaignRegistered', label: t.campaignRegistered, kind: 'checkbox', wide: true },
       { name: 'doNotRefer', label: m.group.doNotRefer, kind: 'checkbox', wide: true, hint: m.group.doNotReferHint },
     ],
     initial: {
@@ -115,6 +123,12 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
       day: g.day ?? '',
       time: '',
       composition: g.composition ?? '',
+      age: g.ageText ?? '',
+      openToNew: g.openToNew ?? '',
+      training: g.training ?? '',
+      no: g.no === null ? '' : String(g.no),
+      checked: g.checked ? '1' : '',
+      campaignRegistered: g.campaignRegistered ? '1' : '',
       coordinator: g.coordinator ?? '',
       coLeader: g.coLeader ?? '',
       phone: '',

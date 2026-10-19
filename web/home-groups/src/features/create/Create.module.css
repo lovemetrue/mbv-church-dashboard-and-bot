@@ -131,6 +131,10 @@ textarea.control {
   font-weight: 500;
   color: var(--crit);
 }
+.fieldHint {
+  font-size: 13px;
+  color: var(--muted);
+}
 .hint {
   margin-top: 8px;
   font-size: 12px;

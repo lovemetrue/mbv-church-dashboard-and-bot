@@ -91,9 +91,11 @@ export function RecordForm({ spec, path, submitLabel, busyLabel, onClose, onCrea
     else setServerError(result.message);
   }
 
-  const renderField = (f: FieldSpec, hintId?: string) => {
+  const renderField = (f: FieldSpec, outerHintId?: string) => {
     const id = `${uid}-${f.name}`;
     const errId = `${id}-err`;
+    const ownHintId = f.hint ? `${id}-hint` : undefined;
+    const hintId = [outerHintId, ownHintId].filter(Boolean).join(' ') || undefined;
     const problem = problems[f.name];
     const common = {
       id,
@@ -177,6 +179,11 @@ export function RecordForm({ spec, path, submitLabel, busyLabel, onClose, onCrea
         {problem && (
           <p id={errId} className={styles.fieldError}>
             {problem}
+          </p>
+        )}
+        {f.hint && (
+          <p id={ownHintId} className={styles.fieldHint}>
+            {f.hint}
           </p>
         )}
       </div>

@@ -154,6 +154,16 @@ describe('«+ Создать»: заявка', () => {
     });
   });
 
+  test('под «О чём заявка» подсказка: форма — для обращений без регистрации, регистрация заводит заявку сама', async () => {
+    stubFetchWithFixtures({ me: meOf(null) });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const dialog = await ready(await openForm(user, 'Заявка'));
+    const type = within(dialog).getByRole('combobox', { name: 'О чём заявка' });
+    expect(type).toHaveAccessibleDescription(/Для обращений без регистрации/);
+    expect(type).toHaveAccessibleDescription(/«Участник \(регистрация\)»/);
+  });
+
   test('«Домашняя группа» есть только у исполненной заявки, а текстового «Ходит в группу» нет: поле о группе одно', async () => {
     const fetchMock = stubFetchWithFixtures({ me: meOf(null), 'requests/create': () => json({ ok: true, id: 103 }) });
     const user = userEvent.setup();

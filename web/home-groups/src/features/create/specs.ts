@@ -22,6 +22,8 @@ export interface FieldSpec {
   fills?: (value: string) => Record<string, string>;
   /** На всю ширину окна, а не в половину. */
   wide?: boolean;
+  /** Пояснение под полем; связано с ним через aria-describedby. */
+  hint?: string;
   placeholder?: string;
   inputMode?: 'numeric' | 'tel';
   autoComplete?: string;
@@ -66,7 +68,7 @@ export function requestSpec(meta: FormMeta, now: Date = new Date()): FormSpec {
   return {
     fields: [
       { name: 'fio', label: t.fio, kind: 'text', required: true, wide: true, autoComplete: 'off' },
-      { name: 'type', label: t.type, kind: 'select', required: true, options: types },
+      { name: 'type', label: t.type, kind: 'select', required: true, options: types, hint: ru.create.requestTypeHint },
       { name: 'status', label: t.status, kind: 'select', required: true, options: opts(meta.requestStatuses) },
       { name: 'phone', label: t.phone, kind: 'text', inputMode: 'tel', autoComplete: 'off' },
       { name: 'age', label: t.age, kind: 'select', options: opts(meta.ageGroups) },
@@ -199,6 +201,7 @@ export function registrationSpec(meta: FormMeta): FormSpec {
         wide: true,
         options: meta.mdgStatuses.map((x) => ({ value: x.value, label: x.label })),
         emptyLabel: r.mdgEmpty,
+        hint: r.mdgHint,
       },
       {
         name: 'leaderName',

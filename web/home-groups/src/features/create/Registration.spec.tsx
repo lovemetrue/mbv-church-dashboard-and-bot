@@ -151,6 +151,16 @@ describe('регистрация участника: форма', () => {
     expect(Object.values(extra()).every((x) => x === null)).toBe(true);
   });
 
+  test('под «Малой группой» подсказка: заявку отдельно заводить не нужно, она появится сама', async () => {
+    stubFetchWithFixtures();
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const dialog = await openRegistration(user);
+    // Подсказка связана с полем: её зачитывает и скринридер, а не только видит глаз.
+    expect(status(dialog)).toHaveAccessibleDescription(/Заявку отдельно заводить не нужно: она появится сама/);
+    expect(status(dialog)).toHaveAccessibleDescription(/«Хочет в группу» уйдёт в подбор/);
+  });
+
   test('скрытые поля не уходят в запрос, даже если их успели заполнить', async () => {
     const fetchMock = stubFetchWithFixtures({ 'people/create': OK });
     const user = userEvent.setup();

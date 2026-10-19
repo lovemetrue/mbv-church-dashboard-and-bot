@@ -134,7 +134,6 @@ export function groupSpec(meta: FormMeta): FormSpec {
     { name: 'coordinator', label: t.coordinator, kind: 'select', options: opts(meta.coordinators) },
     { name: 'training', label: t.training, kind: 'text', autoComplete: 'off' },
     { name: 'feedbackAt', label: t.feedbackAt, kind: 'date' },
-    { name: 'no', label: t.no, kind: 'text', inputMode: 'numeric', autoComplete: 'off' },
     { name: 'comment', label: t.comment, kind: 'textarea', wide: true },
     { name: 'checked', label: t.checked, kind: 'checkbox' },
     { name: 'campaignRegistered', label: t.campaignRegistered, kind: 'checkbox' },
@@ -186,6 +185,7 @@ const MDG_ASKS_PLACE: readonly string[] = ['open', 'home', 'join'];
 export function registrationSpec(meta: FormMeta): FormSpec {
   const t = ru.create.registration.fields;
   const r = ru.create.registration;
+  const c = ru.contact.fields;
   return {
     intro: r.lead,
     fields: [
@@ -220,6 +220,26 @@ export function registrationSpec(meta: FormMeta): FormSpec {
         label: t.age,
         kind: 'select',
         options: opts(meta.ageGroups),
+        showWhen: (v) => MDG_ASKS_PLACE.includes(v['mdgStatus'] ?? ''),
+      },
+      // Те же два вопроса, что бот задаёт после возраста («Когда удобно?», «Где живёте?»): по ним идёт подбор группы,
+      // и человек с бумажной анкетой не должен попадать в подбор хуже, чем записавшийся через бот.
+      {
+        name: 'schedule',
+        label: c.schedule,
+        kind: 'text',
+        wide: true,
+        placeholder: c.schedulePlaceholder,
+        autoComplete: 'off',
+        showWhen: (v) => MDG_ASKS_PLACE.includes(v['mdgStatus'] ?? ''),
+      },
+      {
+        name: 'address',
+        label: c.address,
+        kind: 'text',
+        wide: true,
+        placeholder: c.addressPlaceholder,
+        autoComplete: 'off',
         showWhen: (v) => MDG_ASKS_PLACE.includes(v['mdgStatus'] ?? ''),
       },
       { name: 'preferredContact', label: t.preferredContact, kind: 'text', wide: true, autoComplete: 'off' },

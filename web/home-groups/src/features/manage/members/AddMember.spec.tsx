@@ -10,7 +10,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 type User = ReturnType<typeof userEvent.setup>;
 
-/** Окно «Добавить человека»: группа №31 (id 3) без состава, группа №8 (id 4) — с Дарьей Ефимовой и Георгием Шмелёвым. */
+/** Окно «Добавить человека»: группа ДГ-0031 (id 3) без состава, группа ДГ-0008 (id 4) — с Дарьей Ефимовой и Георгием Шмелёвым. */
 async function openDialog(user: User, rec = 3) {
   renderAt(<App />, `/?tab=reference&rec=${rec}`);
   const card = await screen.findByRole('dialog', { name: /Карточка группы/ });
@@ -29,7 +29,7 @@ describe('«Добавить человека»: выбор из справоч�
     stubFetchWithFixtures();
     const user = userEvent.setup();
     const dialog = await openDialog(user);
-    expect(dialog).toHaveAccessibleName('Добавить человека в группу №31');
+    expect(dialog).toHaveAccessibleName('Добавить человека в группу ДГ-0031');
     expect(within(dialog).getByRole('tab', { name: 'Из справочника' })).toHaveAttribute('aria-selected', 'true');
     expect(within(dialog).getByRole('tab', { name: 'Новый человек' })).toHaveAttribute('aria-selected', 'false');
   });

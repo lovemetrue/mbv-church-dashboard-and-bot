@@ -26,7 +26,7 @@ describe('таблица адресов геокодера', () => {
     expect(ryleeva).toMatchObject({ lat: 59.94, lon: 30.35, accuracy: 'street', matched: 'Россия, Санкт-Петербург, улица Рылеева' });
     expect(t.items.find((i) => i.state === 'missing')!.matched).toBeNull();
     expect(ryleeva.sources).toEqual([
-      { kind: 'group', id: '1', label: 'Группа №1, Ольга' },
+      { kind: 'group', id: '1', label: 'Группа ДГ-0001, Ольга' },
       { kind: 'request', id: '10', label: 'Заявка №10, Человек 10' },
     ]);
     expect(t.items[1]!.sources).toEqual([{ kind: 'person', id: 'u5', label: 'Участник 5' }]);

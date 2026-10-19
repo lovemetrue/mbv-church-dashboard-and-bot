@@ -34,6 +34,18 @@ describe('регистрация участника в «Домашних гру
     expect(notified.map((r) => r.id)).toEqual([expect.any(Number)]);
   });
 
+  test('удобное время и улица с домом сохраняются в регистрацию и сразу видны в заявке, по ним идёт подбор', async () => {
+    const out = await registrar().register({
+      fields: { fio: 'Иван Петров', phone: '+7 911 000-11-22', mdgStatus: 'join', schedule: 'среда вечером', address: 'ул. Есенина, 1' },
+    }, 'p_ivanova');
+    if (!out.ok) throw new Error('регистрация не прошла');
+    const { rows: users } = await db.query('SELECT schedule_raw, address_raw FROM users WHERE id=$1', [out.id]);
+    expect(users[0]).toEqual({ schedule_raw: 'среда вечером', address_raw: 'ул. Есенина, 1' });
+    // Заявка своих копий не держит: время и адрес читаются из регистрации, как у анкеты бота.
+    const request = (await new RequestsRepo(db).forDashboard()).find((r) => r.user_id === out.id);
+    expect(request).toMatchObject({ schedule: 'среда вечером', address: 'ул. Есенина, 1' });
+  });
+
   test('без ответа про Малую группу заявки нет и уведомления нет', async () => {
     const out = await registrar().register({ fields: { fio: 'Иван Петров', phone: '+7 911 000-11-22' } }, 'a');
     expect(out.ok).toBe(true);

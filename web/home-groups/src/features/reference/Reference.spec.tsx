@@ -21,7 +21,7 @@ const dataRows = () => within(screen.getByRole('table')).getAllByRole('row').fil
 
 describe('«Справочник»: конфигурация', () => {
   test('по умолчанию у групп восемь столбцов, как в макете', () => {
-    expect(groupsConfig.defaultColumns).toEqual(['№', 'Ведущий', 'Район', 'Возраст', 'Когда', 'Места', 'Статус', 'Здоровье']);
+    expect(groupsConfig.defaultColumns).toEqual(['Код', 'Ведущий', 'Район', 'Возраст', 'Когда', 'Места', 'Статус', 'Здоровье']);
   });
 
   test('каждый столбец и каждое поле быстрых отборов есть в описании сущности', () => {
@@ -50,7 +50,7 @@ describe('«Справочник»: экран', () => {
     renderAt(<App />, '/?tab=reference');
     const table = await screen.findByRole('table');
     const heads = within(table).getAllByRole('columnheader').map((h) => h.textContent?.replace(/[▲▼]/g, '').trim());
-    expect(heads).toEqual(['№', 'Ведущий', 'Район', 'Возраст', 'Когда', 'Места', 'Статус', 'Здоровье']);
+    expect(heads).toEqual(['Код', 'Ведущий', 'Район', 'Возраст', 'Когда', 'Места', 'Статус', 'Здоровье']);
     expect(screen.getByText(`Показано ${GROUPS_SHOWN} из ${GROUPS}`)).toBeInTheDocument();
     expect(dataRows()).toHaveLength(GROUPS_SHOWN);
   });
@@ -197,9 +197,9 @@ describe('«Справочник»: экран', () => {
     const user = userEvent.setup();
     renderAt(<App />, '/?tab=reference');
     await screen.findByRole('table');
-    await user.click(screen.getByRole('button', { name: 'Открыть карточку: Группа №27, Андрей М.' }));
+    await user.click(screen.getByRole('button', { name: 'Открыть карточку: Группа ДГ-0027, Андрей М.' }));
     expect(currentSearch().get('rec')).toBe('2');
-    const card = await screen.findByRole('dialog', { name: 'Карточка группы №27' });
+    const card = await screen.findByRole('dialog', { name: 'Карточка группы ДГ-0027' });
     expect(within(card).getByText('Здоровье')).toBeInTheDocument();
     expect(within(card).getByRole('meter', { name: /Здоровье: 100 из 100/ })).toBeInTheDocument();
     expect(within(card).getAllByText(/Ведущий указан|Телефон ведущего|Вместимость указана/).length).toBe(3);
@@ -225,7 +225,7 @@ describe('«Справочник»: экран', () => {
     stubFetchWithFixtures();
     const user = userEvent.setup();
     renderAt(<App />, '/?tab=reference&rec=1');
-    const card = await screen.findByRole('dialog', { name: /Карточка группы №12/ });
+    const card = await screen.findByRole('dialog', { name: /Карточка группы ДГ-0012/ });
     await user.click(within(card).getByRole('button', { name: /Открыть заявку: Мария Соколова/ }));
     expect(currentSearch().get('tab')).toBe('requests');
     expect(currentSearch().get('req')).toBe('1');
@@ -295,8 +295,8 @@ describe('«Справочник»: экран', () => {
     stubFetchWithFixtures();
     renderAt(<App />, '/?tab=reference&ent=coordinators&rec=1');
     const card = await screen.findByRole('dialog', { name: /Карточка координатора/ });
-    await waitFor(() => expect(within(card).getByText(/№12 · Ольга К\./)).toBeInTheDocument());
-    expect(within(card).getByText(/№31 · Марина Л\./)).toBeInTheDocument();
+    await waitFor(() => expect(within(card).getByText(/ДГ-0012 · Ольга К\./)).toBeInTheDocument());
+    expect(within(card).getByText(/ДГ-0031 · Марина Л\./)).toBeInTheDocument();
   });
 
   test('быстрые отборы людей работают на реальных полях контракта', async () => {
@@ -461,19 +461,19 @@ describe('«Справочник»: ведущий и новые группы', 
     renderAt(<App />, '/?tab=reference');
     const table = await screen.findByRole('table');
     const rowOf = (leader: string) => within(table).getByText(leader).closest('tr') as HTMLElement;
-    // В фикстурах новые: Светлана Р. (№15), Дмитрий В. (№19) и Татьяна Ф. (без номера).
+    // В фикстурах новые: Светлана Р. (ДГ-0015), Дмитрий В. (ДГ-0019) и Татьяна Ф. (без номера).
     expect(within(rowOf('Светлана Р.')).getByRole('img', { name: 'Новая группа' })).toBeInTheDocument();
     expect(within(rowOf('Андрей М.')).queryByRole('img', { name: 'Новая группа' })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Открыть карточку: Группа №15, Светлана Р.' }));
-    const card = await screen.findByRole('dialog', { name: 'Карточка группы №15' });
+    await user.click(screen.getByRole('button', { name: 'Открыть карточку: Группа ДГ-0015, Светлана Р.' }));
+    const card = await screen.findByRole('dialog', { name: 'Карточка группы ДГ-0015' });
     expect(within(within(card).getByRole('heading', { level: 2 })).getByRole('img', { name: 'Новая группа' })).toBeInTheDocument();
   });
 
   test('в карточке обычной группы значка нет', async () => {
     stubFetchWithFixtures();
     renderAt(<App />, '/?tab=reference&rec=2');
-    const card = await screen.findByRole('dialog', { name: 'Карточка группы №27' });
+    const card = await screen.findByRole('dialog', { name: 'Карточка группы ДГ-0027' });
     expect(within(card).queryByRole('img', { name: 'Новая группа' })).not.toBeInTheDocument();
   });
 });

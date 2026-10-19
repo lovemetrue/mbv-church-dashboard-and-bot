@@ -89,7 +89,7 @@ describe('«Заявки»: экран', () => {
     expect(currentSearch().get('bucket')).toBe('human');
     await user.click(screen.getByRole('button', { name: /^Утверждено/ }));
     expect(rowsOf()).toHaveLength(1);
-    expect(screen.getByText('→ №12 (Ольга К.)')).toBeInTheDocument();
+    expect(screen.getByText('→ ДГ-0012 (Ольга К.)')).toBeInTheDocument();
   });
 
   test('корзина «Перезвонить» без заявок показывает пустое состояние, а не ломается', async () => {
@@ -106,7 +106,7 @@ describe('«Заявки»: экран', () => {
     renderAt(<App />, '/?tab=requests');
     await screen.findByRole('list', { name: 'Список заявок' });
     const row = screen.getByRole('button', { name: 'Алексей Орлов' }).closest('li')!;
-    expect(row).toHaveTextContent('№19 · Дмитрий В.');
+    expect(row).toHaveTextContent('ДГ-0019 · Дмитрий В.');
     expect(row).toHaveTextContent('Готово к утверждению');
     expect(row).toHaveTextContent('78');
     expect(within(row).getByRole('img', { name: /Район: есть · Возраст: есть · День и время: нет · Улица: нет/ })).toBeInTheDocument();
@@ -120,7 +120,7 @@ describe('«Заявки»: экран', () => {
     await user.click(screen.getByRole('button', { name: 'Мария Соколова' }));
     expect(currentSearch().get('req')).toBe('1');
     const card = await screen.findByRole('dialog', { name: 'Карточка заявки: Мария Соколова' });
-    expect(within(card).getByText('Группа №12')).toBeInTheDocument();
+    expect(within(card).getByText('Группа ДГ-0012')).toBeInTheDocument();
     expect(within(card).getByRole('meter', { name: /уверенность: 100 из 100/ })).toBeInTheDocument();
     expect(within(card).getAllByText('тот же район').length).toBeGreaterThan(0);
     expect(within(card).getByText(/План опирается на 4 из 4 параметров/)).toBeInTheDocument();
@@ -145,7 +145,7 @@ describe('«Заявки»: экран', () => {
     stubFetchWithFixtures();
     renderAt(<App />, '/?tab=requests&req=17');
     const card = await screen.findByRole('dialog', { name: /Эльвира Волкова/ });
-    expect(within(card).getByText(/Лучший вариант — №27 \(Чт, вечер\), но место в ней отдано другой заявке: Руслан Агеев/)).toBeInTheDocument();
+    expect(within(card).getByText(/Лучший вариант — ДГ-0027 \(Чт, вечер\), но место в ней отдано другой заявке: Руслан Агеев/)).toBeInTheDocument();
   });
 
   test('заявка без плана показывает красный блок с причиной и подсказкой, без кнопки «Утвердить»', async () => {
@@ -173,7 +173,7 @@ describe('«Заявки»: экран', () => {
     stubFetchWithFixtures();
     renderAt(<App />, '/?tab=requests&req=10');
     const card = await screen.findByRole('dialog', { name: /Артём Лебедев/ });
-    expect(within(card).getByText(/Утверждено: группа №12, Ольга К\./)).toBeInTheDocument();
+    expect(within(card).getByText(/Утверждено: группа ДГ-0012, Ольга К\./)).toBeInTheDocument();
   });
 
   test('свёрнутый блок параметров подбора показывает «N из 4» и отметки известно/не указано', async () => {

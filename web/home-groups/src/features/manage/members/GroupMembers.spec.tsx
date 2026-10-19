@@ -9,7 +9,7 @@ import { todayIso } from './model';
 
 afterEach(() => vi.unstubAllGlobals());
 
-/** Группа №12 (id 1): направленный Артём Лебедев, вручную Дарья Ефимова (есть и в №8) и Нина Воронцова. */
+/** Группа ДГ-0012 (id 1): направленный Артём Лебедев, вручную Дарья Ефимова (есть и в ДГ-0008) и Нина Воронцова. */
 async function groupCard(rec = 1) {
   renderAt(<App />, `/?tab=reference&rec=${rec}`);
   return screen.findByRole('dialog', { name: /Карточка группы/ });

@@ -48,7 +48,7 @@ describe('таблицы справочника: состав', () => {
   test('сортировка по «В составе» ставит самый большой состав первым', async () => {
     stubFetchWithFixtures();
     const user = userEvent.setup();
-    renderAt(<App />, '/?tab=reference&col=' + encodeURIComponent('№') + '&col=' + encodeURIComponent('Ведущий') + '&col=' + encodeURIComponent('В составе'));
+    renderAt(<App />, '/?tab=reference&col=' + encodeURIComponent('Код') + '&col=' + encodeURIComponent('Ведущий') + '&col=' + encodeURIComponent('В составе'));
     await screen.findByRole('table');
     await user.click(screen.getByRole('button', { name: 'Сортировать по столбцу «В составе»' }));
     await user.click(screen.getByRole('button', { name: 'Сортировать по столбцу «В составе»' }));

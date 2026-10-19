@@ -46,7 +46,7 @@ async function openGroupEdit(user: User, rec = 1) {
 const saveButton = (dialog: HTMLElement) => within(dialog).getByRole('button', { name: 'Сохранить' });
 
 describe('карточки показывают то, что вводят при создании', () => {
-  test('карточка группы: телефоны ведущего и соведущего, приём новых как записан, обучение, № в реестре, «проверено», «40 дней»', async () => {
+  test('карточка группы: телефоны ведущего и соведущего, приём новых как записан, обучение, «проверено», «40 дней»; номера строки из таблицы нет', async () => {
     stubFetchWithFixtures({ groups: () => json(groupsWith(2, { openToNew: 'По требованию', training: 'Да', checked: true, campaignRegistered: true })) });
     const card = await groupCard(2);
     const row = (label: string) => within(card).getByText(label, { selector: 'dt' }).nextElementSibling;
@@ -54,7 +54,8 @@ describe('карточки показывают то, что вводят при
     expect(row('Телефон соведущего')).toHaveTextContent('+7 921 000 11 44');
     expect(row('Принимает новых')).toHaveTextContent('По требованию');
     expect(row('Обучение')).toHaveTextContent('Да');
-    expect(row('№ в реестре')).toHaveTextContent('27');
+    // Номер строки из первоначальной таблицы — не номер группы: в карточке его нет, группу зовут по коду.
+    expect(within(card).queryByText('№ в реестре', { selector: 'dt' })).not.toBeInTheDocument();
     expect(row('Данные проверены')).toHaveTextContent('Да');
     expect(row('«40 дней»')).toHaveTextContent('Зарегистрирован в кампании');
   });
@@ -152,7 +153,7 @@ describe('правка группы', () => {
     expect(posts(fetchMock)[0]).toEqual({ path: 'groups/1/update', body: { fields: { composition: '' } } });
   });
 
-  test('поля старого дашборда — возраст, приём новых, обучение, № в реестре, «проверено», «40 дней» — заполнены и правятся', async () => {
+  test('поля старого дашборда — возраст, приём новых, обучение, «проверено», «40 дней» — заполнены и правятся; «№ в реестре» нет', async () => {
     const fetchMock = stubFetchWithFixtures({
       groups: () => json(groupsWith(1, { campaignRegistered: true, training: 'Нет' })),
       'groups/1/update': () => json({ ok: true }),
@@ -162,7 +163,7 @@ describe('правка группы', () => {
     expect(within(dialog).getByRole('combobox', { name: 'Возраст' })).toHaveValue('18–25, 26–35');
     expect(within(dialog).getByRole('textbox', { name: 'Обучение' })).toHaveValue('Нет');
     expect(within(dialog).getByRole('combobox', { name: 'Приём новых' })).toHaveValue('ДА');
-    expect(within(dialog).getByRole('textbox', { name: '№ в реестре' })).toHaveValue('12');
+    expect(within(dialog).queryByRole('textbox', { name: '№ в реестре' })).not.toBeInTheDocument();
     expect(within(dialog).getByRole('checkbox', { name: 'Данные проверены' })).toBeChecked();
     expect(within(dialog).getByRole('checkbox', { name: '«40 дней» — зарегистрирован в кампании' })).toBeChecked();
     await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Приём новых' }), 'По требованию');

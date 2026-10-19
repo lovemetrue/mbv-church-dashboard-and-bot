@@ -67,6 +67,10 @@ export interface ManualRegistrationInput {
   age?: string;
   preferredContact?: string;
   comment?: string;
+  /** Удобные дни и время свободным текстом — тот же ответ, что бот спрашивает в анкете (`schedule_raw`). */
+  schedule?: string;
+  /** Улица и дом — тот же ответ анкеты (`address_raw`): по нему идёт подбор и геокодирование. */
+  address?: string;
 }
 
 /** Строка списка регистраций для дашборда: номер, ответы анкеты и статус выдачи набора. */
@@ -268,8 +272,8 @@ export class UsersRepo {
         const { rows } = await this.db.query<UserRow>(
           `INSERT INTO users (platform, platform_user_id, chat_id, full_name, phone, church, mdg_status, leader_name,
                               location, age, preferred_contact, admin_comment, registered_by,
-                              registration_no, registered_at, complete, consent_at)
-           VALUES ($1, 'manual:' || $12::text, '', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $13, now(), true, now())
+                              registration_no, registered_at, complete, consent_at, schedule_raw, address_raw)
+           VALUES ($1, 'manual:' || $12::text, '', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $13, now(), true, now(), $14, $15)
            RETURNING *`,
           [
             input.platform,
@@ -285,6 +289,8 @@ export class UsersRepo {
             input.byAdminId,
             no,
             no,
+            input.schedule ?? null,
+            input.address ?? null,
           ],
         );
         return rows[0]!;

@@ -41,12 +41,16 @@ export function phoneDigits(raw: string | null | undefined): string {
 }
 
 /** «№12» или, если у группы нет номера в реестре, её код («ДГ-0012»). */
-export function groupLabel(g: { no: number | null; code: string }): string {
-  return g.no != null ? `№${g.no}` : g.code;
+/**
+ * Подпись группы — её код «ДГ-0012». Номер `no` — порядковый номер строки в первоначальной таблице церкви, а не
+ * номер группы: показывать его как «№12» значило путать людей (у групп из интерфейса его нет вовсе).
+ */
+export function groupLabel(g: { code: string }): string {
+  return g.code;
 }
 
 /** «Ольга К. · Вт, вечер» — подпись группы в списках. */
-export function groupLine(g: { no: number | null; code: string; leader: string; whenText: string | null }): string {
+export function groupLine(g: { code: string; leader: string; whenText: string | null }): string {
   return [groupLabel(g), g.leader, g.whenText].filter(Boolean).join(' · ');
 }
 

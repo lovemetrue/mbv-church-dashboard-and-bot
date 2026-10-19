@@ -34,8 +34,8 @@ const f = (key: string, extra?: Omit<FieldDef, 'key'>): FieldDef => ({ key, ...e
 export const groupsConfig: EntityConfig<GroupItem> = {
   id: 'groups',
   label: ru.reference.groups,
+  // Номера строки из первоначальной таблицы («№ в реестре») здесь нет: это не номер группы. Группу зовут по коду.
   fields: [
-    f('№', { kind: 'number' }),
     f('Код'),
     f('Ведущий'),
     f('Со-ведущий'),
@@ -62,11 +62,11 @@ export const groupsConfig: EntityConfig<GroupItem> = {
     f('В составе', { kind: 'number' }),
   ],
   columns: [
-    '№', 'Ведущий', 'Район', 'Возраст', 'Когда', 'Места', 'Статус', 'Здоровье',
-    'Код', 'Со-ведущий', 'Телефон', 'Метро', 'Адрес', 'День', 'Время', 'Мест свободно', 'Вместимость',
+    'Код', 'Ведущий', 'Район', 'Возраст', 'Когда', 'Места', 'Статус', 'Здоровье',
+    'Со-ведущий', 'Телефон', 'Метро', 'Адрес', 'День', 'Время', 'Мест свободно', 'Вместимость',
     'Принимает новых', 'Не направлять', 'Формат', 'Состав', 'Координатор', 'Проверена, дн.', 'Комментарий', 'В составе',
   ],
-  defaultColumns: ['№', 'Ведущий', 'Район', 'Возраст', 'Когда', 'Места', 'Статус', 'Здоровье'],
+  defaultColumns: ['Код', 'Ведущий', 'Район', 'Возраст', 'Когда', 'Места', 'Статус', 'Здоровье'],
   // Закрытые группы нужны редко и только мешают в общем списке; находятся, если снять отбор.
   defaultFilters: [{ field: 'Статус', op: 'ne', value: 'Закрыта' }],
   presets: [
@@ -87,7 +87,6 @@ export const groupsConfig: EntityConfig<GroupItem> = {
   ],
   toRow: (g) => ({
     _key: String(g.id),
-    '№': g.no,
     Код: g.code,
     Ведущий: g.leader,
     'Со-ведущий': g.coLeader,
@@ -122,7 +121,7 @@ export const groupsConfig: EntityConfig<GroupItem> = {
     'Люди в составе': g.members.map((m) => m.fio).join(', '),
   }),
   keyOf: (g) => String(g.id),
-  titleOf: (g) => `Группа ${g.no != null ? `№${g.no}` : g.code}, ${g.leader}`,
+  titleOf: (g) => `Группа ${g.code}, ${g.leader}`,
 };
 
 export const peopleConfig: EntityConfig<PersonItem> = {

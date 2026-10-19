@@ -46,11 +46,10 @@ describe('форматы', () => {
     expect(phoneDigits('+7 (911) 124-24-18')).toBe('79111242418');
   });
 
-  test('группа без номера в реестре подписывается кодом', () => {
-    expect(groupLabel({ no: 12, code: 'ДГ-0012' })).toBe('№12');
-    expect(groupLabel({ no: null, code: 'ДГ-0112' })).toBe('ДГ-0112');
-    expect(groupLine({ no: 12, code: 'x', leader: 'Ольга К.', whenText: 'Вт, вечер' })).toBe('№12 · Ольга К. · Вт, вечер');
-    expect(groupLine({ no: 12, code: 'x', leader: 'Ольга К.', whenText: null })).toBe('№12 · Ольга К.');
+  test('группа подписывается кодом: номер строки из первоначальной таблицы — не номер группы', () => {
+    expect(groupLabel({ code: 'ДГ-0012' })).toBe('ДГ-0012');
+    expect(groupLine({ code: 'ДГ-0012', leader: 'Ольга К.', whenText: 'Вт, вечер' })).toBe('ДГ-0012 · Ольга К. · Вт, вечер');
+    expect(groupLine({ code: 'ДГ-0012', leader: 'Ольга К.', whenText: null })).toBe('ДГ-0012 · Ольга К.');
   });
 
   test('здоровье окрашивается по порогам 80 и 60', () => {

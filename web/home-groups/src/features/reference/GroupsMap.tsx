@@ -17,7 +17,7 @@ const CENTER: [number, number] = [59.93, 30.31];
 type Kind = 'active' | 'potential';
 /** «Закрыта» на карту не идёт; «Потенциальная» — отдельный переключатель, всё остальное (в том числе «Кампания» и «Недвижимость») — «Действующие». */
 const kindOf = (g: GroupItem): Kind | null => (g.status === 'Закрыта' ? null : g.status === 'Потенциальная' ? 'potential' : 'active');
-const label = (g: GroupItem): string => `${g.no !== null ? `№${g.no}` : g.code}, ${g.leader}`;
+const label = (g: GroupItem): string => `${g.code}, ${g.leader}`;
 
 /**
  * Карта групп под таблицей «Справочника → Группы». Яндекс.Карты грузятся только по кнопке: у бесплатного ключа лимит открытий

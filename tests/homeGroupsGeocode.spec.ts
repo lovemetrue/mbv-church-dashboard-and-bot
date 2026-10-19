@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { addressKey, cleanAddress, createYandexGeocoder, distanceMeters, geocodePending, type Geocoder, type GeocodeStore } from '../src/home-groups/geocode.js';
-import { addressStats, addressesOf } from '../src/home-groups/geocodeJob.js';
+import { addressEntries, addressStats, addressesOf } from '../src/home-groups/geocodeJob.js';
 import type { GeocodeEntry } from '../src/db/repos/geocode.repo.js';
 
 const reply = (pos: string, kind: string, precision = 'exact', name = 'объект') => ({
@@ -175,5 +175,15 @@ describe('дозаполнение кэша', () => {
     const open = { type: 'join_group', status: 'Новая' };
     const requests = [{ ...open, manual_street: 'ул. Правка, 2', address: 'ул. Анкета, 3' }, { ...open, manual_street: null, address: 'ул. Анкета, 4' }, { ...open, manual_street: null, address: null }] as never;
     expect(addressesOf({ groups, requests })).toEqual(['ул. Группы, 1', 'ул. Правка, 2', 'ул. Анкета, 4']);
+  });
+});
+
+describe('таблица адресов', () => {
+  test('группа подписана кодом, а не номером строки из первоначальной таблицы', () => {
+    const entries = addressEntries({
+      groups: [{ id: 12, leader: 'Ольга К.', address: 'ул. Есенина, 1', status: 'Функционирует' }],
+      requests: [],
+    });
+    expect(entries.map((e) => e.source.label)).toEqual(['Группа ДГ-0012, Ольга К.']);
   });
 });

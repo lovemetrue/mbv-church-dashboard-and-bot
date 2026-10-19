@@ -1,5 +1,6 @@
 import type { Pool } from 'pg';
 import { GeocodeRepo, type GeocodeEntry } from '../db/repos/geocode.repo.js';
+import { groupCode } from '../core/groups.js';
 import { logger } from '../logger.js';
 import { addressKey, createYandexGeocoder, geocodePending, type Geocoder } from './geocode.js';
 import type { ViewsInput } from './api/views.js';
@@ -19,14 +20,14 @@ export interface AddressEntry { address: string; source: AddressSource }
  * них сравнивать не с чем), потом открытые заявки «в группу» (те, кого сейчас подбирают), потом остальные люди.
  */
 export function addressEntries(input: {
-  groups: readonly { id: number; no: number | null; leader: string; address: string | null; status: string }[];
+  groups: readonly { id: number; leader: string; address: string | null; status: string }[];
   requests: readonly { id: number; fio: string | null; type: string; status: string; manual_street: string | null; address: string | null }[];
   participants?: readonly { id: number; full_name: string | null; address: string | null }[];
 }): AddressEntry[] {
   const out: AddressEntry[] = [];
   for (const g of input.groups) {
     if (g.address && GEOCODED_GROUP_STATUSES.has(g.status)) {
-      out.push({ address: g.address, source: { kind: 'group', id: String(g.id), label: `Группа ${g.no !== null ? `№${g.no}` : `#${g.id}`}, ${g.leader}` } });
+      out.push({ address: g.address, source: { kind: 'group', id: String(g.id), label: `Группа ${groupCode(g.id)}, ${g.leader}` } });
     }
   }
   const text = (r: { manual_street: string | null; address: string | null }) => r.manual_street ?? r.address;

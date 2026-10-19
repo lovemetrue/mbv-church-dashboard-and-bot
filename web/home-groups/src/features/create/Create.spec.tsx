@@ -357,7 +357,7 @@ describe('«+ Создать»: группа', () => {
     expect(currentSearch().get('rec')).toBe('13');
   });
 
-  test('поля старого дашборда: соведущий, состав галочками, приём новых, обучение, обратная связь, № в реестре и флажки', async () => {
+  test('поля старого дашборда: соведущий, состав галочками, приём новых, обучение, обратная связь и флажки; «№ в реестре» нет', async () => {
     const fetchMock = stubFetchWithFixtures({ me: meOf(null), 'groups/create': () => json({ ok: true, id: 14 }) });
     const user = userEvent.setup();
     renderAt(<App />, REFERENCE);
@@ -373,7 +373,7 @@ describe('«+ Создать»: группа', () => {
     await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Приём новых' }), 'По требованию');
     await user.type(within(dialog).getByRole('textbox', { name: 'Обучение' }), 'Да');
     await user.type(within(dialog).getByLabelText('Дата обратной связи'), '2026-09-10');
-    await user.type(within(dialog).getByRole('textbox', { name: '№ в реестре' }), '85');
+    expect(within(dialog).queryByRole('textbox', { name: '№ в реестре' })).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole('checkbox', { name: 'Данные проверены' }));
     await user.click(within(dialog).getByRole('checkbox', { name: '«40 дней» — зарегистрирован в кампании' }));
     await user.click(within(dialog).getByRole('button', { name: 'Создать группу' }));
@@ -381,7 +381,7 @@ describe('«+ Создать»: группа', () => {
     expect(posts(fetchMock)[0]!.body.fields).toEqual({
       leader: 'Ольга Крылова', district: 'Приморский', format: 'Молодежная', status: 'Функционирует',
       coLeader: 'Анна Петрова', coLeaderPhone: '+7 921 000-11-44', composition: 'Мужская, Семейная', openToNew: 'По требованию',
-      training: 'Да', feedbackAt: '2026-09-10', no: '85', checked: '1', campaignRegistered: '1',
+      training: 'Да', feedbackAt: '2026-09-10', checked: '1', campaignRegistered: '1',
     });
   });
 

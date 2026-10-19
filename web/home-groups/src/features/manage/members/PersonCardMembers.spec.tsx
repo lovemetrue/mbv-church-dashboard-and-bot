@@ -24,7 +24,7 @@ describe('карточка человека: группы', () => {
     await user.click(await within(card).findByRole('button', { name: 'Открыть группу ДГ-0012' }));
     expect(currentSearch().get('rec')).toBe('1');
     expect(currentSearch().has('ent')).toBe(false);
-    expect(await screen.findByRole('dialog', { name: /Карточка группы №12/ })).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: /Карточка группы ДГ-0012/ })).toBeInTheDocument();
   });
 
   test('если человек нигде не состоит, так и сказано', async () => {

@@ -83,7 +83,6 @@ export function GroupCard({ g, onClose }: { g: GroupItem; onClose: () => void })
     { label: 'Принимает новых', value: g.openToNew ? openToNewText(g.openToNew) : g.acceptsNew ? ru.reference.yes : ru.reference.no },
     // Поля, которые вводят при создании группы (как в старом дашборде): что заполнено, то и видно.
     ...(g.training ? [{ label: 'Обучение', value: g.training }] : []),
-    ...(g.no !== null ? [{ label: '№ в реестре', value: <span className="num">{g.no}</span> }] : []),
     { label: 'Данные проверены', value: g.checked ? ru.reference.yes : ru.reference.no },
     { label: '«40 дней»', value: g.campaignRegistered ? ru.reference.campaignYes : ru.reference.no },
     ...(g.doNotRefer ? [{ label: 'Не направлять', value: <Pill tone="crit">{ru.reference.yes}</Pill> }] : []),

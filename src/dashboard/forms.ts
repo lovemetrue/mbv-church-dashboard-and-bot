@@ -285,6 +285,8 @@ export function parseRegistrationForm(form: URLSearchParams): Parsed<ManualRegis
       age: text(form, 'age') ?? undefined,
       preferredContact: text(form, 'preferredContact') ?? undefined,
       comment: text(form, 'comment') ?? undefined,
+      schedule: text(form, 'schedule') ?? undefined,
+      address: text(form, 'address') ?? undefined,
     },
   };
 }

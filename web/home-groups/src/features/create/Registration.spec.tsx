@@ -40,7 +40,7 @@ async function openRegistration(user: ReturnType<typeof userEvent.setup>) {
 
 const fio = (d: HTMLElement) => within(d).getByRole('textbox', { name: 'ФИО' });
 const phone = (d: HTMLElement) => within(d).getByRole('textbox', { name: 'Телефон' });
-const status = (d: HTMLElement) => within(d).getByRole('combobox', { name: 'Заявка' });
+const status = (d: HTMLElement) => within(d).getByRole('combobox', { name: 'Малая группа' });
 const submitButton = (d: HTMLElement) => within(d).getByRole('button', { name: 'Зарегистрировать' });
 
 async function fillRequired(user: ReturnType<typeof userEvent.setup>, d: HTMLElement) {
@@ -112,7 +112,7 @@ describe('регистрация участника: форма', () => {
     ]);
   });
 
-  test('поля меняются вместе с ответом про группу: «уже состоит» просит ведущего, «хочет» — район и возраст, «ведёт» и пусто — ничего', async () => {
+  test('поля меняются вместе с ответом про группу: «уже состоит» просит ведущего, «хочет» — район, возраст, время и улицу, «ведёт» и пусто — ничего', async () => {
     stubFetchWithFixtures();
     const user = userEvent.setup();
     renderAt(<App />, REFERENCE);
@@ -121,6 +121,8 @@ describe('регистрация участника: форма', () => {
       leader: within(dialog).queryByRole('textbox', { name: 'Ведущий группы' }),
       location: within(dialog).queryByRole('textbox', { name: 'Район' }) ?? within(dialog).queryByRole('combobox', { name: 'Район' }),
       age: within(dialog).queryByRole('combobox', { name: 'Возраст' }),
+      schedule: within(dialog).queryByRole('textbox', { name: 'Удобные день и время' }),
+      address: within(dialog).queryByRole('textbox', { name: 'Улица и дом' }),
     });
     // Пусто: никаких дополнительных полей.
     expect(Object.values(extra()).every((x) => x === null)).toBe(true);
@@ -129,12 +131,17 @@ describe('регистрация участника: форма', () => {
     expect(extra().leader).toBeInTheDocument();
     expect(extra().location).toBeNull();
     expect(extra().age).toBeNull();
+    expect(extra().schedule).toBeNull();
+    expect(extra().address).toBeNull();
 
     for (const value of ['join', 'open', 'home']) {
       await user.selectOptions(status(dialog), value);
       expect(extra().leader).toBeNull();
       expect(extra().location).toBeInTheDocument();
       expect(extra().age).toBeInTheDocument();
+      // Те же вопросы, что бот задаёт после возраста: по ним идёт подбор группы.
+      expect(extra().schedule).toBeInTheDocument();
+      expect(extra().address).toBeInTheDocument();
     }
 
     await user.selectOptions(status(dialog), 'leader');
@@ -194,6 +201,8 @@ describe('регистрация участника: форма', () => {
     await user.selectOptions(status(dialog), 'join');
     await user.type(within(dialog).getByRole('textbox', { name: 'Район' }), 'Приморский');
     await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Возраст' }), '25-40');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Удобные день и время' }), 'среда вечером');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Улица и дом' }), 'Савушкина 5');
     await user.type(within(dialog).getByRole('textbox', { name: 'Как удобнее связаться' }), 'звонить после 18:00');
     await user.type(within(dialog).getByRole('textbox', { name: 'Комментарий' }), 'пришла с подругой');
     await user.click(submitButton(dialog));
@@ -205,6 +214,8 @@ describe('регистрация участника: форма', () => {
       mdgStatus: 'join',
       location: 'Приморский',
       age: '25-40',
+      schedule: 'среда вечером',
+      address: 'Савушкина 5',
       preferredContact: 'звонить после 18:00',
       comment: 'пришла с подругой',
     });

@@ -39,15 +39,10 @@ function Cell({ column, value, row }: { column: string; value: Row[string]; row:
       </>
     );
   }
-  if (column === 'Ведущий' || column === 'Код') {
+  // Значок новой или пустой группы — только у ведущего: код теперь тоже стоит в таблице по умолчанию, и два значка
+  // в одной строке читались бы как две пометки.
+  if (column === 'Ведущий') {
     const marks = { isNew: Number(row['_isNew'] ?? 0) > 0, empty: Number(row['_isEmpty'] ?? 0) > 0 };
-    if (column === 'Код') {
-      return (
-        <>
-          <GroupMarks g={marks} size={14} /> {text}
-        </>
-      );
-    }
     // Ширина ограничена, чтобы длинное ФИО не раздвигало таблицу; полное имя доступно в подсказке.
     return (
       <span className={styles.leaderCell}>

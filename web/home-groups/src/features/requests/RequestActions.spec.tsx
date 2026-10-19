@@ -72,7 +72,7 @@ describe('«Заявки»: утверждение', () => {
     await waitFor(() => expect(getsOf(fetchMock, 'requests')).toBe(2));
     expect(getsOf(fetchMock, 'today')).toBeGreaterThanOrEqual(1);
     expect(within(card).queryByRole('button', { name: /^Утвердить/ })).not.toBeInTheDocument();
-    expect(within(card).getByText(/Утверждено: группа №12/)).toBeInTheDocument();
+    expect(within(card).getByText(/Утверждено: группа ДГ-0012/)).toBeInTheDocument();
   });
 
   test('двойное нажатие «Утвердить» отправляет один запрос, пока первый не завершён', async () => {

@@ -13,7 +13,7 @@ const PAGE = '/registration';
 
 const fio = () => screen.getByRole('textbox', { name: 'ФИО' });
 const phone = () => screen.getByRole('textbox', { name: 'Телефон' });
-const status = () => screen.getByRole('combobox', { name: 'Заявка' });
+const status = () => screen.getByRole('combobox', { name: 'Малая группа' });
 const submit = () => screen.getByRole('button', { name: 'Зарегистрировать' });
 
 async function openPage(overrides: Parameters<typeof stubFetchWithFixtures>[0] = {}, url = PAGE) {

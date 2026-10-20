@@ -104,6 +104,7 @@ function candidateLabel(c: LeaderCandidate): string {
 
 /** Справочники форм: серверные списки, чтобы интерфейс не держал свою копию (в старом дашборде они дублировались). */
 export function createFormMeta(deps: {
+  defaultCapacity: number;
   coordinators: Pick<CoordinatorsRepo, 'listActive'>;
   groups: Pick<GroupsRepo, 'forDashboard'>;
   users: Pick<UsersRepo, 'leaderCandidates'>;
@@ -120,6 +121,7 @@ export function createFormMeta(deps: {
     churches: allChurchOptions(),
     mdgStatuses: MDG_STATUSES,
     openToNew: OPEN_TO_NEW,
+    defaultCapacity: deps.defaultCapacity,
     groups: (await deps.groups.forDashboard()).map((g) => ({ id: g.id, code: groupCode(g.id), leader: g.leader })),
     leaderCandidates: (await deps.users.leaderCandidates())
       .filter((c) => c.full_name)

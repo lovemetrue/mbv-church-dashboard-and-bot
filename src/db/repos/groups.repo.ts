@@ -42,6 +42,8 @@ export interface GroupInput extends HomeGroupInput {
   campaignRegistered?: boolean | null;
   /** «Не направлять»: группа скрыта из подбора. undefined при правке — не менять. */
   doNotRefer?: boolean | null;
+  /** Мест в группе; null — общее значение по умолчанию. undefined при правке — не менять (старый дашборд поля не знает). */
+  capacity?: number | null;
 }
 
 export interface GroupRow {
@@ -72,6 +74,8 @@ export interface GroupRow {
   checked: boolean | null;
   campaign_registered: boolean;
   do_not_refer: boolean;
+  /** Мест в группе; null — общее значение по умолчанию. */
+  capacity: number | null;
   /** Регистрация ведущего (users.id), если обращение «уже веду группу» сверено со справочником. */
   leader_user_id: number | null;
   source: GroupSource;
@@ -114,6 +118,8 @@ export interface DashboardGroup {
   campaign_registered: boolean;
   /** «Не направлять»: из подбора такая группа скрыта. */
   do_not_refer: boolean;
+  /** Мест в группе; null — общее значение по умолчанию. */
+  capacity: number | null;
   /** Регистрация ведущего (users.id): связь появляется при разборе обращения «уже веду группу». */
   leader_user_id: number | null;
 }
@@ -121,7 +127,7 @@ export interface DashboardGroup {
 const COLUMNS = `no, leader, open_to_new, phone, phones, age, district, metro, address,
                  composition, day, "time", people, coordinator, feedback_at, comment,
                  training, format, status, checked, campaign_registered, source, added_by,
-                 added_platform, co_leader, co_leader_phone, do_not_refer, opened_on`;
+                 added_platform, co_leader, co_leader_phone, do_not_refer, opened_on, capacity`;
 
 // Колонки типа date приходят строкой «2026-08-20» — так настроен пул (src/db/pool.ts).
 
@@ -142,7 +148,7 @@ export class GroupsRepo {
   ): Promise<GroupRow> {
     const { rows } = await this.db.query<GroupRow>(
       `INSERT INTO groups (${COLUMNS})
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
        RETURNING *`,
       [
         input.no ?? null,
@@ -173,6 +179,7 @@ export class GroupsRepo {
         input.coLeaderPhone ?? null,
         input.doNotRefer ?? false,
         input.openedOn ?? null,
+        input.capacity ?? null,
       ],
     );
     const row = rows[0]!;
@@ -198,6 +205,7 @@ export class GroupsRepo {
          co_leader = $23, co_leader_phone = $24,
          do_not_refer = COALESCE($25, do_not_refer),
          opened_on = $26,
+         capacity = CASE WHEN $27::boolean THEN $28::integer ELSE capacity END,
          source = CASE WHEN source = 'таблица' THEN 'ui' ELSE source END
        WHERE id = $1 AND archived_at IS NULL
        RETURNING *`,
@@ -228,6 +236,8 @@ export class GroupsRepo {
         input.coLeaderPhone ?? null,
         input.doNotRefer ?? null,
         input.openedOn ?? null,
+        input.capacity !== undefined,
+        input.capacity ?? null,
       ],
     );
     const row = rows[0];
@@ -359,6 +369,7 @@ export class GroupsRepo {
       source: r.source,
       campaign_registered: r.campaign_registered,
       do_not_refer: r.do_not_refer,
+      capacity: r.capacity ?? null,
       leader_user_id: r.leader_user_id === null || r.leader_user_id === undefined ? null : Number(r.leader_user_id),
     }));
   }

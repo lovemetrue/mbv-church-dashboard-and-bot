@@ -88,6 +88,14 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
       { name: 'format', label: t.format, kind: 'select', required: true, options: withCurrent(meta.groupFormats, g.format) },
       { name: 'status', label: t.status, kind: 'select', required: true, options: withCurrent(meta.groupStatuses, g.status) },
       { name: 'people', label: t.people, kind: 'text', inputMode: 'numeric', placeholder: m.group.peoplePlaceholder },
+      {
+        name: 'capacity',
+        label: t.capacity,
+        kind: 'text',
+        inputMode: 'numeric',
+        placeholder: String(meta.defaultCapacity),
+        hint: ru.create.capacityHint(meta.defaultCapacity),
+      },
       { name: 'day', label: t.day, kind: 'select', options: withCurrent(ru.create.days, g.day) },
       {
         name: 'time',
@@ -119,6 +127,7 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
       format: g.format ?? '',
       status: g.status,
       people: g.people === null ? '' : String(g.people),
+      capacity: g.capacityOwn === null ? '' : String(g.capacityOwn),
       day: g.day ?? '',
       time: '',
       composition: g.composition ?? '',

@@ -191,7 +191,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   });
   const auditRepo = new AuditRepo(db);
   const audit = (actor: string, action: string, after: unknown) => auditRepo.write(actor, action, 'export', null, after);
-  const formMeta = createFormMeta({ coordinators: new CoordinatorsRepo(db), groups: new GroupsRepo(db), users: usersRepo });
+  const formMeta = createFormMeta({ defaultCapacity: opts.defaultCapacity, coordinators: new CoordinatorsRepo(db), groups: new GroupsRepo(db), users: usersRepo });
   return { load, views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, geocoderConfig, geocodeAddresses, mapConfig, chat, members, contacts, reconciler, strange, formMeta };
 }
 

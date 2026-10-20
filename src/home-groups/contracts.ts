@@ -989,6 +989,8 @@ export interface FormMeta {
   churches: string[];
   /** Ответ про малую группу в регистрации (value → подпись). */
   mdgStatuses: { value: string; label: string }[];
+  /** Мест в группе по умолчанию (HG_DEFAULT_CAPACITY): действует, пока у группы не задано своё. */
+  defaultCapacity: number;
   /** «Приём новых» у группы (value — как в таблице церкви: «ДА», «НЕТ», «По требованию»). */
   openToNew: { value: string; label: string }[];
   /** Действующие группы для «Домашняя группа» и «Рекомендованная группа» в форме заявки. */
@@ -1066,6 +1068,8 @@ export interface GroupItem extends GroupBrief {
   status: string;
   /** «Приём новых» не «Нет». */
   acceptsNew: boolean;
+  /** «Мест в группе», заданное у самой группы; null — общее значение по умолчанию (оно в `capacity`). */
+  capacityOwn: number | null;
   /** «Приём новых» как записан («ДА», «НЕТ», «По требованию»); null — не указан. Нужен форме правки. */
   openToNew: string | null;
   /** «Обучение» как записано в таблице церкви. */

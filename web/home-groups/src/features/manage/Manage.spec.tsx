@@ -179,6 +179,19 @@ describe('правка группы', () => {
     });
   });
 
+  test('«Мест в группе»: своё число видно и правится, очищенное уходит пустым — вернётся общее значение', async () => {
+    const fetchMock = stubFetchWithFixtures({ 'groups/1/update': () => json({ ok: true }) });
+    const user = userEvent.setup();
+    const { dialog } = await openGroupEdit(user, 1);
+    const capacity = within(dialog).getByRole('textbox', { name: 'Мест в группе' });
+    expect(capacity).toHaveValue('12');
+    expect(capacity).toHaveAccessibleDescription(/Пусто — 10, как у всех групп по умолчанию/);
+    await user.clear(capacity);
+    await user.click(saveButton(dialog));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect(posts(fetchMock)[0]).toEqual({ path: 'groups/1/update', body: { fields: { capacity: '' } } });
+  });
+
   test('очищенное необязательное поле уходит пустой строкой, а пустое непротронутое не уходит вовсе', async () => {
     const fetchMock = stubFetchWithFixtures({ 'groups/2/update': () => json({ ok: true }) });
     const user = userEvent.setup();

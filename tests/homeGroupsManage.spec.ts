@@ -76,6 +76,20 @@ describe('правка группы из нового интерфейса', () 
     expect(await g(id)).toMatchObject({ checked: false, campaign_registered: false, open_to_new: null });
   });
 
+  test('«мест в группе» задаётся, очищается к общему значению и не теряется при правке других полей и из старого дашборда', async () => {
+    const id = await group();
+    await manager().updateGroup(id, { fields: { capacity: '6' } }, 'a');
+    expect((await g(id)).capacity).toBe(6);
+    await manager().updateGroup(id, { fields: { comment: 'x' } }, 'a');
+    expect((await g(id)).capacity).toBe(6);
+    // Старый дашборд шлёт форму целиком, но поля не знает: вместимость остаётся как была.
+    const repo = new GroupsRepo(db);
+    await repo.update(id, { leader: 'Иван Петров', district: 'Приморский', format: 'Основная церковь', status: 'Функционирует' } as never);
+    expect((await g(id)).capacity).toBe(6);
+    await manager().updateGroup(id, { fields: { capacity: '' } }, 'a');
+    expect((await g(id)).capacity).toBeNull();
+  });
+
   test('пустое значение стирает адрес', async () => {
     const id = await group();
     await manager().updateGroup(id, { fields: { address: '' } }, 'a');

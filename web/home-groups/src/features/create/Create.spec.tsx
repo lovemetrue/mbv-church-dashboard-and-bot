@@ -339,6 +339,7 @@ describe('«+ Создать»: группа', () => {
     await user.selectOptions(within(dialog).getByRole('combobox', { name: 'День' }), 'Вт');
     await user.type(within(dialog).getByRole('textbox', { name: 'Время' }), '19:00');
     await user.type(within(dialog).getByRole('textbox', { name: 'Сколько человек' }), '8');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Мест в группе' }), '5');
     await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Координатор' }), 'Петров Г.');
     await user.type(address, 'Комендантский пр., 12');
     await user.click(within(dialog).getByRole('button', { name: 'Создать группу' }));
@@ -355,6 +356,7 @@ describe('«+ Создать»: группа', () => {
           day: 'Вт',
           time: '19:00',
           people: '8',
+          capacity: '5',
           coordinator: 'Петров Г.',
           address: 'Комендантский пр., 12',
         },

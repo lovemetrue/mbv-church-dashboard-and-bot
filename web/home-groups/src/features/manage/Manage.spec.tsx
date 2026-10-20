@@ -45,6 +45,29 @@ async function openGroupEdit(user: User, rec = 1) {
 
 const saveButton = (dialog: HTMLElement) => within(dialog).getByRole('button', { name: 'Сохранить' });
 
+describe('шапка карточки группы: значки, как у заявки', () => {
+  test('под названием и ведущим — правка, звонок, письмо и копирование номера ведущего', async () => {
+    stubFetchWithFixtures();
+    const card = await groupCard(2);
+    const header = within(card).getByRole('banner');
+    expect(within(header).getByRole('button', { name: /^Править группу ДГ-0027/ })).toBeInTheDocument();
+    expect(within(header).getByRole('link', { name: 'Позвонить: Андрей М.' })).toHaveAttribute('href', 'tel:+79212004477');
+    expect(within(header).getByRole('link', { name: 'Написать: Андрей М.' })).toHaveAttribute('href', 'sms:+79212004477');
+    expect(within(header).getByRole('button', { name: 'Скопировать номер' })).toBeInTheDocument();
+    // Текстовой кнопки «Править» в разделе данных больше нет: правка — карандашом в шапке.
+    expect(within(card).queryByRole('button', { name: 'Править' })).not.toBeInTheDocument();
+  });
+
+  test('без телефона ведущего вместо значков звонка — подпись, карандаш остаётся', async () => {
+    stubFetchWithFixtures({ groups: () => json(groupsWith(2, { phone: null })) });
+    const card = await groupCard(2);
+    const header = within(card).getByRole('banner');
+    expect(within(header).getByText('Телефона ведущего нет')).toBeInTheDocument();
+    expect(within(header).queryByRole('link', { name: /^Позвонить/ })).not.toBeInTheDocument();
+    expect(within(header).getByRole('button', { name: /^Править группу/ })).toBeInTheDocument();
+  });
+});
+
 describe('карточки показывают то, что вводят при создании', () => {
   test('карточка группы: телефоны ведущего и соведущего, приём новых как записан, обучение, «проверено», «40 дней»; номера строки из таблицы нет', async () => {
     stubFetchWithFixtures({ groups: () => json(groupsWith(2, { openToNew: 'По требованию', training: 'Да', checked: true, campaignRegistered: true })) });

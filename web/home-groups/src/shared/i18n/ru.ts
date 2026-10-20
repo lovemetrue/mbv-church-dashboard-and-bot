@@ -1531,6 +1531,7 @@ export const ru = {
     metaFailed: 'Не удалось загрузить списки для формы.',
     group: {
       editAria: (label: string) => `Править группу ${label}`,
+      noPhone: 'Телефона ведущего нет',
       deleteAria: (label: string) => `Удалить группу ${label}`,
       editTitle: (label: string) => `Правка группы ${label}`,
       deleteTitle: (label: string) => `Удалить группу ${label}?`,

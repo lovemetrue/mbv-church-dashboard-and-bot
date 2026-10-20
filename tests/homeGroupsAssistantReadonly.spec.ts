@@ -44,6 +44,14 @@ describe('выполнение запросов помощника на живо
     expect(JSON.stringify(groups)).not.toMatch(/Иван|Петров|911/);
   });
 
+  test('у групп видна своя вместимость: capacity задана — число, не задана — пусто (общее значение берётся из инструкции)', async () => {
+    const { g1 } = await seed();
+    await db.query(`UPDATE groups SET capacity = 5 WHERE id = $1`, [g1]);
+    const run = createReadonlyRunner(db);
+    const groups = await run('SELECT id, capacity FROM groups ORDER BY id');
+    expect(groups.rows.map((r) => r[1])).toEqual([5, null]);
+  });
+
   test('имена, телефоны и заметки через представления не достаются: в них этих столбцов нет', async () => {
     await seed();
     const run = createReadonlyRunner(db);

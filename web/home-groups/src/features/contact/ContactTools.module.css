@@ -1,0 +1,45 @@
+.iconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--tap);
+  min-height: var(--tap);
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  text-decoration: none;
+}
+.iconBtn:hover,
+.iconBtn:focus-visible {
+  border-color: var(--line);
+  color: var(--accent);
+}
+.iconBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.noPhone {
+  font-size: 12px;
+  color: var(--muted);
+}
+.copied,
+.copyFailed {
+  margin: 6px 0 0;
+  font-size: 13px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.copied {
+  color: var(--ok);
+}
+.copyFailed {
+  color: var(--crit);
+}
+/* Пустая живая область не занимает места. */
+.copied:empty,
+.copyFailed:empty {
+  display: none;
+}

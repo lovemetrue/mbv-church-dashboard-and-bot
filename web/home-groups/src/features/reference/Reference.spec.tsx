@@ -4,7 +4,10 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { App } from '../../app/App';
 import { buildGroups, buildPeople } from '../../fixtures/build';
 import { currentSearch, renderAt, stubFetchWithFixtures } from '../../test/render';
+import { groupsWith } from '../requests/requestsTestKit';
 import { coordinatorsConfig, groupsConfig, peopleConfig } from './config';
+
+const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -97,7 +100,7 @@ describe('«Справочник»: экран', () => {
     await user.type(within(dlg).getByLabelText('Значение'), '6');
     await user.click(within(dlg).getByRole('button', { name: 'Добавить' }));
     // Отбор по умолчанию («Закрыта» скрыта) остаётся и записывается в адрес вместе с новым условием.
-    expect(currentSearch().getAll('f')).toEqual(['Статус:ne:Закрыта', 'Мест свободно:ge:6']);
+    expect(currentSearch().getAll('f')).toEqual(['Статус:ne:Закрыта', 'Статус:ne:Аннулирована', 'Мест свободно:ge:6']);
     expect(dataRows().length).toBeGreaterThan(0);
     expect(dataRows().length).toBeLessThan(12);
   });
@@ -353,6 +356,8 @@ describe('«Справочник»: экран', () => {
 
 
 const CLOSED_CHIP = 'Статус: не «Закрыта»';
+const CANCELLED_CHIP = 'Статус: не «Аннулирована»';
+const DEFAULT_CHIPS = [CLOSED_CHIP, CANCELLED_CHIP];
 const activeChips = () => within(screen.getByRole('list', { name: 'Текущий отбор' })).getAllByRole('listitem');
 
 describe('«Справочник»: закрытые группы по умолчанию скрыты', () => {
@@ -363,7 +368,7 @@ describe('«Справочник»: закрытые группы по умол�
     expect(dataRows()).toHaveLength(GROUPS_SHOWN);
     expect(screen.getByText(`Показано ${GROUPS_SHOWN} из ${GROUPS}`)).toBeInTheDocument();
     expect(screen.queryByText(CLOSED_LEADER)).not.toBeInTheDocument();
-    expect(activeChips().map((li) => li.textContent?.replace('×', ''))).toEqual([CLOSED_CHIP]);
+    expect(activeChips().map((li) => li.textContent?.replace('×', ''))).toEqual(DEFAULT_CHIPS);
     // Отбор по умолчанию в адрес не пишется: ссылка остаётся короткой.
     expect(currentSearch().has('f')).toBe(false);
   });
@@ -376,7 +381,7 @@ describe('«Справочник»: закрытые группы по умол�
     await user.click(screen.getByRole('button', { name: `Убрать отбор: ${CLOSED_CHIP}` }));
     expect(dataRows()).toHaveLength(GROUPS);
     expect(screen.getByText(CLOSED_LEADER)).toBeInTheDocument();
-    expect(screen.queryByRole('list', { name: 'Текущий отбор' })).not.toBeInTheDocument();
+    expect(activeChips().map((li) => li.textContent?.replace('×', ''))).toEqual([CANCELLED_CHIP]);
   });
 
   test('снятый отбор не возвращается сам при обновлении страницы по той же ссылке', async () => {
@@ -411,7 +416,17 @@ describe('«Справочник»: закрытые группы по умол�
     await user.type(screen.getByRole('searchbox', { name: 'Поиск по таблице' }), 'Приморский');
     expect(dataRows()).toHaveLength(3);
     expect(screen.queryByText(CLOSED_LEADER)).not.toBeInTheDocument();
-    expect(activeChips().map((li) => li.textContent?.replace('×', ''))).toEqual([CLOSED_CHIP]);
+    expect(activeChips().map((li) => li.textContent?.replace('×', ''))).toEqual(DEFAULT_CHIPS);
+  });
+
+  test('аннулированная группа по умолчанию скрыта, как закрытая, и возвращается снятием своего чипа', async () => {
+    stubFetchWithFixtures({ groups: () => json(groupsWith(2, { status: 'Аннулирована' })) });
+    const user = userEvent.setup();
+    renderAt(<App />, '/?tab=reference');
+    await screen.findByRole('table');
+    expect(screen.queryByText('Андрей М.')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: `Убрать отбор: ${CANCELLED_CHIP}` }));
+    expect(screen.getByText('Андрей М.')).toBeInTheDocument();
   });
 
   test('явный отбор по статусу из адреса заменяет умолчание: по «Закрыта» остаётся только закрытая группа', async () => {
@@ -434,7 +449,7 @@ describe('«Справочник»: закрытые группы по умол�
     await waitFor(() => expect(dataRows()).toHaveLength(PEOPLE));
     await user.click(screen.getByRole('button', { name: /^Группы/ }));
     await waitFor(() => expect(dataRows()).toHaveLength(GROUPS_SHOWN));
-    expect(activeChips()).toHaveLength(1);
+    expect(activeChips()).toHaveLength(2);
   });
 });
 

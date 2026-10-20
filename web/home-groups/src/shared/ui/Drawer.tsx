@@ -10,6 +10,8 @@ interface DrawerProps {
   subtitle?: ReactNode;
   /** Значки действий справа от названия (правка, звонок, переход): под рукой, а не в глубине карточки. */
   tools?: ReactNode;
+  /** Значки строкой под названием и подзаголовком, а не справа от названия: у группы название длинное (код и ведущий). */
+  toolsBelow?: boolean;
   onClose: () => void;
   /**
    * docked — панель стоит в сетке рядом со списком (заявки) и только на узком экране
@@ -25,7 +27,7 @@ interface DrawerProps {
  * на другую строку карточка меняется. Esc закрывает; фокус уходит в панель при открытии и
  * возвращается туда, откуда пришёл.
  */
-export function Drawer({ label, title, subtitle, tools, onClose, docked = false, children }: DrawerProps) {
+export function Drawer({ label, title, subtitle, tools, toolsBelow = false, onClose, docked = false, children }: DrawerProps) {
   const ref = useRef<HTMLElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -62,9 +64,10 @@ export function Drawer({ label, title, subtitle, tools, onClose, docked = false,
         <div className={styles.titles}>
           <div className={styles.titleRow}>
             <h2 className={styles.title}>{title}</h2>
-            {tools && <div className={styles.tools}>{tools}</div>}
+            {tools && !toolsBelow && <div className={styles.tools}>{tools}</div>}
           </div>
           {subtitle && <div className={styles.subtitle}>{subtitle}</div>}
+          {tools && toolsBelow && <div className={`${styles.tools} ${styles.toolsBelow}`}>{tools}</div>}
         </div>
         <Button variant="ghost" onClick={onClose} aria-label={ru.reference.closeCard}>
           ✕

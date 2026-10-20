@@ -107,6 +107,21 @@ export function parseGroupForm(form: URLSearchParams): Parsed<GroupInput> {
     people = n;
   }
 
+  // Нет поля — «не менять»: старый дашборд и бот его не знают и иначе обнуляли бы вместимость при каждой правке.
+  // Пусто — общая вместимость по умолчанию (HG_DEFAULT_CAPACITY).
+  let capacity: number | null | undefined;
+  if (form.has('capacity')) {
+    const raw = text(form, 'capacity');
+    if (raw === null) capacity = null;
+    else {
+      const n = Number(raw);
+      if (!/^\d+$/.test(raw) || !Number.isSafeInteger(n) || n < 1 || n > 200) {
+        return { ok: false, error: 'Мест в группе — целое от 1 до 200 или пусто.' };
+      }
+      capacity = n;
+    }
+  }
+
   const rawNo = text(form, 'no');
   let no: number | null = null;
   if (rawNo !== null) {
@@ -138,6 +153,7 @@ export function parseGroupForm(form: URLSearchParams): Parsed<GroupInput> {
       day: text(form, 'day'),
       time: text(form, 'time'),
       people,
+      ...(capacity === undefined ? {} : { capacity }),
       coordinator: text(form, 'coordinator'),
       coLeader: text(form, 'coLeader'),
       coLeaderPhone: phoneText(form, 'coLeaderPhone'),

@@ -7,7 +7,7 @@ import { useAppNav } from '../../shared/nav';
 import { Button, Drawer, DrawerSection, KeyValue, LoadingState, GroupMarks, Meter, Pill, StrangeBadge, StrangeBanner, type KvRow } from '../../shared/ui';
 import { LinkButton } from '../create';
 import { StrangeSection } from '../strange';
-import { CoordinatorActions, DeletePersonSection, GroupActions, MembersSection, PersonActions, PersonGroups } from '../manage';
+import { CoordinatorActions, DeletePersonSection, GroupActions, GroupHeaderTools, MembersSection, PersonActions, PersonGroups } from '../manage';
 import styles from './Reference.module.css';
 
 const noValue = <span className={styles.note}>{ru.reference.notSpecified}</span>;
@@ -103,6 +103,8 @@ export function GroupCard({ g, onClose }: { g: GroupItem; onClose: () => void })
         </>
       }
       subtitle={[g.leader, g.district, g.metro].filter(Boolean).join(' · ')}
+      tools={<GroupHeaderTools key={g.id} g={g} />}
+      toolsBelow
       onClose={onClose}
     >
       <DrawerSection title={ru.reference.health}>

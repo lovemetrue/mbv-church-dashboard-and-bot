@@ -196,6 +196,20 @@ describe('утверждение через HTTP на живой базе', () =
     } finally { app.server.close(); }
   });
 
+  test('свободные места считаются от вместимости самой группы: в группу на 5 при пяти участниках — «нет мест»', async () => {
+    const { g, r } = await seed();
+    await db.query(`UPDATE groups SET capacity = 5, people = 5 WHERE id = $1`, [g]);
+    const app = await start();
+    try {
+      const groups = await (await fetch(`${app.base}/api/v1/groups`, { headers: { cookie: app.cookie } })).json() as { items: { id: number }[] };
+      const group = groups.items.find((x) => x.id === g);
+      expect(group).toMatchObject({ capacity: 5, capacityOwn: 5, free: 0 });
+      const res = await app.post(`${r}/approve`, { groupId: g });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ error: 'group_full' });
+    } finally { app.server.close(); }
+  });
+
   test('повторное утверждение той же заявки — 409 «уже обработали»', async () => {
     const { g, r } = await seed();
     const app = await start();

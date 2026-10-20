@@ -21,7 +21,7 @@ const fail = (error: 'bad_request' | 'not_found', message: string): ActionOutcom
 const GROUP_EDITABLE = [
   'leader', 'district', 'format', 'status', 'people', 'day', 'time', 'composition', 'coordinator', 'coLeader',
   'feedbackAt', 'openedOn', 'comment', 'age', 'metro', 'openToNew', 'training', 'no', 'checked', 'doNotRefer',
-  'phone', 'address', 'coLeaderPhone', 'campaignRegistered',
+  'phone', 'address', 'coLeaderPhone', 'campaignRegistered', 'capacity',
 ] as const;
 const GROUP_FLAGS = ['checked', 'doNotRefer', 'campaignRegistered'] as const;
 
@@ -37,6 +37,8 @@ function groupToFields(g: GroupRow): URLSearchParams {
   put('coordinator', g.coordinator); put('coLeader', g.co_leader); put('feedbackAt', g.feedback_at); put('openedOn', g.opened_on);
   put('comment', g.comment); put('age', g.age); put('metro', g.metro); put('openToNew', g.open_to_new);
   put('training', g.training); put('no', g.no);
+  // Вместимость передаём всегда, даже пустую: так непосланная остаётся как в базе, а посланная пустой — очищается.
+  f.set('capacity', g.capacity === null ? '' : String(g.capacity));
   if (g.checked) f.set('checked', '1');
   if (g.campaign_registered) f.set('campaignRegistered', '1');
   return f;
@@ -64,6 +66,8 @@ export function createManager(deps: {
       for (const [k, v] of given) {
         if (k === 'composition') { merged.delete(k); for (const c of splitComposition(v)) merged.append(k, c); continue; }
         if ((GROUP_FLAGS as readonly string[]).includes(k)) { if (v === '1' || v === 'true') merged.set(k, '1'); else merged.delete(k); continue; }
+        // У вместимости пустое значение — «вернуть общее», а не «нет поля» (нет поля значит «не менять», см. parseGroupForm).
+        if (k === 'capacity') { merged.set(k, v.trim()); continue; }
         if (v.trim() === '') merged.delete(k); else merged.set(k, v);
       }
       const parsed = parseGroupForm(merged);

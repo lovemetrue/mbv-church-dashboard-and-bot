@@ -181,7 +181,7 @@ describe('чат помощника: вопросы по базе', () => {
     const system = (llm.calls[0]![0] as { content: string }).content;
     expect(system).toMatch(/только читаете/);
     expect(system).toMatch(/настоящих имён у вас нет/);
-    expect(system).toContain('Вместимость группы по умолчанию 10');
+    expect(system).toContain('COALESCE(capacity, 10)');
     expect(system).toContain('placements');
   });
 

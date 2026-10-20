@@ -531,6 +531,7 @@ export function buildGroups(): GroupsView {
     status: g.status,
     acceptsNew: g.acceptsNew,
     openToNew: g.acceptsNew ? 'ДА' : 'НЕТ',
+    capacityOwn: g.capacity,
     training: null,
     checked: g.verifiedDaysAgo !== null,
     campaignRegistered: false,

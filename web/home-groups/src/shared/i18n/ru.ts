@@ -1441,6 +1441,7 @@ export const ru = {
       day: 'День',
       time: 'Время',
       people: 'Сколько человек',
+      capacity: 'Мест в группе',
       coordinator: 'Координатор',
       comment: 'Комментарий',
       address: 'Адрес',
@@ -1454,6 +1455,8 @@ export const ru = {
       checked: 'Данные проверены',
       campaignRegistered: '«40 дней» — зарегистрирован в кампании',
     },
+    /** Подпись под «Мест в группе»: пустое поле — общее значение. */
+    capacityHint: (n: number) => `Пусто — ${n}, как у всех групп по умолчанию. Свободные места и «нет мест» считаются от этого числа.`,
     defaultSource: 'Дашборд',
     errors: {
       forbidden: 'Нет прав создавать записи с этого входа.',
@@ -1528,6 +1531,7 @@ export const ru = {
     metaFailed: 'Не удалось загрузить списки для формы.',
     group: {
       editAria: (label: string) => `Править группу ${label}`,
+      noPhone: 'Телефона ведущего нет',
       deleteAria: (label: string) => `Удалить группу ${label}`,
       editTitle: (label: string) => `Правка группы ${label}`,
       deleteTitle: (label: string) => `Удалить группу ${label}?`,
@@ -1548,6 +1552,7 @@ export const ru = {
         format: 'Формат группы',
         status: 'Статус',
         people: 'Сколько человек',
+        capacity: 'Мест в группе',
         day: 'День',
         time: 'Время',
         composition: 'Состав',

@@ -350,7 +350,8 @@ export function buildViewsWithPlan(
       coords: coordsOf(g.address),
       // Утверждённых сервисом после обратной связи ведущий в число ещё не внёс — добавляем сами.
       people: effectivePeople(g.people, input.placedNew?.get(g.id) ?? 0),
-      capacity: defaultCapacity,
+      // Своя вместимость группы; не задана — общая (HG_DEFAULT_CAPACITY).
+      capacity: g.capacity ?? defaultCapacity,
       status: g.status,
       // Пусто = принимает: «НЕТ» ставят явно, когда группа полна или не хочет новых.
       acceptsNew: g.open_to_new?.trim().toUpperCase() !== 'НЕТ',
@@ -768,6 +769,7 @@ export function buildViewsWithPlan(
       status: g.status,
       acceptsNew: p.acceptsNew,
       openToNew: nonBlank(g.open_to_new),
+      capacityOwn: g.capacity,
       training: nonBlank(g.training),
       checked: g.checked === true,
       campaignRegistered: g.campaign_registered,

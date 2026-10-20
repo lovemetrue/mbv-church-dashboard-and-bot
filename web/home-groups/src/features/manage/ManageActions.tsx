@@ -3,6 +3,7 @@ import type { CoordinatorItem, GroupItem } from '@contracts';
 import { groupLabel } from '../../entities/format';
 import { ru } from '../../shared/i18n/ru';
 import { Button, DrawerSection } from '../../shared/ui';
+import { IconButton, Pencil, PhoneTools } from '../contact/ContactTools';
 import { DeleteRecord } from './DeleteRecord';
 import { CoordinatorEditDialog, GroupEditDialog } from './EditDialogs';
 import styles from './Manage.module.css';
@@ -56,22 +57,52 @@ function Actions({
   );
 }
 
-/** Действия в карточке группы. После удаления карточка закрывается: записи в списке больше нет. */
+/**
+ * Значки в шапке карточки группы, как у заявки: правка (карандаш), затем звонок, письмо и копирование номера ведущего.
+ * Подтверждение «Изменения сохранены» — здесь же: окно после сохранения закрывается, а результат нельзя оставлять только
+ * в данных на экране.
+ */
+export function GroupHeaderTools({ g }: { g: GroupItem }) {
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState(false);
+  return (
+    <>
+      <IconButton
+        label={m.group.editAria(groupLabel(g))}
+        onClick={() => {
+          setSaved(false);
+          setEditing(true);
+        }}
+      >
+        <Pencil />
+      </IconButton>
+      <PhoneTools phone={g.phone} name={g.leader} noPhone={m.group.noPhone} />
+      {saved && (
+        <span className={styles.saved} role="status">
+          {m.saved}
+        </span>
+      )}
+      {editing && (
+        <GroupEditDialog
+          g={g}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            setSaved(true);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+/** «Удалить» в карточке группы (правка — карандашом в шапке). После удаления карточка закрывается: записи в списке больше нет. */
 export function GroupActions({ g, onDeleted }: { g: GroupItem; onDeleted: () => void }) {
   const label = groupLabel(g);
   return (
-    <Actions
-      editAria={m.group.editAria(label)}
-      edit={(close, saved) => <GroupEditDialog g={g} onClose={close} onSaved={saved} />}
-      remove={
-        <DeleteRecord
-          ariaLabel={m.group.deleteAria(label)}
-          title={m.group.deleteTitle(label)}
-          path={`groups/${g.id}/delete`}
-          onDeleted={onDeleted}
-        />
-      }
-    />
+    <div className={styles.actions}>
+      <DeleteRecord ariaLabel={m.group.deleteAria(label)} title={m.group.deleteTitle(label)} path={`groups/${g.id}/delete`} onDeleted={onDeleted} />
+    </div>
   );
 }
 

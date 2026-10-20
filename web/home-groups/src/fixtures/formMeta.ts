@@ -30,6 +30,7 @@ export function buildFormMeta(): FormMeta {
       { value: 'member', label: 'уже состоит в Малой группе' },
       { value: 'leader', label: 'ведёт Малую группу' },
     ],
+    defaultCapacity: 10,
     openToNew: [
       { value: 'ДА', label: 'Да' },
       { value: 'НЕТ', label: 'Нет' },

@@ -39,6 +39,22 @@ describe('форма группы: соведущий и состав', () => {
   });
 });
 
+describe('форма группы: мест в группе', () => {
+  test('не прислали — не менять (старый дашборд поля не знает), пусто — по умолчанию, число — своё', () => {
+    const absent = parseGroupForm(form(GROUP_MIN));
+    expect(absent.ok && absent.value.capacity).toBeUndefined();
+    const empty = parseGroupForm(form({ ...GROUP_MIN, capacity: '' }));
+    expect(empty.ok && empty.value.capacity).toBeNull();
+    const own = parseGroupForm(form({ ...GROUP_MIN, capacity: '12' }));
+    expect(own.ok && own.value.capacity).toBe(12);
+  });
+
+  test.each(['0', '201', '5.5', 'много'])('мест «%s» отклоняется', (capacity) => {
+    const r = parseGroupForm(form({ ...GROUP_MIN, capacity }));
+    expect(r).toMatchObject({ ok: false, error: expect.stringContaining('Мест в группе') });
+  });
+});
+
 describe('форма группы', () => {
   test('минимальный набор проходит', () => {
     const r = parseGroupForm(form(GROUP_MIN));

@@ -44,7 +44,7 @@ SELECT id, user_id, group_id, type, status, origin, age, place, source, ministry
 CREATE VIEW assistant.groups AS
 SELECT id, 'ДГ-' || lpad(id::text, 4, '0') AS code, no, district, metro, status, open_to_new,
        age, composition, day, "time", people, format, checked, campaign_registered,
-       do_not_refer, source
+       do_not_refer, source, capacity
   FROM groups
  WHERE archived_at IS NULL;
 

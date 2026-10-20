@@ -16,7 +16,9 @@ const CENTER: [number, number] = [59.93, 30.31];
 
 type Kind = 'active' | 'potential';
 /** «Закрыта» на карту не идёт; «Потенциальная» — отдельный переключатель, всё остальное (в том числе «Кампания» и «Недвижимость») — «Действующие». */
-const kindOf = (g: GroupItem): Kind | null => (g.status === 'Закрыта' ? null : g.status === 'Потенциальная' ? 'potential' : 'active');
+/** Закрытой и аннулированной группе на карте не место: туда не направляют. */
+const OFF_MAP: ReadonlySet<string> = new Set(['Закрыта', 'Аннулирована']);
+const kindOf = (g: GroupItem): Kind | null => (OFF_MAP.has(g.status) ? null : g.status === 'Потенциальная' ? 'potential' : 'active');
 const label = (g: GroupItem): string => `${g.code}, ${g.leader}`;
 
 /**

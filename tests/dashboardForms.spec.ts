@@ -99,6 +99,7 @@ describe('форма группы', () => {
 
   test('закрыть группу через форму можно, хотя бот такой статус не предлагает', () => {
     const r = parseGroupForm(form({ ...GROUP_MIN, status: 'Закрыта' }));
+    expect(parseGroupForm(form({ ...GROUP_MIN, status: 'Аннулирована' }))).toMatchObject({ ok: true, value: { status: 'Аннулирована' } });
     expect(r.ok).toBe(true);
   });
 

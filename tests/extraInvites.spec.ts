@@ -42,7 +42,18 @@ describe('досылка новых вопросов', () => {
     await seedUser(db, { id: '4', mdgStatus: 'home' });
     await seedUser(db, { id: '5', mdgStatus: 'member' });
 
-    expect(await createExtraInvites(deps).preview()).toEqual({ join: 2, lead: 2, total: 4, setting: 'all', off: false });
+    expect(await createExtraInvites(deps).preview()).toEqual({ join: 2, lead: 2, leaders: 0, total: 4, setting: 'all', off: false });
+  });
+
+  test('ведущим — отдельная досылка со своим текстом: ищущих группу она не задевает', async () => {
+    await seedUser(db, { id: '1', mdgStatus: 'leader' });
+    await seedUser(db, { id: '2', mdgStatus: 'join' });
+    const invites = createExtraInvites(deps);
+    expect(await invites.preview('leaders')).toMatchObject({ join: 1, leaders: 1, total: 1 });
+    expect(await invites.send(1, 'leaders')).toMatchObject({ status: 'sent', sent: 1 });
+    expect(sentTo('1').map((m) => m.text)).toEqual([T.followUpInviteLeader]);
+    expect(sentTo('2')).toEqual([]);
+    expect(await invites.preview('seekers')).toMatchObject({ total: 1 });
   });
 
   test('при выключенных вопросах получателей нет и это видно отдельным признаком', async () => {

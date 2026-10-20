@@ -765,18 +765,23 @@ export interface ExtraInvitesView {
   join: number;
   /** Готовы открыть группу или дать дом. */
   lead: number;
-  /** Сколько человек получит приглашение при текущей настройке «кому задавать». */
+  /** Уже ведут группу (ответили боту «веду»): им отдельная досылка про время и место группы. */
+  leaders: number;
+  /** Сколько получат приглашение ищущие группу и будущие ведущие (join + lead) при текущей настройке «кому задавать». */
   total: number;
   /** Новые вопросы выключены: слать некому. */
   off: boolean;
   /** Тексты приглашений, как их увидят люди. */
   textJoin: string;
   textLead: string;
+  textLeader: string;
 }
 
 export interface SendExtraInvitesBody {
   /** Число получателей, которое человек видел и подтвердил: если оно успело измениться, рассылка не уходит. */
   expectedTotal: number;
+  /** Кому: seekers — ищущим группу и будущим ведущим (по умолчанию), leaders — тем, кто уже ведёт группу. */
+  audience?: 'seekers' | 'leaders';
 }
 
 export interface SendExtraInvitesOk {
@@ -1101,6 +1106,11 @@ export interface GroupItem extends GroupBrief {
    * null — ведущий записан только именем. По ключу в «Людях» находится его регистрация.
    */
   leaderKey: string | null;
+  /**
+   * Что ведущий ответил боту на досылку: когда собирается группа и где встречи. Сам в группу не переносится —
+   * координатор сверяет и правит. null — ведущий не найден или ничего не ответил.
+   */
+  leaderAnswer: { schedule: string | null; address: string | null } | null;
   /** Кого план направляет в эту группу сейчас. */
   plannedRequests: { id: number; fio: string; ageLabel: string | null; place: string | null; confidence: number }[];
 }

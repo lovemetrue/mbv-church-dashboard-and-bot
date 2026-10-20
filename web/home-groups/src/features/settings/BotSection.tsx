@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import type { SettingsBotView } from '@contracts';
+import type { SendExtraInvitesBody, SettingsBotView } from '@contracts';
 import { FORMS, plural } from '../../entities/plural';
 import { ru } from '../../shared/i18n/ru';
 import { Button, Modal } from '../../shared/ui';
@@ -14,6 +14,9 @@ const t = ru.settings.bot;
 
 type Mode = SettingsBotView['extraQuestions']['mode'];
 const MODES: readonly Mode[] = ['off', 'all', 'list'];
+
+type Audience = NonNullable<SendExtraInvitesBody['audience']>;
+const AUDIENCES: readonly Audience[] = ['seekers', 'leaders'];
 
 interface Draft {
   mode: Mode;
@@ -149,23 +152,29 @@ function ExtraQuestionsForm({
  */
 function ExtraInvites({ invites, unsaved }: { invites: SettingsBotView['invites']; unsaved: boolean }) {
   const i = t.invites;
+  const audienceId = useId();
+  // Ведущим — отдельная досылка со своим текстом: у них спрашиваем время и адрес группы, а не пожелания.
+  const [audience, setAudience] = useState<Audience>('seekers');
+  const total = audience === 'leaders' ? invites.leaders : invites.total;
   const actions = useBotActions();
   const titleId = useId();
   const unsavedHintId = useId();
   /** Числа на момент открытия окна: отправляем именно их, даже если обзор успел перечитаться. */
-  const [confirming, setConfirming] = useState<Pick<SettingsBotView['invites'], 'total' | 'join' | 'lead'> | null>(null);
+  const [confirming, setConfirming] = useState<
+    (Pick<SettingsBotView['invites'], 'total' | 'join' | 'lead'> & { audience: Audience }) | null
+  >(null);
   const [pending, setPending] = useState(false);
   const inFlight = useRef(false);
   const [notice, setNotice] = useState<Notice | null>(null);
 
-  async function send(expectedTotal: number) {
+  async function send(expectedTotal: number, to: Audience) {
     // Два нажатия подряд могут прийти до перерисовки: одного pending мало.
     if (inFlight.current) return;
     inFlight.current = true;
     setPending(true);
     setNotice(null);
     try {
-      const r = await actions.sendExtraQuestions({ expectedTotal });
+      const r = await actions.sendExtraQuestions({ expectedTotal, audience: to });
       setNotice({ kind: 'ok', text: i.done(r.sent, r.failed, r.blocked) });
     } catch (e) {
       setNotice({ kind: 'error', text: inviteErrorText(e) });
@@ -175,11 +184,15 @@ function ExtraInvites({ invites, unsaved }: { invites: SettingsBotView['invites'
     }
   }
 
-  const reason = !invites.available ? i.notConnected : invites.off ? i.off : invites.total === 0 ? i.nobody : null;
-  const texts = [
-    { title: i.textJoinTitle, text: invites.textJoin },
-    { title: i.textLeadTitle, text: invites.textLead },
-  ].filter((x) => x.text.trim() !== '');
+  const reason = !invites.available ? i.notConnected : invites.off ? i.off : total === 0 ? i.nobody : null;
+  const texts = (
+    audience === 'leaders'
+      ? [{ title: i.textLeaderTitle, text: invites.textLeader }]
+      : [
+          { title: i.textJoinTitle, text: invites.textJoin },
+          { title: i.textLeadTitle, text: invites.textLead },
+        ]
+  ).filter((x) => x.text.trim() !== '');
 
   return (
     <div className={styles.block} role="group" aria-labelledby={titleId}>
@@ -188,7 +201,26 @@ function ExtraInvites({ invites, unsaved }: { invites: SettingsBotView['invites'
       </h3>
       <p>{i.intro}</p>
 
-      {invites.available && !invites.off && (
+      <span id={audienceId} className={styles.fieldLabel}>
+        {i.audienceLabel}
+      </span>
+      <div role="radiogroup" aria-labelledby={audienceId} className={styles.radios}>
+        {AUDIENCES.map((a) => (
+          <label key={a} className={styles.radio}>
+            <input type="radio" name={audienceId} checked={audience === a} onChange={() => setAudience(a)} />
+            <span>{i.audiences[a]}</span>
+          </label>
+        ))}
+      </div>
+
+      {invites.available && !invites.off && audience === 'leaders' && (
+        <ul className={styles.recipients}>
+          <li>
+            {i.leadersLabel}: <b>{invites.leaders}</b>
+          </li>
+        </ul>
+      )}
+      {invites.available && !invites.off && audience === 'seekers' && (
         <ul className={styles.recipients}>
           <li>
             {i.joinLabel}: <b>{invites.join}</b>
@@ -229,9 +261,9 @@ function ExtraInvites({ invites, unsaved }: { invites: SettingsBotView['invites'
               variant="primary"
               disabled={pending || unsaved}
               aria-describedby={unsaved ? unsavedHintId : undefined}
-              onClick={() => setConfirming({ total: invites.total, join: invites.join, lead: invites.lead })}
+              onClick={() => setConfirming({ total, join: invites.join, lead: invites.lead, audience })}
             >
-              {pending ? i.sending : i.send(invites.total)}
+              {pending ? i.sending : i.send(total)}
             </Button>
           </div>
           {unsaved && (
@@ -244,17 +276,21 @@ function ExtraInvites({ invites, unsaved }: { invites: SettingsBotView['invites'
 
       {confirming && (
         <Modal title={i.confirmTitle} onClose={() => setConfirming(null)}>
-          <p>{i.confirmQuestion(plural(confirming.total, FORMS.person), confirming.join, confirming.lead)}</p>
+          <p>
+            {confirming.audience === 'leaders'
+              ? i.confirmLeaders(plural(confirming.total, FORMS.person))
+              : i.confirmQuestion(plural(confirming.total, FORMS.person), confirming.join, confirming.lead)}
+          </p>
           <div className={styles.dialogFoot}>
             <Button onClick={() => setConfirming(null)}>{i.cancel}</Button>
             <Button
               variant="primary"
               disabled={pending}
               onClick={() => {
-                const { total } = confirming;
+                const { total: expected, audience: to } = confirming;
                 // Окно закрываем сразу: ход и итог видны в блоке, а не под окном.
                 setConfirming(null);
-                void send(total);
+                void send(expected, to);
               }}
             >
               {i.confirmYes}

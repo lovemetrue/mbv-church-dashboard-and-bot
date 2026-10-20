@@ -754,6 +754,24 @@ export function buildViewsWithPlan(
   const memberOrder = (m: GroupMember): number => (m.kind === 'placed' ? 0 : 1);
   const groupCodesOf = (key: string): string[] => [...(groupsOfPerson.get(key) ?? [])].sort((x, y) => x - y).map(groupCode);
 
+  // ── ответ ведущего боту ───────────────────────────────────────────────────
+  // Ведущему досылаем вопросы «когда собирается группа» и «где встречи». Ответ в карточку группы сам не переносится:
+  // координатор сверяет его и правит группу. Ведущего находим по связи с регистрацией, а без неё — по телефону группы,
+  // но только среди ответивших «веду группу»: у ищущего тот же вопрос про время значит его пожелание, а не время группы.
+  const participantById = new Map(input.participants.map((u) => [u.id, u]));
+  const leaderByPhone = new Map<string, RegisteredParticipant>();
+  for (const u of input.participants) {
+    const ident = u.mdg_status === 'leader' ? phoneIdent(u.phone) : null;
+    if (ident !== null) leaderByPhone.set(ident, u);
+  }
+  const leaderAnswerOf = (g: DashboardGroup): GroupItem['leaderAnswer'] => {
+    const byPhone = [g.phone, ...g.phones].map(phoneIdent).find((i) => i !== null && leaderByPhone.has(i));
+    const u = (g.leader_user_id ? participantById.get(g.leader_user_id) : undefined) ?? (byPhone ? leaderByPhone.get(byPhone) : undefined);
+    const schedule = nonBlank(u?.schedule);
+    const address = nonBlank(u?.address);
+    return schedule || address ? { schedule, address } : null;
+  };
+
   const groupItems: GroupItem[] = input.groups.map((g) => {
     const p = planGroupById.get(g.id)!;
     const b = brief(g.id)!;
@@ -784,6 +802,7 @@ export function buildViewsWithPlan(
       coords: coordsOf(g.address),
       placedNew: input.placedNew?.get(g.id) ?? 0,
       leaderKey: g.leader_user_id ? `u${g.leader_user_id}` : null,
+      leaderAnswer: leaderAnswerOf(g),
       plannedRequests: plannedByGroup.get(g.id) ?? [],
       members: [...(membersByGroup.get(g.id) ?? [])].sort((a, b) => memberOrder(a) - memberOrder(b)),
     };

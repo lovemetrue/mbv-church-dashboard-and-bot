@@ -43,4 +43,20 @@ describe('«Справочник → Группы»: ведущий, связа�
     await within(card).findByText('Ведущий связан с регистрацией');
     expect(card).not.toHaveTextContent('u2');
   });
+
+  test('ответ ведущего боту виден строкой «Ответ ведущего»: время и адрес, которые координатор сверит и перенесёт', async () => {
+    const card = await groupCard(1, {
+      groups: () => json(groupsWith(1, { leaderAnswer: { schedule: 'среда, 19:00', address: null } })),
+    });
+    const label = await within(card).findByText('Ответ ведущего боту');
+    const row = label.closest('div')!;
+    expect(row).toHaveTextContent('Когда: среда, 19:00');
+    expect(row).not.toHaveTextContent('Где:');
+  });
+
+  test('без ответа ведущего строки нет', async () => {
+    const card = await groupCard(1);
+    await within(card).findByText('Подтверждена');
+    expect(within(card).queryByText('Ответ ведущего боту')).not.toBeInTheDocument();
+  });
 });

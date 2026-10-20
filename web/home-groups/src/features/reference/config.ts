@@ -29,6 +29,16 @@ export interface EntityConfig<T> {
 
 const yesNo = (v: boolean): string => (v ? ru.reference.yes : ru.reference.no);
 
+/** Типы групп, куда новых людей не направляют: служение и закрытая группа набирают своих. */
+const NOT_FOR_NEW_FORMATS: readonly string[] = ['Служение', 'Приватная (Закрытая)'];
+
+/**
+ * «Принимает новых» в списке — вычисляемое: не служение, не закрытая и не отмечена «Не направлять». Поля «Приём
+ * новых» больше нет: его «НЕТ» перенесено в «Не направлять» (миграция 046), остальное подбору не мешало.
+ */
+export const takesNew = (g: Pick<GroupItem, 'format' | 'doNotRefer'>): boolean =>
+  !g.doNotRefer && !NOT_FOR_NEW_FORMATS.includes(g.format ?? '');
+
 const f = (key: string, extra?: Omit<FieldDef, 'key'>): FieldDef => ({ key, ...extra });
 
 export const groupsConfig: EntityConfig<GroupItem> = {
@@ -51,6 +61,7 @@ export const groupsConfig: EntityConfig<GroupItem> = {
     f('Мест свободно', { kind: 'number' }),
     f('Вместимость', { kind: 'number' }),
     f('Статус', { groupable: true }),
+    f('Данные проверены', { groupable: true }),
     f('Принимает новых', { groupable: true }),
     f('Не направлять', { groupable: true }),
     f('Формат', { groupable: true }),
@@ -62,17 +73,19 @@ export const groupsConfig: EntityConfig<GroupItem> = {
     f('В составе', { kind: 'number' }),
   ],
   columns: [
-    'Код', 'Ведущий', 'Район', 'Возраст', 'Когда', 'Места', 'Статус', 'Здоровье',
+    'Код', 'Ведущий', 'Район', 'Возраст', 'Когда', 'Места', 'Статус', 'Данные проверены', 'Здоровье',
     'Со-ведущий', 'Телефон', 'Метро', 'Адрес', 'День', 'Время', 'Мест свободно', 'Вместимость',
     'Принимает новых', 'Не направлять', 'Формат', 'Состав', 'Координатор', 'Проверена, дн.', 'Комментарий', 'В составе',
   ],
-  defaultColumns: ['Код', 'Ведущий', 'Район', 'Возраст', 'Когда', 'Места', 'Статус', 'Здоровье'],
+  defaultColumns: ['Код', 'Ведущий', 'Район', 'Возраст', 'Когда', 'Места', 'Статус', 'Данные проверены', 'Здоровье'],
   // Закрытые группы нужны редко и только мешают в общем списке; находятся, если снять отбор.
   // «Аннулирована» — группа, которая так и не открылась: мешает так же, как закрытая. Два чипа, а не один «не закрытые»:
   // каждый снимается отдельно, если нужно посмотреть именно закрытые или именно аннулированные.
+  // «Принимает новых» — третий чип: по умолчанию координатор видит группы, куда можно направлять людей.
   defaultFilters: [
     { field: 'Статус', op: 'ne', value: 'Закрыта' },
     { field: 'Статус', op: 'ne', value: 'Аннулирована' },
+    { field: 'Принимает новых', op: 'eq', value: ru.reference.yes },
   ],
   presets: [
     {
@@ -111,7 +124,8 @@ export const groupsConfig: EntityConfig<GroupItem> = {
     'Мест свободно': g.free,
     Вместимость: g.capacity,
     Статус: g.status,
-    'Принимает новых': yesNo(g.acceptsNew),
+    'Данные проверены': yesNo(g.checked),
+    'Принимает новых': yesNo(takesNew(g)),
     'Не направлять': yesNo(g.doNotRefer),
     Формат: g.format,
     Состав: g.composition,

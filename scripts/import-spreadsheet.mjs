@@ -116,12 +116,15 @@ async function main() {
     // В таблице церкви ответственный записан «Имя Фамилия», а в справочнике координаторов — «Фамилия Имя».
     // Приводим к справочнику той же функцией, что и миграция 045, иначе каждый перенос возвращал бы разнобой.
     const { rows: [named] } = await db.query('SELECT normalize_person_names() AS n');
+    // Состав без «Семейная/Служение/Приватная» и «Приём новых: НЕТ» как «Не направлять» — как в миграции 046.
+    const { rows: [fields] } = await db.query('SELECT normalize_group_fields() AS n');
 
     await db.query('COMMIT');
 
     console.log(`Удалено ранее импортированного: групп ${removed.groups}, заявок ${removed.requests}, координаторов ${removed.coordinators}`);
     console.log(`Вставлено: групп ${groups.length - skipped}, заявок ${requests.length}, координаторов ${coordinators.length}`);
     console.log(`Имён ответственных и координаторов приведено к справочнику: ${named.n}`);
+    console.log(`Групп с поправленным составом или «Приёмом новых»: ${fields.n}`);
     if (skipped > 0) {
       console.log(`Пропущено групп, которые ведутся в дашборде: ${skipped}`);
     }

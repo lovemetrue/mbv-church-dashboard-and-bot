@@ -369,7 +369,7 @@ describe('«+ Создать»: группа', () => {
     expect(currentSearch().get('rec')).toBe('13');
   });
 
-  test('поля старого дашборда: соведущий, состав галочками, приём новых, обучение, обратная связь и флажки; «№ в реестре» нет', async () => {
+  test('поля старого дашборда: соведущий, состав галочками, обучение, обратная связь и флажки; ни «Приёма новых», ни «№ в реестре» нет', async () => {
     const fetchMock = stubFetchWithFixtures({ me: meOf(null), 'groups/create': () => json({ ok: true, id: 14 }) });
     const user = userEvent.setup();
     renderAt(<App />, REFERENCE);
@@ -380,9 +380,12 @@ describe('«+ Создать»: группа', () => {
     await user.type(within(dialog).getByRole('textbox', { name: 'Со-ведущий' }), 'Анна Петрова');
     await user.type(within(dialog).getByRole('textbox', { name: 'Телефон соведущего' }), '+7 921 000-11-44');
     const composition = within(dialog).getByRole('group', { name: 'Состав' });
-    await user.click(within(composition).getByRole('checkbox', { name: 'Семейная' }));
+    await user.click(within(composition).getByRole('checkbox', { name: 'Ментальная' }));
+    for (const gone of ['Семейная', 'Служение', 'Приватная']) {
+      expect(within(composition).queryByRole('checkbox', { name: gone })).not.toBeInTheDocument();
+    }
     await user.click(within(composition).getByRole('checkbox', { name: 'Мужская' }));
-    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Приём новых' }), 'По требованию');
+    expect(within(dialog).queryByRole('combobox', { name: 'Приём новых' })).not.toBeInTheDocument();
     await user.type(within(dialog).getByRole('textbox', { name: 'Обучение' }), 'Да');
     await user.type(within(dialog).getByLabelText('Дата обратной связи'), '2026-09-10');
     expect(within(dialog).queryByRole('textbox', { name: '№ в реестре' })).not.toBeInTheDocument();
@@ -392,7 +395,7 @@ describe('«+ Создать»: группа', () => {
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
     expect(posts(fetchMock)[0]!.body.fields).toEqual({
       leader: 'Ольга Крылова', district: 'Приморский', format: 'Молодежная', status: 'Функционирует',
-      coLeader: 'Анна Петрова', coLeaderPhone: '+7 921 000-11-44', composition: 'Мужская, Семейная', openToNew: 'По требованию',
+      coLeader: 'Анна Петрова', coLeaderPhone: '+7 921 000-11-44', composition: 'Мужская, Ментальная',
       training: 'Да', feedbackAt: '2026-09-10', checked: '1', campaignRegistered: '1',
     });
   });

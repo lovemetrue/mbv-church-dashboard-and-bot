@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { App } from '../../../app/App';
 import { buildGroups } from '../../../fixtures/build';
 import { currentSearch, renderAt, stubFetchWithFixtures } from '../../../test/render';
-import { groupsConfig, peopleConfig } from '../../reference/config';
+import { groupsConfig, peopleConfig, takesNew } from '../../reference/config';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -13,7 +13,7 @@ const heads = () =>
     .getAllByRole('columnheader')
     .map((h) => h.textContent?.replace(/[▲▼]/g, '').trim());
 const dataRows = () => within(screen.getByRole('table')).getAllByRole('row').filter((r) => r.querySelector('td'));
-const GROUPS_SHOWN = buildGroups().items.filter((g) => g.status !== 'Закрыта').length;
+const GROUPS_SHOWN = buildGroups().items.filter((g) => g.status !== 'Закрыта' && takesNew(g)).length;
 
 async function enableColumn(user: ReturnType<typeof userEvent.setup>, name: string) {
   await user.click(screen.getByRole('button', { name: /^Вид таблицы/ }));

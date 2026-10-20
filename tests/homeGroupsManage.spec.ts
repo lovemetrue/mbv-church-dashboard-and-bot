@@ -39,11 +39,11 @@ describe('правка группы из нового интерфейса', () 
 
   test('состав из нескольких значений не теряется при правке другого поля и правится списком через запятую', async () => {
     const id = await group();
-    await db.query(`UPDATE groups SET composition = 'Смешанная, Семейная' WHERE id=$1`, [id]);
+    await db.query(`UPDATE groups SET composition = 'Смешанная, Ментальная' WHERE id=$1`, [id]);
     await manager().updateGroup(id, { fields: { comment: 'x' } }, 'a');
-    expect((await g(id)).composition).toBe('Смешанная, Семейная');
-    await manager().updateGroup(id, { fields: { composition: 'Мужская, Служение' } }, 'a');
-    expect((await g(id)).composition).toBe('Мужская, Служение');
+    expect((await g(id)).composition).toBe('Смешанная, Ментальная');
+    await manager().updateGroup(id, { fields: { composition: 'Мужская, Женская' } }, 'a');
+    expect((await g(id)).composition).toBe('Мужская, Женская');
     await manager().updateGroup(id, { fields: { composition: '' } }, 'a');
     expect((await g(id)).composition).toBeNull();
   });

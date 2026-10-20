@@ -28,7 +28,8 @@ describe('вкладка «Группы»', () => {
 
   test('значки: у новой группы росток, у группы без людей увядший листочек', async () => {
     stubFetchWithFixtures();
-    renderAt(<App />, '/?tab=groups');
+    // Пустая группа в фикстурах отмечена «Не направлять»: явный отбор из адреса заменяет умолчание и показывает её.
+    renderAt(<App />, '/?tab=groups&f=' + encodeURIComponent('Статус:ne:Закрыта'));
     await screen.findByRole('table');
     const items = buildGroups().items;
     expect(items.some((g) => g.isNew)).toBe(true);

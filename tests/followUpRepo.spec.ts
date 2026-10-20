@@ -39,6 +39,14 @@ describe('кому досылать вопросы', () => {
     expect(await ids()).toEqual([]);
   });
 
+  test('досылка ведущим — только тем, кто сам ответил боту «веду группу»', async () => {
+    await seedUser(db, { id: '1', mdgStatus: 'leader' });
+    await seedUser(db, { id: '2', mdgStatus: 'join' });
+    await seedUser(db, { id: '3', mdgStatus: 'member' });
+    const leaders = (await users.followUpCandidates(TG, 'leaders')).map((c) => c.platform_user_id);
+    expect(leaders).toEqual(['1']);
+  });
+
   test('не зарегистрированным и заблокировавшим бота — нет', async () => {
     await seedUser(db, { id: '1', mdgStatus: 'join', registered: false });
     await seedUser(db, { id: '2', mdgStatus: 'join', blocked: true });

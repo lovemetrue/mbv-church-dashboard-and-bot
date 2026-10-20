@@ -35,10 +35,10 @@ export function createBotSettings(deps: {
   invites?: ExtraInvites;
 }) {
   async function invitesView(): Promise<SettingsBotView['invites']> {
-    const texts = { textJoin: EXTRA_INVITE_TEXTS.join, textLead: EXTRA_INVITE_TEXTS.lead };
-    if (!deps.invites) return { available: false, join: 0, lead: 0, total: 0, off: false, ...texts };
+    const texts = { textJoin: EXTRA_INVITE_TEXTS.join, textLead: EXTRA_INVITE_TEXTS.lead, textLeader: EXTRA_INVITE_TEXTS.leader };
+    if (!deps.invites) return { available: false, join: 0, lead: 0, leaders: 0, total: 0, off: false, ...texts };
     const p = await deps.invites.preview();
-    return { available: true, join: p.join, lead: p.lead, total: p.total, off: p.off, ...texts };
+    return { available: true, join: p.join, lead: p.lead, leaders: p.leaders, total: p.total, off: p.off, ...texts };
   }
 
   return {
@@ -58,19 +58,23 @@ export function createBotSettings(deps: {
      */
     async sendExtraInvites(body: unknown, actor: string): Promise<SendOutcome> {
       if (!deps.invites) return { ok: false, error: 'unavailable', message: 'В сервисе не подключён ни один бот: отправить приглашения нечем.' };
-      const expected = (typeof body === 'object' && body !== null ? (body as Record<string, unknown>)['expectedTotal'] : undefined);
+      const fields = typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
+      const expected = fields['expectedTotal'];
       if (typeof expected !== 'number' || !Number.isInteger(expected) || expected < 0) return refuse('Нужно подтвердить число получателей.');
-      const before = await deps.invites.preview();
+      // Кому в этот раз: по умолчанию — ищущим группу и будущим ведущим (как раньше), «leaders» — тем, кто уже ведёт.
+      const audience = fields['audience'] ?? 'seekers';
+      if (audience !== 'seekers' && audience !== 'leaders') return refuse('Выберите, кому отправить: ищущим группу или ведущим.');
+      const before = await deps.invites.preview(audience);
       if (before.off) return refuse('Новые вопросы выключены: выберите «Всем» или «Только этим людям» и сохраните.');
       if (before.total === 0) return refuse('Некому отправлять: все, кому можно написать, уже получили приглашение или ответили.');
-      const result = await deps.invites.send(expected);
+      const result = await deps.invites.send(expected, audience);
       if (result.status === 'changed') {
         return { ok: false, error: 'conflict', message: `Список изменился: теперь получателей ${result.actual}, а вы подтверждали ${expected}. Обновите и подтвердите ещё раз.` };
       }
       if (result.status === 'none') return refuse('Некому отправлять: приглашения уже разосланы или все ответили.');
       // В журнале числа; кому ушло — это люди, их в журнал не кладём.
       await deps.audit.write(actor, 'settings.extra_invites', 'settings', null, {
-        join: before.join, lead: before.lead, sent: result.sent, failed: result.failed, blocked: result.blocked,
+        audience, join: before.join, lead: before.lead, leaders: before.leaders, sent: result.sent, failed: result.failed, blocked: result.blocked,
       });
       return { ok: true, sent: result.sent, failed: result.failed, blocked: result.blocked };
     },

@@ -23,6 +23,8 @@ const invites = (extra: Partial<ExtraInvitesView> = {}): ExtraInvitesView => ({
   off: false,
   textJoin: 'Текст для тех, кто ищет группу.',
   textLead: 'Текст для тех, кто готов открыть.',
+  leaders: 3,
+  textLeader: 'Текст для ведущих.',
   ...extra,
 });
 
@@ -397,6 +399,36 @@ describe('«Настройки»: бот — дослать вопросы те�
     expect(sendBtn(b)).toBeEnabled();
   });
 
+  test('«Кому отправить: ведущим групп» — своё число, свой текст и в запросе аудитория ведущих', async () => {
+    const { fetchMock } = openBot({ 'settings/bot': botServer().get, [SEND]: () => json({ ok: true, sent: 3, failed: 0, blocked: 0 }) });
+    const user = userEvent.setup();
+    const b = await block();
+    const g = box(b);
+    expect(within(g).getByRole('radio', { name: 'Ищущим группу и готовым открыть' })).toBeChecked();
+    expect(within(g).queryByText('Текст для ведущих.')).not.toBeInTheDocument();
+    await user.click(within(g).getByRole('radio', { name: 'Ведущим групп' }));
+    expect(g).toHaveTextContent('Ведут группу: 3');
+    expect(g).not.toHaveTextContent('Хотят в группу');
+    expect(within(g).getByText('Текст для ведущих.')).toBeInTheDocument();
+    expect(within(g).queryByText('Текст для тех, кто ищет группу.')).not.toBeInTheDocument();
+    expect(sendBtn(b)).toHaveAccessibleName('Отправить доп. вопросы (3)');
+    const d = await ask(user, b);
+    expect(d).toHaveTextContent('Сообщение с двумя вопросами получат 3 человека, которые ведут группу. Каждый получит его один раз. Отправить?');
+    await user.click(yes());
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect(posts(fetchMock)[0]).toEqual({ path: SEND, body: { expectedTotal: 3, audience: 'leaders' } });
+  });
+
+  test('ведущим некому отправлять — пояснение вместо кнопки, хотя ищущим есть кому', async () => {
+    openBot({ 'settings/bot': botServer(view({}, { leaders: 0 })).get });
+    const user = userEvent.setup();
+    const b = await block();
+    expect(sendBtn(b)).toBeEnabled();
+    await user.click(within(box(b)).getByRole('radio', { name: 'Ведущим групп' }));
+    expect(box(b)).toHaveTextContent('Некому отправлять: все, кому можно написать, уже получили вопросы или ответили.');
+    noSendBtn(b);
+  });
+
   test('«Да, отправить» шлёт ровно то число, которое человек видел в окне, даже если обзор успел измениться', async () => {
     const server = botServer();
     const { fetchMock, client } = openBot({
@@ -415,7 +447,7 @@ describe('«Настройки»: бот — дослать вопросы те�
     expect(screen.getByRole('dialog')).toHaveTextContent(QUESTION);
     await user.click(yes());
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
-    expect(posts(fetchMock)[0]).toEqual({ path: SEND, body: { expectedTotal: 6 } });
+    expect(posts(fetchMock)[0]).toEqual({ path: SEND, body: { expectedTotal: 6, audience: 'seekers' } });
   });
 
   test('двойное нажатие «Да, отправить» шлёт один запрос, а пока идёт отправка кнопка неактивна', async () => {

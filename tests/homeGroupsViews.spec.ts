@@ -1246,6 +1246,28 @@ describe('остальные обращения: суть и разбор по �
     expect(views.groups.items.find((g) => g.id === 5)!.leaderKey).toBe('u12');
     expect(views.groups.items.find((g) => g.id === 6)!.leaderKey).toBeNull();
   });
+
+  test('ответ ведущего боту (время и адрес) виден в карточке группы: по связи с регистрацией или по телефону', () => {
+    const { views } = build({
+      groups: [
+        group({ id: 5, leader_user_id: 12 }),
+        group({ id: 6, phone: '+7 (921) 000-11-22' }),
+        group({ id: 7, phone: '79210003344' }),
+        group({ id: 8 }),
+      ],
+      participants: [
+        participant({ id: 12, mdg_status: 'leader', schedule: 'среда, 19:00', address: 'ул. Рылеева, 32' }),
+        participant({ id: 13, mdg_status: 'leader', phone: '89210001122', schedule: null, address: 'Невский, 1' }),
+        // Тот же телефон, но не ведущий: его «удобное время» — пожелание ищущего, а не время группы.
+        participant({ id: 14, mdg_status: 'join', phone: '79210003344', schedule: 'вторник' }),
+      ],
+    });
+    const answer = (id: number) => views.groups.items.find((g) => g.id === id)!.leaderAnswer;
+    expect(answer(5)).toEqual({ schedule: 'среда, 19:00', address: 'ул. Рылеева, 32' });
+    expect(answer(6)).toEqual({ schedule: null, address: 'Невский, 1' });
+    expect(answer(7)).toBeNull();
+    expect(answer(8)).toBeNull();
+  });
 });
 
 describe('остальные обращения', () => {

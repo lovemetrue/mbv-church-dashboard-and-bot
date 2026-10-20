@@ -73,6 +73,9 @@ export interface ManualRegistrationInput {
   address?: string;
 }
 
+/** Кому досылать два вопроса: ищущим группу (и будущим ведущим) или тем, кто уже ведёт группу. */
+export type FollowUpAudience = 'seekers' | 'leaders';
+
 /** Строка списка регистраций для дашборда: номер, ответы анкеты и статус выдачи набора. */
 export interface RegisteredParticipant {
   id: number;
@@ -338,17 +341,19 @@ export class UsersRepo {
    * группу», «готов открыть» или «дам дом», которые ещё не отвечали и не получали приглашение.
    * Кому из них показывать вопросы по настройке EXTRA_QUESTIONS, решает вызывающий код.
    */
-  async followUpCandidates(platforms: PlatformName[]): Promise<FollowUpCandidate[]> {
+  async followUpCandidates(platforms: PlatformName[], audience: FollowUpAudience = 'seekers'): Promise<FollowUpCandidate[]> {
+    // seekers — ищут группу или откроют её; leaders — сами ответили «веду группу»: у них спрашиваем про их группу.
+    const statuses = audience === 'leaders' ? ['leader'] : ['join', 'open', 'home'];
     const { rows } = await this.db.query<FollowUpCandidate>(
       `SELECT id, platform, platform_user_id, mdg_status
          FROM users
         WHERE platform = ANY($1) AND registration_no IS NOT NULL AND blocked_at IS NULL
-          AND mdg_status IN ('join', 'open', 'home')
+          AND mdg_status = ANY($2)
           AND schedule_raw IS NULL AND address_raw IS NULL AND extra_invited_at IS NULL
           -- Участник, которого заводил служитель, чата с ботом не имеет: писать некуда.
           AND chat_id <> ''
         ORDER BY id`,
-      [platforms],
+      [platforms, statuses],
     );
     return rows;
   }

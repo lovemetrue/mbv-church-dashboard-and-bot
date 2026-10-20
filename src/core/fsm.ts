@@ -233,6 +233,8 @@ const askAge = (draft: Draft, effects: Effect[] = []): FsmResult =>
 const askSchedule = (draft: Draft, effects: Effect[] = []): FsmResult => {
   const join = draft.mdgStatus === 'join';
   // В досылке «необязательно» и «Пропустить» нет: человек сам нажал «Ответить».
+  // Ведущего спрашиваем про его группу, а не про него самого (вопросы ему приходят только в досылке).
+  if (draft.followUp && draft.mdgStatus === 'leader') return stay('await_schedule', draft, [msg(T.askScheduleLeaderFollowUp)], effects);
   return draft.followUp
     ? stay('await_schedule', draft, [msg(join ? T.askScheduleJoinFollowUp : T.askScheduleOpenFollowUp)], effects)
     : stay('await_schedule', draft, [msg(join ? T.askScheduleJoin : T.askScheduleOpen, skipKeyboard())], effects);
@@ -240,6 +242,7 @@ const askSchedule = (draft: Draft, effects: Effect[] = []): FsmResult => {
 
 const askAddress = (draft: Draft, effects: Effect[] = []): FsmResult => {
   const join = draft.mdgStatus === 'join';
+  if (draft.followUp && draft.mdgStatus === 'leader') return stay('await_address', draft, [msg(T.askAddressLeaderFollowUp)], effects);
   return draft.followUp
     ? stay('await_address', draft, [msg(join ? T.askAddressJoinFollowUp : T.askAddressOpenFollowUp)], effects)
     : stay('await_address', draft, [msg(join ? T.askAddressJoin : T.askAddressOpen, skipKeyboard())], effects);
@@ -616,8 +619,8 @@ function awaitLeaderName(raw: string, draft: Draft): FsmResult {
   return showSummary({ ...draft, leaderName }, [{ kind: 'save', patch: { leaderName } }]);
 }
 
-/** Кому досылаем вопросы: тем, у кого заявка на посещение или на открытие группы. */
-const FOLLOW_UP_STATUSES: readonly (MdgStatus | null | undefined)[] = ['join', 'open', 'home'];
+/** Кому досылаем вопросы: тем, у кого заявка на посещение или на открытие группы, и ведущим (про их группу). */
+const FOLLOW_UP_STATUSES: readonly (MdgStatus | null | undefined)[] = ['join', 'open', 'home', 'leader'];
 
 function handleFollowUp(
   data: string,

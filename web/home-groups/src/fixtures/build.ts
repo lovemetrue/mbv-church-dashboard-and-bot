@@ -546,6 +546,7 @@ export function buildGroups(): GroupsView {
     coords: g.street ? demoCoords(g) : null,
     placedNew: 0,
     leaderKey: g.leaderKey,
+    leaderAnswer: g.leaderKey ? { schedule: 'четверг, 19:30', address: 'ул. Шаврова, 11' } : null,
     plannedRequests: (plan.takenBy.get(g.id) ?? []).map((id) => {
       const req = requests.find((x) => x.id === id)!;
       return {

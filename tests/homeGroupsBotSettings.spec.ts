@@ -74,8 +74,20 @@ describe('досылка новых вопросов из «Настроек»',
     await seedUser(db, { id: '1', mdgStatus: 'join' });
     await seedUser(db, { id: '2', mdgStatus: 'open' });
     expect((await withInvites().view()).invites).toEqual({
-      available: true, join: 1, lead: 1, total: 2, off: false, textJoin: T.followUpInviteJoin, textLead: T.followUpInviteLead,
+      available: true, join: 1, lead: 1, leaders: 0, total: 2, off: false,
+      textJoin: T.followUpInviteJoin, textLead: T.followUpInviteLead, textLeader: T.followUpInviteLeader,
     });
+  });
+
+  test('досылка ведущим: своё число в обзоре и отправка только им', async () => {
+    await seedUser(db, { id: '1', mdgStatus: 'leader' });
+    await seedUser(db, { id: '2', mdgStatus: 'join' });
+    const s = withInvites();
+    expect((await s.view()).invites).toMatchObject({ leaders: 1, total: 1 });
+    expect(await s.sendExtraInvites({ expectedTotal: 1, audience: 'leaders' }, 'boss')).toEqual({ ok: true, sent: 1, failed: 0, blocked: 0 });
+    expect(tg.sent.map((m) => m.chatId)).toEqual(['1']);
+    expect(JSON.parse((await audit())[0].after)).toMatchObject({ audience: 'leaders', leaders: 1 });
+    expect(await s.sendExtraInvites({ expectedTotal: 1, audience: 'кто-то' }, 'boss')).toMatchObject({ ok: false, error: 'bad_request' });
   });
 
   test('без подключённых платформ досылка недоступна и отправить нечем', async () => {
@@ -92,7 +104,7 @@ describe('досылка новых вопросов из «Настроек»',
     expect(tg.sent.map((m) => m.chatId).sort()).toEqual(['1', '2']);
     const [e] = await audit();
     expect(e).toMatchObject({ actor: 'boss', action: 'settings.extra_invites' });
-    expect(JSON.parse(e.after)).toEqual({ join: 1, lead: 1, sent: 2, failed: 0, blocked: 0 });
+    expect(JSON.parse(e.after)).toEqual({ audience: 'seekers', join: 1, lead: 1, leaders: 0, sent: 2, failed: 0, blocked: 0 });
     expect((await s.view()).invites).toMatchObject({ total: 0 });
   });
 

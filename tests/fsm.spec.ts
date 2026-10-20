@@ -774,6 +774,15 @@ describe('досылка вопросов тем, кто уже зарегист
     }
   });
 
+  test('ведущему — вопросы про его группу: когда собирается и где проходят встречи', () => {
+    const first = run('menu', {}, tap(CB.extraStart), known('leader'));
+    expect(first.state).toBe('await_schedule');
+    expect(said(first)).toContain('собирается ваша группа');
+    const second = run('await_schedule', first.draft, text('среда, 19:00'), known('leader'));
+    expect(second.effects).toEqual([{ kind: 'save', patch: { schedule: 'среда, 19:00' } }]);
+    expect(said(second)).toContain('проходят встречи');
+  });
+
   test('время сохраняется и ведёт к адресу, тоже без «Пропустить»', () => {
     const start = run('menu', {}, tap(CB.extraStart), known('join'));
     const r = run('await_schedule', start.draft, text('пн, ср - с 17 до 22 часов'), known('join'));
@@ -801,8 +810,8 @@ describe('досылка вопросов тем, кто уже зарегист
     expect(said(r)).toContain('Хорошо');
   });
 
-  test('тем, кто состоит в группе или ведёт её, и незарегистрированным кнопка ничего не даёт', () => {
-    for (const status of ['member', 'leader', undefined] as const) {
+  test('тем, кто состоит в группе, и незарегистрированным кнопка ничего не даёт (ведущим — даёт, см. выше)', () => {
+    for (const status of ['member', undefined] as const) {
       const r = run('menu', {}, tap(CB.extraStart), known(status));
       expect(r.state).not.toBe('await_schedule');
       expect(r.effects).toEqual([]);

@@ -55,6 +55,21 @@ export function GroupCard({ g, onClose }: { g: GroupItem; onClose: () => void })
       : []),
     { label: 'Возраст', value: orNone(g.ageText) },
     { label: 'Когда', value: g.whenText ?? <Pill tone="human">{ru.reference.notSpecified}</Pill> },
+    // Ответ ведущего на досылку сам в группу не переносится: координатор сверяет его с «Когда» и адресом и правит группу.
+    ...(g.leaderAnswer
+      ? [
+          {
+            label: ru.reference.leaderAnswer,
+            value: (
+              <>
+                {g.leaderAnswer.schedule && <div>{ru.reference.leaderAnswerWhen(g.leaderAnswer.schedule)}</div>}
+                {g.leaderAnswer.address && <div>{ru.reference.leaderAnswerWhere(g.leaderAnswer.address)}</div>}
+                <span className={styles.note}>{ru.reference.leaderAnswerHint}</span>
+              </>
+            ),
+          },
+        ]
+      : []),
     {
       label: 'Места',
       value: (

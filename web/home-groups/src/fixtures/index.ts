@@ -138,7 +138,10 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
   // Удаление регистрации и настройка бота: в демо ничего не меняется, действие просто «получается».
   if (/^people\/\d+\/delete$/.test(clean) || clean === 'settings/bot/extra-questions') return { ok: true };
   // Рассылка доп. вопросов: в демо она «уходит» всем текущим получателям, после чего их не остаётся.
-  if (clean === 'settings/bot/send-extra-questions') return { ok: true, sent: sendDemoInvites(), failed: 0, blocked: 0 };
+  if (clean === 'settings/bot/send-extra-questions') {
+    const { audience } = (body ?? {}) as { audience?: 'seekers' | 'leaders' };
+    return { ok: true, sent: sendDemoInvites(audience), failed: 0, blocked: 0 };
+  }
   // Переключатель помощника: в демо ничего не меняется, действие просто «получается».
   if (clean === 'settings/assistant/enabled') return { ok: true };
   // Подключение помощника: в демо сохранение «получается», а проверка отвечает успехом (отказом — на ключ-образец).

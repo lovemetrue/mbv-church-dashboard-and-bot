@@ -381,15 +381,23 @@ export function fixtureStaffDelivery(email: string, id?: number): DeliveryOk {
  */
 const DEMO_INVITES_JOIN = 4;
 const DEMO_INVITES_LEAD = 2;
+const DEMO_INVITES_LEADERS = 3;
 let demoInvitesSent = false;
+let demoLeadersSent = false;
 
 /** Для тестов: вернуть демо в состояние «доп. вопросы ещё не отправляли». */
 export function resetDemoInvites(): void {
   demoInvitesSent = false;
+  demoLeadersSent = false;
 }
 
 /** Рассылка «ушла»: в демо сервера нет, поэтому получатели просто обнуляются. Возвращает, скольким «отправлено». */
-export function sendDemoInvites(): number {
+export function sendDemoInvites(audience: 'seekers' | 'leaders' = 'seekers'): number {
+  if (audience === 'leaders') {
+    const leaders = demoLeadersSent ? 0 : DEMO_INVITES_LEADERS;
+    demoLeadersSent = true;
+    return leaders;
+  }
   const total = demoInvitesSent ? 0 : DEMO_INVITES_JOIN + DEMO_INVITES_LEAD;
   demoInvitesSent = true;
   return total;
@@ -407,9 +415,11 @@ export function buildSettingsBot(): SettingsBotView {
       join,
       lead,
       total: join + lead,
+      leaders: demoLeadersSent ? 0 : DEMO_INVITES_LEADERS,
       off: false,
       textJoin: 'Чтобы подобрать вам группу, ответьте ещё на два вопроса: в какое время вам удобно и в каком районе вы живёте.',
       textLead: 'Чтобы помочь вам открыть группу, ответьте ещё на два вопроса: в какое время удобно собираться и где это может быть.',
+      textLeader: 'Чтобы направлять к вам новых людей, ответьте на два вопроса: когда собирается ваша группа и где проходят встречи.',
     },
   };
 }

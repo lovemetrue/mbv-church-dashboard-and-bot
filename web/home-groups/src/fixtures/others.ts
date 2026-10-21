@@ -99,6 +99,50 @@ function rawOthers(): RawOther[] {
       ],
     },
     {
+      // Ведущая ДГ-0112 (координатор Морозов Д.): на ней снята инструкция координатора.
+      id: 213,
+      type: 'lead_group',
+      typeLabel: 'Хочет открыть группу или дать дом',
+      gist: 'Хочет открыть женскую группу у себя дома на Новочеркасской.',
+      reconcile: null,
+      state: 'open',
+      fio: 'Татьяна Фёдорова',
+      phone: '79212005519',
+      ageLabel: '46+',
+      place: 'Невский, м. Новочеркасская',
+      status: 'В работе',
+      source: 'Бот · Telegram',
+      waitingDays: 6,
+      callback: false,
+      responsible: 'Морозов Д.',
+      note: null,
+      cancelReason: null,
+      prospects: {
+        futureGroup: { id: 12, code: 'ДГ-0112' },
+        unknownPlace: false,
+        total: 3,
+        items: [
+          {
+            requestId: 4, fio: 'Денис Громов', ageLabel: '26–35', place: 'Ломоносовская', score: 74, proposed: null,
+            reasons: [{ tone: 'good', text: 'тот же район' }, { tone: 'neutral', text: 'возраст рядом' }],
+          },
+          {
+            requestId: 19, fio: 'Виталий Егоров', ageLabel: '26–35', place: 'Рыбацкое', score: 68, proposed: null,
+            reasons: [{ tone: 'good', text: 'тот же район' }, { tone: 'neutral', text: 'день не совпал' }],
+          },
+          {
+            requestId: 18, fio: 'Софья Крылова', ageLabel: '18–25', place: 'Новочеркасская', score: 55, proposed: 'ДГ-0007',
+            reasons: [{ tone: 'neutral', text: 'соседний район' }, { tone: 'good', text: 'рядом с метро' }],
+          },
+        ],
+      },
+      original: [
+        { label: 'Имя', value: 'Татьяна Фёдорова' },
+        { label: 'Малая группа', value: 'Хочет открыть свою группу' },
+      ],
+      log: [{ at: '2026-10-03', text: 'Заявка создана: хочет открыть группу.' }],
+    },
+    {
       id: 203,
       type: 'already_member',
       typeLabel: 'Уже состоит в группе',

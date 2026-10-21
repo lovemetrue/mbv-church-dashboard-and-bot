@@ -74,7 +74,7 @@ describe('«Другие обращения»: суть и разбор', () => 
 
   test('счётчики разбора считают только открытые: закрытые в них не входят', () => {
     const c = countReconcile(items);
-    expect(c).toEqual({ all: openOthersCount(items), ready: 2, choose: 2, missing: 2, rest: 3 });
+    expect(c).toEqual({ all: openOthersCount(items), ready: 2, choose: 2, missing: 2, rest: 4 });
     expect(c.ready + c.choose + c.missing + c.rest).toBe(c.all);
   });
 
@@ -83,7 +83,7 @@ describe('«Другие обращения»: суть и разбор', () => 
     expect(filterByReconcile(open, 'ready').map((o) => o.id)).toEqual([206, 210]);
     expect(filterByReconcile(open, 'choose').map((o) => o.id)).toEqual([207, 208]);
     expect(filterByReconcile(open, 'missing').map((o) => o.id)).toEqual([203, 209]);
-    expect(filterByReconcile(open, 'rest').map((o) => o.id)).toEqual([201, 202, 211]);
+    expect(filterByReconcile(open, 'rest').map((o) => o.id)).toEqual([201, 202, 213, 211]);
     expect(filterByReconcile(open, 'all').map((o) => o.id)).toEqual(open.map((o) => o.id));
   });
 

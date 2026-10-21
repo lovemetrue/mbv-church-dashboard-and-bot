@@ -35,8 +35,10 @@ const FAIL_LOGIN = 'hg:pfail:u:';
 
 /**
  * Вход по личному логину поверх общих.
- *  • Режим выключен — всё как прежде (общие логины); личные входы пока не принимаются.
- *  • Режим включён — вход только личный; общий `mbv_admin` отклоняется, а общий полный остаётся запасным.
+ *  • Личный логин с выданным паролем пускает всегда: администратор раздал пароли — ими сразу можно входить.
+ *    Раньше они молчали до включения режима, и люди упирались в «Неверный логин или пароль».
+ *  • Режим «личные входы» только закрывает общий `mbv_admin` (и уже выданные по нему сессии); общий полный
+ *    остаётся запасным.
  * Роль и состояние человека каждый раз берутся из базы (с коротким кэшем), а не из сессии: отключили
  * человека или сменили роль — это действует сразу, а не когда сессия истечёт.
  */
@@ -83,11 +85,11 @@ export class PersonalAuth implements AuthPort {
   }
 
   async login(password: string, ip: string, username?: string): Promise<LoginResult> {
-    if (!(await this.personalOn())) return this.session.login(password, ip, username);
-
     const name = (username ?? '').trim().toLowerCase();
     // Запасной полный вход идёт прежним путём со своей защитой от перебора.
     if (name === this.opts.sharedSuperLogin.toLowerCase()) return this.session.login(password, ip, username);
+    // Без режима общий обычный вход (и вход без логина) работает как прежде.
+    if ((name === '' || name === this.opts.sharedLogin.toLowerCase()) && !(await this.personalOn())) return this.session.login(password, ip, username);
 
     const ipKey = FAIL_IP + ip;
     const loginKey = FAIL_LOGIN + name;
@@ -115,7 +117,6 @@ export class PersonalAuth implements AuthPort {
     if (!rec) return null;
     const staffId = typeof rec['staffId'] === 'number' ? rec['staffId'] : null;
     if (staffId !== null) {
-      if (!(await this.personalOn())) return null;
       const row = await this.person(staffId);
       if (!row || !row.active || row.session_version !== rec['v']) return null;
       return { role: row.role, login: row.login };

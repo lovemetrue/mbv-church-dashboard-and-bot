@@ -156,7 +156,7 @@ describe('«Пользователи и роли»: личные входы', ()
     const block = await screen.findByRole('region', { name: 'Личные входы' });
     expect(within(block).getByRole('button', { name: 'Включить личные входы' })).toBeEnabled();
     expect(within(block).queryByText(/Сначала заведите/)).not.toBeInTheDocument();
-    expect(within(block).getByText(/Пока выключено, все входят общими логином и паролем/)).toBeInTheDocument();
+    expect(within(block).getByText(/Пока выключено, работает и общий вход mbv_admin, и личные логины/)).toBeInTheDocument();
   });
 
   test('включение требует подтверждения и после него шлёт enabled: true', async () => {

@@ -55,12 +55,10 @@ function SecretPassword({ name, password }: { name: string; password: string }) 
  */
 export function TeamPasswords({
   team,
-  personalEnabled,
   busy,
   generate,
 }: {
   team: TeamAccountItem[];
-  personalEnabled: boolean;
   busy: boolean;
   /** Запрос на сервер; строка — текст ошибки, null — запрос не ушёл (уже идёт другой). */
   generate: (coordinatorId: number) => Promise<GeneratePasswordOk | string | null>;
@@ -92,7 +90,6 @@ export function TeamPasswords({
         </h3>
       </div>
       <p className={styles.muted}>{t.lead}</p>
-      {!personalEnabled && <p className={styles.noticeWarn}>{t.personalOff}</p>}
       {error && (
         <p className={styles.noticeError} role="alert">
           {error}

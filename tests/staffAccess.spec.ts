@@ -47,6 +47,8 @@ type Ctx = ReturnType<typeof setup>;
 const tokenFrom = (path: string | undefined): string => new URL(`http://x${path}`).searchParams.get('token')!;
 const POLINA = { fullName: 'Полина Иванова', email: 'polina@church.example', role: 'admin' as const };
 const PASSWORD = 'сиреневый-туман-42';
+const POLINA_LOGIN = 'p_ivanova';
+const ADDR = '1.2.3.4';
 
 /** Завести человека и сразу задать ему пароль — как после перехода по ссылке. */
 async function activePerson(c: Ctx, over: Partial<typeof POLINA> & { login?: string } = {}) {
@@ -433,10 +435,14 @@ describe('вход', () => {
     await c.service.setPersonalMode({ enabled: true }, 'super_mbv_admin');
   }
 
-  test('пока личные входы выключены, работают только общие, личный логин не пускает', async () => {
+  test('пока личные входы выключены, работают и общие, и личные: выданный пароль пускает сразу', async () => {
     const c = setup();
     await activePerson(c);
-    expect((await c.auth.login(PASSWORD, '1.2.3.4', 'p_ivanova')).ok).toBe(false);
+    const polina = (secret: string) => c.auth.login(secret, ADDR, POLINA_LOGIN);
+    const own = await polina(PASSWORD);
+    expect(own).toMatchObject({ ok: true, role: 'admin' });
+    expect(await c.auth.identityOf(own.sid)).toEqual({ login: POLINA_LOGIN });
+    expect((await polina(`${PASSWORD}-не-тот`)).ok).toBe(false);
     const shared = await c.auth.login('общий-обычный-пароль', '1.2.3.4', 'mbv_admin');
     expect(shared).toMatchObject({ ok: true, role: 'admin' });
     expect(await c.auth.verify(shared.sid)).toBe(true);
@@ -481,13 +487,13 @@ describe('вход', () => {
     expect(await c.auth.roleOf(r.sid)).toBe('super');
   });
 
-  test('выключение личных входов закрывает личные сессии, общий вход снова работает', async () => {
+  test('выключение личных входов снова открывает общий вход, а личные сессии не трогает', async () => {
     const c = setup();
     await personal(c);
     const r = await c.auth.login(PASSWORD, '1.2.3.4', 'p_ivanova');
     await c.service.setPersonalMode({ enabled: false }, 'super_mbv_admin');
     c.auth.invalidate();
-    expect(await c.auth.verify(r.sid)).toBe(false);
+    expect(await c.auth.verify(r.sid)).toBe(true);
     expect((await c.auth.login('общий-обычный-пароль', '1.2.3.5', 'mbv_admin')).ok).toBe(true);
   });
 

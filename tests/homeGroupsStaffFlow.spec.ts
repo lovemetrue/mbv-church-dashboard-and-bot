@@ -86,7 +86,7 @@ describe('личные входы целиком', () => {
       expect(app.sent).toHaveLength(1);
       expect(app.sent[0]).toMatchObject({ to: 'polina@church.example' });
 
-      // До включения личный логин не пускает.
+      // Пока пароль не задан, личный логин не пускает.
       expect((await app.login('p_ivanova', PASSWORD)).status).toBe(401);
 
       const link = app.linkFromLastMail();
@@ -117,7 +117,7 @@ describe('личные входы целиком', () => {
     } finally { app.server.close(); }
   });
 
-  test('пароль, сгенерированный для человека из справочника команды, пускает его после включения личных входов; обычному входу кнопка недоступна', async () => {
+  test('пароль, сгенерированный для человека из справочника команды, пускает его и после включения личных входов; обычному входу кнопка недоступна', async () => {
     const app = await start();
     try {
       const boss = (await app.login('super_mbv_admin', SHARED.super)).cookie!;
@@ -134,6 +134,28 @@ describe('личные входы целиком', () => {
       expect(await (await app.api(david.cookie!, 'me')).json()).toMatchObject({ role: 'admin', person: { login: 'd_rodionov', name: 'Родионов Давид', teamRole: 'Распределитель' } });
       expect(await (await app.api(boss, 'me')).json()).not.toHaveProperty('person');
       expect((await app.api(david.cookie!, 'settings/staff/generate-password', { coordinatorId: rows[0]!.id })).status).toBe(403);
+    } finally { app.server.close(); }
+  });
+
+  test('выданный пароль пускает сразу, без включения личных входов; общий обычный вход при этом работает, а закрывается только переключателем', async () => {
+    const app = await start();
+    try {
+      const boss = (await app.login('super_mbv_admin', SHARED.super)).cookie!;
+      const { rows } = await db.query<{ id: number }>(`INSERT INTO coordinators (name, role, source) VALUES ('Родионов Давид', 'Распределитель', 'ui') RETURNING id::int AS id`);
+      const out = await (await app.api(boss, 'settings/staff/generate-password', { coordinatorId: rows[0]!.id })).json() as { login: string; password: string };
+      const david = await app.login(out.login, out.password);
+      expect(david.status).toBe(302);
+      expect(await (await app.api(david.cookie!, 'me')).json()).toMatchObject({ role: 'admin', person: { login: 'd_rodionov' } });
+      expect((await app.api(david.cookie!, 'requests')).status).toBe(200);
+      expect((await app.login(out.login, `${out.password}-x`)).status).toBe(401);
+      expect((await app.login('mbv_admin', SHARED.regular)).status).toBe(302);
+
+      expect((await app.api(boss, 'settings/staff/personal-mode', { enabled: true })).status).toBe(200);
+      expect((await app.login('mbv_admin', SHARED.regular)).status).toBe(401);
+      // Выключили режим — личный вход не отваливается.
+      expect((await app.api(boss, 'settings/staff/personal-mode', { enabled: false })).status).toBe(200);
+      expect((await app.api(david.cookie!, 'requests')).status).toBe(200);
+      expect((await app.login(out.login, out.password)).status).toBe(302);
     } finally { app.server.close(); }
   });
 

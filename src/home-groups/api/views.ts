@@ -18,7 +18,7 @@ import { formatPhone } from '../../core/phone.js';
 import { CONTACT_LABEL } from '../../core/csv.js';
 import type {
   Bucket, Candidate, Counters, CoordinatorItem, CoordinatorsView, GroupBrief, GroupItem, GroupsView,
-  HealthItem, LogEntry, MatchingStatus, NoPlan, StrangeMark, DataChange, OriginalField, ParamInfo, RequestTableFields, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, GroupMember, OtherItem, RequestsView, TeamView, TodayView,
+  HealthItem, LogEntry, MatchingStatus, NoPlan, StrangeMark, DataChange, OriginalField, ParamInfo, RequestTableFields, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, GroupMember, OtherItem, Prospects, ProspectItem, RequestsView, TeamView, TodayView,
 } from '../contracts.js';
 import type {
   Day, PlanEngineApi, PlanEntry, PlanEntryProposal, PlanGroup, PlanOutput, PlanRequest, ScoredGroup, Slot,
@@ -134,6 +134,8 @@ const TYPE_LABEL: Record<OtherItem['type'], string> = {
   already_member: 'Уже состоит в группе', already_leader: 'Уже ведёт группу',
 };
 const OTHER_CLOSED_LIMIT = 200;
+/** Сколько подходящих людей показать у обращения «хочу открыть группу»: всего — числом, по именам — первых. */
+const PROSPECTS_SHOWN = 20;
 
 const CALL_RESULT_TEXT: Record<string, string> = {
   reached: 'Звонок: дозвонились', no_answer: 'Звонок: не дозвонились', later: 'Звонок: просили перезвонить позже', refused: 'Звонок: отказался',
@@ -653,6 +655,39 @@ export function buildViewsWithPlan(
       log: logOf(r, finalBrief),
     });
   }
+  // ── «Хотят открыть группу»: кого можно направить в будущую группу ───────────
+  // Координатор при звонке говорит «могли бы направить к вам N человек»: считаем всех открытых «хочу в группу», кому
+  // будущая группа подходит, даже если подбор уже предложил им другую (её код — рядом). Будущая группа — потенциальная,
+  // заведённая по обращению (`source_request_id`, миграция 032), а без неё — ответы самого обращения.
+  const futureGroupByRequest = new Map<number, DashboardGroup>();
+  for (const g of input.groups) if (g.source_request_id != null) futureGroupByRequest.set(g.source_request_id, g);
+  const prospectsOf = (r: DashboardRequest): Prospects => {
+    const linked = futureGroupByRequest.get(r.id);
+    let future = linked ? planGroupById.get(linked.id) ?? null : null;
+    if (!future) {
+      const lead = planRequestOf(r);
+      if (lead.district === null && !lead.coords) return { futureGroup: null, unknownPlace: true, total: 0, items: [] };
+      future = {
+        id: -r.id, no: null, leader: nonBlank(r.fio) ?? '', district: lead.district ?? 'Не указан', metro: null,
+        ageRange: lead.ageRange, day: lead.days[0] ?? null, slot: lead.slot, street: lead.street, coords: lead.coords ?? null,
+        people: 0, capacity: defaultCapacity, status: 'Потенциальная', acceptsNew: true, doNotRefer: false, verifiedDaysAgo: null,
+      };
+    }
+    const scored = openPlanRequests
+      .map((pr) => ({ pr, s: engine.scoreProspect(pr, future!, settings) }))
+      .filter((x): x is { pr: PlanRequest; s: NonNullable<typeof x.s> } => x.s !== null)
+      .sort((a, b) => b.s.score - a.s.score || (b.pr.waitingDays ?? -1) - (a.pr.waitingDays ?? -1) || a.pr.id - b.pr.id);
+    const items = scored.slice(0, PROSPECTS_SHOWN).map(({ pr, s }): ProspectItem => {
+      const entry = plan.entries.get(pr.id);
+      const src = joinById.get(pr.id);
+      return {
+        requestId: pr.id, fio: pr.fio, ageLabel: nonBlank(src?.age), place: nonBlank(src?.place), score: s.score, reasons: s.reasons,
+        proposed: entry?.kind === 'proposal' ? groupCode(entry.main.groupId) : null,
+      };
+    });
+    return { futureGroup: linked ? { id: linked.id, code: groupCode(linked.id) } : null, unknownPlace: false, total: scored.length, items };
+  };
+
   // Остальные обращения: всё, что не идёт в подбор, и аннулированные «хочу в группу» (чтобы вернуть в работу).
   const otherAll = input.requests.filter((r) => r.type !== 'join_group' || bucketById.get(r.id) === 'cancelled');
   const nonJoin = input.requests.filter((r) => r.type !== 'join_group');
@@ -683,6 +718,7 @@ export function buildViewsWithPlan(
     original: originalFields(r),
     table: tableFieldsOf(r),
     log: logOf(r, null),
+    prospects: r.type === 'lead_group' && otherState(r) === 'open' ? prospectsOf(r) : null,
   });
   const otherOpen = otherAll.filter((r) => otherState(r) === 'open').map(otherItem)
     .sort((a, b) => Number(b.callback) - Number(a.callback) || (b.waitingDays ?? -1) - (a.waitingDays ?? -1) || a.id - b.id);

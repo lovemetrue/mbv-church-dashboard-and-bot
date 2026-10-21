@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { DEFAULT_SETTINGS, DISTRICT_WEIGHT } from '../src/home-groups/plan/settings.js';
 import { NEIGHBORS } from '../src/home-groups/plan/geo.js';
-import { bucketOf, buildPlan, exclusionReason, match } from '../src/home-groups/plan/engine.js';
+import { bucketOf, buildPlan, exclusionReason, match, scoreProspect } from '../src/home-groups/plan/engine.js';
 import type {
   PlanEntry,
   PlanEntryProposal,
@@ -857,5 +857,31 @@ describe('bucketOf', () => {
 
   test('слабый план при отметке «нужен звонок» не висит в «нужна помощь»: координатор взял заявку на себя', () => {
     expect(bucketOf({ status: 'В работе', entry: entry(40), callback: true, settings })).toBe('callback');
+  });
+});
+
+describe('кого можно направить в будущую группу (scoreProspect)', () => {
+  const future = (patch: Partial<PlanGroup> = {}) =>
+    group({ status: 'Потенциальная', people: 0, capacity: 5, verifiedDaysAgo: null, acceptsNew: false, doNotRefer: true, ...patch });
+
+  test('потенциальная группа участвует: статус, «Не направлять» и места не мешают', () => {
+    const r = request({ days: ['Чт'], slot: 'вечер' });
+    expect(exclusionReason(r, future(), SETTINGS)).not.toBeNull();
+    const s = scoreProspect(r, future(), SETTINGS);
+    expect(s).not.toBeNull();
+    expect(s!.score).toBeGreaterThan(50);
+    expect(s!.reasons.map((x) => x.text)).toContain('тот же район');
+  });
+
+  test('возраст и далёкий район по-прежнему отсекают', () => {
+    expect(scoreProspect(request({ ageRange: [60, 80] }), future({ ageRange: [18, 25] }), SETTINGS)).toBeNull();
+    expect(scoreProspect(request({ district: 'Колпинский' }), future({ district: 'Приморский' }), SETTINGS)).toBeNull();
+  });
+
+  test('чем лучше совпадает время, тем выше оценка', () => {
+    const g = future({ day: 'Чт', slot: 'вечер' });
+    const fits = scoreProspect(request({ days: ['Чт'], slot: 'вечер' }), g, SETTINGS)!.score;
+    const misses = scoreProspect(request({ days: ['Пн'], slot: 'утро' }), g, SETTINGS)!.score;
+    expect(fits).toBeGreaterThan(misses);
   });
 });

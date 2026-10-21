@@ -213,6 +213,7 @@ export const ru = {
     toolsLabel: 'Отбор списка заявок',
     respFilterLabel: 'В работе у',
     respFilterAll: 'Все',
+    respFilterMine: 'Мои и без ответственного',
     respFilterNobody: 'Никто не взял',
     /** Метка в строке списка: у кого заявка. Без имени метки нет. */
     inWorkBy: (name: string) => `В работе: ${name}`,
@@ -454,9 +455,25 @@ export const ru = {
     },
 
     /** Режим списка «Хотят в группу | Другие обращения». */
+    /** «Кого можно направить» у обращения «хочу открыть группу». */
+    prospects: {
+      title: 'Кого можно направить',
+      byGroup: (code: string) => `Считаем по потенциальной группе ${code}.`,
+      unknownPlace: 'Где будет группа, пока неизвестно: уточните район или адрес, и здесь появятся подходящие люди.',
+      none: 'Пока не видим людей, которых можно направить в эту группу.',
+      count: (people: string) => `Можно направить ${people}`,
+      more: (n: number) => `И ещё ${n} — с меньшим совпадением.`,
+      scoreTitle: 'Насколько подходит, из 100',
+      proposed: (code: string) => `уже предложена ${code}`,
+      notProposed: 'группу ещё не предложили',
+      open: 'Открыть заявку',
+      openAria: (fio: string) => `Открыть заявку: ${fio}`,
+    },
+
     view: {
       label: 'Режим списка заявок',
       wait: 'Хотят в группу',
+      leads: (open: number) => `Хотят открыть группу (${open})`,
       others: (open: number) => `Другие обращения (${open})`,
     },
 
@@ -890,6 +907,7 @@ export const ru = {
       members: (n: number) => `В составе: ${n}`,
       noMembers: 'В составе пока никого.',
     },
+    myGroups: 'Мои группы',
     leaderAnswer: 'Ответ ведущего боту',
     leaderAnswerWhen: (v: string) => `Когда: ${v}`,
     leaderAnswerWhere: (v: string) => `Где: ${v}`,

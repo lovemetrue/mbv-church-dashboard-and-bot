@@ -5,11 +5,17 @@ import type { OtherItem } from '@contracts';
  * (всё остальное: готов открыть группу, вопрос, аннулированные). Это не вкладка, а переключатель
  * внутри экрана, поэтому живёт в адресе параметром `view`.
  */
-export type RequestsView = 'wait' | 'others';
+export type RequestsView = 'wait' | 'leads' | 'others';
 
 export function parseView(v: string | null): RequestsView {
-  return v === 'others' ? 'others' : 'wait';
+  return v === 'others' || v === 'leads' ? v : 'wait';
 }
+
+/**
+ * «Хотят открыть группу» — рабочее место координатора: обращения «хочу открыть группу / дам дом» вынесены из
+ * «Других обращений» в свой режим. Сервер присылает их в общем списке `others`, делим здесь.
+ */
+export const isLead = (o: Pick<OtherItem, 'type'>): boolean => o.type === 'lead_group';
 
 /** Чипы над списком обращений. «Открытые» — по умолчанию: закрытые нужны, только чтобы вернуть в работу. */
 export type OtherFilter = 'open' | 'done' | 'cancelled' | 'all';

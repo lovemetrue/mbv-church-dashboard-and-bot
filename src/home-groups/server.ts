@@ -813,7 +813,9 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     if (path === '/api/v1/me') {
       const role = await deps.auth.roleOf(sid);
       if (!role) { sendJson(res, 401, { error: 'unauthorized' }); return; }
-      const me: Me = { role, assistant: await deps.assistant.status() };
+      const identity = await deps.auth.identityOf?.(sid);
+      const person = identity ? await deps.staff.personOf(identity.login) : null;
+      const me: Me = { role, assistant: await deps.assistant.status(), ...(person ? { person } : {}) };
       sendJson(res, 200, me);
       return;
     }

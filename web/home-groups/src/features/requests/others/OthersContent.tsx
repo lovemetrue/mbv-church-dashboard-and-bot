@@ -1,11 +1,12 @@
 import { useMemo } from 'react';
 import type { RequestsView as RequestsData } from '@contracts';
-import { OTHER_FILTERS, RECONCILE_FILTERS, type OtherFilter, type ReconcileFilter } from '../../../entities/others';
+import { isLead, OTHER_FILTERS, RECONCILE_FILTERS, type OtherFilter, type ReconcileFilter } from '../../../entities/others';
 import { ru } from '../../../shared/i18n/ru';
 import { useAppNav } from '../../../shared/nav';
 import { Chip, EmptyState } from '../../../shared/ui';
 import { ClosedNote } from '../ClosedNote';
 import { filterByResponsible } from '../model';
+import { useResponsible } from '../useResponsible';
 import { ResponsibleSelect } from '../ResponsibleSelect';
 import styles from '../Requests.module.css';
 import { ViewSwitch } from '../ViewSwitch';
@@ -15,7 +16,6 @@ import {
   filterByReconcile,
   filterOthers,
   matchesOtherSearch,
-  openOthersCount,
   readyToReconcile,
 } from './model';
 import { OtherCard } from './OtherCard';
@@ -50,38 +50,44 @@ const RECONCILE_LABEL: Record<ReconcileFilter, string> = {
  */
 export function OthersContent({
   data,
+  kind,
   note,
   onClosed,
   onHideNote,
 }: {
   data: RequestsData;
+  /** leads — «Хотят открыть группу» (рабочее место координатора), others — остальные обращения. */
+  kind: 'leads' | 'others';
   note: string | null;
   onClosed: (text: string) => void;
   onHideNote: () => void;
 }) {
   const nav = useAppNav();
-  const all = data.others;
+  const resp = useResponsible(kind);
+  // «Хотят открыть группу» и остальные обращения приходят одним списком: делим по типу.
+  const all = useMemo(() => data.others.filter((o) => (kind === 'leads') === isLead(o)), [data.others, kind]);
   const found = useMemo(
-    () => filterByResponsible(all.filter((o) => matchesOtherSearch(o, nav.search)), nav.responsible),
-    [all, nav.search, nav.responsible],
+    () => filterByResponsible(all.filter((o) => matchesOtherSearch(o, nav.search)), resp.value, resp.myName),
+    [all, nav.search, resp.value, resp.myName],
   );
   const counts = useMemo(() => countOthers(found), [found]);
   const recCounts = useMemo(() => countReconcile(found), [found]);
   // Отбор по разбору есть только у «Открытых»: в адресе он мог остаться от прежней ссылки, а строки чипов при других
   // состояниях нет, и скрытый отбор прятал бы обращения без объяснений.
-  const recFilter: ReconcileFilter = nav.otherFilter === 'open' ? nav.reconcileFilter : 'all';
+  const recFilter: ReconcileFilter = nav.otherFilter === 'open' && kind === 'others' ? nav.reconcileFilter : 'all';
   const visible = useMemo(
     () => filterByReconcile(filterOthers(found, nav.otherFilter), recFilter),
     [found, nav.otherFilter, recFilter],
   );
   const ready = useMemo(() => readyToReconcile(visible), [visible]);
   const readyBulk = useReconcileReady();
-  const selected = nav.requestId != null ? all.find((o) => o.id === nav.requestId) : undefined;
+  // Карточку ищем во всех обращениях: ссылка на «хочу открыть группу», сделанная до выделения подвкладки, открывается.
+  const selected = nav.requestId != null ? data.others.find((o) => o.id === nav.requestId) : undefined;
 
   return (
     <div className={styles.work}>
       <div className={styles.main}>
-        <ViewSwitch view="others" openOthers={openOthersCount(all)} onChange={nav.setView} />
+        <ViewSwitch view={kind} others={data.others} onChange={nav.setView} />
         <ClosedNote note={note} onHide={onHideNote} />
         <div className={styles.bar} role="group" aria-label={t.chipsLabel}>
           {OTHER_FILTERS.map((f) => (
@@ -90,7 +96,7 @@ export function OthersContent({
             </Chip>
           ))}
         </div>
-        {nav.otherFilter === 'open' && (
+        {nav.otherFilter === 'open' && kind === 'others' && (
           <div className={styles.bar} role="group" aria-label={t.reconcileChipsLabel}>
             {RECONCILE_FILTERS.map((f) => (
               <Chip key={f} pressed={recFilter === f} count={recCounts[f]} onClick={() => nav.setReconcileFilter(f)}>
@@ -100,7 +106,7 @@ export function OthersContent({
           </div>
         )}
         <div className={styles.tools} role="group" aria-label={ru.requests.toolsLabel}>
-          <ResponsibleSelect items={all} value={nav.responsible} onChange={nav.setResponsible} />
+          <ResponsibleSelect items={all} value={resp.value} mine={resp.myName !== null} onChange={resp.set} />
         </div>
         <ReadyBulk ready={ready} bulk={readyBulk} onDone={onClosed} />
         {visible.length ? (

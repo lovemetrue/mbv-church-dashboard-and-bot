@@ -638,6 +638,17 @@ describe('пароли для команды из справочника', () =>
     expect(await c.service.generatePassword({ staffId: made.id! }, 'super_mbv_admin')).toMatchObject({ ok: false, error: 'bad_request' });
   });
 
+  test('имя вошедшего — как в справочнике команды, даже если там его потом поправили; без связи — ФИО учётной записи', async () => {
+    const c = setup();
+    const id = await member('Родионов Давид');
+    await c.service.generatePassword({ coordinatorId: id }, 'super_mbv_admin');
+    await db.query(`UPDATE coordinators SET name = 'Родионов Давид Петрович' WHERE id = $1`, [id]);
+    expect(await c.service.personOf(DAVID)).toEqual({ login: DAVID, name: 'Родионов Давид Петрович', teamRole: 'Координатор' });
+    await c.service.create(POLINA, 'super_mbv_admin');
+    expect(await c.service.personOf('p_ivanova')).toEqual({ login: 'p_ivanova', name: 'Полина Иванова', teamRole: null });
+    expect(await c.service.personOf('нет_такого')).toBeNull();
+  });
+
   test('в журнале — кто кому выдал пароль, но не сам пароль', async () => {
     const c = setup();
     const id = await member('Родионов Давид');

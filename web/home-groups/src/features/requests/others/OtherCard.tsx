@@ -9,6 +9,7 @@ import { HeaderTools } from '../work/HeaderTools';
 import { WorkPlace } from '../work/WorkPlace';
 import { STATE_LABEL, STATE_TONE } from './OtherList';
 import styles from './Others.module.css';
+import { ProspectsBlock } from './ProspectsBlock';
 import { ReconcileBlock } from './ReconcileBlock';
 
 const o = ru.requests.others;
@@ -66,6 +67,11 @@ export function OtherCard({ item, onClose, onClosed }: { item: OtherItem; onClos
       )}
       {item.state === 'open' && item.callback && <div className={styles.callout}>{o.callbackMark}</div>}
       {item.state === 'cancelled' && item.cancelReason && <div className={styles.callout}>{o.cancelReason(item.cancelReason)}</div>}
+      {item.prospects && (
+        <DrawerSection>
+          <ProspectsBlock p={item.prospects} />
+        </DrawerSection>
+      )}
       {item.reconcile && <ReconcileBlock key={`reconcile-${item.id}`} item={item} rec={item.reconcile} onClosed={onClosed} />}
       <DrawerSection title={ru.requests.contacts}>
         <KeyValue rows={contacts} />

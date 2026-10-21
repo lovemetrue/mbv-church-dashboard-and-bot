@@ -2,7 +2,7 @@ import type { GroupBrief, GroupItem, Proposal, RequestItem } from '@contracts';
 import type { BucketFilter } from '../../entities/buckets';
 import { phoneDigits } from '../../entities/format';
 import { isStrangeHold } from '../../entities/strange';
-import { RESP_NOBODY } from '../../shared/nav/params';
+import { RESP_ALL, RESP_MINE, RESP_NOBODY } from '../../shared/nav/params';
 
 /**
  * Поиск по заявкам: ФИО, место, ответственного и комментарий ищем как подстроку без учёта
@@ -27,13 +27,16 @@ export function searchRequests(items: readonly RequestItem[], query: string): Re
 }
 
 /**
- * Отбор «В работе у»: '' — все, RESP_NOBODY — заявки без ответственного, иначе имя целиком.
+ * Отбор «В работе у»: '' или RESP_ALL — все, RESP_NOBODY — заявки без ответственного, RESP_MINE — свои (`myName`)
+ * и без ответственного, иначе имя целиком.
  * Применяется вместе с поиском до счётчиков чипов, поэтому числа на чипах и очередь обзвона
  * (с соседними заявками в карточке) видят один и тот же список.
  */
-export function filterByResponsible<T extends Pick<RequestItem, 'responsible'>>(items: readonly T[], who: string): T[] {
-  if (!who) return [...items];
+export function filterByResponsible<T extends Pick<RequestItem, 'responsible'>>(items: readonly T[], who: string, myName?: string | null): T[] {
+  if (!who || who === RESP_ALL) return [...items];
   if (who === RESP_NOBODY) return items.filter((r) => !r.responsible);
+  // Без имени (общий вход) «мои» не к чему привязать — показываем всё, а не пустой список.
+  if (who === RESP_MINE) return myName ? items.filter((r) => !r.responsible || r.responsible === myName) : [...items];
   return items.filter((r) => r.responsible === who);
 }
 

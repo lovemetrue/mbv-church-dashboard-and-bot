@@ -11,7 +11,8 @@ import { fixtureOther, getsOf, json, ok, posts, viewWithOthers } from '../reques
 
 afterEach(() => vi.unstubAllGlobals());
 
-const OTHERS = buildOthers();
+// «Хочу открыть группу» живут в своей подвкладке (`view=leads`, см. Leads.spec.tsx): здесь — все остальные обращения.
+const OTHERS = buildOthers().filter((o) => o.type !== 'lead_group');
 const openCount = OTHERS.filter((o) => o.state === 'open').length;
 
 const listEl = () => screen.getByRole('list', { name: 'Список обращений' });
@@ -25,7 +26,8 @@ const toolsSelect = () =>
 async function openOthers(query = '', overrides: Record<string, () => Response | Promise<Response>> = {}) {
   const fetchMock = stubFetchWithFixtures(overrides);
   const utils = renderAt(<App />, `/?tab=requests&view=others${query}`);
-  await screen.findByRole('list', { name: 'Список обращений' });
+  // Не список: при пустом отборе на его месте «Ничего не найдено».
+  await screen.findByRole('group', { name: 'Фильтр по состоянию обращения' });
   return { fetchMock, ...utils };
 }
 
@@ -41,7 +43,7 @@ describe('«Заявки»: переключатель «Хотят в груп�
 
   test('число не зависит от поиска и отбора: оно про все открытые обращения', async () => {
     stubFetchWithFixtures();
-    renderAt(<App />, '/?tab=requests&q=Громова');
+    renderAt(<App />, '/?tab=requests&q=Седов');
     // по такому поиску среди заявок никого нет, но число обращений всё равно полное
     await screen.findByRole('group', { name: 'Режим списка заявок' });
     expect(within(switchEl()).getByRole('button', { name: `Другие обращения (${openCount})` })).toBeInTheDocument();
@@ -50,7 +52,7 @@ describe('«Заявки»: переключатель «Хотят в груп�
   test('«Другие обращения» записывает view=others в адрес и сбрасывает открытую карточку и чип прежнего списка', async () => {
     stubFetchWithFixtures();
     const user = userEvent.setup();
-    renderAt(<App />, '/?tab=requests&bucket=ready&req=1&resp=Пётр Г.');
+    renderAt(<App />, '/?tab=requests&bucket=ready&req=1&resp=Анна Л.');
     await screen.findByRole('dialog', { name: /Карточка заявки/ });
     await user.click(within(switchEl()).getByRole('button', { name: /^Другие обращения/ }));
     const params = currentSearch();
@@ -58,7 +60,7 @@ describe('«Заявки»: переключатель «Хотят в груп�
     expect(params.has('req')).toBe(false);
     expect(params.has('bucket')).toBe(false);
     // «В работе у» общий для обоих списков и остаётся
-    expect(params.get('resp')).toBe('Пётр Г.');
+    expect(params.get('resp')).toBe('Анна Л.');
     expect(await screen.findByRole('list', { name: 'Список обращений' })).toBeInTheDocument();
     expect(screen.queryByRole('list', { name: 'Список заявок' })).not.toBeInTheDocument();
   });
@@ -118,8 +120,10 @@ describe('«Другие обращения»: список и чипы', () => 
   });
 
   test('строка: тип, ФИО, телефон, «ждёт N дн.», «В работе: имя» и метка состояния', async () => {
-    await openOthers();
-    const row = within(listEl()).getByRole('button', { name: 'Юлия Громова' }).closest('li')!;
+    // Строка общая для обеих подвкладок: проверяем на «хочу открыть группу».
+    stubFetchWithFixtures();
+    renderAt(<App />, '/?tab=requests&view=leads');
+    const row = within(await screen.findByRole('list', { name: 'Список обращений' })).getByRole('button', { name: 'Юлия Громова' }).closest('li')!;
     expect(row).toHaveTextContent('Хочет открыть группу или дать дом');
     expect(row).toHaveTextContent('+7 921 555 01 02');
     expect(row).toHaveTextContent('Ждёт 4 дн.');
@@ -143,9 +147,9 @@ describe('«Другие обращения»: список и чипы', () => 
   test('поиск шапки работает и в этом списке, а счётчики чипов считаются по найденному', async () => {
     const user = userEvent.setup();
     await openOthers();
-    await user.type(screen.getByRole('searchbox'), 'громов');
-    expect(currentSearch().get('q')).toBe('громов');
-    expect(namesOf()).toEqual(['Юлия Громова']);
+    await user.type(screen.getByRole('searchbox'), 'седов');
+    expect(currentSearch().get('q')).toBe('седов');
+    expect(namesOf()).toEqual(['Игорь Седов']);
     expect(within(chips()).getByRole('button', { name: /^Открытые/ })).toHaveTextContent('1');
     expect(within(chips()).getByRole('button', { name: /^Все/ })).toHaveTextContent('1');
   });
@@ -158,15 +162,15 @@ describe('«Другие обращения»: список и чипы', () => 
   test('отбор «В работе у» работает и здесь: остаются обращения выбранного человека', async () => {
     const user = userEvent.setup();
     await openOthers();
-    await user.selectOptions(toolsSelect(), 'Пётр Г.');
-    expect(currentSearch().get('resp')).toBe('Пётр Г.');
-    expect(namesOf()).toEqual(['Юлия Громова']);
+    await user.selectOptions(toolsSelect(), 'Анна Л.');
+    expect(currentSearch().get('resp')).toBe('Анна Л.');
+    expect(namesOf()).toEqual(OTHERS.filter((o) => o.state === 'open' && o.responsible === 'Анна Л.').map((o) => o.fio));
     await user.selectOptions(toolsSelect(), 'Никто не взял');
     expect(namesOf()).toEqual(['Игорь Седов']);
   });
 
   test('имена в «В работе у» берутся из обращений, а не из заявок', async () => {
-    await openOthers('', { requests: () => json(viewWithOthers([{ ...fixtureOther(202), responsible: 'Только Здесь К.' }])) });
+    await openOthers('', { requests: () => json(viewWithOthers([{ ...fixtureOther(201), responsible: 'Только Здесь К.' }])) });
     const names = within(toolsSelect()).getAllByRole('option').map((o) => o.textContent);
     expect(names).toEqual(['Все', 'Никто не взял', 'Только Здесь К.']);
   });
@@ -194,9 +198,9 @@ describe('«Другие обращения»: карточка', () => {
   test('клик по строке открывает карточку и пишет req в адрес', async () => {
     const user = userEvent.setup();
     await openOthers();
-    await user.click(within(listEl()).getByRole('button', { name: 'Юлия Громова' }));
-    expect(currentSearch().get('req')).toBe('202');
-    expect(await screen.findByRole('dialog', { name: 'Карточка обращения: Юлия Громова' })).toBeInTheDocument();
+    await user.click(within(listEl()).getByRole('button', { name: 'Игорь Седов' }));
+    expect(currentSearch().get('req')).toBe('201');
+    expect(await screen.findByRole('dialog', { name: 'Карточка обращения: Игорь Седов' })).toBeInTheDocument();
   });
 
   test('заголовок с типом, контакты, «как пришла» и лента', async () => {
@@ -719,7 +723,7 @@ describe('«Другие обращения»: чипы по разбору', ()
       `Группа не найдена${count((o) => o.reconcile?.status === 'none' || o.reconcile?.status === 'noleader')}`,
       `Остальные${count((o) => !o.reconcile || o.reconcile.status === 'nouser')}`,
     ]);
-    expect(names).toEqual(['Все открытые9', 'Готово к разбору2', 'Нужен выбор2', 'Группа не найдена2', 'Остальные3']);
+    expect(names).toEqual(['Все открытые8', 'Готово к разбору2', 'Нужен выбор2', 'Группа не найдена2', 'Остальные2']);
     expect(within(recChips()).getByRole('button', { name: /^Все открытые/ })).toHaveAttribute('aria-pressed', 'true');
     expect(currentSearch().has('orec')).toBe(false);
   });
@@ -742,7 +746,7 @@ describe('«Другие обращения»: чипы по разбору', ()
     expect(currentSearch().get('orec')).toBe('missing');
     expect(namesOf()).toEqual([nameOf(203), nameOf(209)]);
     await user.click(within(recChips()).getByRole('button', { name: /^Остальные/ }));
-    expect(namesOf()).toEqual([nameOf(201), nameOf(202), nameOf(211)]);
+    expect(namesOf()).toEqual([nameOf(201), nameOf(211)]);
     await user.click(within(recChips()).getByRole('button', { name: /^Все открытые/ }));
     expect(currentSearch().has('orec')).toBe(false);
     expect(namesOf()).toHaveLength(openOf().length);

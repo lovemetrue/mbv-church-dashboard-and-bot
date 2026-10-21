@@ -149,6 +149,16 @@ export const groupsConfig: EntityConfig<GroupItem> = {
   titleOf: (g) => `Группа ${g.code}, ${g.leader}`,
 };
 
+/** «Мои группы»: где вошедший — координатор (имя как в справочнике команды), кроме закрытых и аннулированных. */
+export const myGroupsPreset = (name: string): Preset => ({
+  name: ru.reference.myGroups,
+  filters: [
+    { field: 'Статус', op: 'ne', value: 'Закрыта' },
+    { field: 'Статус', op: 'ne', value: 'Аннулирована' },
+    { field: 'Координатор', op: 'eq', value: name },
+  ],
+});
+
 export const peopleConfig: EntityConfig<PersonItem> = {
   id: 'people',
   label: ru.reference.people,

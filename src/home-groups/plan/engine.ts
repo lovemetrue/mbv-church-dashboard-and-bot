@@ -201,6 +201,18 @@ function scoreGroup(r: PlanRequest, g: PlanGroup, known: KnownParams, settings: 
   return { groupId: g.id, score: Math.max(0, Math.round(score)), reasons };
 }
 
+/**
+ * Насколько человек подходит будущей группе — из обращения «хочу открыть группу» или потенциальной. Статус, «Не
+ * направлять» и места не проверяются: группы ещё нет, координатор при звонке говорит «могли бы направить к вам N
+ * человек». Остальное — как в обычном подборе: возраст и район отсекают, район, день, время и улица дают оценку.
+ * null — человек не подходит.
+ */
+export function scoreProspect(r: PlanRequest, g: PlanGroup, settings: PlanSettings): ScoredGroup | null {
+  const open: PlanGroup = { ...g, status: 'Функционирует', acceptsNew: true, doNotRefer: false, people: 0, capacity: Math.max(g.capacity, 1) };
+  if (exclusionReason(r, open, settings) !== null) return null;
+  return scoreGroup(r, open, knownParamsOf(r), settings);
+}
+
 export interface MatchResult {
   /** Подходящие группы: лучшая первой; при равной оценке — с меньшим id, чтобы порядок был однозначным. */
   ranked: ScoredGroup[];

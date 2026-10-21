@@ -194,4 +194,6 @@ export interface PlanEngineApi {
   formatWhen(day: Day | null, slot: Slot | null): string | null;
   /** Колонка возраста для матрицы «район × возраст» (по середине диапазона); null — возраст неизвестен. */
   ageColumnOf(range: AgeRange): string | null;
+  /** Насколько человек подходит будущей группе (без проверки статуса и мест); null — не подходит. */
+  scoreProspect(r: PlanRequest, g: PlanGroup, settings: PlanSettings): ScoredGroup | null;
 }

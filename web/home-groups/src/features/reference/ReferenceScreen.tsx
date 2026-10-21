@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { UseQueryResult } from '@tanstack/react-query';
-import { useCoordinators, useGroups, usePeople } from '../../shared/api/queries';
+import { useCoordinators, useGroups, useMe, usePeople } from '../../shared/api/queries';
 import {
   applyFilters,
   deleteView,
@@ -17,10 +17,11 @@ import {
 } from '../../shared/filters';
 import { downloadCsv, toCsv } from '../../shared/csv';
 import { ru } from '../../shared/i18n/ru';
+import { teamKindOf } from '../../entities/teamRole';
 import { ENTITY_IDS, useAppNav, type EntityId } from '../../shared/nav';
 import { Button, Chip, ErrorState, LoadingState, Popover } from '../../shared/ui';
 import { CoordinatorCard, GroupCard, PersonCard } from './Cards';
-import { coordinatorsConfig, groupsConfig, peopleConfig, type EntityConfig } from './config';
+import { coordinatorsConfig, groupsConfig, myGroupsPreset, peopleConfig, type EntityConfig } from './config';
 import { FilterPanel, OP_SYMBOL } from './FilterPanel';
 import { ReferenceTable } from './ReferenceTable';
 import { useTableState } from './useTableState';
@@ -88,10 +89,20 @@ export function ReferenceScreen() {
  */
 export function GroupsWorkplace() {
   const groups = useGroups();
+  const person = useMe().data?.person;
+  const myName = person?.name ?? null;
+  const coordinator = teamKindOf(person?.teamRole) === 'coordinator';
+  // При личном входе первым быстрым отбором — «Мои группы». Координатору он ещё и стоит по умолчанию вместо «Принимает
+  // новых» (чипы снимаются): ему по работе нужны все свои группы, включая «Не направлять», а чужие — нет.
+  const config = useMemo(() => {
+    if (!myName) return groupsConfig;
+    const mine = myGroupsPreset(myName);
+    return { ...groupsConfig, presets: [mine, ...groupsConfig.presets], ...(coordinator ? { defaultFilters: mine.filters } : {}) };
+  }, [myName, coordinator]);
   return (
     <EntityView
       key="groups"
-      config={groupsConfig}
+      config={config}
       query={groups}
       items={groups.data?.items}
       renderCard={(g, close) => <GroupCard g={g} onClose={close} />}

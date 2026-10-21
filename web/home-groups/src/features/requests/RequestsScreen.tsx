@@ -7,6 +7,7 @@ import { useAppNav } from '../../shared/nav';
 import { SavedViewsMenu } from '../../shared/savedViews';
 import { Button, Chip, EmptyState, ErrorState, LoadingState } from '../../shared/ui';
 import { countBuckets, filterByBucket, filterByResponsible, searchRequests } from './model';
+import { useResponsible } from './useResponsible';
 import { BulkPanel } from './bulk/BulkPanel';
 import { useBulk } from './bulk/useBulk';
 import { ClosedNote } from './ClosedNote';
@@ -38,7 +39,7 @@ export function RequestsContent({ data }: { data: RequestsView }) {
   // Сервер старой версии мог ещё не прислать `others`: без этой подстраховки экран заявок упал бы целиком.
   const safe = data.others ? data : { ...data, others: [] };
   const props = { data: safe, note, onClosed: setNote, onHideNote: () => setNote(null) };
-  return nav.view === 'others' ? <OthersContent {...props} /> : <WaitingContent {...props} />;
+  return nav.view === 'wait' ? <WaitingContent {...props} /> : <OthersContent {...props} kind={nav.view} />;
 }
 
 function WaitingContent({
@@ -53,11 +54,12 @@ function WaitingContent({
   onHideNote: () => void;
 }) {
   const nav = useAppNav();
+  const resp = useResponsible('wait');
   // Поиск и «В работе у» сужают список до чипов: счётчики, очередь обзвона и «Следующая заявка»
   // считаются по одному и тому же найденному.
   const found = useMemo(
-    () => filterByResponsible(searchRequests(data.items, nav.search), nav.responsible),
-    [data.items, nav.search, nav.responsible],
+    () => filterByResponsible(searchRequests(data.items, nav.search), resp.value, resp.myName),
+    [data.items, nav.search, resp.value, resp.myName],
   );
   const counts = useMemo(() => countBuckets(found), [found]);
   const visible = useMemo(() => filterByBucket(found, nav.bucket), [found, nav.bucket]);
@@ -82,12 +84,12 @@ function WaitingContent({
 
   const neighbors = useNeighbors(visible, selected?.id ?? null, nav.selectRequest);
   // Выбор для массовых действий принадлежит текущему списку: сменился чип, поиск или «В работе у» — выбор сброшен.
-  const bulk = useBulk(visible, `${nav.bucket}\u0000${nav.search}\u0000${nav.responsible}`);
+  const bulk = useBulk(visible, `${nav.bucket}\u0000${nav.search}\u0000${resp.value}`);
 
   return (
     <div className={styles.work}>
       <div className={styles.main}>
-        <ViewSwitch view="wait" openOthers={openOthersCount(data.others)} onChange={nav.setView} />
+        <ViewSwitch view="wait" others={data.others} onChange={nav.setView} />
         <ClosedNote note={note} onHide={onHideNote} />
         <MatchingPanel matching={data.matching} assistant={data.assistant} changed={changed} />
         {/* Область живая и есть всегда: скринридер читает только то, что в неё добавили. */}
@@ -118,7 +120,7 @@ function WaitingContent({
           </Chip>
         </div>
         <div className={styles.tools} role="group" aria-label={ru.requests.toolsLabel}>
-          <ResponsibleSelect items={data.items} value={nav.responsible} onChange={nav.setResponsible} />
+          <ResponsibleSelect items={data.items} value={resp.value} mine={resp.myName !== null} onChange={resp.set} />
           <SavedViewsMenu scope="requests" />
         </div>
         <BulkPanel bulk={bulk} visibleCount={visible.length} />

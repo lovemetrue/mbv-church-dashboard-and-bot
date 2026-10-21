@@ -308,87 +308,54 @@ SCREENS.push({
 });
 
 /**
- * Инструкция координаторам: как найти свои группы и проверить их данные. mark — что обвести красной рамкой с номером
- * (номер в рамке = номер шага в docs/ИНСТРУКЦИЯ-КООРДИНАТОРА.md). Имена файлов без ширины и темы: на них ссылается
+ * Инструкция координаторам (docs/ИНСТРУКЦИЯ-КООРДИНАТОРА.md): вход по личному паролю, свои заявки, свои группы,
+ * проверка группы. В режиме --guide вход «личный» (localStorage hg.demo.person, см. fixtures/index.ts).
+ * mark — что обвести красной рамкой с номером (номер в рамке = номер пункта под снимком в инструкции). Имена файлов без ширины и темы: на них ссылается
  * инструкция, и при пересъёмке ссылки не меняются.
  */
 const MY = 'Морозов Д.';
-const MY_GROUPS = `/?tab=groups&f=${encodeURIComponent('Статус:ne:Закрыта')}&f=${encodeURIComponent('Статус:ne:Аннулирована')}&f=${encodeURIComponent(`Координатор:eq:${MY}`)}`;
+const CARD = '[role=dialog][aria-label^="Карточка группы"]';
 SCREENS.push(
   {
-    name: 'guide-01-groups',
-    url: '/?tab=groups',
-    ready: 'table',
-    mark: ['[role=tablist][aria-label="Разделы"] >> role=tab[name=/^Группы/]', 'ul[aria-label="Текущий отбор"]', 'role=button[name=/^Фильтры/]'],
-  },
-  {
-    name: 'guide-02-filter',
-    url: '/?tab=groups',
-    ready: 'table',
-    click: 'role=button[name=/^Фильтры/]',
-    then: '[role=dialog][aria-label="Фильтры"]',
-    select: [
-      ['[role=dialog][aria-label="Фильтры"] >> internal:label="Поле"', 'Координатор'],
-      ['[role=dialog][aria-label="Фильтры"] >> internal:label="Значение"', MY],
-    ],
+    name: 'guide-02-requests',
+    url: '/?tab=requests',
+    ready: '[aria-label="Список заявок"]',
     mark: [
-      '[role=dialog][aria-label="Фильтры"] >> internal:label="Поле"',
-      '[role=dialog][aria-label="Фильтры"] >> internal:label="Значение"',
-      '[role=dialog][aria-label="Фильтры"] >> role=button[name="Добавить"]',
+      '[role=tablist][aria-label="Разделы"] >> role=tab[name=/^Заявки/]',
+      'role=group[name="Отбор списка заявок"] >> internal:label="В работе у"',
+      'role=button[name="Выйти"]',
     ],
   },
   {
     name: 'guide-03-my-groups',
-    url: MY_GROUPS,
-    ready: 'table',
-    mark: ['ul[aria-label="Текущий отбор"] li:has-text("Координатор")', 'text=/^Показано \\d+ из \\d+$/'],
-  },
-  {
-    name: 'guide-04-save-view',
-    url: MY_GROUPS,
+    url: '/?tab=groups',
     ready: 'table',
     click: 'role=button[name=/^Фильтры/]',
     then: '[role=dialog][aria-label="Фильтры"]',
-    fill: [['[role=dialog][aria-label="Фильтры"] >> internal:label="Название вида"', 'Мои группы']],
     mark: [
-      '[role=dialog][aria-label="Фильтры"] >> internal:label="Название вида"',
-      '[role=dialog][aria-label="Фильтры"] >> role=button[name="Сохранить как вид"]',
+      '[role=tablist][aria-label="Разделы"] >> role=tab[name=/^Группы/]',
+      'role=button[name=/^Фильтры/]',
+      '[role=dialog][aria-label="Фильтры"] >> role=button[name="Мои группы"]',
     ],
   },
   {
-    name: 'guide-05-not-checked',
-    url: `${MY_GROUPS}&f=${encodeURIComponent('Данные проверены:eq:Нет')}`,
-    ready: 'table',
-    mark: ['ul[aria-label="Текущий отбор"] li:has-text("Данные проверены")', 'role=columnheader[name=/Данные проверены/]'],
-  },
-  {
-    name: 'guide-06-card',
-    url: '/?tab=groups&rec=2',
-    ready: '[role=dialog][aria-label^="Карточка группы"]',
-    mark: [
-      '[role=dialog][aria-label^="Карточка группы"] dt:has-text("Когда")',
-      '[role=dialog][aria-label^="Карточка группы"] dt:has-text("Ответ ведущего боту")',
-      '[role=dialog][aria-label^="Карточка группы"] >> role=button[name=/^Править/]',
-    ],
+    name: 'guide-04-card',
+    url: '/?tab=groups&rec=12',
+    ready: CARD,
+    mark: [`${CARD} dt:has-text("Когда")`, `${CARD} dt:has-text("Адрес")`, `${CARD} >> role=button[name=/^Править/]`],
     markRow: true,
   },
   {
-    name: 'guide-07-edit',
-    url: '/?tab=groups&rec=2',
-    ready: '[role=dialog][aria-label^="Карточка группы"]',
-    click: '[role=dialog][aria-label^="Карточка группы"] >> role=button[name=/^Править/]',
+    name: 'guide-05-edit',
+    url: '/?tab=groups&rec=12',
+    ready: CARD,
+    click: `${CARD} >> role=button[name=/^Править/]`,
     then: '[role=dialog][aria-modal=true] form',
     scroll: '[role=dialog][aria-modal=true] >> internal:label="Данные проверены"',
     mark: [
       '[role=dialog][aria-modal=true] label:has-text("Данные проверены")',
       '[role=dialog][aria-modal=true] >> role=button[name="Сохранить"]',
     ],
-  },
-  {
-    name: 'guide-08-show-all',
-    url: '/?tab=groups',
-    ready: 'table',
-    mark: ['role=button[name="Убрать отбор: Принимает новых = Да"]'],
   },
 );
 const GUIDE_SHOTS = SCREENS.filter((s) => s.name.startsWith('guide-')).map((s) => [s.name, 1280, 'light']);
@@ -473,7 +440,41 @@ const SHOTS_ALL = [
 
 const SHOTS = GUIDE ? GUIDE_SHOTS : SHOTS_ALL.filter(([n]) => !n.startsWith('guide-'));
 
+/**
+ * Страница входа рисуется сервером (src/home-groups/loginPage.ts), а не приложением, поэтому для инструкции её HTML
+ * берём у самой функции через tsx и снимаем отдельно, с рамками у полей и кнопки.
+ */
+async function shootLoginPage(browser) {
+  const html = execFileSync(join(root, '../../node_modules/.bin/tsx'), ['-e', "import { homeGroupsLoginPage } from './src/home-groups/loginPage.ts'; process.stdout.write(homeGroupsLoginPage());"], {
+    cwd: join(root, '../..'),
+    encoding: 'utf8',
+  });
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 640 }, locale: 'ru-RU', reducedMotion: 'reduce' });
+  const page = await ctx.newPage();
+  await page.setContent(html);
+  await page.fill('#l', 'd_morozov');
+  await page.fill('#p', 'парольпароль');
+  const boxes = [];
+  for (const sel of ['#l', '#p', 'button[type=submit]']) boxes.push(await page.locator(sel).boundingBox());
+  await page.evaluate((list) => {
+    list.forEach((b, i) => {
+      const frame = document.createElement('div');
+      frame.style.cssText = `position:absolute;z-index:2147483647;pointer-events:none;border:3px solid #e5484d;border-radius:8px;
+        left:${b.x + scrollX - 5}px;top:${b.y + scrollY - 5}px;width:${b.width + 10}px;height:${b.height + 10}px;box-sizing:border-box`;
+      const badge = document.createElement('div');
+      badge.textContent = String(i + 1);
+      badge.style.cssText = `position:absolute;z-index:2147483647;pointer-events:none;width:26px;height:26px;border-radius:50%;
+        background:#e5484d;color:#fff;font:700 15px/26px system-ui,sans-serif;text-align:center;
+        left:${b.x + scrollX - 18}px;top:${b.y + scrollY - 18}px`;
+      document.body.append(frame, badge);
+    });
+  }, boxes);
+  await page.screenshot({ path: join(outDir, 'guide-01-login.png') });
+  await ctx.close();
+}
+
 const browser = await chromium.launch({ executablePath: chromePath, args: ['--no-sandbox'] });
+if (GUIDE && (!process.env.HG_ONLY || process.env.HG_ONLY.split(',').includes('guide-01-login'))) await shootLoginPage(browser);
 const problems = [];
 
 /** Элементы, которые вылезают за правый край окна и не лежат внутри прокручиваемого блока. */
@@ -517,6 +518,13 @@ for (const [screenName, width, theme] of SHOTS) {
       localStorage.setItem('hg.theme', t);
     } catch {}
   }, theme === 'dark' ? 'auto' : theme);
+  if (GUIDE) {
+    await ctx.addInitScript((name) => {
+      try {
+        localStorage.setItem('hg.demo.person', name);
+      } catch {}
+    }, MY);
+  }
   const page = await ctx.newPage();
   // Фиксируем время, чтобы приветствие и дата на снимках не гуляли.
   await page.clock.setFixedTime(new Date('2026-10-09T09:30:00+03:00'));

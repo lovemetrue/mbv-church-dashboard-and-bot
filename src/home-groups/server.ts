@@ -155,7 +155,7 @@ const CONTENT_TYPES: Record<string, string> = {
 
 class BodyTooLarge extends Error {}
 
-const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode|bot\/extra-questions|bot\/send-extra-questions|assistant\/enabled|assistant\/llm|assistant\/llm-test|geocoder|geocoder-test|geocoder-retry|geocoder-reject|map)$/;
+const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode|staff\/generate-password|bot\/extra-questions|bot\/send-extra-questions|assistant\/enabled|assistant\/llm|assistant\/llm-test|geocoder|geocoder-test|geocoder-retry|geocoder-reject|map)$/;
 const MAP_LOADED_PATH = '/api/v1/map/loaded';
 const CREATE_PATH = /^\/api\/v1\/(requests|groups|people|coordinators)\/create$/;
 /** `POST /api/v1/groups/5/update`: правка и удаление записей справочника. */
@@ -751,6 +751,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       'staff/invite': () => deps.staff.invite(call.body, call.actor),
       'staff/reset': () => deps.staff.reset(call.body, call.actor),
       'staff/personal-mode': () => deps.staff.setPersonalMode(call.body, call.actor),
+      'staff/generate-password': () => deps.staff.generatePassword(call.body, call.actor),
       'bot/extra-questions': () => deps.botSettings.setExtraQuestions(call.body, call.actor),
       'bot/send-extra-questions': () => deps.botSettings.sendExtraInvites(call.body, call.actor),
       'assistant/llm': () => deps.llmConfig.save(call.body, call.actor),

@@ -8,6 +8,7 @@ import { RefreshButton } from './RefreshButton';
 import { SectionHead } from './SectionHead';
 import { useSettingsStaff, useStaffActions } from './queries';
 import { ConfirmDialog, LinkDialog, StaffFormDialog, toFormValues, type StaffFormValues } from './StaffDialogs';
+import { TeamPasswords } from './TeamPasswords';
 import styles from './Settings.module.css';
 import u from './Users.module.css';
 
@@ -25,7 +26,7 @@ type Dialog =
   | { kind: 'edit'; item: StaffItem }
   | { kind: 'toggle'; item: StaffItem }
   | { kind: 'personal'; enable: boolean }
-  | { kind: 'link'; name: string; email: string; url: string };
+  | { kind: 'link'; name: string; email: string | null; url: string };
 
 type Outcome<T> = { value: T } | { error: string };
 
@@ -107,7 +108,7 @@ function StaffRow({
       <td data-label={t.cols.login} className={`${u.login} ${u.nowrap}`}>
         {item.login}
       </td>
-      <td data-label={t.cols.email}>{item.email}</td>
+      <td data-label={t.cols.email}>{item.email ?? '—'}</td>
       <td data-label={t.cols.role} className={u.nowrap}>{t.roles[item.role]}</td>
       <td data-label={t.cols.status}>
         {/* Обёртка нужна карточке на телефоне: ячейка там — сетка из подписи и одного значения. */}
@@ -170,7 +171,7 @@ function StaffBody({ data }: { data: SettingsStaffView }) {
       return;
     }
     setDialog(null);
-    setNotice({ kind: 'ok', text: t.sent(d.email) });
+    setNotice({ kind: 'ok', text: t.sent(d.email ?? '') });
   }
 
   async function sendLink(kind: 'invite' | 'reset', item: StaffItem) {
@@ -196,7 +197,7 @@ function StaffBody({ data }: { data: SettingsStaffView }) {
     // Отправляем только изменённое: чужие поля сервер не трогаем и не затираем устаревшими.
     const body: UpdateStaffBody = { id: item.id };
     if (values.fullName !== item.fullName) body.fullName = values.fullName;
-    if (values.email !== item.email) body.email = values.email;
+    if (values.email !== (item.email ?? '')) body.email = values.email;
     if (values.role !== item.role) body.role = values.role;
     setNotice(null);
     const r = await run(() => actions.update(body));
@@ -233,6 +234,17 @@ function StaffBody({ data }: { data: SettingsStaffView }) {
   return (
     <>
       <PersonalLogins data={data.personal} busy={busy} onToggle={(enable) => setDialog({ kind: 'personal', enable })} />
+
+      <TeamPasswords
+        team={data.team}
+        personalEnabled={data.personal.enabled}
+        busy={busy}
+        generate={async (coordinatorId) => {
+          const r = await run(() => actions.generatePassword({ coordinatorId }));
+          if (!r) return null;
+          return 'error' in r ? r.error : r.value;
+        }}
+      />
 
       <section aria-labelledby={listId}>
         <div className={u.listHead}>

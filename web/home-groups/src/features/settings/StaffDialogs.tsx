@@ -100,7 +100,9 @@ export function StaffFormDialog({
     if (busy) return;
     const next: { name?: string; email?: string } = {};
     if (!values.fullName.trim()) next.name = t.errFullName;
-    if (!isValidEmail(values.email)) next.email = t.errEmail;
+    // У заведённых из справочника команды почты нет: при правке её можно оставить пустой.
+    const emailOptional = fixedLogin !== undefined && initial.email === '';
+    if (!(emailOptional && values.email.trim() === '') && !isValidEmail(values.email)) next.email = t.errEmail;
     setProblems(next);
     if (next.name) return nameRef.current?.focus();
     if (next.email) return emailRef.current?.focus();
@@ -278,7 +280,7 @@ export function ConfirmDialog({
  * Полная ссылка на пароль. Показывается, когда письмо не ушло: администратор передаёт её
  * человеку сам. Ссылка одноразовая, поэтому предупреждение стоит прямо над ней.
  */
-export function LinkDialog({ name, email, url, onClose }: { name: string; email: string; url: string; onClose: () => void }) {
+export function LinkDialog({ name, email, url, onClose }: { name: string; email: string | null; url: string; onClose: () => void }) {
   const boxId = useId();
   const boxRef = useRef<HTMLTextAreaElement>(null);
   const [copy, setCopy] = useState<'idle' | 'done' | 'failed'>('idle');
@@ -329,7 +331,7 @@ export function LinkDialog({ name, email, url, onClose }: { name: string; email:
 
 export const toFormValues = (item: StaffItem): StaffFormValues => ({
   fullName: item.fullName,
-  email: item.email,
+  email: item.email ?? '',
   role: item.role,
   login: '',
 });

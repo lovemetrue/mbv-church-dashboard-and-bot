@@ -279,6 +279,16 @@ const SCREENS = [
   { name: 'strange-others', url: '/?tab=requests&view=others', ready: 'ul[aria-label="Список обращений"] [role=img][aria-label^="Странный человек"]', scroll: 'ul[aria-label="Список обращений"] [role=img][aria-label^="Странный человек"]' },
 ];
 
+// «Пароли для команды»: пароль Родионову сгенерирован, показан «глазиком».
+SCREENS.push({
+  name: 'settings-team-passwords',
+  url: '/?tab=settings&sec=users',
+  ready: 'role=region[name="Пароли для команды"]',
+  click: ['role=button[name="Сгенерировать пароль: Родионов Давид"]'],
+  then: '[data-testid="team-password"]',
+  clickAfter: 'role=button[name="Показать пароль: Родионов Давид"]',
+});
+
 /**
  * Инструкция координаторам: как найти свои группы и проверить их данные. mark — что обвести красной рамкой с номером
  * (номер в рамке = номер шага в docs/ИНСТРУКЦИЯ-КООРДИНАТОРА.md). Имена файлов без ширины и темы: на них ссылается
@@ -366,6 +376,9 @@ SCREENS.push(
 const GUIDE_SHOTS = SCREENS.filter((s) => s.name.startsWith('guide-')).map((s) => [s.name, 1280, 'light']);
 
 const SHOTS_ALL = [
+  ['settings-team-passwords', 1280, 'light'],
+  ['settings-team-passwords', 400, 'light'],
+  ['settings-team-passwords', 400, 'dark'],
   ...['requests-work', 'requests-work-edit'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light'], [s, 400, 'dark'], [s, 400, 'gray']]),
   // [экран, ширина, тема]
   ['reference-groups-closed', 1280, 'light'],

@@ -3,13 +3,14 @@ import { StaffConflict } from '../../db/repos/staff.repo.js';
 import type { SettingsRepo } from '../../db/repos/settings.repo.js';
 import type { SessionStore } from '../../dashboard/sessions.js';
 import type {
-  ActionError, DeliveryOk, PersonalLoginsState, SettingsStaffView, StaffItem, StaffStatus, SuggestLoginOk,
+  ActionError, DeliveryOk, GeneratePasswordOk, PersonalLoginsState, SettingsStaffView, StaffItem, StaffStatus, SuggestLoginOk,
+  TeamAccountItem,
 } from '../../home-groups/contracts.js';
 import { logger } from '../../logger.js';
 import type { Mailer } from '../mail/mailer.js';
 import { inviteMail, resetMail } from '../mail/templates.js';
 import { baseLogin, freeLogin, LOGIN_PATTERN } from './loginName.js';
-import { hashPassword, hashToken, newToken, passwordProblem } from './password.js';
+import { generatePassword, hashPassword, hashToken, newToken, passwordProblem } from './password.js';
 
 /**
  * Личные входы: заведение людей, ссылки на пароль, сброс, включение режима.
@@ -50,6 +51,17 @@ export interface StaffServiceDeps {
 const statusOf = (s: { active: boolean; password_hash: string | null }): StaffStatus =>
   !s.active ? 'disabled' : s.password_hash ? 'active' : 'invited';
 
+/**
+ * Логин человека из справочника команды. В справочнике ФИО записано «Фамилия Имя» («Родионов Давид»), а
+ * `baseLogin` ждёт «Имя Фамилия»: меняем первые два слова местами — получится `d_rodionov`.
+ */
+export function teamLogin(name: string, taken: ReadonlySet<string>): string | null {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length < 2) return null;
+  const b = baseLogin(`${words[1]} ${words[0]}`);
+  return b ? freeLogin(b, taken) : null;
+}
+
 export function createStaffService(deps: StaffServiceDeps) {
   const now = deps.now ?? (() => new Date());
   const base = deps.publicUrl?.replace(/\/+$/, '') ?? null;
@@ -74,7 +86,8 @@ export function createStaffService(deps: StaffServiceDeps) {
     await deps.staff.issueToken(staff.id, purpose, hashToken(token), ttl, actor);
     const path = `/set-password?token=${token}`;
 
-    if (deps.mailer.configured && base) {
+    // Без почты у человека (заведён из справочника команды) письмо слать некуда: ссылка только на экране.
+    if (deps.mailer.configured && base && staff.email) {
       const link = `${base}${path}`;
       const message = purpose === 'invite'
         ? inviteMail(staff.email, staff.full_name, staff.login, link, Math.round(ttl / 86400))
@@ -106,8 +119,58 @@ export function createStaffService(deps: StaffServiceDeps) {
     personalState,
 
     async view(): Promise<SettingsStaffView> {
-      const [rows, personal] = await Promise.all([deps.staff.list(), personalState()]);
-      return { generatedAt: now().toISOString(), items: rows.map(itemOf), personal };
+      const [rows, personal, team] = await Promise.all([deps.staff.list(), personalState(), deps.staff.team()]);
+      return {
+        generatedAt: now().toISOString(),
+        items: rows.map(itemOf),
+        personal,
+        team: team.map((t): TeamAccountItem => ({
+          coordinatorId: t.coordinator_id, name: t.name, teamRole: t.team_role, staffId: t.staff_id, login: t.login,
+          hasPassword: t.has_password, active: t.active !== false,
+          lastLoginAt: t.last_login_at ? t.last_login_at.toISOString() : null,
+        })),
+      };
+    },
+
+    /**
+     * Сгенерировать пароль, который администратор раздаст сам: человеку из справочника команды (учётная запись
+     * заводится при первом нажатии) или уже заведённому пользователю. Пароль возвращается один раз, в базе — хеш;
+     * прежний пароль и ссылки перестают действовать, открытые входы человека закрываются.
+     */
+    async generatePassword(body: unknown, actor: string): Promise<StaffOutcome<Omit<GeneratePasswordOk, 'ok'>>> {
+      const b = typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
+      const isId = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v > 0;
+      let account: StaffRow | null;
+      let coordinatorId: number | null = null;
+      if (isId(b['coordinatorId'])) {
+        coordinatorId = b['coordinatorId'];
+        const member = await deps.staff.teamMember(coordinatorId);
+        if (!member) return bad('Такого человека нет в справочнике команды.', 'not_found');
+        account = member.account;
+        if (!account) {
+          const login = teamLogin(member.name, await deps.staff.logins());
+          if (!login) return bad('Не удалось подобрать логин: в справочнике у человека должны быть фамилия и имя.');
+          try {
+            account = await deps.staff.createForTeam({ login, fullName: member.name, coordinatorId }, actor);
+          } catch (err) {
+            if (err instanceof StaffConflict) return bad('Учётную запись только что завели. Обновите страницу и нажмите ещё раз.', 'conflict');
+            throw err;
+          }
+        }
+      } else if (isId(b['staffId'])) {
+        account = await deps.staff.byId(b['staffId']);
+        if (!account) return bad('Пользователь не найден.', 'not_found');
+      } else {
+        return bad('Нужно указать, кому сгенерировать пароль.');
+      }
+      if (!account.active) return bad('Пользователь отключён. Сначала включите его в списке пользователей.');
+      // Свой пароль так не меняют: вход закрылся бы на середине, а новый пароль остался бы только на этом экране.
+      if (account.login.toLowerCase() === actor.toLowerCase()) return bad('Свой пароль меняйте кнопкой «Сбросить пароль».');
+      let password = generatePassword();
+      while (passwordProblem(password, { login: account.login, email: account.email })) password = generatePassword();
+      await deps.staff.setPassword(account.id, await hashPassword(password), actor, coordinatorId);
+      deps.onChange?.();
+      return { ok: true, login: account.login, password };
     },
 
     async suggestLogin(body: unknown): Promise<StaffOutcome<Pick<SuggestLoginOk, 'login'>>> {

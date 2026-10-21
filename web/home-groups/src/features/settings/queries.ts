@@ -14,6 +14,8 @@ import type {
   LlmTestBody,
   LlmTestResult,
   PersonalModeBody,
+  GeneratePasswordBody,
+  GeneratePasswordOk,
   SavePromptBody,
   SendExtraInvitesBody,
   SendExtraInvitesOk,
@@ -153,6 +155,7 @@ export function useStaffActions() {
     invite: (body: StaffIdBody) => changing<DeliveryOk>('settings/staff/invite', body),
     reset: (body: StaffIdBody) => changing<DeliveryOk>('settings/staff/reset', body),
     setPersonalMode: (body: PersonalModeBody) => changing<ActionOk>('settings/staff/personal-mode', body),
+    generatePassword: (body: GeneratePasswordBody) => changing<GeneratePasswordOk>('settings/staff/generate-password', body),
   };
 }
 

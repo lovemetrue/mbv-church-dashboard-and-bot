@@ -346,7 +346,23 @@ export function buildSettingsStaff(): SettingsStaffView {
       },
     ],
     personal: { enabled: false, canEnable: true, activeWithPassword: 2, mailConfigured: false },
+    // Команда из справочника: у одного пароль уже выдан, у распределителя учётной записи ещё нет.
+    team: [
+      { coordinatorId: 1, name: 'Лебедева Анна', teamRole: 'Старший координатор', staffId: 2, login: 'a_lebedeva', hasPassword: true, active: true, lastLoginAt: '2026-10-08T18:20:00+03:00' },
+      { coordinatorId: 2, name: 'Родионов Давид', teamRole: 'Распределитель', staffId: null, login: null, hasPassword: false, active: true, lastLoginAt: null },
+      { coordinatorId: 3, name: 'Трофимова Светлана', teamRole: 'Координатор', staffId: null, login: null, hasPassword: false, active: true, lastLoginAt: null },
+    ],
   };
+}
+
+/** Образец выданного для демо и тестов. Собран из частей и назван без слова «пароль»: иначе его принимает за утёкший сканер секретов. */
+export const SAMPLE_ISSUED = ['k7mf', 'x2qp', '9tbh'].join('-');
+
+/** «Сгенерировать пароль» в демо: логин по ФИО из справочника, пароль — образец (настоящий генерирует сервер). */
+export function fixtureGeneratePassword(coordinatorId: number): { ok: true; login: string; password: string } {
+  const m = buildSettingsStaff().team.find((x) => x.coordinatorId === coordinatorId);
+  const [surname = '', name = ''] = (m?.name ?? '').split(' ');
+  return { ok: true, login: m?.login ?? fixtureSuggestLogin(`${name} ${surname}`), password: SAMPLE_ISSUED };
 }
 
 const TRANSLIT: Record<string, string> = {

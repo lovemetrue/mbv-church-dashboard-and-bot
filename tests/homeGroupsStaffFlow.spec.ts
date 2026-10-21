@@ -117,6 +117,23 @@ describe('личные входы целиком', () => {
     } finally { app.server.close(); }
   });
 
+  test('пароль, сгенерированный для человека из справочника команды, пускает его после включения личных входов; обычному входу кнопка недоступна', async () => {
+    const app = await start();
+    try {
+      const boss = (await app.login('super_mbv_admin', SHARED.super)).cookie!;
+      const { rows } = await db.query<{ id: number }>(`INSERT INTO coordinators (name, role, source) VALUES ('Родионов Давид', 'Распределитель', 'ui') RETURNING id::int AS id`);
+      const r = await app.api(boss, 'settings/staff/generate-password', { coordinatorId: rows[0]!.id });
+      expect(r.status).toBe(200);
+      const out = await r.json() as { ok: true; login: string; password: string };
+      expect(out).toMatchObject({ ok: true, login: 'd_rodionov' });
+      expect(app.sent).toEqual([]);
+      expect((await app.api(boss, 'settings/staff/personal-mode', { enabled: true })).status).toBe(200);
+      const david = await app.login('d_rodionov', out.password);
+      expect(david.status).toBe(302);
+      expect((await app.api(david.cookie!, 'settings/staff/generate-password', { coordinatorId: rows[0]!.id })).status).toBe(403);
+    } finally { app.server.close(); }
+  });
+
   test('действия личного входа в журнале подписаны логином человека', async () => {
     const app = await start();
     try {

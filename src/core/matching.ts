@@ -7,14 +7,14 @@ import { DISTRICTS } from './groups.js';
  * данных, без внешних сервисов, и каждое очко можно объяснить служителю словами.
  *
  * Жёсткие условия — группа отсекается, если не выполнено хотя бы одно:
- *   • статус «Функционирует» или «Кампания»;
+ *   • статус «Функционирует»;
  *   • приём новых не «Нет»;
  *   • возраст группы пересекается с возрастом человека;
  *   • у группы не стоит отметка «Не направлять».
- * Мягкие условия дают очки: тот же район +3, то же метро или ориентир +2, «Кампания» в период
- * кампании +2, участников меньше, чем в соседних группах, +1.
+ * Мягкие условия дают очки: тот же район +3, то же метро или ориентир +2, «Работает только в кампанию»
+ * в период кампании +2, участников меньше, чем в соседних группах, +1.
  *
- * Новые группы (статус «Кампания» — заведены под кампанию) идут первыми; действующие
+ * Новые группы (отметка «Работает только в кампанию» — заведены под кампанию) идут первыми; действующие
  * добавляются, только если новых подходящих меньше NEW_ENOUGH.
  *
  * Функция чистая — как fsm.ts: всё нужное приходит аргументами, поэтому ей не нужна база.
@@ -25,8 +25,7 @@ export const NEW_ENOUGH = 3;
 /** Больше служителю не нужно: дальше он всё равно выбирает из списка вручную. */
 export const MAX_SUGGESTIONS = 5;
 
-export const PASSING_STATUSES = new Set(['Функционирует', 'Кампания']);
-const FRESH_STATUS = 'Кампания';
+export const PASSING_STATUSES = new Set(['Функционирует']);
 
 export interface MatchPerson {
   /** Возрастная категория бота («25-40») или то, что записано в заявке из таблицы. */
@@ -45,6 +44,8 @@ export interface MatchGroup {
   people: number | null;
   /** Отметка «Не направлять»: группа скрыта из подбора. */
   do_not_refer: boolean;
+  /** «Работает только в кампанию» (бывший статус «Кампания»): во время кампании такие группы предлагаются первыми. */
+  campaign_only?: boolean;
 }
 
 export interface Suggestion {
@@ -183,7 +184,7 @@ function score(person: MatchPerson, g: MatchGroup, all: readonly MatchGroup[], o
     points += 2;
     reasons.push(`рядом: ${g.metro}`);
   }
-  if (g.status === FRESH_STATUS && opts.campaignActive) {
+  if (g.campaign_only === true && opts.campaignActive) {
     points += 2;
     reasons.push('группа кампании');
   }
@@ -194,7 +195,7 @@ function score(person: MatchPerson, g: MatchGroup, all: readonly MatchGroup[], o
   }
   if (ageRange(person.age) && ageRange(g.age)) reasons.push(`возраст подходит (${g.age})`);
 
-  return { groupId: g.id, score: points, fresh: g.status === FRESH_STATUS, reasons, sameDistrict, sameMetro };
+  return { groupId: g.id, score: points, fresh: g.campaign_only === true, reasons, sameDistrict, sameMetro };
 }
 
 /** Выше — больше очков; при ничьей — группа поменьше (людей расселяем равномерно); неизвестное — в конец. */

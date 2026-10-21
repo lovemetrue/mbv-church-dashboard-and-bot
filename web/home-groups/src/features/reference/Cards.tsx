@@ -92,6 +92,8 @@ export function GroupCard({ g, onClose }: { g: GroupItem; onClose: () => void })
     ...(g.training ? [{ label: 'Обучение', value: g.training }] : []),
     { label: 'Данные проверены', value: g.checked ? ru.reference.yes : ru.reference.no },
     { label: '«40 дней»', value: g.campaignRegistered ? ru.reference.campaignYes : ru.reference.no },
+    // Бывший статус «Кампания»: показываем только у отмеченных, «Нет» у остальных был бы шумом.
+    ...(g.campaignOnly ? [{ label: 'Только в кампанию', value: ru.reference.yes }] : []),
     ...(g.doNotRefer ? [{ label: 'Не направлять', value: <Pill tone="crit">{ru.reference.yes}</Pill> }] : []),
     ...(g.comment ? [{ label: 'Комментарий', value: g.comment }] : []),
   ];

@@ -432,3 +432,32 @@ describe('«+ Создать»: группа', () => {
     expect(posts(fetchMock)).toHaveLength(0);
   });
 });
+
+describe('«+ Создать»: потенциальная группа и «40 дней»', () => {
+  test('выбор статуса «Потенциальная» сам отмечает «40 дней», и оба поля уходят на сервер', async () => {
+    const fetchMock = stubFetchWithFixtures({ me: meOf(null), 'groups/create': () => json({ ok: true, id: 16 }) });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const dialog = await ready(await openForm(user, 'Группа'));
+    const forty = within(dialog).getByRole('checkbox', { name: '«40 дней» — зарегистрирован в кампании' });
+    expect(forty).not.toBeChecked();
+    const status = within(dialog).getByRole('combobox', { name: 'Статус' });
+    expect(within(status).queryByRole('option', { name: 'Кампания' })).not.toBeInTheDocument();
+    await user.selectOptions(status, 'Потенциальная');
+    expect(forty).toBeChecked();
+    await user.type(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' }), 'Ольга Крылова');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Район' }), 'Приморский');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Формат группы' }), 'Молодежная');
+    await user.click(within(dialog).getByRole('button', { name: 'Создать группу' }));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect(posts(fetchMock)[0]!.body.fields).toMatchObject({ status: 'Потенциальная', campaignRegistered: '1' });
+  });
+
+  test('в форме создания есть галочка «Работает только в кампанию»', async () => {
+    stubFetchWithFixtures({ me: meOf(null) });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const dialog = await ready(await openForm(user, 'Группа'));
+    expect(within(dialog).getByRole('checkbox', { name: 'Работает только в кампанию' })).not.toBeChecked();
+  });
+});

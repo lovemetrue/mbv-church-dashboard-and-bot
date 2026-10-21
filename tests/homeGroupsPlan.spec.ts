@@ -70,11 +70,10 @@ const reasonsOf = (r: PlanRequest, g: PlanGroup): string[] => match(r, [g], SETT
 describe('жёсткие отсевы группы для заявки', () => {
   const r = request();
 
-  test('группа не в статусе «Функционирует» или «Кампания» отсеивается', () => {
-    for (const status of ['На паузе', 'Закрыта', 'Потенциальная', 'Недвижимость']) {
+  test('группа не в статусе «Функционирует» отсеивается («Кампания» больше не статус, см. миграцию 047)', () => {
+    for (const status of ['На паузе', 'Закрыта', 'Потенциальная', 'Недвижимость', 'Кампания']) {
       expect(exclusionReason(r, group({ status }), SETTINGS), status).not.toBeNull();
     }
-    expect(exclusionReason(r, group({ status: 'Кампания' }), SETTINGS)).toBeNull();
     expect(exclusionReason(r, group({ status: 'Функционирует' }), SETTINGS)).toBeNull();
   });
 
@@ -739,7 +738,7 @@ describe('план: детерминированность и вместимос
         people: pick(rand, [null, 0, 3, 8, 9, 10, 12]),
         capacity: pick(rand, [4, 10, 12]),
         verifiedDaysAgo: pick(rand, [null, 3, 45]),
-        status: pick(rand, ['Функционирует', 'Функционирует', 'Функционирует', 'Кампания', 'На паузе']),
+        status: pick(rand, ['Функционирует', 'Функционирует', 'Функционирует', 'Функционирует', 'На паузе']),
         acceptsNew: rand() > 0.15,
         doNotRefer: rand() > 0.9,
       }),

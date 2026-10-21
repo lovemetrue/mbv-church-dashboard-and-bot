@@ -111,8 +111,12 @@ describe('форма группы', () => {
     expect(r.ok).toBe(true);
   });
 
-  test('статус «Кампания» принимается формой', () => {
-    expect(parseGroupForm(form({ ...GROUP_MIN, status: 'Кампания' })).ok).toBe(true);
+  test('статуса «Кампания» больше нет: вместо него галочка «Работает только в кампанию»', () => {
+    expect(parseGroupForm(form({ ...GROUP_MIN, status: 'Кампания' })).ok).toBe(false);
+    const r = parseGroupForm(form({ ...GROUP_MIN, campaignOnly: '1' }));
+    expect(r.ok && r.value.campaignOnly).toBe(true);
+    const off = parseGroupForm(form(GROUP_MIN));
+    expect(off.ok && off.value.campaignOnly).toBe(false);
   });
 
   test('число человек вне разумных границ отвергается', () => {

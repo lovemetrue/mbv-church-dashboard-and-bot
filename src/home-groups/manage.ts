@@ -21,9 +21,9 @@ const fail = (error: 'bad_request' | 'not_found', message: string): ActionOutcom
 const GROUP_EDITABLE = [
   'leader', 'district', 'format', 'status', 'people', 'day', 'time', 'composition', 'coordinator', 'coLeader',
   'feedbackAt', 'openedOn', 'comment', 'age', 'metro', 'openToNew', 'training', 'no', 'checked', 'doNotRefer',
-  'phone', 'address', 'coLeaderPhone', 'campaignRegistered', 'capacity',
+  'phone', 'address', 'coLeaderPhone', 'campaignRegistered', 'capacity', 'campaignOnly',
 ] as const;
-const GROUP_FLAGS = ['checked', 'doNotRefer', 'campaignRegistered'] as const;
+const GROUP_FLAGS = ['checked', 'doNotRefer', 'campaignRegistered', 'campaignOnly'] as const;
 
 /** Состав хранится строкой «Смешанная, Семейная», а форма ждёт отдельные значения: иначе правка любого поля обнулила бы состав. */
 const splitComposition = (v: string | null | undefined): string[] => (v ?? '').split(',').map((x) => x.trim()).filter(Boolean);
@@ -41,6 +41,7 @@ function groupToFields(g: GroupRow): URLSearchParams {
   f.set('capacity', g.capacity === null ? '' : String(g.capacity));
   if (g.checked) f.set('checked', '1');
   if (g.campaign_registered) f.set('campaignRegistered', '1');
+  if (g.campaign_only) f.set('campaignOnly', '1');
   return f;
 }
 

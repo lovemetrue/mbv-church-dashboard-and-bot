@@ -59,7 +59,8 @@ describe('регистрация участника в «Домашних гру
     const { rows } = await db.query("SELECT actor, after::text AS after FROM audit_log WHERE action='registration.create'");
     expect(rows).toHaveLength(1);
     expect(rows[0].actor).toBe('a');
-    expect(rows[0].after).not.toMatch(/Иван|Петров|911/);
+    // Телефон ищем целиком, а не «911»: номер заявки в журнале растёт от прогона к прогону и сам бывает 911.
+    expect(rows[0].after).not.toMatch(/Иван|Петров|9110001122|000-11-22/);
   });
 
   test.each([

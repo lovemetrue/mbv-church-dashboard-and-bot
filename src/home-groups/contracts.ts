@@ -1083,6 +1083,8 @@ export interface GroupItem extends GroupBrief {
   checked: boolean;
   /** «40 дней» — ведущий зарегистрирован в кампании. */
   campaignRegistered: boolean;
+  /** «Работает только в кампанию» (бывший статус «Кампания», миграция 047). */
+  campaignOnly: boolean;
   doNotRefer: boolean;
   composition: string | null;
   coordinator: string | null;

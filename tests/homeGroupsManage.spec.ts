@@ -204,3 +204,28 @@ describe('координаторы', () => {
     expect(await m.updateCoordinator(c.id, { fields: { role: 'x' } }, 'a')).toMatchObject({ ok: false, error: 'not_found' });
   });
 });
+
+describe('«Работает только в кампанию» и «40 дней» у потенциальных', () => {
+  test('галочка «Работает только в кампанию» ставится и снимается правкой и не теряется при правке другого поля', async () => {
+    const id = await group();
+    expect(await manager().updateGroup(id, { fields: { campaignOnly: '1' } }, 'a')).toEqual({ ok: true });
+    expect((await g(id)).campaign_only).toBe(true);
+    await manager().updateGroup(id, { fields: { comment: 'другая' } }, 'a');
+    expect((await g(id)).campaign_only).toBe(true);
+    await manager().updateGroup(id, { fields: { campaignOnly: '' } }, 'a');
+    expect((await g(id)).campaign_only).toBe(false);
+  });
+
+  test('статус «Кампания» правкой поставить нельзя', async () => {
+    const id = await group();
+    expect(await manager().updateGroup(id, { fields: { status: 'Кампания' } }, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
+  });
+
+  test('потенциальная группа заводится с «40 днями», если о них не сказано; сказанное явно — как сказано', async () => {
+    const repo = new GroupsRepo(db);
+    const base = { leader: 'Ведущий', district: 'Приморский', format: 'Молодежная' } as const;
+    expect((await repo.create({ ...base, status: 'Потенциальная' }, 'бот')).campaign_registered).toBe(true);
+    expect((await repo.create({ ...base, status: 'Потенциальная', campaignRegistered: false }, 'ui')).campaign_registered).toBe(false);
+    expect((await repo.create({ ...base, status: 'Функционирует' }, 'бот')).campaign_registered).toBe(false);
+  });
+});

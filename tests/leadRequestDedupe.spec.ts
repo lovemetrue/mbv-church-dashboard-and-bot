@@ -121,8 +121,9 @@ describe('заявка на открытие группы: сверка теле
     expect(tg.textsTo('111').join('\n')).toContain(T.leadPhoneIsLeader);
   });
 
-  test('группа со статусом «Кампания» считается действующей, как «Функционирует»', async () => {
-    await seedGroup('Кампания');
+  test('группа «Работает только в кампанию» считается действующей, как любая «Функционирует»', async () => {
+    await seedGroup('Функционирует');
+    await db.query(`UPDATE groups SET campaign_only = true`);
     await seedUser(db, { id: '111', phone: PHONE });
     await router.handle(tapLead('111'));
 

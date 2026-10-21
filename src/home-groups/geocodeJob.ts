@@ -5,8 +5,8 @@ import { logger } from '../logger.js';
 import { addressKey, createYandexGeocoder, geocodePending, type Geocoder } from './geocode.js';
 import type { ViewsInput } from './api/views.js';
 
-/** Группы, чьи адреса геокодируются: все, кроме закрытых (в том числе «Кампания» и «Недвижимость»: они нужны справочнику и карте). */
-export const GEOCODED_GROUP_STATUSES: ReadonlySet<string> = new Set(['Функционирует', 'На паузе', 'Потенциальная', 'Кампания', 'Недвижимость']);
+/** Группы, чьи адреса геокодируются: все, кроме закрытых (в том числе «Недвижимость»: они нужны справочнику и карте). */
+export const GEOCODED_GROUP_STATUSES: ReadonlySet<string> = new Set(['Функционирует', 'На паузе', 'Потенциальная', 'Недвижимость']);
 
 /** Откуда взят адрес: по этому описанию в таблице адресов открывается карточка. */
 export interface AddressSource { kind: 'group' | 'request' | 'person'; id: string; label: string }

@@ -3,6 +3,7 @@ import { groupLabel } from '../../entities/format';
 import { ru } from '../../shared/i18n/ru';
 import type { ReactNode } from 'react';
 import { GroupMarks, Meter, Reasons } from '../../shared/ui';
+import { GroupPreviewButton } from '../reference/GroupPreview';
 import styles from './Requests.module.css';
 
 interface CandidateCardProps {
@@ -36,6 +37,7 @@ export function CandidateCard({ candidate, main = false, action }: CandidateCard
         <span className={styles.free}>
           {where ? `${where} · ` : ''}мест: {group.free} из {group.capacity}
         </span>
+        <GroupPreviewButton groupId={group.id} code={group.code} />
       </div>
       {action}
     </article>

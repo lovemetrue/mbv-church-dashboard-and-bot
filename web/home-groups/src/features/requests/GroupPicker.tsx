@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import type { GroupBrief, GroupItem, RequestItem } from '@contracts';
 import { useGroups } from '../../shared/api/queries';
+import { GroupPreviewButton } from '../reference/GroupPreview';
 import { ru } from '../../shared/i18n/ru';
 import { Button, ErrorState, GroupMarks, LoadingState } from '../../shared/ui';
 import { proposalOf } from './model';
@@ -83,6 +84,8 @@ function OptionRow({
       <Button size="sm" disabled={o.blocked !== null || pending} aria-label={a.pickChooseAria(g.code)} onClick={onChoose}>
         {a.pickChoose}
       </Button>
+      {/* Посмотреть группу можно и ту, куда направить нельзя: координатор поймёт, почему. */}
+      <GroupPreviewButton groupId={g.id} code={g.code} compact />
     </li>
   );
 }

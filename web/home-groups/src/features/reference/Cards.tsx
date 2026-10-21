@@ -25,10 +25,12 @@ function verifiedSentence(days: number | null): string {
   return `подтверждена ${verifiedText(days)}`;
 }
 
-export function GroupCard({ g, onClose }: { g: GroupItem; onClose: () => void }) {
-  const nav = useAppNav();
-  const tone = healthTone(g.health.score);
-  const rows: KvRow[] = [
+/**
+ * Строки «Данные группы»: одни и те же в карточке справочника и в окне просмотра из заявки. `openPerson` нет —
+ * значит, окно только для просмотра, и перехода к ведущему в «Люди» не будет.
+ */
+export function groupDataRows(g: GroupItem, openPerson?: (key: string) => void): KvRow[] {
+  return [
     // Строка только у связанного ведущего: связь появляется, когда обращение «уже веду группу» сверено со справочником.
     // Ключ регистрации («u12») человеку ничего не говорит, поэтому показываем только переход к карточке.
     ...(g.leaderKey
@@ -39,9 +41,11 @@ export function GroupCard({ g, onClose }: { g: GroupItem; onClose: () => void })
               <span className={styles.leaderLinked}>
                 <span>{g.leader}</span>
                 <span className={styles.note}>{ru.reference.leaderLinked}</span>
-                <Button size="sm" onClick={() => nav.openPerson(g.leaderKey as string)} aria-label={ru.reference.openLeaderAria}>
-                  {ru.reference.openLeader}
-                </Button>
+                {openPerson && (
+                  <Button size="sm" onClick={() => openPerson(g.leaderKey as string)} aria-label={ru.reference.openLeaderAria}>
+                    {ru.reference.openLeader}
+                  </Button>
+                )}
               </span>
             ),
           },
@@ -97,6 +101,12 @@ export function GroupCard({ g, onClose }: { g: GroupItem; onClose: () => void })
     ...(g.doNotRefer ? [{ label: 'Не направлять', value: <Pill tone="crit">{ru.reference.yes}</Pill> }] : []),
     ...(g.comment ? [{ label: 'Комментарий', value: g.comment }] : []),
   ];
+}
+
+export function GroupCard({ g, onClose }: { g: GroupItem; onClose: () => void }) {
+  const nav = useAppNav();
+  const tone = healthTone(g.health.score);
+  const rows = groupDataRows(g, nav.openPerson);
   return (
     <Drawer
       label={`Карточка группы ${groupLabel(g)}`}

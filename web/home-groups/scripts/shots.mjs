@@ -279,6 +279,24 @@ const SCREENS = [
   { name: 'strange-others', url: '/?tab=requests&view=others', ready: 'ul[aria-label="Список обращений"] [role=img][aria-label^="Странный человек"]', scroll: 'ul[aria-label="Список обращений"] [role=img][aria-label^="Странный человек"]' },
 ];
 
+// Карточка предложенной группы поверх заявки и кнопки «Карточка группы» в окне «Другая группа».
+SCREENS.push(
+  {
+    name: 'requests-group-preview',
+    url: '/?tab=requests&req=1',
+    ready: '[role=dialog][aria-label^="Карточка заявки"]',
+    click: 'role=button[name="Карточка группы ДГ-0019"]',
+    then: 'role=dialog[name="Группа ДГ-0019"]',
+  },
+  {
+    name: 'requests-pick-preview',
+    url: '/?tab=requests&req=1',
+    ready: '[role=dialog][aria-label^="Карточка заявки"]',
+    click: 'button[aria-label="Выбрать другую группу из списка"]',
+    then: 'role=dialog[name="Другая группа"] >> role=button[name=/^Карточка группы/]',
+  },
+);
+
 // «Пароли для команды»: пароль Родионову сгенерирован, показан «глазиком».
 SCREENS.push({
   name: 'settings-team-passwords',
@@ -376,6 +394,7 @@ SCREENS.push(
 const GUIDE_SHOTS = SCREENS.filter((s) => s.name.startsWith('guide-')).map((s) => [s.name, 1280, 'light']);
 
 const SHOTS_ALL = [
+  ...['requests-group-preview', 'requests-pick-preview'].flatMap((s) => [[s, 1280, 'light'], [s, 400, 'light']]),
   ['settings-team-passwords', 1280, 'light'],
   ['settings-team-passwords', 400, 'light'],
   ['settings-team-passwords', 400, 'dark'],

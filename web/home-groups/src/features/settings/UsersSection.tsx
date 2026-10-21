@@ -237,7 +237,6 @@ function StaffBody({ data }: { data: SettingsStaffView }) {
 
       <TeamPasswords
         team={data.team}
-        personalEnabled={data.personal.enabled}
         busy={busy}
         generate={async (coordinatorId) => {
           const r = await run(() => actions.generatePassword({ coordinatorId }));

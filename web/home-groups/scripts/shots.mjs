@@ -308,16 +308,20 @@ SCREENS.push({
 });
 
 /**
- * Инструкция координаторам (docs/ИНСТРУКЦИЯ-КООРДИНАТОРА.md): вход по личному паролю, свои заявки, свои группы,
- * проверка группы. В режиме --guide вход «личный» (localStorage hg.demo.person, см. fixtures/index.ts).
- * mark — что обвести красной рамкой с номером (номер в рамке = номер пункта под снимком в инструкции). Имена файлов без ширины и темы: на них ссылается
- * инструкция, и при пересъёмке ссылки не меняются.
+ * Памятка команде (docs/ИНСТРУКЦИЯ-КООРДИНАТОРА.md): вход по личному паролю, работа распределителя (заявки) и координатора
+ * (свои группы, «Хотят открыть группу»). В режиме --guide вход «личный»: as — от чьего имени снимок (localStorage
+ * hg.demo.person и hg.demo.role, см. fixtures/index.ts), от роли зависят отборы по умолчанию.
+ * mark — что обвести красной рамкой с номером (номер в рамке = номер пункта под снимком в инструкции). Имена файлов без
+ * ширины и темы: на них ссылается инструкция, и при пересъёмке ссылки не меняются.
  */
-const MY = 'Морозов Д.';
+const AS = { distributor: ['Анна Л.', 'Распределитель'], coordinator: ['Морозов Д.', 'Координатор'] };
 const CARD = '[role=dialog][aria-label^="Карточка группы"]';
+const REQ = '[role=dialog][aria-label^="Карточка заявки"]';
+const EDIT = '[role=dialog][aria-modal=true]';
 SCREENS.push(
   {
     name: 'guide-02-requests',
+    as: 'distributor',
     url: '/?tab=requests',
     ready: '[aria-label="Список заявок"]',
     mark: [
@@ -327,35 +331,43 @@ SCREENS.push(
     ],
   },
   {
-    name: 'guide-03-my-groups',
-    url: '/?tab=groups',
-    ready: 'table',
-    click: 'role=button[name=/^Фильтры/]',
-    then: '[role=dialog][aria-label="Фильтры"]',
-    mark: [
-      '[role=tablist][aria-label="Разделы"] >> role=tab[name=/^Группы/]',
-      'role=button[name=/^Фильтры/]',
-      '[role=dialog][aria-label="Фильтры"] >> role=button[name="Мои группы"]',
-    ],
+    name: 'guide-03-request-card',
+    as: 'distributor',
+    url: '/?tab=requests&req=1',
+    ready: REQ,
+    mark: [`${REQ} >> role=link[name=/^Позвонить/]`, `${REQ} >> role=button[name=/^Править данные/]`, `${REQ} >> role=button[name=/^Утвердить/]`],
   },
   {
-    name: 'guide-04-card',
-    url: '/?tab=groups&rec=12',
+    name: 'guide-04-my-groups',
+    as: 'coordinator',
+    url: '/?tab=groups',
+    ready: 'table',
+    mark: ['[role=tablist][aria-label="Разделы"] >> role=tab[name=/^Группы/]', 'text="Координатор = Морозов Д."'],
+  },
+  {
+    name: 'guide-05-card',
+    as: 'coordinator',
+    url: '/?tab=groups&rec=11',
     ready: CARD,
-    mark: [`${CARD} dt:has-text("Когда")`, `${CARD} dt:has-text("Адрес")`, `${CARD} >> role=button[name=/^Править/]`],
+    mark: [`${CARD} dt:has-text("Когда")`, `${CARD} dt:has-text("Места")`, `${CARD} dt:has-text("Адрес")`, `${CARD} >> role=button[name=/^Править/]`],
     markRow: true,
   },
   {
-    name: 'guide-05-edit',
-    url: '/?tab=groups&rec=12',
+    name: 'guide-06-edit',
+    as: 'coordinator',
+    url: '/?tab=groups&rec=11',
     ready: CARD,
     click: `${CARD} >> role=button[name=/^Править/]`,
-    then: '[role=dialog][aria-modal=true] form',
-    scroll: '[role=dialog][aria-modal=true] >> internal:label="Данные проверены"',
-    mark: [
-      '[role=dialog][aria-modal=true] label:has-text("Данные проверены")',
-      '[role=dialog][aria-modal=true] >> role=button[name="Сохранить"]',
-    ],
+    then: `${EDIT} form`,
+    scroll: `${EDIT} >> internal:label="Данные проверены"`,
+    mark: [`${EDIT} label:has-text("Данные проверены")`, `${EDIT} >> role=button[name="Сохранить"]`],
+  },
+  {
+    name: 'guide-07-leads',
+    as: 'coordinator',
+    url: '/?tab=requests&view=leads&req=213',
+    ready: '[role=dialog][aria-label^="Карточка обращения"]',
+    mark: ['role=group[name="Режим списка заявок"] >> role=button[name=/^Хотят открыть группу/]', 'section:has(h3:has-text("Кого можно направить")), section:has-text("Кого можно направить")'],
   },
 );
 const GUIDE_SHOTS = SCREENS.filter((s) => s.name.startsWith('guide-')).map((s) => [s.name, 1280, 'light']);
@@ -519,11 +531,12 @@ for (const [screenName, width, theme] of SHOTS) {
     } catch {}
   }, theme === 'dark' ? 'auto' : theme);
   if (GUIDE) {
-    await ctx.addInitScript((name) => {
+    await ctx.addInitScript(([name, role]) => {
       try {
         localStorage.setItem('hg.demo.person', name);
+        localStorage.setItem('hg.demo.role', role);
       } catch {}
-    }, MY);
+    }, AS[screen.as ?? 'coordinator']);
   }
   const page = await ctx.newPage();
   // Фиксируем время, чтобы приветствие и дата на снимках не гуляли.

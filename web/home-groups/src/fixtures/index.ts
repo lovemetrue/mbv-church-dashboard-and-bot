@@ -22,11 +22,14 @@ import { fixtureChatClear, fixtureChatHistory, fixtureChatReply } from './chat';
 import { buildOthers, reconcileDemoOther, reconcileDemoReady } from './others';
 import { buildTeam } from './team';
 
-/** Личный вход в демо включает `localStorage['hg.demo.person']` (имя из справочника), его ставит `npm run shots:guide`. */
-function demoPerson(): { login: string; name: string } | null {
+/**
+ * Личный вход в демо включает `localStorage['hg.demo.person']` (имя из справочника) и `hg.demo.role` (роль в команде:
+ * от неё зависят отборы по умолчанию), их ставит `npm run shots:guide`.
+ */
+function demoPerson(): { login: string; name: string; teamRole: string | null } | null {
   try {
     const name = globalThis.localStorage?.getItem('hg.demo.person');
-    return name ? { login: 'demo', name } : null;
+    return name ? { login: 'demo', name, teamRole: globalThis.localStorage?.getItem('hg.demo.role') ?? null } : null;
   } catch {
     return null;
   }

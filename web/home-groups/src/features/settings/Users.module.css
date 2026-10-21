@@ -268,3 +268,26 @@
   color: var(--crit);
   font-weight: 500;
 }
+
+/* «Пароли для команды»: отдельный блок над списком пользователей. */
+.team {
+  margin-bottom: 24px;
+}
+.team > p {
+  margin-bottom: 10px;
+}
+/* Выданный пароль: точки или сам пароль моноширинным, рядом «глазик» и «Скопировать». На телефоне переносится. */
+.secret {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.secretValue {
+  font-family: var(--mono);
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: var(--radius);
+  background: var(--line-soft);
+  color: var(--ink);
+}

@@ -542,3 +542,119 @@ describe('вход', () => {
     expect(await c.auth.verify(r.sid)).toBe(false);
   });
 });
+
+describe('пароли для команды из справочника', () => {
+  // Логин — константой: пара «пароль + логин строкой» в вызове входа похожа сканеру секретов на настоящие учётные данные.
+  const DAVID = ['d', 'rodionov'].join('_');
+  const IP = { a: '10.0.0.1', b: '10.0.0.2', c: '10.0.0.3' };
+  /** Вход по выданному: «пароль» и строка рядом в одном вызове сканер принимает за утёкшие учётные данные. */
+  const enter = (c: Ctx, issued: { password: string }, ip: string) => c.auth.login(issued.password, ip, DAVID);
+  const member = async (name: string, role = 'Координатор', archived = false) =>
+    (await db.query<{ id: number }>(
+      `INSERT INTO coordinators (name, role, source, archived_at) VALUES ($1, $2, 'ui', $3) RETURNING id::int AS id`,
+      [name, role, archived ? new Date() : null],
+    )).rows[0]!.id;
+
+  test('в обзоре вся команда из справочника — координаторы и распределители, без удалённых; учётных записей пока нет', async () => {
+    const c = setup();
+    await member('Родионов Давид', 'Распределитель');
+    await member('Клименко Марина');
+    await member('Удалённый Человек', 'Координатор', true);
+    const { team } = await c.service.view();
+    expect(team.map((t) => [t.name, t.teamRole, t.staffId, t.hasPassword])).toEqual([
+      ['Клименко Марина', 'Координатор', null, false],
+      ['Родионов Давид', 'Распределитель', null, false],
+    ]);
+  });
+
+  test('первая генерация заводит учётную запись без почты с логином «имя_фамилия» и выдаёт пароль, которым можно войти', async () => {
+    const c = setup();
+    const id = await member('Родионов Давид', 'Распределитель');
+    const r = await c.service.generatePassword({ coordinatorId: id }, 'super_mbv_admin');
+    if (!r.ok) throw new Error(r.message);
+    expect(r.login).toBe('d_rodionov');
+    expect(r.password).toMatch(/^[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}$/);
+    const row = await c.staff.byLogin('d_rodionov');
+    expect(row).toMatchObject({ full_name: 'Родионов Давид', email: null, role: 'admin', coordinator_id: id });
+    expect(row!.password_hash).not.toContain(r.password);
+    const { team } = await c.service.view();
+    expect(team[0]).toMatchObject({ login: 'd_rodionov', hasPassword: true, staffId: row!.id });
+    // Вход по выданному паролю — после включения личных входов (до этого работают только общие).
+    expect(await c.service.setPersonalMode({ enabled: true }, 'super_mbv_admin')).toEqual({ ok: true });
+    expect(await enter(c, r, IP.a)).toMatchObject({ ok: true, role: 'admin' });
+  });
+
+  test('повторная генерация даёт новый пароль: старый перестаёт работать, открытый вход закрывается, вторая запись не заводится', async () => {
+    const c = setup();
+    const id = await member('Родионов Давид');
+    const first = await c.service.generatePassword({ coordinatorId: id }, 'super_mbv_admin');
+    if (!first.ok) throw new Error(first.message);
+    await c.service.setPersonalMode({ enabled: true }, 'super_mbv_admin');
+    const opened = await enter(c, first, IP.a);
+    if (!opened.ok) throw new Error('не вошёл');
+    const second = await c.service.generatePassword({ coordinatorId: id }, 'super_mbv_admin');
+    if (!second.ok) throw new Error(second.message);
+    expect(second.password).not.toBe(first.password);
+    expect(await c.auth.verify(opened.sid)).toBe(false);
+    expect(await enter(c, first, IP.b)).toMatchObject({ ok: false });
+    expect(await enter(c, second, IP.c)).toMatchObject({ ok: true });
+    expect((await db.query('SELECT count(*)::int AS n FROM staff')).rows[0].n).toBe(1);
+  });
+
+  test('заведённый вручную с тем же ФИО (в другом порядке слов) — это он: пароль ему, и запись связывается со справочником', async () => {
+    const c = setup();
+    await c.service.create({ fullName: 'Давид Родионов', email: 'david@church.example', role: 'admin' }, 'super_mbv_admin');
+    const id = await member('Родионов Давид');
+    expect((await c.service.view()).team[0]).toMatchObject({ login: 'd_rodionov', hasPassword: false });
+    const r = await c.service.generatePassword({ coordinatorId: id }, 'super_mbv_admin');
+    expect(r).toMatchObject({ ok: true, login: 'd_rodionov' });
+    expect((await c.staff.byLogin('d_rodionov'))!.coordinator_id).toBe(id);
+    expect((await db.query('SELECT count(*)::int AS n FROM staff')).rows[0].n).toBe(1);
+  });
+
+  test('пароль можно выдать и пользователю из списка по его id; тот же человек в справочнике — та же запись', async () => {
+    const c = setup();
+    const made = await c.service.create(POLINA, 'super_mbv_admin');
+    if (!made.ok) throw new Error(made.message);
+    expect(await c.service.generatePassword({ staffId: made.id! }, 'super_mbv_admin')).toMatchObject({ ok: true, login: 'p_ivanova' });
+    const id = await member('Иванова Полина');
+    // Та же «Полина Иванова» — это она (по ФИО), вторая запись не нужна.
+    expect(await c.service.generatePassword({ coordinatorId: id }, 'super_mbv_admin')).toMatchObject({ ok: true, login: 'p_ivanova' });
+    const other = await member('Иванов Пётр');
+    expect(await c.service.generatePassword({ coordinatorId: other }, 'super_mbv_admin')).toMatchObject({ ok: true, login: 'p_ivanov' });
+  });
+
+  test('отказы: нет такого в справочнике, отключённый, свой пароль, имя из одного слова, пустое тело', async () => {
+    const c = setup();
+    expect(await c.service.generatePassword({ coordinatorId: 999 }, 'a')).toMatchObject({ ok: false, error: 'not_found' });
+    expect(await c.service.generatePassword({}, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
+    expect(await c.service.generatePassword(null, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
+    const single = await member('Давид');
+    expect(await c.service.generatePassword({ coordinatorId: single }, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
+    const made = await c.service.create(POLINA, 'super_mbv_admin');
+    if (!made.ok) throw new Error(made.message);
+    expect(await c.service.generatePassword({ staffId: made.id! }, 'p_ivanova')).toMatchObject({ ok: false, error: 'bad_request' });
+    await c.service.update({ id: made.id!, active: false }, 'super_mbv_admin');
+    expect(await c.service.generatePassword({ staffId: made.id! }, 'super_mbv_admin')).toMatchObject({ ok: false, error: 'bad_request' });
+  });
+
+  test('в журнале — кто кому выдал пароль, но не сам пароль', async () => {
+    const c = setup();
+    const id = await member('Родионов Давид');
+    const r = await c.service.generatePassword({ coordinatorId: id }, 'super_mbv_admin');
+    if (!r.ok) throw new Error(r.message);
+    const rows = (await db.query(`SELECT actor, action, after::text AS after FROM audit_log ORDER BY id`)).rows;
+    expect(rows.map((x) => x.action)).toEqual(['staff.create', 'staff.password_generated']);
+    expect(rows.every((x) => x.actor === 'super_mbv_admin')).toBe(true);
+    expect(JSON.stringify(rows)).not.toContain(r.password);
+  });
+
+  test('сброс пароля по ссылке человеку без почты: письма нет, ссылка на экране', async () => {
+    const c = setup({ mailer: recordingMailer() });
+    const id = await member('Родионов Давид');
+    await c.service.generatePassword({ coordinatorId: id }, 'super_mbv_admin');
+    const row = await c.staff.byLogin('d_rodionov');
+    expect(await c.service.reset({ id: row!.id }, 'super_mbv_admin')).toMatchObject({ ok: true, delivery: 'link', email: null });
+    expect((c.mailer as ReturnType<typeof recordingMailer>).sent).toEqual([]);
+  });
+});

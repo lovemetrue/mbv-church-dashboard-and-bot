@@ -8,6 +8,7 @@ import {
   buildSettingsPrompts,
   buildSettingsStaff,
   fixtureStaffDelivery,
+  fixtureGeneratePassword,
   fixtureSuggestLogin,
   saveDemoLlm,
   sendDemoInvites,
@@ -156,7 +157,7 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
   if (clean === 'settings/geocoder-test') return { ok: true, ms: 420 };
   // Массовое действие: в демо все выбранные «обработаны», ничего не пропущено.
   if (clean === 'requests/bulk') return { ok: true, done: ((body ?? {}) as { ids?: number[] }).ids?.length ?? 0, skipped: 0 };
-  const input = (body ?? {}) as { fullName?: string; email?: string; id?: number };
+  const input = (body ?? {}) as { fullName?: string; email?: string; id?: number; coordinatorId?: number };
   switch (clean) {
     // Номер новой записи в демо один и тот же: данные не меняются, важно лишь показать подтверждение.
     case 'requests/create':
@@ -173,6 +174,8 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
       return { ok: true, login: fixtureSuggestLogin(input.fullName ?? '') };
     case 'settings/staff/create':
       return { ...fixtureStaffDelivery(input.email ?? ''), login: fixtureSuggestLogin(input.fullName ?? '') };
+    case 'settings/staff/generate-password':
+      return fixtureGeneratePassword(Number(input.coordinatorId));
     case 'settings/staff/invite':
     case 'settings/staff/reset': {
       const person = buildSettingsStaff().items.find((i) => i.id === input.id);

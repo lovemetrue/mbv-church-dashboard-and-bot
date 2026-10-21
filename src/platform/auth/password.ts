@@ -1,4 +1,4 @@
-import { createHash, randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomInt, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 
 const scrypt = promisify(scryptCb) as (password: string, salt: Buffer, keylen: number, opts: { N: number; r: number; p: number; maxmem: number }) => Promise<Buffer>;
@@ -49,14 +49,14 @@ const COMMON = new Set([
 ]);
 
 /** null — пароль подходит, иначе причина простым языком. */
-export function passwordProblem(password: string, context: { login: string; email: string }): string | null {
+export function passwordProblem(password: string, context: { login: string; email: string | null }): string | null {
   if (password.length < MIN_PASSWORD) return `Пароль слишком короткий: нужно не меньше ${MIN_PASSWORD} знаков.`;
   if (password.length > MAX_PASSWORD) return `Пароль слишком длинный: не больше ${MAX_PASSWORD} знаков.`;
   if (/^\d+$/.test(password)) return 'Пароль не должен состоять только из цифр.';
   if (/^(.)\1+$/u.test(password)) return 'Пароль не должен состоять из одного повторяющегося знака.';
   const lower = password.toLowerCase();
   if (COMMON.has(lower)) return 'Этот пароль слишком распространён. Придумайте другой.';
-  if (lower === context.login.toLowerCase() || lower === context.email.toLowerCase()) {
+  if (lower === context.login.toLowerCase() || lower === (context.email ?? '').toLowerCase()) {
     return 'Пароль не должен совпадать с логином или почтой.';
   }
   return null;
@@ -65,3 +65,14 @@ export function passwordProblem(password: string, context: { login: string; emai
 /** Токен для ссылки: 32 случайных байта; наружу уходит сам токен, в базе лежит только его хеш. */
 export const newToken = (): string => randomBytes(32).toString('base64url');
 export const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex');
+
+/**
+ * Пароль, который администратор выдаёт человеку сам: три группы по четыре знака через дефис («k7mf-x2qp-9tbh»).
+ * Без похожих знаков (0/o, 1/l/i): его диктуют и переписывают с экрана. 31 знак в 12 позициях — около 59 бит,
+ * а вход ограничен пятью попытками за 15 минут.
+ */
+const GENERATED_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
+export function generatePassword(): string {
+  const group = () => Array.from({ length: 4 }, () => GENERATED_ALPHABET[randomInt(GENERATED_ALPHABET.length)]).join('');
+  return `${group()}-${group()}-${group()}`;
+}

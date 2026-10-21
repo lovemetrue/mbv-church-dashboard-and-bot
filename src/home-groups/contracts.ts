@@ -90,6 +90,7 @@
  *   POST /api/v1/settings/staff/invite       StaffIdBody        → DeliveryOk | ActionError (повторное приглашение)
  *   POST /api/v1/settings/staff/reset        StaffIdBody        → DeliveryOk | ActionError (сброс пароля)
  *   POST /api/v1/settings/staff/personal-mode PersonalModeBody  → ActionOk | ActionError
+ *   POST /api/v1/settings/staff/generate-password GeneratePasswordBody → GeneratePasswordOk | ActionError
  *   POST /api/v1/settings/prompts/save      SavePromptBody     → ActionOk | ActionError
  *   POST /api/v1/settings/prompts/activate  ActivatePromptBody → ActionOk | ActionError
  *
@@ -1314,7 +1315,8 @@ export interface StaffItem {
   /** Логин вида `p_ivanova`. */
   login: string;
   fullName: string;
-  email: string;
+  /** null — заведён из справочника команды: почты нет, вход по выданному паролю. */
+  email: string | null;
   role: Role;
   status: StaffStatus;
   /** ISO-время последнего входа; null — не входил. */
@@ -1334,10 +1336,40 @@ export interface PersonalLoginsState {
   mailConfigured: boolean;
 }
 
+/**
+ * Человек из справочника команды («Координаторы»: координаторы и распределители) и его вход. Учётная запись
+ * заводится при первой генерации пароля; до этого `staffId` и `login` пусты.
+ */
+export interface TeamAccountItem {
+  coordinatorId: number;
+  name: string;
+  /** Роль в команде, как в справочнике («Координатор», «Распределитель»…). */
+  teamRole: string;
+  staffId: number | null;
+  login: string | null;
+  /** Пароль уже выдан (или задан по ссылке). Сам пароль сервер не хранит и не показывает. */
+  hasPassword: boolean;
+  /** false — учётная запись отключена в «Пользователях»; пароль ей не выдать. */
+  active: boolean;
+  lastLoginAt: string | null;
+}
+
 export interface SettingsStaffView {
   generatedAt: string;
   items: StaffItem[];
   personal: PersonalLoginsState;
+  /** Команда из справочника с кнопкой «Сгенерировать пароль». */
+  team: TeamAccountItem[];
+}
+
+/** Сгенерировать пароль: человеку из справочника команды (`coordinatorId`) или уже заведённому пользователю (`staffId`). */
+export type GeneratePasswordBody = { coordinatorId: number } | { staffId: number };
+
+export interface GeneratePasswordOk {
+  ok: true;
+  login: string;
+  /** Новый пароль. Показывается один раз: в базе только его хеш. */
+  password: string;
 }
 
 export interface SuggestLoginBody {
@@ -1383,7 +1415,8 @@ export interface PersonalModeBody {
 export interface DeliveryOk {
   ok: true;
   delivery: 'sent' | 'link';
-  email: string;
+  /** null — у пользователя нет почты (заведён из справочника команды): ссылка только на экране. */
+  email: string | null;
   /** Есть, когда delivery = 'link'. */
   path?: string;
   /** Логин созданного пользователя (при create). */

@@ -49,6 +49,7 @@ const view = (items: StaffItem[], p: PersonalLoginsState = personal()): Settings
   generatedAt: '2026-10-09T09:30:00+03:00',
   items,
   personal: p,
+  team: [],
 });
 
 /** Открывает раздел на заданных данных. Остальные маршруты — как в фикстурах. */

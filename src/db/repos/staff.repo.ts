@@ -4,13 +4,28 @@ export interface StaffRow {
   id: number;
   login: string;
   full_name: string;
-  email: string;
+  /** null — заведён из справочника команды (миграция 048): почты нет, вход по логину и выданному паролю. */
+  email: string | null;
   role: 'admin' | 'super';
   password_hash: string | null;
   active: boolean;
   session_version: number;
   created_at: Date;
   password_set_at: Date | null;
+  last_login_at: Date | null;
+  /** Чья это запись в справочнике команды (`coordinators.id`); null — заведён вручную в «Пользователях». */
+  coordinator_id: number | null;
+}
+
+/** Человек из справочника команды и его учётная запись, если она есть. */
+export interface TeamAccountRow {
+  coordinator_id: number;
+  name: string;
+  team_role: string;
+  staff_id: number | null;
+  login: string | null;
+  active: boolean | null;
+  has_password: boolean;
   last_login_at: Date | null;
 }
 
@@ -28,7 +43,16 @@ export class StaffConflict extends Error {
 }
 
 const COLUMNS = `id::int AS id, login, full_name, email, role, password_hash, active, session_version,
-                 created_at, password_set_at, last_login_at`;
+                 created_at, password_set_at, last_login_at, coordinator_id::int AS coordinator_id`;
+
+/**
+ * Учётная запись человека из справочника команды: сначала связанная (`coordinator_id`), иначе заведённая вручную
+ * с тем же ФИО в любом порядке слов (`person_name_key`, миграция 045) — чтобы не завести второго «Давида Родионова».
+ */
+const TEAM_ACCOUNT = `SELECT s.* FROM staff s
+                       WHERE s.coordinator_id = c.id
+                          OR (s.coordinator_id IS NULL AND person_name_key(s.full_name) = person_name_key(c.name))
+                       ORDER BY (s.coordinator_id = c.id) DESC NULLS LAST, s.id LIMIT 1`;
 
 /**
  * Личные входы: люди и их одноразовые ссылки на пароль. Всё, что меняет данные, пишет в журнал в той
@@ -179,7 +203,7 @@ export class StaffRepo {
   async staffByToken(tokenHash: string): Promise<(StaffRow & { purpose: TokenPurpose }) | null> {
     const { rows } = await this.db.query<StaffRow & { purpose: TokenPurpose }>(
       `SELECT s.id::int AS id, s.login, s.full_name, s.email, s.role, s.password_hash, s.active, s.session_version,
-              s.created_at, s.password_set_at, s.last_login_at, t.purpose
+              s.created_at, s.password_set_at, s.last_login_at, s.coordinator_id::int AS coordinator_id, t.purpose
          FROM staff_tokens t JOIN staff s ON s.id = t.staff_id
         WHERE t.token_hash = $1 AND t.used_at IS NULL AND t.expires_at > now() AND s.active`,
       [tokenHash],
@@ -228,6 +252,70 @@ export class StaffRepo {
        SELECT login, 'home-groups', 'staff.login', 'staff', id FROM staff WHERE id = $1`,
       [id],
     );
+  }
+
+  /** Команда из справочника (координаторы, распределители) и их учётные записи; без удалённых из справочника. */
+  async team(): Promise<TeamAccountRow[]> {
+    const { rows } = await this.db.query<TeamAccountRow>(
+      `SELECT c.id::int AS coordinator_id, c.name, c.role AS team_role, a.id::int AS staff_id, a.login, a.active,
+              (a.password_hash IS NOT NULL) AS has_password, a.last_login_at
+         FROM coordinators c
+         LEFT JOIN LATERAL (${TEAM_ACCOUNT}) a ON true
+        WHERE c.archived_at IS NULL
+        ORDER BY c.role, c.name, c.id`,
+    );
+    return rows.map((r) => ({ ...r, has_password: r.has_password === true }));
+  }
+
+  /** Человек из справочника команды и его учётная запись (null — ещё не заведена); null целиком — нет такого в справочнике. */
+  async teamMember(coordinatorId: number): Promise<{ name: string; account: StaffRow | null } | null> {
+    const { rows } = await this.db.query<{ name: string; account_id: number | null }>(
+      `SELECT c.name, a.id::int AS account_id
+         FROM coordinators c LEFT JOIN LATERAL (${TEAM_ACCOUNT}) a ON true
+        WHERE c.id = $1 AND c.archived_at IS NULL`,
+      [coordinatorId],
+    );
+    const row = rows[0];
+    if (!row) return null;
+    return { name: row.name, account: row.account_id === null ? null : await this.byId(row.account_id) };
+  }
+
+  /** Учётная запись для человека из справочника команды: обычный доступ, без почты, пароль задаётся следом. */
+  async createForTeam(input: { login: string; fullName: string; coordinatorId: number }, actor: string): Promise<StaffRow> {
+    return this.tx(async (c) => {
+      let id: number;
+      try {
+        const { rows } = await c.query<{ id: number }>(
+          `INSERT INTO staff (login, full_name, email, role, created_by, coordinator_id)
+           VALUES ($1, $2, NULL, 'admin', $3, $4) RETURNING id::int AS id`,
+          [input.login, input.fullName, actor, input.coordinatorId],
+        );
+        id = rows[0]!.id;
+      } catch (err) {
+        if ((err as { code?: string }).code === '23505') throw new StaffConflict('login');
+        throw err;
+      }
+      await StaffRepo.audit(c, actor, 'staff.create', id, { login: input.login, role: 'admin', from: 'team' });
+      const { rows } = await c.query<StaffRow>(`SELECT ${COLUMNS} FROM staff WHERE id = $1`, [id]);
+      return rows[0]!;
+    });
+  }
+
+  /**
+   * Пароль, выданный администратором. Ссылки на пароль гасятся, прежние входы человека закрываются (версия сессий
+   * растёт); найденная по ФИО запись заодно связывается с человеком из справочника. В журнал — кто и кому, без пароля.
+   */
+  async setPassword(id: number, passwordHash: string, actor: string, coordinatorId: number | null = null): Promise<void> {
+    await this.tx(async (c) => {
+      await c.query(`UPDATE staff_tokens SET used_at = now() WHERE staff_id = $1 AND used_at IS NULL`, [id]);
+      await c.query(
+        `UPDATE staff SET password_hash = $2, password_set_at = now(), session_version = session_version + 1,
+                coordinator_id = COALESCE(coordinator_id, $3)
+          WHERE id = $1`,
+        [id, passwordHash, coordinatorId],
+      );
+      await StaffRepo.audit(c, actor, 'staff.password_generated', id, {});
+    });
   }
 
   /** Сколько действующих людей уже задали пароль: без них включать личные входы нельзя. */

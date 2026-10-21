@@ -4,6 +4,8 @@
 //
 //   npm run shots -- <каталог для PNG>        (по умолчанию ./shots)
 //   HG_CHROMIUM=/путь/к/chrome npm run shots   (если браузер лежит в другом месте)
+//   npm run shots:guide                        снимки для инструкции координаторам (docs/инструкция-координатора/):
+//                                              только экраны GUIDE_SHOTS, с красными рамками и номерами «куда нажать»
 import { execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { mkdirSync, mkdtempSync, readFileSync, existsSync, statSync, rmSync } from 'node:fs';
@@ -13,7 +15,9 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const outDir = resolve(process.argv[2] ?? join(root, 'shots'));
+const GUIDE = process.argv.includes('--guide');
+const outArg = process.argv.slice(2).find((a) => !a.startsWith('--'));
+const outDir = resolve(outArg ?? (GUIDE ? join(root, '../../docs/инструкция-координатора') : join(root, 'shots')));
 const chromePath = process.env.HG_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 mkdirSync(outDir, { recursive: true });
 
@@ -275,7 +279,93 @@ const SCREENS = [
   { name: 'strange-others', url: '/?tab=requests&view=others', ready: 'ul[aria-label="Список обращений"] [role=img][aria-label^="Странный человек"]', scroll: 'ul[aria-label="Список обращений"] [role=img][aria-label^="Странный человек"]' },
 ];
 
-const SHOTS = [
+/**
+ * Инструкция координаторам: как найти свои группы и проверить их данные. mark — что обвести красной рамкой с номером
+ * (номер в рамке = номер шага в docs/ИНСТРУКЦИЯ-КООРДИНАТОРА.md). Имена файлов без ширины и темы: на них ссылается
+ * инструкция, и при пересъёмке ссылки не меняются.
+ */
+const MY = 'Морозов Д.';
+const MY_GROUPS = `/?tab=groups&f=${encodeURIComponent('Статус:ne:Закрыта')}&f=${encodeURIComponent('Статус:ne:Аннулирована')}&f=${encodeURIComponent(`Координатор:eq:${MY}`)}`;
+SCREENS.push(
+  {
+    name: 'guide-01-groups',
+    url: '/?tab=groups',
+    ready: 'table',
+    mark: ['[role=tablist][aria-label="Разделы"] >> role=tab[name=/^Группы/]', 'ul[aria-label="Текущий отбор"]', 'role=button[name=/^Фильтры/]'],
+  },
+  {
+    name: 'guide-02-filter',
+    url: '/?tab=groups',
+    ready: 'table',
+    click: 'role=button[name=/^Фильтры/]',
+    then: '[role=dialog][aria-label="Фильтры"]',
+    select: [
+      ['[role=dialog][aria-label="Фильтры"] >> internal:label="Поле"', 'Координатор'],
+      ['[role=dialog][aria-label="Фильтры"] >> internal:label="Значение"', MY],
+    ],
+    mark: [
+      '[role=dialog][aria-label="Фильтры"] >> internal:label="Поле"',
+      '[role=dialog][aria-label="Фильтры"] >> internal:label="Значение"',
+      '[role=dialog][aria-label="Фильтры"] >> role=button[name="Добавить"]',
+    ],
+  },
+  {
+    name: 'guide-03-my-groups',
+    url: MY_GROUPS,
+    ready: 'table',
+    mark: ['ul[aria-label="Текущий отбор"] li:has-text("Координатор")', 'text=/^Показано \\d+ из \\d+$/'],
+  },
+  {
+    name: 'guide-04-save-view',
+    url: MY_GROUPS,
+    ready: 'table',
+    click: 'role=button[name=/^Фильтры/]',
+    then: '[role=dialog][aria-label="Фильтры"]',
+    fill: [['[role=dialog][aria-label="Фильтры"] >> internal:label="Название вида"', 'Мои группы']],
+    mark: [
+      '[role=dialog][aria-label="Фильтры"] >> internal:label="Название вида"',
+      '[role=dialog][aria-label="Фильтры"] >> role=button[name="Сохранить как вид"]',
+    ],
+  },
+  {
+    name: 'guide-05-not-checked',
+    url: `${MY_GROUPS}&f=${encodeURIComponent('Данные проверены:eq:Нет')}`,
+    ready: 'table',
+    mark: ['ul[aria-label="Текущий отбор"] li:has-text("Данные проверены")', 'role=columnheader[name=/Данные проверены/]'],
+  },
+  {
+    name: 'guide-06-card',
+    url: '/?tab=groups&rec=2',
+    ready: '[role=dialog][aria-label^="Карточка группы"]',
+    mark: [
+      '[role=dialog][aria-label^="Карточка группы"] dt:has-text("Когда")',
+      '[role=dialog][aria-label^="Карточка группы"] dt:has-text("Ответ ведущего боту")',
+      '[role=dialog][aria-label^="Карточка группы"] >> role=button[name=/^Править/]',
+    ],
+    markRow: true,
+  },
+  {
+    name: 'guide-07-edit',
+    url: '/?tab=groups&rec=2',
+    ready: '[role=dialog][aria-label^="Карточка группы"]',
+    click: '[role=dialog][aria-label^="Карточка группы"] >> role=button[name=/^Править/]',
+    then: '[role=dialog][aria-modal=true] form',
+    scroll: '[role=dialog][aria-modal=true] >> internal:label="Данные проверены"',
+    mark: [
+      '[role=dialog][aria-modal=true] label:has-text("Данные проверены")',
+      '[role=dialog][aria-modal=true] >> role=button[name="Сохранить"]',
+    ],
+  },
+  {
+    name: 'guide-08-show-all',
+    url: '/?tab=groups',
+    ready: 'table',
+    mark: ['role=button[name="Убрать отбор: Принимает новых = Да"]'],
+  },
+);
+const GUIDE_SHOTS = SCREENS.filter((s) => s.name.startsWith('guide-')).map((s) => [s.name, 1280, 'light']);
+
+const SHOTS_ALL = [
   ...['requests-work', 'requests-work-edit'].flatMap((s) => [[s, 400, 'light'], [s, 1280, 'light'], [s, 400, 'dark'], [s, 400, 'gray']]),
   // [экран, ширина, тема]
   ['reference-groups-closed', 1280, 'light'],
@@ -349,6 +439,8 @@ const SHOTS = [
   ...['strange-list', 'strange-card', 'strange-confirm'].flatMap((s) => [[s, 400, 'dark'], [s, 400, 'gray']]),
 ];
 
+const SHOTS = GUIDE ? GUIDE_SHOTS : SHOTS_ALL.filter(([n]) => !n.startsWith('guide-'));
+
 const browser = await chromium.launch({ executablePath: chromePath, args: ['--no-sandbox'] });
 const problems = [];
 
@@ -400,7 +492,13 @@ for (const [screenName, width, theme] of SHOTS) {
   page.on('console', (m) => m.type() === 'error' && problems.push(`${screenName}/${width}: console.error: ${m.text()}`));
   page.on('request', (r) => !r.url().startsWith(origin) && !r.url().startsWith('data:') && problems.push(`${screenName}: внешний запрос ${r.url()}`));
   await page.goto(origin + screen.url);
-  await page.waitForSelector(screen.ready, { timeout: 15000 });
+  try {
+    await page.waitForSelector(screen.ready, { timeout: 15000 });
+  } catch (e) {
+    // Снимок того, что на экране вместо ожидаемого: по нему видно, почему не дождались.
+    await page.screenshot({ path: join(outDir, `${screenName}-не-дождались.png`) });
+    throw e;
+  }
   await page.evaluate(() => document.fonts.ready);
   // click — один селектор или цепочка (меню «Создать»: сначала кнопка, затем пункт).
   for (const sel of [screen.click].flat().filter(Boolean)) await page.click(sel);
@@ -417,6 +515,30 @@ for (const [screenName, width, theme] of SHOTS) {
   for (const sel of [screen.afterClick].flat().filter(Boolean)) await page.click(sel);
   if (screen.scroll) await page.locator(screen.scroll).first().scrollIntoViewIfNeeded();
   await page.waitForTimeout(150);
+  if (screen.mark) {
+    // markRow — у строки карточки («название — значение») обводим всю строку, а не только название.
+    const boxes = [];
+    for (const sel of screen.mark) {
+      const loc = page.locator(sel).first();
+      const target = screen.markRow && /\bdt:has-text/.test(sel) ? loc.locator('xpath=..') : loc;
+      const box = await target.boundingBox().catch(() => null);
+      if (box) boxes.push(box);
+      else problems.push(`${screenName}: не нашлось, что обвести: ${sel}`);
+    }
+    await page.evaluate((list) => {
+      list.forEach((b, i) => {
+        const frame = document.createElement('div');
+        frame.style.cssText = `position:absolute;z-index:2147483647;pointer-events:none;border:3px solid #e5484d;border-radius:8px;
+          left:${b.x + scrollX - 5}px;top:${b.y + scrollY - 5}px;width:${b.width + 10}px;height:${b.height + 10}px;box-sizing:border-box`;
+        const badge = document.createElement('div');
+        badge.textContent = String(i + 1);
+        badge.style.cssText = `position:absolute;z-index:2147483647;pointer-events:none;width:26px;height:26px;border-radius:50%;
+          background:#e5484d;color:#fff;font:700 15px/26px system-ui,sans-serif;text-align:center;
+          left:${b.x + scrollX - 18}px;top:${b.y + scrollY - 18}px`;
+        document.body.append(frame, badge);
+      });
+    }, boxes);
+  }
 
   if (mobile) {
     // Страховку overflow-x: clip на время проверки снимаем: иначе она прятала бы настоящее переполнение.
@@ -426,7 +548,7 @@ for (const [screenName, width, theme] of SHOTS) {
     if (r.scrollWidth > r.vw || r.bad.length) problems.push(`${tag}: горизонтальная прокрутка (scrollWidth=${r.scrollWidth} > ${r.vw}) ${r.bad.join('; ')}`);
     else console.log(`ок: ${tag} без горизонтальной прокрутки (scrollWidth=${r.scrollWidth}, окно=${r.vw})`);
   }
-  const file = join(outDir, `${screenName}-${width}-${theme}.png`);
+  const file = join(outDir, GUIDE ? `${screenName}.png` : `${screenName}-${width}-${theme}.png`);
   await page.screenshot({ path: file, fullPage: Boolean(screen.full) });
   await ctx.close();
 }

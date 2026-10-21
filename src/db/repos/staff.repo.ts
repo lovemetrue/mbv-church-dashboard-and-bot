@@ -254,6 +254,17 @@ export class StaffRepo {
     );
   }
 
+  /** Как зовут человека в справочнике команды (по связи `coordinator_id`), а без связи — его ФИО из учётной записи. */
+  async displayName(login: string): Promise<string | null> {
+    const { rows } = await this.db.query<{ name: string }>(
+      `SELECT COALESCE(c.name, s.full_name) AS name
+         FROM staff s LEFT JOIN coordinators c ON c.id = s.coordinator_id AND c.archived_at IS NULL
+        WHERE lower(s.login) = lower($1)`,
+      [login],
+    );
+    return rows[0]?.name ?? null;
+  }
+
   /** Команда из справочника (координаторы, распределители) и их учётные записи; без удалённых из справочника. */
   async team(): Promise<TeamAccountRow[]> {
     const { rows } = await this.db.query<TeamAccountRow>(

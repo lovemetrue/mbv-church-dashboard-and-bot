@@ -1,5 +1,5 @@
 import { ru } from '../i18n/ru';
-import { RESP_NOBODY } from '../nav/params';
+import { RESP_ALL, RESP_MINE, RESP_NOBODY } from '../nav/params';
 import type { ViewScope } from './model';
 
 const BUCKET_TEXT: Record<string, string> = {
@@ -24,7 +24,9 @@ export function describeView(scope: ViewScope, query: string): string {
   if (scope === 'requests') {
     parts.push(BUCKET_TEXT[q.get('bucket') ?? ''] ?? 'Все');
     const resp = q.get('resp');
-    if (resp) parts.push(resp === RESP_NOBODY ? ru.savedViews.summary.respNobody : ru.savedViews.summary.resp(resp));
+    if (resp && resp !== RESP_ALL) {
+      parts.push(resp === RESP_NOBODY ? ru.savedViews.summary.respNobody : resp === RESP_MINE ? ru.requests.respFilterMine : ru.savedViews.summary.resp(resp));
+    }
     const text = q.get('q');
     if (text) parts.push(ru.savedViews.summary.search(text));
   } else {

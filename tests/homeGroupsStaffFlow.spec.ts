@@ -130,6 +130,9 @@ describe('личные входы целиком', () => {
       expect((await app.api(boss, 'settings/staff/personal-mode', { enabled: true })).status).toBe(200);
       const david = await app.login('d_rodionov', out.password);
       expect(david.status).toBe(302);
+      // Интерфейс знает, кто вошёл: имя — как в справочнике команды, по нему сразу видны свои заявки.
+      expect(await (await app.api(david.cookie!, 'me')).json()).toMatchObject({ role: 'admin', person: { login: 'd_rodionov', name: 'Родионов Давид' } });
+      expect(await (await app.api(boss, 'me')).json()).not.toHaveProperty('person');
       expect((await app.api(david.cookie!, 'settings/staff/generate-password', { coordinatorId: rows[0]!.id })).status).toBe(403);
     } finally { app.server.close(); }
   });

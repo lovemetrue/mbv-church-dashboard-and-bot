@@ -6,6 +6,7 @@ import { useAppNav } from '../../../shared/nav';
 import { Chip, EmptyState } from '../../../shared/ui';
 import { ClosedNote } from '../ClosedNote';
 import { filterByResponsible } from '../model';
+import { useResponsible } from '../useResponsible';
 import { ResponsibleSelect } from '../ResponsibleSelect';
 import styles from '../Requests.module.css';
 import { ViewSwitch } from '../ViewSwitch';
@@ -60,10 +61,11 @@ export function OthersContent({
   onHideNote: () => void;
 }) {
   const nav = useAppNav();
+  const resp = useResponsible();
   const all = data.others;
   const found = useMemo(
-    () => filterByResponsible(all.filter((o) => matchesOtherSearch(o, nav.search)), nav.responsible),
-    [all, nav.search, nav.responsible],
+    () => filterByResponsible(all.filter((o) => matchesOtherSearch(o, nav.search)), resp.value, resp.myName),
+    [all, nav.search, resp.value, resp.myName],
   );
   const counts = useMemo(() => countOthers(found), [found]);
   const recCounts = useMemo(() => countReconcile(found), [found]);
@@ -100,7 +102,7 @@ export function OthersContent({
           </div>
         )}
         <div className={styles.tools} role="group" aria-label={ru.requests.toolsLabel}>
-          <ResponsibleSelect items={all} value={nav.responsible} onChange={nav.setResponsible} />
+          <ResponsibleSelect items={all} value={resp.value} mine={resp.myName !== null} onChange={resp.set} />
         </div>
         <ReadyBulk ready={ready} bulk={readyBulk} onDone={onClosed} />
         {visible.length ? (

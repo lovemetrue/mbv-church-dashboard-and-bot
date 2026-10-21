@@ -22,13 +22,27 @@ import { fixtureChatClear, fixtureChatHistory, fixtureChatReply } from './chat';
 import { buildOthers, reconcileDemoOther, reconcileDemoReady } from './others';
 import { buildTeam } from './team';
 
+/** Личный вход в демо включает `localStorage['hg.demo.person']` (имя из справочника), его ставит `npm run shots:guide`. */
+function demoPerson(): { login: string; name: string } | null {
+  try {
+    const name = globalThis.localStorage?.getItem('hg.demo.person');
+    return name ? { login: 'demo', name } : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Ответ «сервера» в режиме фикстур. Путь — как в apiGet: «today», «requests»… */
 export function fixtureResponse(path: string): unknown {
   switch (path.replace(/^\/+/, '').replace(/\/+$/, '')) {
-    case 'me':
+    case 'me': {
+      // Снимки для инструкции координатору: «вошёл по личному паролю» (обычный доступ, имя из справочника команды).
+      const person = demoPerson();
+      if (person) return { role: 'admin', person, assistant: { available: true, enabled: true, chat: true } };
       // В демо вход полный, иначе вкладки «Настройки» не видно.
       // Кнопка «Помощник» в демо видна: ключ задан, помощник включён, база готова.
       return { role: 'super', assistant: { available: true, enabled: true, chat: true } };
+    }
     case 'form-meta':
       return buildFormMeta();
     case 'today':

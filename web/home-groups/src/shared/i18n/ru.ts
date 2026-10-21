@@ -213,6 +213,7 @@ export const ru = {
     toolsLabel: 'Отбор списка заявок',
     respFilterLabel: 'В работе у',
     respFilterAll: 'Все',
+    respFilterMine: 'Мои и без ответственного',
     respFilterNobody: 'Никто не взял',
     /** Метка в строке списка: у кого заявка. Без имени метки нет. */
     inWorkBy: (name: string) => `В работе: ${name}`,
@@ -890,6 +891,7 @@ export const ru = {
       members: (n: number) => `В составе: ${n}`,
       noMembers: 'В составе пока никого.',
     },
+    myGroups: 'Мои группы',
     leaderAnswer: 'Ответ ведущего боту',
     leaderAnswerWhen: (v: string) => `Когда: ${v}`,
     leaderAnswerWhere: (v: string) => `Где: ${v}`,

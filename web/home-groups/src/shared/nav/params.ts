@@ -11,7 +11,8 @@ import { isBucketFilter, type BucketFilter } from '../../entities/buckets';
  *   view    others — «Другие обращения» вместо списка «Хотят в группу»; без параметра — обычный список
  *   ostate  чип списка обращений: done | cancelled | all; без параметра — открытые
  *   orec    отбор открытых обращений по разбору: ready | choose | missing | rest; без параметра — все открытые
- *   resp    «В работе у»: имя ответственного, RESP_NOBODY («-») — заявки, которые никто не взял; без параметра — все
+ *   resp    «В работе у»: имя ответственного, RESP_NOBODY («-») — заявки, которые никто не взял, RESP_MINE («~») — свои
+ *           и ничьи, RESP_ALL («*») — все явно; без параметра — при личном входе свои и ничьи, при общем — все
  *   req     открытая заявка
  *   ent     groups (по умолчанию) | people | coordinators
  *   rec     открытая запись справочника или вкладки «Группы»
@@ -36,6 +37,10 @@ export function visibleTabs(role: Role | undefined): readonly TabId[] {
 
 /** Значение `resp` для заявок без ответственного: имя координатора так не называется. */
 export const RESP_NOBODY = '-';
+/** «Мои и без ответственного»: при личном входе это отбор по умолчанию (см. `useResponsible`). */
+export const RESP_MINE = '~';
+/** «Все» выбраны явно: при личном входе иначе снова встали бы «мои». */
+export const RESP_ALL = '*';
 
 export type EntityId = 'groups' | 'people' | 'coordinators';
 export const ENTITY_IDS: readonly EntityId[] = ['groups', 'people', 'coordinators'];

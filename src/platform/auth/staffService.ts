@@ -173,6 +173,12 @@ export function createStaffService(deps: StaffServiceDeps) {
       return { ok: true, login: account.login, password };
     },
 
+    /** Кто вошёл под личным логином: логин и имя, как в справочнике команды. */
+    async personOf(login: string): Promise<{ login: string; name: string } | null> {
+      const name = await deps.staff.displayName(login);
+      return name ? { login, name } : null;
+    },
+
     async suggestLogin(body: unknown): Promise<StaffOutcome<Pick<SuggestLoginOk, 'login'>>> {
       const fullName = typeof body === 'object' && body !== null ? (body as Record<string, unknown>)['fullName'] : undefined;
       if (typeof fullName !== 'string') return bad('Нужно указать ФИО.');

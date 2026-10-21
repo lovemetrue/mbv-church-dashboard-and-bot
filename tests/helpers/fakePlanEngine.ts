@@ -90,6 +90,10 @@ export function createFakeEngine(options: FakeEngineOptions = {}): { engine: Pla
       return args.callback ? 'callback' : 'ready';
     },
 
+    scoreProspect(r, g) {
+      return r.district !== null && r.district === g.district ? { groupId: g.id, score: 80, reasons: [{ tone: 'good', text: 'тот же район' }] } : null;
+    },
+
     buildTodaySummary(input) {
       calls.summary.push(input);
       return { ageColumns: ['18–25', '26–35'], matrix: [], clusters: [], singles: [] };

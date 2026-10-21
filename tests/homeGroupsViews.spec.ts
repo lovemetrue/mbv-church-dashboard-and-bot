@@ -1564,3 +1564,52 @@ describe('значки групп: зелёный и оранжевый рост
     expect(m.get(7)!.empty).toBe(false);
   });
 });
+
+describe('«Хотят открыть группу»: кого можно направить в будущую группу', () => {
+  const other = (views: ReturnType<typeof build>['views'], id: number) => views.requests.others.find((o) => o.id === id)!;
+
+  test('по ответам обращения: все открытые «хочу в группу» того же района, даже с уже предложенной группой', () => {
+    const { views } = build({
+      groups: [group({ id: 5, district: 'Приморский' })],
+      requests: [
+        request({ id: 1, type: 'lead_group', place: 'Приморский район' }),
+        request({ id: 2, place: 'Приморский', age: '26-35' }),
+        request({ id: 3, place: 'Приморский' }),
+        request({ id: 4, place: 'Невский' }),
+        request({ id: 6, place: 'Приморский', status: 'Исполнена', group_id: 5 }),
+      ],
+    });
+    const p = other(views, 1).prospects!;
+    expect(p).toMatchObject({ futureGroup: null, unknownPlace: false, total: 2 });
+    expect(p.items.map((x) => x.requestId).sort()).toEqual([2, 3]);
+    // Подбор уже предложил им группу 5 — она видна рядом: координатор поймёт, что человека надо перехватить или нет.
+    expect(p.items.every((x) => x.proposed === 'ДГ-0005')).toBe(true);
+    expect(p.items.find((x) => x.requestId === 2)).toMatchObject({ fio: 'Человек 2', ageLabel: '26-35', place: 'Приморский', score: 80 });
+  });
+
+  test('если по обращению заведена потенциальная группа, считаем по ней', () => {
+    const { views } = build({
+      groups: [group({ id: 7, district: 'Невский', status: 'Потенциальная', source_request_id: 1 } as never)],
+      requests: [
+        request({ id: 1, type: 'lead_group', place: 'Приморский' }),
+        request({ id: 2, place: 'Приморский' }),
+        request({ id: 4, place: 'Невский' }),
+      ],
+    });
+    expect(other(views, 1).prospects).toMatchObject({ futureGroup: { id: 7, code: 'ДГ-0007' }, total: 1, items: [{ requestId: 4, proposed: null }] });
+  });
+
+  test('место неизвестно — подсчёта нет; у других и у закрытых обращений блока нет', () => {
+    const { views } = build({
+      requests: [
+        request({ id: 1, type: 'lead_group', place: null }),
+        request({ id: 2, place: 'Приморский' }),
+        request({ id: 3, type: 'question' }),
+        request({ id: 8, type: 'lead_group', place: 'Приморский', status: 'Исполнена' }),
+      ],
+    });
+    expect(other(views, 1).prospects).toEqual({ futureGroup: null, unknownPlace: true, total: 0, items: [] });
+    expect(other(views, 3).prospects).toBeNull();
+    expect(other(views, 8).prospects).toBeNull();
+  });
+});

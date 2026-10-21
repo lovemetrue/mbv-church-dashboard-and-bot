@@ -39,7 +39,7 @@ export function RequestsContent({ data }: { data: RequestsView }) {
   // Сервер старой версии мог ещё не прислать `others`: без этой подстраховки экран заявок упал бы целиком.
   const safe = data.others ? data : { ...data, others: [] };
   const props = { data: safe, note, onClosed: setNote, onHideNote: () => setNote(null) };
-  return nav.view === 'others' ? <OthersContent {...props} /> : <WaitingContent {...props} />;
+  return nav.view === 'wait' ? <WaitingContent {...props} /> : <OthersContent {...props} kind={nav.view} />;
 }
 
 function WaitingContent({
@@ -54,7 +54,7 @@ function WaitingContent({
   onHideNote: () => void;
 }) {
   const nav = useAppNav();
-  const resp = useResponsible();
+  const resp = useResponsible('wait');
   // Поиск и «В работе у» сужают список до чипов: счётчики, очередь обзвона и «Следующая заявка»
   // считаются по одному и тому же найденному.
   const found = useMemo(
@@ -89,7 +89,7 @@ function WaitingContent({
   return (
     <div className={styles.work}>
       <div className={styles.main}>
-        <ViewSwitch view="wait" openOthers={openOthersCount(data.others)} onChange={nav.setView} />
+        <ViewSwitch view="wait" others={data.others} onChange={nav.setView} />
         <ClosedNote note={note} onHide={onHideNote} />
         <MatchingPanel matching={data.matching} assistant={data.assistant} changed={changed} />
         {/* Область живая и есть всегда: скринридер читает только то, что в неё добавили. */}

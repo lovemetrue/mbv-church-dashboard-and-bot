@@ -288,3 +288,49 @@
 .dialogFoot button {
   min-height: var(--tap);
 }
+
+/* «Кого можно направить» у обращения «хочу открыть группу». */
+.prospects {
+  display: grid;
+  gap: 8px;
+}
+.prospectsTitle {
+  font-size: 15px;
+  margin: 0;
+}
+.prospectsCount {
+  font-weight: 700;
+  margin: 0;
+}
+.prospectList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.prospectRow {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  min-width: 0;
+}
+.prospectMain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 6px;
+}
+.prospectScore {
+  margin-left: auto;
+  font-weight: 700;
+}
+.prospectFoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}

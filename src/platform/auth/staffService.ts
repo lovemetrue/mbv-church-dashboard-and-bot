@@ -173,10 +173,10 @@ export function createStaffService(deps: StaffServiceDeps) {
       return { ok: true, login: account.login, password };
     },
 
-    /** Кто вошёл под личным логином: логин и имя, как в справочнике команды. */
-    async personOf(login: string): Promise<{ login: string; name: string } | null> {
-      const name = await deps.staff.displayName(login);
-      return name ? { login, name } : null;
+    /** Кто вошёл под личным логином: логин, имя и роль, как в справочнике команды. */
+    async personOf(login: string): Promise<{ login: string; name: string; teamRole: string | null } | null> {
+      const found = await deps.staff.displayName(login);
+      return found ? { login, ...found } : null;
     },
 
     async suggestLogin(body: unknown): Promise<StaffOutcome<Pick<SuggestLoginOk, 'login'>>> {

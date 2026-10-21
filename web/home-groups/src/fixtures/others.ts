@@ -70,6 +70,22 @@ function rawOthers(): RawOther[] {
       responsible: 'Пётр Г.',
       note: null,
       cancelReason: null,
+      // Кого можно направить в её будущую группу: двое ищущих из Выборгского, одному подбор уже предложил ДГ-0031.
+      prospects: {
+        futureGroup: null,
+        unknownPlace: false,
+        total: 2,
+        items: [
+          {
+            requestId: 3, fio: 'Ирина Жукова', ageLabel: '35-45 лет', place: 'Озерки', score: 86, proposed: 'ДГ-0031',
+            reasons: [{ tone: 'good', text: 'тот же район' }, { tone: 'good', text: 'возраст подходит' }],
+          },
+          {
+            requestId: 9, fio: 'Галина Мартынова', ageLabel: '46+', place: 'Проспект Просвещения', score: 64, proposed: null,
+            reasons: [{ tone: 'good', text: 'тот же район' }, { tone: 'neutral', text: 'день не совпал' }],
+          },
+        ],
+      },
       original: [
         { label: 'Имя', value: 'Юлия Громова' },
         { label: 'Телефон', value: '+7 921 555-01-02' },
@@ -313,6 +329,27 @@ function rawOthers(): RawOther[] {
         { at: '2026-09-22', text: 'Заявка перенесена из таблицы.' },
         { at: '2026-10-02', text: 'Закрыта: обработана.' },
       ],
+    },
+    {
+      id: 212,
+      type: 'already_leader',
+      typeLabel: 'Уже ведёт группу',
+      gist: 'Уже ведёт группу, просила внести её в справочник.',
+      reconcile: null,
+      state: 'done',
+      fio: 'Нина Кравец',
+      phone: '79215550112',
+      ageLabel: '46+',
+      place: 'Фрунзенский',
+      status: 'Исполнена',
+      source: 'Бот',
+      waitingDays: 6,
+      callback: false,
+      responsible: 'Анна Л.',
+      note: 'Группу внесли в справочник.',
+      cancelReason: null,
+      original: [],
+      log: [{ at: '2026-10-12', text: 'Закрыта: обработана.' }],
     },
     {
       id: 205,

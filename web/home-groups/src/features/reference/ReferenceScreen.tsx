@@ -17,6 +17,7 @@ import {
 } from '../../shared/filters';
 import { downloadCsv, toCsv } from '../../shared/csv';
 import { ru } from '../../shared/i18n/ru';
+import { teamKindOf } from '../../entities/teamRole';
 import { ENTITY_IDS, useAppNav, type EntityId } from '../../shared/nav';
 import { Button, Chip, ErrorState, LoadingState, Popover } from '../../shared/ui';
 import { CoordinatorCard, GroupCard, PersonCard } from './Cards';
@@ -88,12 +89,16 @@ export function ReferenceScreen() {
  */
 export function GroupsWorkplace() {
   const groups = useGroups();
-  const myName = useMe().data?.person?.name ?? null;
-  // При личном входе первым быстрым отбором — «Мои группы»: координатору не нужно собирать его самому.
-  const config = useMemo(
-    () => (myName ? { ...groupsConfig, presets: [myGroupsPreset(myName), ...groupsConfig.presets] } : groupsConfig),
-    [myName],
-  );
+  const person = useMe().data?.person;
+  const myName = person?.name ?? null;
+  const coordinator = teamKindOf(person?.teamRole) === 'coordinator';
+  // При личном входе первым быстрым отбором — «Мои группы». Координатору он ещё и стоит по умолчанию вместо «Принимает
+  // новых» (чипы снимаются): ему по работе нужны все свои группы, включая «Не направлять», а чужие — нет.
+  const config = useMemo(() => {
+    if (!myName) return groupsConfig;
+    const mine = myGroupsPreset(myName);
+    return { ...groupsConfig, presets: [mine, ...groupsConfig.presets], ...(coordinator ? { defaultFilters: mine.filters } : {}) };
+  }, [myName, coordinator]);
   return (
     <EntityView
       key="groups"

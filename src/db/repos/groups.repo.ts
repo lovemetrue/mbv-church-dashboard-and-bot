@@ -82,6 +82,8 @@ export interface GroupRow {
   capacity: number | null;
   /** Регистрация ведущего (users.id), если обращение «уже веду группу» сверено со справочником. */
   leader_user_id: number | null;
+  /** Обращение «хочу открыть группу», из которого заведена эта потенциальная группа (миграция 032). */
+  source_request_id?: number | null;
   source: GroupSource;
   added_by: string | null;
   added_platform: string | null;
@@ -128,6 +130,8 @@ export interface DashboardGroup {
   capacity: number | null;
   /** Регистрация ведущего (users.id): связь появляется при разборе обращения «уже веду группу». */
   leader_user_id: number | null;
+  /** Обращение «хочу открыть группу», из которого заведена эта потенциальная группа (миграция 032). */
+  source_request_id: number | null;
 }
 
 const COLUMNS = `no, leader, open_to_new, phone, phones, age, district, metro, address,
@@ -382,6 +386,7 @@ export class GroupsRepo {
       do_not_refer: r.do_not_refer,
       capacity: r.capacity ?? null,
       leader_user_id: r.leader_user_id === null || r.leader_user_id === undefined ? null : Number(r.leader_user_id),
+      source_request_id: r.source_request_id === null || r.source_request_id === undefined ? null : Number(r.source_request_id),
     }));
   }
 }

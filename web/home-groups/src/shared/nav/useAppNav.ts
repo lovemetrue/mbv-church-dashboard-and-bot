@@ -47,7 +47,7 @@ export function useAppNav() {
       tab: parseTab(params.get('tab')),
       search: params.get('q') ?? '',
       bucket: parseBucket(params.get('bucket')),
-      /** Режим списка «Заявок»: 'wait' — хотят в группу, 'others' — другие обращения. */
+      /** Режим списка «Заявок»: 'wait' — хотят в группу, 'leads' — хотят открыть группу, 'others' — другие обращения. */
       view: parseView(params.get('view')),
       /** Чип списка обращений; 'open' по умолчанию. */
       otherFilter: parseOtherFilter(params.get('ostate')),
@@ -89,7 +89,7 @@ export function useAppNav() {
     setBucket: (b: BucketFilter) => update({ bucket: b === 'all' ? null : b, req: null }),
     // Режим списка: открытая карточка и отборы чипов принадлежат прежнему списку и сбрасываются.
     // Поиск и «В работе у» общие для обоих режимов и сохраняются.
-    setView: (v: RequestsView) => update({ view: v === 'others' ? 'others' : null, req: null, bucket: null, ostate: null, orec: null }),
+    setView: (v: RequestsView) => update({ view: v === 'wait' ? null : v, req: null, bucket: null, ostate: null, orec: null }),
     // Отбор по разбору существует только у «Открытых»: ушли с них — он сбрасывается, иначе скрытый отбор прятал бы строки.
     setOtherFilter: (f: OtherFilter) => update({ ostate: f === 'open' ? null : f, orec: null, req: null }),
     setReconcileFilter: (f: ReconcileFilter) => update({ orec: f === 'all' ? null : f, req: null }),

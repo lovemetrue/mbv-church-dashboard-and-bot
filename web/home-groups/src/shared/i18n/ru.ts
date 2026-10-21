@@ -878,6 +878,18 @@ export const ru = {
     healthOf: (score: number) => `${score} из 100`,
     leader: 'Ведущий',
     leaderLinked: 'Ведущий связан с регистрацией',
+    /** Карточка группы поверх заявки: только просмотр. */
+    preview: {
+      open: 'Карточка группы',
+      /** В тесном списке «Другая группа»: рядом ещё «Выбрать и утвердить». */
+      openShort: 'Карточка',
+      openAria: (code: string) => `Карточка группы ${code}`,
+      loadingTitle: 'Карточка группы',
+      readOnly: 'Только просмотр: править группу — во вкладке «Группы»',
+      gone: 'Группы уже нет в справочнике.',
+      members: (n: number) => `В составе: ${n}`,
+      noMembers: 'В составе пока никого.',
+    },
     leaderAnswer: 'Ответ ведущего боту',
     leaderAnswerWhen: (v: string) => `Когда: ${v}`,
     leaderAnswerWhere: (v: string) => `Где: ${v}`,

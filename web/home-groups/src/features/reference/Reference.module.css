@@ -454,3 +454,14 @@
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* Карточка группы поверх заявки (только просмотр). */
+.previewTitle {
+  margin: 16px 0 6px;
+  font-size: 15px;
+}
+.previewMembers {
+  margin: 0;
+  padding-left: 18px;
+  columns: 2 220px;
+}

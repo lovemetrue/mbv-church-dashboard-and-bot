@@ -12,6 +12,13 @@ interface ModalProps {
   wide?: boolean;
 }
 
+/**
+ * Открытые окна по порядку: Esc и Tab обрабатывает только верхнее. Иначе окно поверх окна (карточка группы из
+ * «Выбрать другую группу») закрывалось бы вместе с нижним: оба слушают клавиши на document, и нижнее —
+ * зарегистрированное раньше — срабатывало бы первым.
+ */
+const openStack: symbol[] = [];
+
 const FOCUSABLE = 'a[href], button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])';
 
 /**
@@ -31,10 +38,13 @@ export function Modal({ title, onClose, children, wide = false }: ModalProps) {
   const titleId = useId();
 
   useEffect(() => {
+    const me = Symbol('modal');
+    openStack.push(me);
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     panelRef.current?.focus({ preventScroll: true });
 
     const onKey = (e: KeyboardEvent) => {
+      if (openStack[openStack.length - 1] !== me) return;
       if (e.key === 'Escape') {
         e.preventDefault();
         closeRef.current();
@@ -64,6 +74,7 @@ export function Modal({ title, onClose, children, wide = false }: ModalProps) {
     document.addEventListener('keydown', onKey, true);
     return () => {
       document.removeEventListener('keydown', onKey, true);
+      openStack.splice(openStack.indexOf(me), 1);
       // Если кнопка, открывшая окно, уже убрана из дерева, фокус просто теряется.
       if (previous && document.contains(previous)) previous.focus({ preventScroll: true });
     };

@@ -983,7 +983,6 @@ html:not([data-ready]) .sk-tr:nth-child(even) .sk { width: 58%; }
         <button data-status="На паузе">На паузе</button>
         <button data-status="Закрыта">Закрытые</button>
         <button data-status="Недвижимость">Недвижимость</button>
-        <button data-status="Кампания">Кампания</button>
         <!-- Не статус группы, а отметка «40 дней»: включается так же галочкой и
              сочетается с любыми статусами (показать только действующие из кампании). -->
         <button data-campaign="yes">40 дней</button>
@@ -2559,7 +2558,8 @@ const FORM_DISTRICTS = [
   'Кронштадтский', 'Курортный', 'Ленинградская область', 'Онлайн', 'Не указан',
 ];
 const FORM_FORMATS = ['Основная церковь', 'Молодежная', 'Приватная (Закрытая)', 'Служение'];
-const FORM_GROUP_STATUSES = ['Функционирует', 'Потенциальная', 'На паузе', 'Закрыта', 'Аннулирована', 'Недвижимость', 'Кампания'];
+// «Кампания» — не статус, а галочка «Работает только в кампанию» (campaign_only, миграция 047), как в src/core/groups.ts.
+const FORM_GROUP_STATUSES = ['Функционирует', 'Потенциальная', 'На паузе', 'Закрыта', 'Аннулирована', 'Недвижимость'];
 const FORM_REQUEST_STATUSES = ['Новая', 'В ожидании', 'В работе', 'На контроле', 'Исполнена', 'Аннулирована'];
 /* Те же категории, что в анкете бота (см. AGE_GROUPS в src/core/texts.ts) — список
    продублирован, потому что страница дашборда не импортирует код бота (см. CLAUDE.md). */
@@ -2615,6 +2615,8 @@ const GROUP_FIELDS = [
   { name: 'comment', label: 'Комментарий', type: 'textarea', wide: true, from: 'comment' },
   { name: 'checked', label: 'Данные проверены', type: 'checkbox', wide: true, from: 'checked' },
   { name: 'campaignRegistered', label: '«40 дней» — зарегистрирован в кампании', type: 'checkbox', wide: true, from: 'campaign_registered' },
+  // Без этой галочки правка в старом дашборде снимала бы отметку: форма шлёт только отмеченные флажки.
+  { name: 'campaignOnly', label: 'Работает только в кампанию', type: 'checkbox', wide: true, from: 'campaign_only' },
 ];
 
 const RESPONSIBLE_OPTIONS = [...new Set([

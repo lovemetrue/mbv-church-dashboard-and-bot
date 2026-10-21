@@ -778,3 +778,25 @@ describe('удаление заявки', () => {
     expect(currentSearch().get('req')).toBe('1');
   });
 });
+
+describe('«Работает только в кампанию» вместо статуса «Кампания»', () => {
+  test('карточка показывает отметку, форма правки — галочку; её снятие уходит на сервер', async () => {
+    const fetchMock = stubFetchWithFixtures({ 'groups/5/update': () => json({ ok: true }) });
+    const user = userEvent.setup();
+    const { dialog } = await openGroupEdit(user, 5);
+    const box = within(dialog).getByRole('checkbox', { name: 'Работает только в кампанию' });
+    expect(box).toBeChecked();
+    expect(within(dialog).getByRole('combobox', { name: 'Статус' })).not.toHaveTextContent('Кампания');
+    await user.click(box);
+    await user.click(saveButton(dialog));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect(posts(fetchMock)[0]).toEqual({ path: 'groups/5/update', body: { fields: { campaignOnly: '0' } } });
+  });
+
+  test('в карточке группы строка «Только в кампанию» есть только у отмеченной', async () => {
+    stubFetchWithFixtures();
+    const card = await groupCard(5);
+    const row = within(card).getByText('Только в кампанию', { selector: 'dt' }).nextElementSibling;
+    expect(row).toHaveTextContent('Да');
+  });
+});

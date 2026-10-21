@@ -101,12 +101,13 @@ describe('жёсткие условия: группа отсекается, ес
     expect(ids(suggestGroups(person(), [g], IDLE))).toEqual([g.id]);
   });
 
-  test.each(['Закрыта', 'На паузе', 'Потенциальная', 'Недвижимость'])('статус «%s» не подходит', (status) => {
+  // «Кампания» больше не статус (миграция 047 перевела такие группы в «Функционирует» с отметкой campaign_only).
+  test.each(['Закрыта', 'На паузе', 'Потенциальная', 'Недвижимость', 'Кампания'])('статус «%s» не подходит', (status) => {
     expect(suggestGroups(person(), [group({ status })], IDLE)).toEqual([]);
   });
 
-  test('«Кампания» подходит так же, как «Функционирует»', () => {
-    const g = group({ status: 'Кампания' });
+  test('«Работает только в кампанию» подходит так же, как обычная действующая', () => {
+    const g = group({ campaign_only: true });
     expect(ids(suggestGroups(person(), [g], IDLE))).toEqual([g.id]);
   });
 
@@ -148,7 +149,7 @@ describe('жёсткие условия: группа отсекается, ес
 
   test('«Не направлять» скрывает группу из подбора, даже если всё остальное подходит', () => {
     const p = person({ place: 'Невский' });
-    expect(suggestGroups(p, [group({ do_not_refer: true, status: 'Кампания' })], { campaignActive: true })).toEqual([]);
+    expect(suggestGroups(p, [group({ do_not_refer: true, campaign_only: true })], { campaignActive: true })).toEqual([]);
   });
 });
 
@@ -172,8 +173,8 @@ describe('мягкие условия: очки', () => {
     expect(s?.score).toBe(5);
   });
 
-  test('«Кампания» в период кампании даёт 2, вне периода — ничего', () => {
-    const g = group({ status: 'Кампания' });
+  test('«Работает только в кампанию» в период кампании даёт 2, вне периода — ничего', () => {
+    const g = group({ campaign_only: true });
     expect(suggestGroups(person(), [g], { campaignActive: true })[0]?.score).toBe(2);
     expect(suggestGroups(person(), [g], { campaignActive: false })[0]?.score).toBe(0);
   });
@@ -239,7 +240,7 @@ describe('совпадение по месту отдельным признак
 
 describe('причины: почему группа предложена', () => {
   test('каждое начисленное очко объяснено', () => {
-    const small = group({ status: 'Кампания', district: 'Приморский', metro: 'Пионерская', people: 6 });
+    const small = group({ campaign_only: true, district: 'Приморский', metro: 'Пионерская', people: 6 });
     const other = group({ district: 'Приморский', people: 12 });
     const found = suggestGroups(person({ place: 'Приморский, м. Пионерская' }), [small, other], { campaignActive: true });
     const reasons = found.find((s) => s.groupId === small.id)!.reasons.join(' | ');
@@ -257,7 +258,7 @@ describe('причины: почему группа предложена', () =>
 });
 
 describe('новые группы в первую очередь', () => {
-  const fresh = (patch: Partial<MatchGroup> = {}) => group({ status: 'Кампания', ...patch });
+  const fresh = (patch: Partial<MatchGroup> = {}) => group({ campaign_only: true, ...patch });
 
   test('новая группа идёт раньше существующей, даже если у той очков больше', () => {
     const existing = group({ district: 'Приморский' });

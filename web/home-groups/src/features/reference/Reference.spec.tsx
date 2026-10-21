@@ -513,3 +513,24 @@ describe('«Справочник»: ведущий и новые группы', 
     expect(within(card).queryByRole('img', { name: 'Новая группа' })).not.toBeInTheDocument();
   });
 });
+
+describe('«Справочник»: «40 дней» и «Только в кампанию»', () => {
+  test('быстрый отбор «40 дней» оставляет группы, зарегистрированные в кампании', async () => {
+    stubFetchWithFixtures();
+    const user = userEvent.setup();
+    renderAt(<App />, '/?tab=reference');
+    await screen.findByRole('table');
+    await user.click(screen.getByRole('button', { name: /^Фильтры/ }));
+    await user.click(within(screen.getByRole('dialog', { name: 'Фильтры' })).getByRole('button', { name: '40 дней' }));
+    const expected = buildGroups().items.filter((g) => g.campaignRegistered).length;
+    expect(expected).toBeGreaterThan(0);
+    expect(dataRows()).toHaveLength(expected);
+    expect(currentSearch().getAll('f')).toEqual(['40 дней:eq:Да']);
+  });
+
+  test('«40 дней» и «Только в кампанию» — поля для отбора и столбцы', () => {
+    const keys = groupsConfig.fields.map((f) => f.key);
+    expect(keys).toEqual(expect.arrayContaining(['40 дней', 'Только в кампанию']));
+    expect(groupsConfig.columns).toEqual(expect.arrayContaining(['40 дней', 'Только в кампанию']));
+  });
+});

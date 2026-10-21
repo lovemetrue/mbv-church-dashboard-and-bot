@@ -62,6 +62,8 @@ export const groupsConfig: EntityConfig<GroupItem> = {
     f('Вместимость', { kind: 'number' }),
     f('Статус', { groupable: true }),
     f('Данные проверены', { groupable: true }),
+    f('40 дней', { groupable: true }),
+    f('Только в кампанию', { groupable: true }),
     f('Принимает новых', { groupable: true }),
     f('Не направлять', { groupable: true }),
     f('Формат', { groupable: true }),
@@ -75,7 +77,7 @@ export const groupsConfig: EntityConfig<GroupItem> = {
   columns: [
     'Код', 'Ведущий', 'Район', 'Возраст', 'Когда', 'Места', 'Статус', 'Данные проверены', 'Здоровье',
     'Со-ведущий', 'Телефон', 'Метро', 'Адрес', 'День', 'Время', 'Мест свободно', 'Вместимость',
-    'Принимает новых', 'Не направлять', 'Формат', 'Состав', 'Координатор', 'Проверена, дн.', 'Комментарий', 'В составе',
+    'Принимает новых', 'Не направлять', '40 дней', 'Только в кампанию', 'Формат', 'Состав', 'Координатор', 'Проверена, дн.', 'Комментарий', 'В составе',
   ],
   defaultColumns: ['Код', 'Ведущий', 'Район', 'Возраст', 'Когда', 'Места', 'Статус', 'Данные проверены', 'Здоровье'],
   // Закрытые группы нужны редко и только мешают в общем списке; находятся, если снять отбор.
@@ -102,6 +104,8 @@ export const groupsConfig: EntityConfig<GroupItem> = {
     { name: 'Вечерние', filters: [{ field: 'Время', op: 'eq', value: 'вечер' }] },
     { name: 'На паузе', filters: [{ field: 'Статус', op: 'eq', value: 'На паузе' }] },
     { name: 'Не направлять', filters: [{ field: 'Не направлять', op: 'eq', value: ru.reference.yes }] },
+    { name: '40 дней', filters: [{ field: '40 дней', op: 'eq', value: ru.reference.yes }] },
+    { name: 'Только в кампанию', filters: [{ field: 'Только в кампанию', op: 'eq', value: ru.reference.yes }] },
   ],
   toRow: (g) => ({
     _key: String(g.id),
@@ -125,6 +129,8 @@ export const groupsConfig: EntityConfig<GroupItem> = {
     Вместимость: g.capacity,
     Статус: g.status,
     'Данные проверены': yesNo(g.checked),
+    '40 дней': yesNo(g.campaignRegistered),
+    'Только в кампанию': yesNo(g.campaignOnly),
     'Принимает новых': yesNo(takesNew(g)),
     'Не направлять': yesNo(g.doNotRefer),
     Формат: g.format,

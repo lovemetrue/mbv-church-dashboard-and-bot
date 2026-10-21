@@ -20,6 +20,11 @@ export interface FieldSpec {
    * «Подобрать из зарегистрированных» — ФИО и телефон потом можно поправить руками.
    */
   fills?: (value: string) => Record<string, string>;
+  /**
+   * Как `fills`, но само поле тоже уходит на сервер: выбор статуса «Потенциальная» отмечает «40 дней» (их можно
+   * снять руками).
+   */
+  presets?: (value: string) => Record<string, string>;
   /** На всю ширину окна, а не в половину. */
   wide?: boolean;
   /** Пояснение под полем; связано с ним через aria-describedby. */
@@ -122,7 +127,15 @@ export function groupSpec(meta: FormMeta): FormSpec {
     { name: 'leader', label: t.leader, kind: 'text', required: true, wide: true, autoComplete: 'off' },
     { name: 'district', label: t.district, kind: 'select', required: true, options: opts(meta.districts) },
     { name: 'format', label: t.format, kind: 'select', required: true, options: opts(meta.groupFormats) },
-    { name: 'status', label: t.status, kind: 'select', required: true, options: opts(meta.groupStatuses) },
+    {
+      name: 'status',
+      label: t.status,
+      kind: 'select',
+      required: true,
+      options: opts(meta.groupStatuses),
+      // Потенциальная группа по умолчанию участвует в «40 днях» (просьба служителей); сервер делает так же, если галочки нет.
+      presets: (v): Record<string, string> => (v === 'Потенциальная' ? { campaignRegistered: '1' } : {}),
+    },
     { name: 'phone', label: t.phone, kind: 'text', inputMode: 'tel', autoComplete: 'off' },
     { name: 'coLeader', label: t.coLeader, kind: 'text', autoComplete: 'off' },
     { name: 'coLeaderPhone', label: t.coLeaderPhone, kind: 'text', inputMode: 'tel', autoComplete: 'off' },
@@ -147,6 +160,7 @@ export function groupSpec(meta: FormMeta): FormSpec {
     { name: 'comment', label: t.comment, kind: 'textarea', wide: true },
     { name: 'checked', label: t.checked, kind: 'checkbox' },
     { name: 'campaignRegistered', label: t.campaignRegistered, kind: 'checkbox' },
+    { name: 'campaignOnly', label: t.campaignOnly, kind: 'checkbox' },
   ];
   // Готовых вести группу из бота можно выбрать: ФИО и телефон подставятся и останутся правимыми.
   // Список пуст — поле не рисуем: выбирать не из кого.

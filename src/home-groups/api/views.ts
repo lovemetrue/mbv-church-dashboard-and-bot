@@ -312,7 +312,7 @@ export function buildViewsWithPlan(
   const headcount = (g: { id: number; people: number | null }): number =>
     Math.max(effectivePeople(g.people, input.placedNew?.get(g.id) ?? 0) ?? 0, memberCounts.get(g.id) ?? 0);
   // Росток — признак новизны действующей группы: только «Функционирует» и только первые четыре месяца после открытия, сколько бы
-  // людей ни было (дата — `opened_on`, её ставит база при переводе в «Функционирует»). «На паузе», «Потенциальная», «Кампания» и
+  // людей ни было (дата — `opened_on`, её ставит база при переводе в «Функционирует»). «На паузе», «Потенциальная» и
   // прочие ростка не получают. У старых групп даты открытия нет — они не новые.
   const isNewGroup = (g: { status: string; opened_on: string | null }): boolean =>
     g.status === 'Функционирует' && !!g.opened_on && (addMonthsIso(g.opened_on, NEW_GROUP_MONTHS) ?? '') > today;
@@ -791,6 +791,7 @@ export function buildViewsWithPlan(
       training: nonBlank(g.training),
       checked: g.checked === true,
       campaignRegistered: g.campaign_registered,
+      campaignOnly: g.campaign_only,
       doNotRefer: p.doNotRefer,
       composition: nonBlank(g.composition),
       coordinator: nonBlank(g.coordinator),

@@ -741,11 +741,11 @@ describe('три темы оформления и переключатель в 
 });
 
 describe('правки оформления и фильтров (06.10)', () => {
-  test('статус «Кампания»: кнопка фильтра, пилюля и пункт формы', () => {
+  test('«Кампания» — не статус, а галочка «Работает только в кампанию»: кнопки фильтра и пункта статуса нет', () => {
     const seg = html.slice(html.indexOf('id="segStatus"'), html.indexOf('id="segStatus"') + 900);
-    expect(seg).toContain('data-status="Кампания">Кампания</button>');
-    expect(html).toContain("'Кампания': ['live', 'Кампания']");
-    expect(html).toMatch(/FORM_GROUP_STATUSES = \[[^\]]*'Кампания'/);
+    expect(seg).not.toContain('data-status="Кампания"');
+    expect(html).not.toMatch(/FORM_GROUP_STATUSES = \[[^\]]*'Кампания'/);
+    expect(html).toContain("{ name: 'campaignOnly', label: 'Работает только в кампанию', type: 'checkbox', wide: true, from: 'campaign_only' }");
   });
 
   test('«Кампания» входит в «Действующие» в KPI, как «Функционирует»', () => {

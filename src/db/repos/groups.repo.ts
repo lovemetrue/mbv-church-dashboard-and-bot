@@ -42,6 +42,8 @@ export interface GroupInput extends HomeGroupInput {
   campaignRegistered?: boolean | null;
   /** «Не направлять»: группа скрыта из подбора. undefined при правке — не менять. */
   doNotRefer?: boolean | null;
+  /** «Работает только в кампанию» (бывший статус «Кампания»). undefined при правке — не менять. */
+  campaignOnly?: boolean | null;
   /** Мест в группе; null — общее значение по умолчанию. undefined при правке — не менять (старый дашборд поля не знает). */
   capacity?: number | null;
 }
@@ -73,6 +75,8 @@ export interface GroupRow {
   status: string;
   checked: boolean | null;
   campaign_registered: boolean;
+  /** «Работает только в кампанию» (миграция 047, бывший статус «Кампания»). */
+  campaign_only: boolean;
   do_not_refer: boolean;
   /** Мест в группе; null — общее значение по умолчанию. */
   capacity: number | null;
@@ -116,6 +120,8 @@ export interface DashboardGroup {
   /** «40 дней»: редактируемое свойство, автоматически включается по совпадению
    *  телефона ведущего с завершённой регистрацией участника кампании. */
   campaign_registered: boolean;
+  /** «Работает только в кампанию» (миграция 047, бывший статус «Кампания»). */
+  campaign_only: boolean;
   /** «Не направлять»: из подбора такая группа скрыта. */
   do_not_refer: boolean;
   /** Мест в группе; null — общее значение по умолчанию. */
@@ -127,7 +133,7 @@ export interface DashboardGroup {
 const COLUMNS = `no, leader, open_to_new, phone, phones, age, district, metro, address,
                  composition, day, "time", people, coordinator, feedback_at, comment,
                  training, format, status, checked, campaign_registered, source, added_by,
-                 added_platform, co_leader, co_leader_phone, do_not_refer, opened_on, capacity`;
+                 added_platform, co_leader, co_leader_phone, do_not_refer, opened_on, capacity, campaign_only`;
 
 // Колонки типа date приходят строкой «2026-08-20» — так настроен пул (src/db/pool.ts).
 
@@ -148,7 +154,7 @@ export class GroupsRepo {
   ): Promise<GroupRow> {
     const { rows } = await this.db.query<GroupRow>(
       `INSERT INTO groups (${COLUMNS})
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
        RETURNING *`,
       [
         input.no ?? null,
@@ -171,7 +177,8 @@ export class GroupsRepo {
         input.format,
         input.status,
         input.checked ?? null,
-        input.campaignRegistered ?? false,
+        // Потенциальная группа по умолчанию участвует в «40 днях» (просьба служителей); заданное явно — как задали.
+        input.campaignRegistered ?? input.status === 'Потенциальная',
         source,
         addedBy,
         platform,
@@ -180,6 +187,7 @@ export class GroupsRepo {
         input.doNotRefer ?? false,
         input.openedOn ?? null,
         input.capacity ?? null,
+        input.campaignOnly ?? false,
       ],
     );
     const row = rows[0]!;
@@ -204,6 +212,7 @@ export class GroupsRepo {
          training = $18, format = $19, status = $20, checked = $21, campaign_registered = $22,
          co_leader = $23, co_leader_phone = $24,
          do_not_refer = COALESCE($25, do_not_refer),
+         campaign_only = COALESCE($29, campaign_only),
          opened_on = $26,
          capacity = CASE WHEN $27::boolean THEN $28::integer ELSE capacity END,
          source = CASE WHEN source = 'таблица' THEN 'ui' ELSE source END
@@ -238,6 +247,7 @@ export class GroupsRepo {
         input.openedOn ?? null,
         input.capacity !== undefined,
         input.capacity ?? null,
+        input.campaignOnly ?? null,
       ],
     );
     const row = rows[0];
@@ -284,7 +294,7 @@ export class GroupsRepo {
   async activeLeaderByPhone(phone: string): Promise<boolean> {
     const { rows } = await this.db.query(
       `SELECT 1 FROM groups
-        WHERE archived_at IS NULL AND status IN ('Функционирует', 'Кампания') AND $1 = ANY(phones)
+        WHERE archived_at IS NULL AND status = 'Функционирует' AND $1 = ANY(phones)
         LIMIT 1`,
       [phone],
     );
@@ -368,6 +378,7 @@ export class GroupsRepo {
       checked: r.checked,
       source: r.source,
       campaign_registered: r.campaign_registered,
+      campaign_only: r.campaign_only,
       do_not_refer: r.do_not_refer,
       capacity: r.capacity ?? null,
       leader_user_id: r.leader_user_id === null || r.leader_user_id === undefined ? null : Number(r.leader_user_id),

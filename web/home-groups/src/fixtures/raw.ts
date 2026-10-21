@@ -33,6 +33,10 @@ export interface RawGroup {
   isNew: boolean;
   /** Ключ регистрации ведущего («u2»), если группа связана с ним; в контракте — `GroupItem.leaderKey`. */
   leaderKey: string | null;
+  /** «40 дней» — ведущий зарегистрирован в кампании. */
+  campaignRegistered: boolean;
+  /** «Работает только в кампанию» (бывший статус «Кампания»). */
+  campaignOnly: boolean;
 }
 
 export interface RawRequest {
@@ -104,6 +108,8 @@ const g = (x: Partial<RawGroup> & Pick<RawGroup, 'id' | 'leader' | 'district' | 
   comment: null,
   isNew: false,
   leaderKey: null,
+  campaignRegistered: false,
+  campaignOnly: false,
   ...x,
 });
 
@@ -112,10 +118,10 @@ export const RAW_GROUPS: RawGroup[] = [
   g({ id: 2, no: 27, leaderKey: 'u2', leader: 'Андрей М.', coLeader: 'Наталья М.', phone: '79212004477', district: 'Приморский', metro: 'Беговая', street: 'ул. Шаврова', ages: ['26–35', '36–45'], day: 'Чт', slot: 'вечер', people: 11, capacity: 12, verifiedDaysAgo: 14, format: 'Семейная', composition: 'Семьи с детьми', coordinator: 'Петров Г.' }),
   g({ id: 3, no: 31, leader: 'Марина Л.', phone: '79052006612', district: 'Выборгский', metro: 'Озерки', street: 'пр. Просвещения', ages: ['36–45', '46+'], day: 'Пн', slot: 'день', people: 6, capacity: 14, verifiedDaysAgo: 41, format: 'Женская', composition: 'Женщины', coordinator: 'Трофимова С.', comment: 'Просила не присылать новых до конца месяца, но места есть.' }),
   g({ id: 4, no: 8, leader: 'Игорь Т.', phone: '79312003390', district: 'Центральный', metro: 'Лиговский пр.', street: 'Лиговский пр.', ages: ['18–25'], day: 'Ср', slot: 'вечер', people: 9, capacity: 10, verifiedDaysAgo: 3, format: 'Молодёжная', composition: 'Молодёжь', coordinator: 'Лебедева А.' }),
-  g({ id: 5, isNew: true, no: 15, leader: 'Светлана Р.', phone: '79112008851', district: 'Калининский', metro: 'Академическая', street: 'Гражданский пр.', ages: ['26–35', '36–45'], day: 'Сб', slot: 'утро', people: 5, capacity: 12, verifiedDaysAgo: 9, format: 'Смешанная', coordinator: 'Морозов Д.' }),
+  g({ id: 5, isNew: true, campaignRegistered: true, campaignOnly: true, no: 15, leader: 'Светлана Р.', phone: '79112008851', district: 'Калининский', metro: 'Академическая', street: 'Гражданский пр.', ages: ['26–35', '36–45'], day: 'Сб', slot: 'утро', people: 5, capacity: 12, verifiedDaysAgo: 9, format: 'Смешанная', coordinator: 'Морозов Д.' }),
   g({ id: 6, no: 40, leader: 'Павел Д.', phone: '79992005502', district: 'Невский', metro: 'Ломоносовская', street: 'пр. Большевиков', ages: ['26–35'], day: 'Пт', slot: 'вечер', people: 12, capacity: 12, verifiedDaysAgo: 5, format: 'Мужская', composition: 'Мужчины', coordinator: 'Лебедева А.' }),
   g({ id: 7, no: 22, leader: 'Елена и Сергей Н.', phone: '79212007704', district: 'Красногвардейский', metro: 'Ладожская', street: 'Индустриальный пр.', ages: ['36–45', '46+'], people: 7, capacity: 12, verifiedDaysAgo: 63, format: 'Семейная', coordinator: 'Трофимова С.', comment: 'День и время уточнить: переносили встречи.' }),
-  g({ id: 8, isNew: true, no: 19, leader: 'Дмитрий В.', district: 'Приморский', metro: 'Старая Деревня', ages: ['18–25', '26–35'], people: 4, capacity: 12, verifiedDaysAgo: 28, format: 'Смешанная', coordinator: 'Петров Г.' }),
+  g({ id: 8, isNew: true, campaignRegistered: true, no: 19, leader: 'Дмитрий В.', district: 'Приморский', metro: 'Старая Деревня', ages: ['18–25', '26–35'], people: 4, capacity: 12, verifiedDaysAgo: 28, format: 'Смешанная', coordinator: 'Петров Г.' }),
   g({ id: 9, no: 35, leader: 'Анна С.', phone: '79052009930', district: 'Калининский', metro: 'Политехническая', ages: ['46+'], day: 'Вт', slot: 'день', people: 10, capacity: 14, verifiedDaysAgo: 11, format: 'Женская', coordinator: 'Лебедева А.' }),
   g({ id: 10, no: 3, leader: 'Виктор П.', phone: '79312001128', district: 'Выборгский', metro: 'Лесная', street: 'ул. Харченко', ages: ['26–35', '36–45'], day: 'Ср', slot: 'вечер', status: 'На паузе', acceptsNew: false, people: 5, capacity: 12, verifiedDaysAgo: 22, format: 'Смешанная', coordinator: 'Трофимова С.' }),
   g({ id: 11, no: 44, leader: 'Ксения Б.', phone: '79112006643', district: 'Центральный', metro: 'Владимирская', street: 'ул. Марата', ages: ['26–35'], day: 'Чт', slot: 'вечер', people: 6, capacity: 12, verifiedDaysAgo: 7, format: 'Смешанная', coordinator: 'Морозов Д.' }),

@@ -8,7 +8,7 @@ import type { Day, PlanGroup, SummaryInput, TodaySummary } from './types.js';
  * одиночные ситуации, где сервис не справился. Чистые функции от плана и данных.
  */
 
-const ACCEPTING_STATUSES = new Set(['Функционирует', 'Кампания']);
+const ACCEPTING_STATUSES = new Set(['Функционирует']);
 const DAY_ORDER: readonly Day[] = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 /** Группа без района — не строка матрицы: непонятно, кому из районов её места засчитывать. */
 const NO_DISTRICT = 'Не указан';

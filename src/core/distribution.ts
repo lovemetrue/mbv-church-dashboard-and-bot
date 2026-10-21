@@ -118,7 +118,8 @@ export function distribute(
     ownerByGroupId.set(id, owner);
     prospective.push({
       id,
-      status: 'Кампания',
+      status: 'Функционирует',
+      campaign_only: true,
       open_to_new: 'ДА',
       age: null,
       district: ownerDistrict(owner.place),

@@ -155,7 +155,7 @@ export function RecordForm({ spec, path, submitLabel, busyLabel, onClose, onCrea
           {f.label}
         </label>
         {f.kind === 'select' ? (
-          <select {...common} ref={setRef} onChange={(e) => change(f.name, e.target.value, f.fills?.(e.target.value))}>
+          <select {...common} ref={setRef} onChange={(e) => change(f.name, e.target.value, f.fills?.(e.target.value) ?? f.presets?.(e.target.value))}>
             <option value="">{f.emptyLabel ?? (f.required ? ru.create.choose : ru.create.notChosen)}</option>
             {(f.options ?? []).map((o) => (
               <option key={o.value} value={o.value}>

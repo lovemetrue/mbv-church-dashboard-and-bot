@@ -117,6 +117,7 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
       { name: 'comment', label: t.comment, kind: 'textarea', wide: true },
       { name: 'checked', label: t.checked, kind: 'checkbox', wide: true },
       { name: 'campaignRegistered', label: t.campaignRegistered, kind: 'checkbox', wide: true },
+      { name: 'campaignOnly', label: t.campaignOnly, kind: 'checkbox', wide: true },
       { name: 'doNotRefer', label: m.group.doNotRefer, kind: 'checkbox', wide: true, hint: m.group.doNotReferHint },
     ],
     initial: {
@@ -134,6 +135,7 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
       training: g.training ?? '',
       checked: g.checked ? '1' : '',
       campaignRegistered: g.campaignRegistered ? '1' : '',
+      campaignOnly: g.campaignOnly ? '1' : '',
       coordinator: g.coordinator ?? '',
       coLeader: g.coLeader ?? '',
       phone: g.phone ?? '',

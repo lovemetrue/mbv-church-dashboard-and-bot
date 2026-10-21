@@ -25,12 +25,6 @@ function verifiedSentence(days: number | null): string {
   return `подтверждена ${verifiedText(days)}`;
 }
 
-/** «ДА» / «НЕТ» в таблице церкви пишут заглавными; в карточке — как в форме. */
-function openToNewText(v: string): string {
-  const up = v.trim().toUpperCase();
-  return up === 'ДА' ? ru.reference.yes : up === 'НЕТ' ? ru.reference.no : v;
-}
-
 export function GroupCard({ g, onClose }: { g: GroupItem; onClose: () => void }) {
   const nav = useAppNav();
   const tone = healthTone(g.health.score);
@@ -94,8 +88,6 @@ export function GroupCard({ g, onClose }: { g: GroupItem; onClose: () => void })
     { label: 'Адрес', value: g.address ? (g.addressGeo === 'found' ? `${g.address} · ${ru.reference.geoFound}` : g.addressGeo === 'missing' ? `${g.address} · ${ru.reference.geoMissing}` : g.address) : noValue },
     { label: 'Метро или ориентир', value: orNone(g.metro) },
     { label: 'Статус', value: g.status },
-    // «По требованию» из таблицы тоже показываем как записано: «да/нет» его бы потеряло.
-    { label: 'Принимает новых', value: g.openToNew ? openToNewText(g.openToNew) : g.acceptsNew ? ru.reference.yes : ru.reference.no },
     // Поля, которые вводят при создании группы (как в старом дашборде): что заполнено, то и видно.
     ...(g.training ? [{ label: 'Обучение', value: g.training }] : []),
     { label: 'Данные проверены', value: g.checked ? ru.reference.yes : ru.reference.no },

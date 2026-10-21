@@ -412,14 +412,14 @@ describe('создание и параметры подбора через HTTP 
     try {
       const ok = await app.post('groups/create', { fields: {
         leader: 'Иван Петров', district: 'Приморский', format: 'Основная церковь', status: 'Функционирует',
-        composition: 'Семейная, Мужская', coLeader: 'Анна Петрова', coLeaderPhone: '8 921 000-11-44', openToNew: 'По требованию',
+        composition: 'Ментальная, Мужская', coLeader: 'Анна Петрова', coLeaderPhone: '8 921 000-11-44', openToNew: 'По требованию',
         training: 'Да', feedbackAt: '2026-09-10', no: '85', checked: '1', campaignRegistered: '1',
       } });
       expect(ok.status).toBe(200);
       const { id } = await ok.json() as { id: number };
       expect((await db.query(`SELECT composition, co_leader, co_leader_phone, open_to_new, training, feedback_at, no, checked, campaign_registered FROM groups WHERE id = $1`, [id])).rows[0]).toEqual({
         // Порядок — как в списке составов, а не как прислали.
-        composition: 'Мужская, Семейная', co_leader: 'Анна Петрова', co_leader_phone: '+79210001144', open_to_new: 'По требованию',
+        composition: 'Мужская, Ментальная', co_leader: 'Анна Петрова', co_leader_phone: '+79210001144', open_to_new: 'По требованию',
         training: 'Да', feedback_at: '2026-09-10', no: 85, checked: true, campaign_registered: true,
       });
     } finally { app.server.close(); }

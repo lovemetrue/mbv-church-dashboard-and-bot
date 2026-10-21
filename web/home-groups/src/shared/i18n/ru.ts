@@ -133,7 +133,6 @@ export const ru = {
     groupSeats: 'Места',
     groupStatus: 'Статус',
     groupDoNotRefer: 'Не направлять',
-    groupAccepts: 'Принимает новых',
     groupPlanned: 'Кого план направляет сюда',
     groupPlannedNone: 'Сейчас план никого сюда не направляет.',
     groupOpenRequest: 'Открыть заявку',
@@ -1555,7 +1554,7 @@ export const ru = {
       feedbackToday: 'Последняя обратная связь: сегодня.',
       feedbackAgo: (days: number) => `Последняя обратная связь: ${days} дн. назад.`,
       doNotRefer: 'Не направлять в эту группу',
-      doNotReferHint: 'Подбор не будет предлагать эту группу новым людям.',
+      doNotReferHint: 'Подбор не будет предлагать эту группу новым людям. Заменяет прежнее «Приём новых: НЕТ».',
       fields: {
         leader: 'ФИО ведущего',
         district: 'Район',

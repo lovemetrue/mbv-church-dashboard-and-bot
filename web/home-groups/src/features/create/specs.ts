@@ -141,7 +141,6 @@ export function groupSpec(meta: FormMeta): FormSpec {
       hint: ru.create.capacityHint(meta.defaultCapacity),
       autoComplete: 'off',
     },
-    { name: 'openToNew', label: t.openToNew, kind: 'select', options: meta.openToNew },
     { name: 'coordinator', label: t.coordinator, kind: 'select', options: opts(meta.coordinators) },
     { name: 'training', label: t.training, kind: 'text', autoComplete: 'off' },
     { name: 'feedbackAt', label: t.feedbackAt, kind: 'date' },

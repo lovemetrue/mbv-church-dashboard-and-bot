@@ -23,11 +23,19 @@ describe('форма группы: соведущий и состав', () => {
 
   test('состав: несколько отмеченных значений склеиваются в канонической очерёдности', () => {
     const f = new URLSearchParams(GROUP_MIN);
-    f.append('composition', 'Семейная');
+    f.append('composition', 'Ментальная');
     f.append('composition', 'Женская');
     const r = parseGroupForm(f);
     expect(r.ok).toBe(true);
-    if (r.ok) expect(r.value.composition).toBe('Женская, Семейная');
+    if (r.ok) expect(r.value.composition).toBe('Женская, Ментальная');
+  });
+
+  test('убранные из состава «Семейная», «Служение», «Приватная» не принимаются', () => {
+    const f = new URLSearchParams(GROUP_MIN);
+    f.append('composition', 'Семейная, Служение, Приватная');
+    const r = parseGroupForm(f);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.composition).toBeNull();
   });
 
   test('состав: посторонние значения отбрасываются, пусто — NULL', () => {

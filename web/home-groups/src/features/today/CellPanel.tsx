@@ -139,7 +139,6 @@ function GroupCardBody({ id, onBack }: { id: number; onBack: () => void }) {
     { label: ru.today.groupWhen, value: g.whenText ?? none },
     { label: ru.today.groupSeats, value: <span className="num">{ru.today.seatsOf(g.free, g.capacity)}</span> },
     { label: ru.today.groupStatus, value: g.status },
-    { label: ru.today.groupAccepts, value: g.acceptsNew ? ru.today.yes : ru.today.no },
     { label: ru.today.groupDoNotRefer, value: g.doNotRefer ? <Pill tone="crit">{ru.today.yes}</Pill> : ru.today.no },
   ];
   return (

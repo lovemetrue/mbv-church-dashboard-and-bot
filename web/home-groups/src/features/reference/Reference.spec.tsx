@@ -5,7 +5,7 @@ import { App } from '../../app/App';
 import { buildGroups, buildPeople } from '../../fixtures/build';
 import { currentSearch, renderAt, stubFetchWithFixtures } from '../../test/render';
 import { groupsWith } from '../requests/requestsTestKit';
-import { coordinatorsConfig, groupsConfig, peopleConfig } from './config';
+import { coordinatorsConfig, groupsConfig, peopleConfig, takesNew } from './config';
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
@@ -14,17 +14,23 @@ afterEach(() => vi.unstubAllGlobals());
 const SOON = 'Появится на следующем этапе';
 /** Сколько людей в фикстурах: число растёт вместе с демо-заявками, поэтому берём его оттуда же. */
 const PEOPLE = buildPeople().items.length;
-/** Групп в фикстурах всего и сколько видно сразу: закрытая (Борис Ширяев-Коваленко) по умолчанию скрыта. */
+/**
+ * Групп в фикстурах всего и сколько видно сразу: закрытая (Борис Ширяев-Коваленко) по умолчанию скрыта, как и те,
+ * что не принимают новых (группа Татьяны Ф. отмечена «Не направлять»).
+ */
 const GROUPS = buildGroups().items.length;
-const GROUPS_SHOWN = buildGroups().items.filter((g) => g.status !== 'Закрыта').length;
+const GROUPS_SHOWN = buildGroups().items.filter((g) => g.status !== 'Закрыта' && g.status !== 'Аннулирована' && takesNew(g)).length;
+/** Видно, когда снят только чип закрытых: остаётся отбор «Принимает новых». */
+const GROUPS_TAKING = buildGroups().items.filter((g) => g.status !== 'Аннулирована' && takesNew(g)).length;
+const NOT_TAKING_LEADER = 'Татьяна Ф.';
 const CLOSED_LEADER = 'Борис Олегович Ширяев-Коваленко';
 
 /** Строки данных (без шапки и заголовков групп). */
 const dataRows = () => within(screen.getByRole('table')).getAllByRole('row').filter((r) => r.querySelector('td'));
 
 describe('«Справочник»: конфигурация', () => {
-  test('по умолчанию у групп восемь столбцов, как в макете', () => {
-    expect(groupsConfig.defaultColumns).toEqual(['Код', 'Ведущий', 'Район', 'Возраст', 'Когда', 'Места', 'Статус', 'Здоровье']);
+  test('по умолчанию у групп девять столбцов: к макету добавлен «Данные проверены»', () => {
+    expect(groupsConfig.defaultColumns).toEqual(['Код', 'Ведущий', 'Район', 'Возраст', 'Когда', 'Места', 'Статус', 'Данные проверены', 'Здоровье']);
   });
 
   test('каждый столбец и каждое поле быстрых отборов есть в описании сущности', () => {
@@ -48,12 +54,12 @@ describe('«Справочник»: экран', () => {
     expect(within(sw).getByRole('button', { name: /^Группы/ })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  test('таблица групп показывает восемь столбцов по умолчанию и «Показано 12 из 13»: закрытая скрыта', async () => {
+  test('таблица групп показывает девять столбцов по умолчанию; закрытая и не принимающая новых скрыты', async () => {
     stubFetchWithFixtures();
     renderAt(<App />, '/?tab=reference');
     const table = await screen.findByRole('table');
     const heads = within(table).getAllByRole('columnheader').map((h) => h.textContent?.replace(/[▲▼]/g, '').trim());
-    expect(heads).toEqual(['Код', 'Ведущий', 'Район', 'Возраст', 'Когда', 'Места', 'Статус', 'Здоровье']);
+    expect(heads).toEqual(['Код', 'Ведущий', 'Район', 'Возраст', 'Когда', 'Места', 'Статус', 'Данные проверены', 'Здоровье']);
     expect(screen.getByText(`Показано ${GROUPS_SHOWN} из ${GROUPS}`)).toBeInTheDocument();
     expect(dataRows()).toHaveLength(GROUPS_SHOWN);
   });
@@ -100,7 +106,7 @@ describe('«Справочник»: экран', () => {
     await user.type(within(dlg).getByLabelText('Значение'), '6');
     await user.click(within(dlg).getByRole('button', { name: 'Добавить' }));
     // Отбор по умолчанию («Закрыта» скрыта) остаётся и записывается в адрес вместе с новым условием.
-    expect(currentSearch().getAll('f')).toEqual(['Статус:ne:Закрыта', 'Статус:ne:Аннулирована', 'Мест свободно:ge:6']);
+    expect(currentSearch().getAll('f')).toEqual(['Статус:ne:Закрыта', 'Статус:ne:Аннулирована', 'Принимает новых:eq:Да', 'Мест свободно:ge:6']);
     expect(dataRows().length).toBeGreaterThan(0);
     expect(dataRows().length).toBeLessThan(12);
   });
@@ -173,7 +179,8 @@ describe('«Справочник»: экран', () => {
     expect(firstCol()[0]).toBe('Андрей М.');
     expect(within(table).getByRole('columnheader', { name: /Ведущий/ })).toHaveAttribute('aria-sort', 'ascending');
     await user.click(within(table).getByRole('button', { name: 'Сортировать по столбцу «Ведущий»' }));
-    expect(firstCol()[0]).toBe('Татьяна Ф.');
+    // Татьяна Ф. была бы первой, но её группа отмечена «Не направлять» и скрыта отбором по умолчанию.
+    expect(firstCol()[0]).toBe('Светлана Р.');
     await user.click(within(table).getByRole('button', { name: 'Сортировать по столбцу «Ведущий»' }));
     expect(firstCol()[0]).toBe('Ольга К.');
     expect(currentSearch().has('sort')).toBe(false);
@@ -185,8 +192,9 @@ describe('«Справочник»: экран', () => {
     renderAt(<App />, '/?tab=reference');
     await screen.findByRole('table');
     await user.type(screen.getByRole('searchbox', { name: 'Поиск по таблице' }), 'невск');
-    expect(dataRows()).toHaveLength(2);
-    expect(await screen.findByText(`Показано 2 из ${GROUPS}`)).toBeInTheDocument();
+    // Вторая невская группа (Татьяна Ф.) скрыта отбором «Принимает новых».
+    expect(dataRows()).toHaveLength(1);
+    expect(await screen.findByText(`Показано 1 из ${GROUPS}`)).toBeInTheDocument();
   });
 
   test('когда ничего не подошло, показывается подсказка убрать часть условий', async () => {
@@ -357,7 +365,8 @@ describe('«Справочник»: экран', () => {
 
 const CLOSED_CHIP = 'Статус: не «Закрыта»';
 const CANCELLED_CHIP = 'Статус: не «Аннулирована»';
-const DEFAULT_CHIPS = [CLOSED_CHIP, CANCELLED_CHIP];
+const TAKES_NEW_CHIP = 'Принимает новых = Да';
+const DEFAULT_CHIPS = [CLOSED_CHIP, CANCELLED_CHIP, TAKES_NEW_CHIP];
 const activeChips = () => within(screen.getByRole('list', { name: 'Текущий отбор' })).getAllByRole('listitem');
 
 describe('«Справочник»: закрытые группы по умолчанию скрыты', () => {
@@ -379,9 +388,21 @@ describe('«Справочник»: закрытые группы по умол�
     renderAt(<App />, '/?tab=reference');
     await screen.findByRole('table');
     await user.click(screen.getByRole('button', { name: `Убрать отбор: ${CLOSED_CHIP}` }));
-    expect(dataRows()).toHaveLength(GROUPS);
+    expect(dataRows()).toHaveLength(GROUPS_TAKING);
     expect(screen.getByText(CLOSED_LEADER)).toBeInTheDocument();
-    expect(activeChips().map((li) => li.textContent?.replace('×', ''))).toEqual([CANCELLED_CHIP]);
+    expect(activeChips().map((li) => li.textContent?.replace('×', ''))).toEqual([CANCELLED_CHIP, TAKES_NEW_CHIP]);
+  });
+
+  test('«Принимает новых» по умолчанию прячет группы с «Не направлять», служения и закрытые; чип снимается', async () => {
+    stubFetchWithFixtures({ groups: () => json(groupsWith(2, { format: 'Служение' })) });
+    const user = userEvent.setup();
+    renderAt(<App />, '/?tab=reference');
+    await screen.findByRole('table');
+    expect(screen.queryByText(NOT_TAKING_LEADER)).not.toBeInTheDocument();
+    expect(screen.queryByText('Андрей М.')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: `Убрать отбор: ${TAKES_NEW_CHIP}` }));
+    expect(screen.getByText(NOT_TAKING_LEADER)).toBeInTheDocument();
+    expect(screen.getByText('Андрей М.')).toBeInTheDocument();
   });
 
   test('снятый отбор не возвращается сам при обновлении страницы по той же ссылке', async () => {
@@ -394,7 +415,7 @@ describe('«Справочник»: закрытые группы по умол�
     unmount();
     renderAt(<App />, url);
     await screen.findByRole('table');
-    expect(dataRows()).toHaveLength(GROUPS);
+    expect(dataRows()).toHaveLength(GROUPS_TAKING);
   });
 
   test('«Сбросить всё» очищает и отбор по умолчанию', async () => {
@@ -444,12 +465,12 @@ describe('«Справочник»: закрытые группы по умол�
     renderAt(<App />, '/?tab=reference');
     await screen.findByRole('table');
     await user.click(screen.getByRole('button', { name: `Убрать отбор: ${CLOSED_CHIP}` }));
-    expect(dataRows()).toHaveLength(GROUPS);
+    expect(dataRows()).toHaveLength(GROUPS_TAKING);
     await user.click(screen.getByRole('button', { name: /^Люди/ }));
     await waitFor(() => expect(dataRows()).toHaveLength(PEOPLE));
     await user.click(screen.getByRole('button', { name: /^Группы/ }));
     await waitFor(() => expect(dataRows()).toHaveLength(GROUPS_SHOWN));
-    expect(activeChips()).toHaveLength(2);
+    expect(activeChips()).toHaveLength(3);
   });
 });
 

@@ -20,6 +20,7 @@ import type { AddressTableView } from './contracts.js';
 import type { Members } from './members.js';
 import type { Contacts } from './contacts.js';
 import type { Strange } from './strange.js';
+import type { Kits } from './kits.js';
 import type { Reconciler } from './reconcile/service.js';
 import { registrationCardPage } from '../dashboard/registrationCard.js';
 import type { Settings } from '../platform/settings/service.js';
@@ -88,6 +89,8 @@ export interface HomeGroupsDeps {
   contacts: Contacts;
   /** Метка «Странный человек». */
   strange: Strange;
+  /** Выдача наборов участникам кампании по QR. */
+  kits: Kits;
   /** Разбор «других обращений» по справочникам групп и людей. */
   reconciler: Reconciler;
   /** Помощник по разбору заявок (языковая модель). */
@@ -170,6 +173,9 @@ const PERSON_EDIT_PATH = /^\/api\/v1\/persons\/(\d{1,15})\/(update|delete)$/;
 /** Контакты человека из справочника: регистрация (u12) или человек из заявки (r345). Любой вход. */
 const CONTACT_PATH = /^\/api\/v1\/people\/([ur]\d{1,15})\/update$/;
 const BULK_PATH = '/api/v1/requests/bulk';
+/** Выдача наборов: найти участника по QR или номеру, отметить выдачу, отменить ошибочную. Любой вход. */
+const KITS_PATH = '/api/v1/kits';
+const KIT_POST_PATH = /^\/api\/v1\/kits\/(find|issue|undo)$/;
 const PERSON_STRANGE_PATH = '/api/v1/people/strange';
 const RECONCILE_READY_PATH = '/api/v1/requests/reconcile-ready';
 const ASSISTANT_RUN_PATH = '/api/v1/assistant/run';
@@ -666,6 +672,28 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     sendJson(res, 200, { ok: true } satisfies ActionOk);
   }
 
+  /**
+   * Наборы. Отмена доступна любому входу, как и выдача: ошибку у стола исправляет тот, кто её сделал, а полного
+   * входа рядом может не быть. Удалением отмена не считается — регистрация остаётся, снимается только отметка.
+   */
+  async function handleKit(req: IncomingMessage, res: ServerResponse, action: string, sid: string | undefined): Promise<void> {
+    const call = await readAuthedJson(req, res, sid);
+    if (!call) return;
+    const outcome = action === 'find' ? await deps.kits.find(call.body)
+      : action === 'issue' ? await deps.kits.issue(call.body, call.actor)
+      : await deps.kits.undo(call.body, call.actor);
+    if (!outcome.ok) {
+      sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
+      return;
+    }
+    // Поиск ничего не меняет; после выдачи справочник людей должен сразу показать отметку.
+    if (action !== 'find' && 'changed' in outcome && outcome.changed) {
+      deps.invalidateViews();
+      logger.info({ actor: call.actor, action, userId: outcome.person.userId }, 'домашние группы: выдача набора');
+    }
+    sendJson(res, 200, outcome);
+  }
+
   /** Разобрать сразу все обращения, у которых сервер находит ровно одну группу точно. */
   async function handleReconcileReady(req: IncomingMessage, res: ServerResponse, sid: string | undefined): Promise<void> {
     const call = await readAuthedJson(req, res, sid);
@@ -795,6 +823,8 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       if (call) sendJson(res, 200, await deps.mapConfig.recordLoad());
       return;
     }
+    const kit = req.method === 'POST' ? KIT_POST_PATH.exec(path) : null;
+    if (kit) { await handleKit(req, res, kit[1]!, sid); return; }
     if (req.method === 'POST' && path === BULK_PATH) { await handleBulk(req, res, sid); return; }
     if (req.method === 'POST' && path === PERSON_STRANGE_PATH) { await handlePersonStrange(req, res, sid); return; }
     if (req.method === 'POST' && path === RECONCILE_READY_PATH) { await handleReconcileReady(req, res, sid); return; }
@@ -870,6 +900,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       sendJson(res, 200, view);
       return;
     }
+    if (path === KITS_PATH) { sendJson(res, 200, await deps.kits.view()); return; }
     if (path === '/api/v1/map/config') { sendJson(res, 200, await deps.mapConfig.bootstrap()); return; }
     if (path === '/api/v1/form-meta') { sendJson(res, 200, await deps.formMeta()); return; }
 

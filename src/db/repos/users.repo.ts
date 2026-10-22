@@ -32,6 +32,19 @@ export interface UserRow {
   created_at: Date;
 }
 
+/** Участник на экране выдачи наборов. */
+export interface KitRow {
+  id: number;
+  registration_no: number;
+  full_name: string | null;
+  phone: string | null;
+  kit_issued_at: Date | null;
+  /** id служителя (выдал через бота) или логин входа в «Домашние группы». */
+  kit_issued_by: string | null;
+}
+
+const KIT_COLUMNS = 'id, registration_no, full_name, phone, kit_issued_at, kit_issued_by';
+
 /** Кому можно дослать вопросы про время и адрес. */
 export interface FollowUpCandidate {
   id: number;
@@ -304,11 +317,64 @@ export class UsersRepo {
     throw new Error('не удалось подобрать свободный номер регистрации');
   }
 
-  async markKitIssued(userId: number, byAdminId: string): Promise<void> {
-    await this.db.query(
+  /** Отметить выдачу набора. false — набор уже был выдан: время и автора первой выдачи не перетираем. */
+  async markKitIssued(userId: number, byAdminId: string): Promise<boolean> {
+    const { rowCount } = await this.db.query(
       `UPDATE users SET kit_issued_at = now(), kit_issued_by = $2 WHERE id = $1 AND kit_issued_at IS NULL`,
       [userId, byAdminId],
     );
+    return (rowCount ?? 0) > 0;
+  }
+
+  /** Снять отметку о выдаче (выдали не тому). false — отметки и не было. */
+  async unmarkKitIssued(userId: number): Promise<boolean> {
+    const { rowCount } = await this.db.query(
+      `UPDATE users SET kit_issued_at = NULL, kit_issued_by = NULL WHERE id = $1 AND kit_issued_at IS NOT NULL`,
+      [userId],
+    );
+    return (rowCount ?? 0) > 0;
+  }
+
+  /** Участник для экрана выдачи наборов: по номеру регистрации или по id. */
+  async kitByRegistrationNo(no: number): Promise<KitRow | null> {
+    const { rows } = await this.db.query<KitRow>(`SELECT ${KIT_COLUMNS} FROM users WHERE registration_no = $1`, [no]);
+    return rows[0] ?? null;
+  }
+
+  async kitById(id: number): Promise<KitRow | null> {
+    const { rows } = await this.db.query<KitRow>(
+      `SELECT ${KIT_COLUMNS} FROM users WHERE id = $1 AND registration_no IS NOT NULL`,
+      [id],
+    );
+    return rows[0] ?? null;
+  }
+
+  /**
+   * Счётчики выдачи. «Сегодня» — с полуночи в поясе кампании: сервер живёт в UTC, и без пояса
+   * выдачи до трёх часов ночи по Москве ушли бы во вчера.
+   */
+  async kitStats(timeZone: string): Promise<{ registered: number; issued: number; issued_today: number }> {
+    const { rows } = await this.db.query<{ registered: number; issued: number; issued_today: number }>(
+      `SELECT count(*)::int AS registered,
+              count(*) FILTER (WHERE kit_issued_at IS NOT NULL)::int AS issued,
+              count(*) FILTER (WHERE kit_issued_at >= date_trunc('day', now() AT TIME ZONE $1) AT TIME ZONE $1)::int AS issued_today
+         FROM users
+        WHERE registration_no IS NOT NULL`,
+      [timeZone],
+    );
+    return rows[0]!;
+  }
+
+  /** Последние выдачи, свежие сверху. */
+  async recentKits(limit: number): Promise<KitRow[]> {
+    const { rows } = await this.db.query<KitRow>(
+      `SELECT ${KIT_COLUMNS} FROM users
+        WHERE registration_no IS NOT NULL AND kit_issued_at IS NOT NULL
+        ORDER BY kit_issued_at DESC, id DESC
+        LIMIT $1`,
+      [limit],
+    );
+    return rows;
   }
 
   /**

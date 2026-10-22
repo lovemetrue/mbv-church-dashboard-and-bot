@@ -206,6 +206,9 @@ export function PersonCard({ p, onClose }: { p: PersonItem; onClose: () => void 
     ...(p.preferredContact ? [{ label: 'Как удобнее связаться', value: p.preferredContact }] : []),
     { label: 'Дата', value: p.date ? formatDateFull(p.date) : noValue },
     ...(p.registrationNo !== null ? [{ label: ru.create.registration.numberRow, value: <span className="num">№{p.registrationNo}</span> }] : []),
+    ...(p.registrationNo !== null
+      ? [{ label: 'Набор', value: p.kitIssuedOn ? `${ru.reference.kitIssued} ${formatDateFull(p.kitIssuedOn)}` : ru.reference.kitNotIssued }]
+      : []),
   ];
   // Печатная карточка и QR строятся по участнику: у заявки из таблицы без участника их нет,
   // и у участника без номера регистрации тоже (карточку нечем подписать).

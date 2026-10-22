@@ -71,7 +71,7 @@ async function main(): Promise<void> {
     timezone: env('TIMEZONE', 'Europe/Moscow'),
   };
   const bots = serviceFromEnv(db, process.env, schedule, 'домашние группы');
-  const { load, views, matching, placement, settings, errors, staff, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, geocoderConfig, geocodeAddresses, mapConfig, chat, members, contacts, reconciler, strange, formMeta } = composeService(db, engine, {
+  const { load, views, matching, placement, settings, errors, staff, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, geocoderConfig, geocodeAddresses, mapConfig, chat, members, contacts, reconciler, strange, kits, formMeta } = composeService(db, engine, {
     campaignSchedule: schedule,
     // Ключ, провайдер и модель можно менять в «Настройки → Помощник»; пока там пусто, действует `.env`. Ключ в базе шифруется
     // секретом SETTINGS_SECRET, а если его нет — паролем полного входа (смена пароля потребует ввести ключ заново).
@@ -111,6 +111,7 @@ async function main(): Promise<void> {
     contacts,
     reconciler,
     strange,
+    kits,
     exporter,
     audit,
     logo: async () => readFile(join(env('HG_ASSETS_DIR', '/app/dashboard/assets'), 'church-logo.png')).catch(() => null),

@@ -20,7 +20,7 @@ describe('оболочка', () => {
     const names = within(tabs).getAllByRole('tab').map((t) => t.textContent);
     expect(names[0]).toBe('Сегодня');
     // «Группы» стоят сразу после «Заявок»: у распределителей заявки, у координаторов группы.
-    expect(names.map((n) => n?.replace(/\d+$/, '').trim())).toEqual(['Сегодня', 'Заявки', 'Группы', 'Команда', 'Справочник']);
+    expect(names.map((n) => n?.replace(/\d+$/, '').trim())).toEqual(['Сегодня', 'Заявки', 'Группы', 'Наборы', 'Команда', 'Справочник']);
     expect(within(tabs).getByRole('tab', { name: 'Сегодня' })).toHaveAttribute('aria-selected', 'true');
     // Число открытых берём из тех же фикстур: оно растёт вместе с демо-заявками.
     const open = openCount(buildRequests().counters);

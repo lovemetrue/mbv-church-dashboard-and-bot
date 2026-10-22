@@ -1,4 +1,4 @@
-import { useRef, type KeyboardEvent } from 'react';
+import { useEffect, useRef, type KeyboardEvent } from 'react';
 import { openCount } from '../entities/buckets';
 import { useMe, useRequests } from '../shared/api/queries';
 import { ru } from '../shared/i18n/ru';
@@ -16,6 +16,12 @@ export function Tabs() {
   const tabs = visibleTabs(me.data?.role);
   const refs = useRef<Partial<Record<TabId, HTMLButtonElement | null>>>({});
   const open = requests.data ? openCount(requests.data.counters) : null;
+
+  // На телефоне вкладки не помещаются и прокручиваются вбок: выбранная («Наборы» по ссылке) не должна остаться
+  // обрезанной за краем. nearest — страницу по вертикали не дёргаем. В jsdom метода нет, отсюда `?.`.
+  useEffect(() => {
+    refs.current[nav.tab]?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [nav.tab, tabs.length]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     const idx = tabs.indexOf(nav.tab);

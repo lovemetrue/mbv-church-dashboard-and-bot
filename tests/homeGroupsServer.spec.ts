@@ -41,6 +41,7 @@ const nextIp = () => `10.2.0.${++ipCounter}`;
 
 interface ActionCall { name: string; id: number; body: unknown; actor: string }
 interface Started {
+  kitCalls: { name: string; body?: unknown; actor?: string }[];
   base: string; viewsCalls: () => number; close: () => void; setViews: (f: () => Promise<ReturnType<typeof sampleViews>>) => void;
   chatCalls: { body: unknown; actor: string }[]; setChatOutcome: (o: unknown) => void;
   assistantCalls: { name: string; actor: string; enabled?: boolean }[]; setAssistantOutcome: (o: unknown) => void;
@@ -66,6 +67,8 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
   const matchingCalls: { name: string; actor: string; enabled?: boolean }[] = [];
   const settingsCalls: { name: string; actor?: string; body?: unknown }[] = [];
   const strangeCalls: { name: string; id?: number; body?: unknown; actor?: string }[] = [];
+  const kitCalls: { name: string; body?: unknown; actor?: string }[] = [];
+  const kitPerson = { userId: 12, registrationNo: 1042, fio: 'Иван Петров', phone: null, issuedAt: null, issuedBy: null };
   const llmCalls: { name: string; body?: unknown; actor?: string }[] = [];
   let mapKey: string | null = null;
   let llmSaveOutcome: unknown = { ok: true };
@@ -135,6 +138,16 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
     strange: {
       forRequest: async (id: number, body: unknown, actor: string) => { strangeCalls.push({ name: 'request', id, body, actor }); return { ok: true }; },
       forPerson: async (body: unknown, actor: string) => { strangeCalls.push({ name: 'person', body, actor }); return { ok: true }; },
+    } as never,
+    kits: {
+      view: async () => { kitCalls.push({ name: 'view' }); return { generatedAt: 'g', registered: 3, issued: 1, issuedToday: 1, recent: [] }; },
+      find: async (body: unknown) => {
+        kitCalls.push({ name: 'find', body });
+        return (body as { code?: string }).code === 'нет' ? { ok: false, error: 'not_found', message: 'Регистрации №5 нет.' } : { ok: true, person: kitPerson };
+      },
+      search: async (body: unknown) => { kitCalls.push({ name: 'search', body }); return { ok: true, items: [], more: false }; },
+      issue: async (body: unknown, actor: string) => { kitCalls.push({ name: 'issue', body, actor }); return { ok: true, person: kitPerson, changed: true }; },
+      undo: async (body: unknown, actor: string) => { kitCalls.push({ name: 'undo', body, actor }); return { ok: true, person: kitPerson, changed: false }; },
     } as never,
     llmConfig: {
       view: async () => ({ provider: 'deepseek', baseUrl: null, model: 'deepseek-chat', keySet: true, keySource: 'settings', keyHint: 'ABCD', keyUnreadable: false, providers: [] }),
@@ -208,7 +221,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
     viewsCalls: () => calls,
     close: () => { server.close(); },
     setViews: (f) => { views = f; },
-    actionCalls, auditCalls, assistantCalls, chatCalls, setChatOutcome: (o: unknown) => { chatOutcome = o; }, setAssistantOutcome: (o: unknown) => { assistantOutcome = o; }, matchingCalls, settingsCalls, reconcileCalls, strangeCalls, llmCalls, setMapKey: (k: string | null) => { mapKey = k; }, setLlmSave: (o: unknown) => { llmSaveOutcome = o; }, setLlmTest: (o: unknown) => { llmTestResult = o; }, reported, staffCalls, createCalls, setCreate: (o) => { createOutcome = o; }, setTokenInfo: (v) => { tokenInfo = v; }, setComplete: (v) => { complete = v; }, setSettingsOutcome: (o: ActionOutcome) => { settingsOutcome = o; }, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
+    actionCalls, auditCalls, assistantCalls, chatCalls, setChatOutcome: (o: unknown) => { chatOutcome = o; }, setAssistantOutcome: (o: unknown) => { assistantOutcome = o; }, matchingCalls, settingsCalls, reconcileCalls, strangeCalls, kitCalls, llmCalls, setMapKey: (k: string | null) => { mapKey = k; }, setLlmSave: (o: unknown) => { llmSaveOutcome = o; }, setLlmTest: (o: unknown) => { llmTestResult = o; }, reported, staffCalls, createCalls, setCreate: (o) => { createOutcome = o; }, setTokenInfo: (v) => { tokenInfo = v; }, setComplete: (v) => { complete = v; }, setSettingsOutcome: (o: ActionOutcome) => { settingsOutcome = o; }, invalidations: () => invalidations, setOutcome: (o) => { outcome = o; },
   };
 }
 
@@ -1588,6 +1601,59 @@ describe('метка «Странный человек»', () => {
     const cookie = await signIn(REGULAR);
     expect((await fetch(`${app.base}/api/v1/requests/9/strange`, { headers: { cookie } })).status).toBe(404);
     expect((await fetch(`${app.base}/api/v1/people/strange`, { headers: { cookie } })).status).toBe(404);
+  });
+});
+
+describe('выдача наборов', () => {
+  const post = (cookie: string | null, path: string, body: unknown) => fetch(`${app.base}/api/v1/${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body),
+  });
+
+  test('без входа 401, обычный вход находит, выдаёт и отменяет; автор — вошедший', async () => {
+    expect((await post(null, 'kits/issue', { userId: 12 })).status).toBe(401);
+    expect((await fetch(`${app.base}/api/v1/kits`)).status).toBe(401);
+    const cookie = await signIn(REGULAR);
+    const found = await post(cookie, 'kits/find', { code: 'Регистрация №1042' });
+    expect(found.status).toBe(200);
+    expect(await found.json()).toMatchObject({ ok: true, person: { registrationNo: 1042 } });
+    expect((await post(cookie, 'kits/issue', { userId: 12 })).status).toBe(200);
+    expect((await post(cookie, 'kits/undo', { userId: 12 })).status).toBe(200);
+    expect(app.kitCalls.slice(-3)).toEqual([
+      { name: 'find', body: { code: 'Регистрация №1042' } },
+      { name: 'issue', body: { userId: 12 }, actor: REGULAR.login },
+      { name: 'undo', body: { userId: 12 }, actor: REGULAR.login },
+    ]);
+    const view = await fetch(`${app.base}/api/v1/kits`, { headers: { cookie } });
+    expect(await view.json()).toMatchObject({ issuedToday: 1, registered: 3 });
+  });
+
+  test('снимок справочника сбрасывается, только когда отметка изменилась', async () => {
+    const cookie = await signIn(REGULAR);
+    const inv = app.invalidations();
+    await post(cookie, 'kits/find', { code: '1042' });
+    expect(app.invalidations()).toBe(inv);
+    const found = await post(cookie, 'kits/search', { query: 'Петров' });
+    expect(await found.json()).toEqual({ ok: true, items: [], more: false });
+    expect(app.kitCalls.at(-1)).toEqual({ name: 'search', body: { query: 'Петров' } });
+    expect(app.invalidations()).toBe(inv);
+    await post(cookie, 'kits/issue', { userId: 12 });
+    expect(app.invalidations()).toBe(inv + 1);
+    // Отмена в заглушке ничего не меняет (changed: false) — сбрасывать нечего.
+    await post(cookie, 'kits/undo', { userId: 12 });
+    expect(app.invalidations()).toBe(inv + 1);
+  });
+
+  test('ошибка сервиса отвечает своим кодом и текстом', async () => {
+    const r = await post(await signIn(REGULAR), 'kits/find', { code: 'нет' });
+    expect(r.status).toBe(404);
+    expect(await r.json()).toEqual({ error: 'not_found', message: 'Регистрации №5 нет.' });
+  });
+
+  test('изменяющие адреса не отвечают на GET', async () => {
+    const cookie = await signIn(REGULAR);
+    expect((await fetch(`${app.base}/api/v1/kits/issue`, { headers: { cookie } })).status).toBe(404);
+    expect((await fetch(`${app.base}/api/v1/kits/undo`, { headers: { cookie } })).status).toBe(404);
+    expect((await fetch(`${app.base}/api/v1/kits/search`, { headers: { cookie } })).status).toBe(404);
   });
 });
 

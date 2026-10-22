@@ -5,7 +5,7 @@ import { isBucketFilter, type BucketFilter } from '../../entities/buckets';
  * Состояние экрана живёт в адресе (`?tab=requests&bucket=ready&req=12`), а не в памяти:
  * так оно переживает перезагрузку и кнопку «назад», а на запись можно дать ссылку.
  *
- *   tab     today (по умолчанию) | requests | groups | team | reference | settings (только полный вход)
+ *   tab     today (по умолчанию) | requests | groups | kits | team | reference | settings (только полный вход)
  *   q       поиск по заявкам (общий для шапки)
  *   bucket  all (по умолчанию) | queue (к обзвону: ready + callback) | strange (с меткой «Странный человек») | ready | callback | human | done
  *   view    others — «Другие обращения» вместо списка «Хотят в группу»; без параметра — обычный список
@@ -19,9 +19,12 @@ import { isBucketFilter, type BucketFilter } from '../../entities/buckets';
  *   f, rq, col, sort, gb — таблица справочника и вкладки «Группы», см. shared/filters/serialize.ts
  *   sec     раздел «Настроек»; значения и значение по умолчанию знает сам раздел (features/settings)
  */
-export type TabId = 'today' | 'requests' | 'groups' | 'team' | 'reference' | 'settings';
-/** «Заявки» — рабочее место распределителей, «Группы» — координаторов: та же таблица групп, что в «Справочнике», но под рукой. */
-export const TAB_IDS: readonly TabId[] = ['today', 'requests', 'groups', 'team', 'reference', 'settings'];
+export type TabId = 'today' | 'requests' | 'groups' | 'kits' | 'team' | 'reference' | 'settings';
+/**
+ * «Заявки» — рабочее место распределителей, «Группы» — координаторов: та же таблица групп, что в «Справочнике», но под рукой.
+ * «Наборы» — выдача наборов кампании по QR с телефона, рядом с «Группами»: ими пользуются те же координаторы.
+ */
+export const TAB_IDS: readonly TabId[] = ['today', 'requests', 'groups', 'kits', 'team', 'reference', 'settings'];
 
 /** Вкладки, которые видит только полный вход. */
 const SUPER_ONLY_TABS: readonly TabId[] = ['settings'];

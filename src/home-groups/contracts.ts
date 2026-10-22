@@ -1208,11 +1208,69 @@ export interface PersonItem {
   /** ISO-дата регистрации или заявки. */
   date: string | null;
   requestId: number | null;
+  /** ISO-дата выдачи набора участника кампании; null — не выдан или регистрации нет (набор выдают по регистрации). */
+  kitIssuedOn: string | null;
 }
 
 export interface PeopleView {
   generatedAt: string;
   items: PersonItem[];
+}
+
+/** Участник на экране «Наборы»: кого нашёл QR или номер регистрации. */
+export interface KitPerson {
+  userId: number;
+  registrationNo: number;
+  fio: string;
+  phone: string | null;
+  /** Когда выдан набор (ISO-время); null — ещё не выдан. */
+  issuedAt: string | null;
+  /** Кто выдал: логин входа в интерфейс или «бот», если служитель отметил через Telegram. */
+  issuedBy: string | null;
+}
+
+/** `GET /api/v1/kits`: сколько наборов выдано и последние выдачи (с них же отменяют ошибку). */
+export interface KitsView {
+  generatedAt: string;
+  /** Зарегистрированных с номером: столько наборов нужно всего. */
+  registered: number;
+  issued: number;
+  /** Выдано с полуночи по часовому поясу кампании. */
+  issuedToday: number;
+  /** Последние выдачи, свежие сверху. */
+  recent: KitPerson[];
+}
+
+/** `POST /api/v1/kits/find`: тело `{ code }` — номер регистрации (или текст из QR). */
+export interface KitFindOk {
+  ok: true;
+  person: KitPerson;
+}
+
+/** Строка списка при поиске по ФИО: телефон только хвостом — по нему отличают тёзок, спросив у человека. */
+export interface KitMatch {
+  userId: number;
+  registrationNo: number;
+  fio: string;
+  /** Последние четыре цифры телефона; null — телефона нет. */
+  phoneTail: string | null;
+  issuedAt: string | null;
+}
+
+/** `POST /api/v1/kits/search`: тело `{ query }` — часть ФИО, от трёх букв. */
+export interface KitSearchOk {
+  ok: true;
+  items: KitMatch[];
+  /** Совпадений больше, чем показано: нужно уточнить запрос. */
+  more: boolean;
+}
+
+/** `POST /api/v1/kits/issue` и `/undo`: тело `{ userId }`. */
+export interface KitIssueOk {
+  ok: true;
+  person: KitPerson;
+  /** false — отметка уже стояла (набор выдали раньше или отмены нечего отменять), ничего не изменилось. */
+  changed: boolean;
 }
 
 export interface CoordinatorItem {

@@ -30,6 +30,7 @@ const person = (over: Partial<PersonItem>): PersonItem => ({
   mdgLabel: '',
   date: null,
   requestId: null,
+  kitIssuedOn: null,
   ...over,
 });
 

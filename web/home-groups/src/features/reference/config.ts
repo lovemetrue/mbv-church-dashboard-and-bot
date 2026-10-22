@@ -177,12 +177,15 @@ export const peopleConfig: EntityConfig<PersonItem> = {
     f('Группы', { multi: true }),
     // Номер регистрации: по нему находят человека при выдаче набора и печатают карточку с QR.
     f('№', { kind: 'number' }),
+    // Набор кампании выдают по регистрации (QR в карточке, вкладка «Наборы»): у строк без неё ячейка пустая.
+    f('Набор', { groupable: true }),
+    f('Набор выдан', { kind: 'date' }),
     // «Да» у людей с меткой «Странный человек»: по нему работает быстрый отбор «Странные».
     f(STRANGE_FIELD, { groupable: true }),
   ],
-  columns: ['ФИО', 'Телефон', 'Возраст', 'Район', 'Район, метро, ориентир', 'Адрес', 'Откуда', 'Малая группа', 'Дата', 'Заявка', '№', 'Группы', STRANGE_FIELD],
-  // «№» стоит последним: первый столбец служит кнопкой открытия карточки, там должно быть имя.
-  defaultColumns: ['ФИО', 'Телефон', 'Возраст', 'Район', 'Откуда', 'Малая группа', '№'],
+  columns: ['ФИО', 'Телефон', 'Возраст', 'Район', 'Район, метро, ориентир', 'Адрес', 'Откуда', 'Малая группа', 'Дата', 'Заявка', '№', 'Набор', 'Набор выдан', 'Группы', STRANGE_FIELD],
+  // «№» не первым: первый столбец служит кнопкой открытия карточки, там должно быть имя.
+  defaultColumns: ['ФИО', 'Телефон', 'Возраст', 'Район', 'Откуда', 'Малая группа', '№', 'Набор'],
   presets: [
     { name: 'Хотят в группу', filters: [{ field: 'Малая группа', op: 'eq', value: 'Хочет в группу' }] },
     { name: 'Хотят вести группу', filters: [{ field: 'Малая группа', op: 'eq', value: 'Откроет свою группу' }] },
@@ -190,6 +193,7 @@ export const peopleConfig: EntityConfig<PersonItem> = {
     { name: 'Район не указан', filters: [{ field: 'Район', op: 'empty', value: '' }] },
     { name: 'Нет телефона', filters: [{ field: 'Телефон', op: 'empty', value: '' }] },
     { name: ru.strange.preset, filters: [{ field: STRANGE_FIELD, op: 'eq', value: ru.reference.yes }] },
+    { name: ru.reference.kitNotIssuedPreset, filters: [{ field: 'Набор', op: 'eq', value: ru.reference.kitNotIssued }] },
   ],
   toRow: (p) => ({
     _key: p.key,
@@ -205,6 +209,8 @@ export const peopleConfig: EntityConfig<PersonItem> = {
     Дата: p.date,
     Заявка: p.requestId,
     '№': p.registrationNo,
+    Набор: p.registrationNo === null ? null : p.kitIssuedOn ? ru.reference.kitIssued : ru.reference.kitNotIssued,
+    'Набор выдан': p.kitIssuedOn,
     Группы: p.groups.length ? p.groups.join(', ') : null,
     [STRANGE_FIELD]: p.strange ? ru.reference.yes : ru.reference.no,
     // Служебное, как `_key`: метка целиком нужна таблице, чтобы нарисовать значок с подсказкой; в столбцы и отборы не попадает.
@@ -241,6 +247,6 @@ export const coordinatorsConfig: EntityConfig<CoordinatorItem> = {
 /** Как показывать значение ячейки в таблице (кроме цвета и точек — это делает таблица). */
 export function displayCell(column: string, value: string | number | null): string {
   if (value === null || value === '') return '';
-  if (column === 'Дата') return formatDateFull(String(value));
+  if (column === 'Дата' || column === 'Набор выдан') return formatDateFull(String(value));
   return String(value);
 }

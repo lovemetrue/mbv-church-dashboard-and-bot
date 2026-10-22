@@ -646,7 +646,7 @@ describe('люди', () => {
     });
     expect(views.people.items).toEqual([{
       key: 'u12', strange: null, personId: null, groups: [], fio: 'Дарья Ефимова', phone: '+7 911 123-45-67', ageLabel: '26-35', district: 'Невский',
-      place: 'Ломоносовская', address: null, schedule: null, hobby: null, profession: null, family: null, note: null, church: null, leaderName: null, preferredContact: null, addressGeo: null, from: 'Бот · MAX', mdgLabel: 'Хочет в группу', date: '2026-09-12', requestId: 40, userId: 12, registrationNo: 12,
+      place: 'Ломоносовская', address: null, schedule: null, hobby: null, profession: null, family: null, note: null, church: null, leaderName: null, preferredContact: null, addressGeo: null, from: 'Бот · MAX', mdgLabel: 'Хочет в группу', date: '2026-09-12', requestId: 40, userId: 12, registrationNo: 12, kitIssuedOn: null,
     }]);
   });
 
@@ -686,7 +686,7 @@ describe('люди', () => {
     const person = (key: string) => views.people.items.find((p) => p.key === key)!;
     expect(person('r7')).toEqual({
       key: 'r7', strange: null, personId: null, groups: [], fio: 'Станислав Ким', phone: '+7 904 123-45-67', ageLabel: '26-35', district: 'Приморский',
-      place: 'Приморский', address: null, schedule: null, hobby: null, profession: null, family: null, note: null, church: null, leaderName: null, preferredContact: null, addressGeo: null, from: 'Таблица', mdgLabel: 'Заявка: готово к утверждению', date: '2026-10-02', requestId: 7, userId: null, registrationNo: null,
+      place: 'Приморский', address: null, schedule: null, hobby: null, profession: null, family: null, note: null, church: null, leaderName: null, preferredContact: null, addressGeo: null, from: 'Таблица', mdgLabel: 'Заявка: готово к утверждению', date: '2026-10-02', requestId: 7, userId: null, registrationNo: null, kitIssuedOn: null,
     });
     expect(person('r8')).toMatchObject({ from: 'Дашборд · Звонок', mdgLabel: 'Заявка: нужна помощь в сопоставлении', district: null });
     expect(person('r9').mdgLabel).toBe('Заявка: утверждено');
@@ -1104,6 +1104,15 @@ describe('закрепление и изменившиеся данные', () =
     });
     expect(views.people.items.find((p) => p.key === 'u3')).toMatchObject({ userId: 3, registrationNo: 41 });
     expect(views.people.items.find((p) => p.key === 'r9')).toMatchObject({ userId: null, registrationNo: null });
+  });
+
+  test('дата выдачи набора — по Москве: выдача в 00:30 по Москве не уходит во вчера', () => {
+    const { views } = build({
+      // 21:30 по UTC 21 октября — это уже 00:30 22 октября по Москве.
+      participants: [participant({ id: 3, kit_issued_at: new Date('2026-10-21T21:30:00Z') }), participant({ id: 4 })],
+    });
+    expect(views.people.items.find((p) => p.key === 'u3')!.kitIssuedOn).toBe('2026-10-22');
+    expect(views.people.items.find((p) => p.key === 'u4')!.kitIssuedOn).toBeNull();
   });
 });
 

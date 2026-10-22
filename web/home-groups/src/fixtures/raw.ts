@@ -209,6 +209,8 @@ export interface RawPerson {
   date: string | null;
   userId: number | null;
   registrationNo: number | null;
+  /** ISO-дата выдачи набора кампании; нет — не выдан. */
+  kitIssuedOn?: string | null;
   /** Номер карточки, внесённой вручную (ключ p<id>); у остальных его нет. */
   personId?: number;
 }
@@ -218,7 +220,7 @@ export interface RawPerson {
  * Номер регистрации есть не у всех (у Софьи его нет): так в демо видны оба случая карточки.
  */
 export const RAW_EXTRA_PEOPLE: RawPerson[] = [
-  { key: 'u1', fio: 'Дарья Ефимова', phone: '79110004002', ageLabel: '26–35', district: 'Приморский', from: 'Форма регистрации', mdgLabel: 'Уже в группе', date: '2026-09-12', userId: 1, registrationNo: 1, church: 'МБВ Колизей', leaderName: 'Ольга К.', preferredContact: 'звонок вечером' },
+  { key: 'u1', fio: 'Дарья Ефимова', phone: '79110004002', ageLabel: '26–35', district: 'Приморский', from: 'Форма регистрации', mdgLabel: 'Уже в группе', date: '2026-09-12', userId: 1, registrationNo: 1, kitIssuedOn: '2026-10-08', church: 'МБВ Колизей', leaderName: 'Ольга К.', preferredContact: 'звонок вечером' },
   { key: 'u2', fio: 'Михаил Громов', phone: '79210001755', ageLabel: '36–45', district: 'Калининский', from: 'Бот · MAX', mdgLabel: 'Ведёт группу', date: '2026-09-03', userId: 2, registrationNo: 2 },
   { key: 'u3', fio: 'Софья Титова', phone: '79310002280', ageLabel: '18–25', district: 'Центральный', from: 'Бот · Telegram', mdgLabel: 'Не интересно', date: '2026-09-28', userId: 3, registrationNo: null },
   { key: 'u4', fio: 'Юлия Орлова', phone: '79990003047', ageLabel: '26–35', district: 'Выборгский', from: 'Бот · Telegram', mdgLabel: 'Откроет свою группу', date: '2026-10-05', userId: 4, registrationNo: 4 },

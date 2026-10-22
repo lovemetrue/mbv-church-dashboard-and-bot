@@ -8,6 +8,7 @@ import { AssistantChat } from '../features/assistant-chat';
 import { isRegistrationPath, RegistrationPage } from '../features/create/RegistrationPage';
 import { RequestsScreen } from '../features/requests/RequestsScreen';
 import { GroupsScreen } from '../features/groups/GroupsScreen';
+import { KitsScreen } from '../features/kits/KitsScreen';
 import { ReferenceScreen } from '../features/reference/ReferenceScreen';
 import { SettingsScreen } from '../features/settings/SettingsScreen';
 import { TeamScreen } from '../features/team/TeamScreen';
@@ -59,6 +60,7 @@ function Shell() {
         {nav.tab === 'today' && <TodayScreen />}
         {nav.tab === 'requests' && <RequestsScreen />}
         {nav.tab === 'groups' && <GroupsScreen />}
+        {nav.tab === 'kits' && <KitsScreen />}
         {nav.tab === 'team' && <TeamScreen />}
         {nav.tab === 'reference' && <ReferenceScreen />}
         {nav.tab === 'settings' && <SettingsRoute />}

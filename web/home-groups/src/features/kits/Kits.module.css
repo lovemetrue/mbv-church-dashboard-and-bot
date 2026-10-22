@@ -1,0 +1,220 @@
+/*
+ * «Наборы». Экран открывают на телефоне у стола выдачи: одна колонка, крупные кнопки под палец, ничего не
+ * прокручивается вбок. Цвета только из токенов; смысл (выдан, не выдан) всегда написан текстом.
+ */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 640px;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+.title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.notice {
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: var(--radius);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* ── счётчики ────────────────────────────────────────────────────────────── */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.tileLabel {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.tileNum {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--ink);
+}
+.tileNum.ok {
+  color: var(--ok);
+}
+.tileOf {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* ── поиск ───────────────────────────────────────────────────────────────── */
+.search {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.searchLabel {
+  font-size: 13px;
+  color: var(--muted);
+}
+.searchRow {
+  display: flex;
+  gap: 8px;
+}
+.searchInput {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--tap);
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  /* 16px: при меньшем шрифте Safari на iPhone приближает страницу при фокусе на поле. */
+  font-size: 16px;
+}
+
+/* Прокрутка к результату останавливается с зазором, а не вплотную к краю экрана. */
+.result {
+  scroll-margin-top: 12px;
+}
+
+/* ── карточка участника ──────────────────────────────────────────────────── */
+.card {
+  gap: 8px;
+}
+.okCard {
+  border-color: var(--ok);
+  background: var(--ok-soft);
+}
+.warnCard {
+  border-color: var(--warn);
+  background: var(--warn-soft);
+}
+.errorCard {
+  border-color: var(--crit);
+  background: var(--crit-soft);
+}
+.errorText {
+  margin: 0;
+  color: var(--crit);
+  font-weight: 500;
+}
+.doneText {
+  margin: 0;
+  color: var(--ok);
+  font-size: 18px;
+  font-weight: 700;
+}
+.fio {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+.status {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+.warnText {
+  margin: 0;
+  color: var(--warn);
+  font-weight: 600;
+}
+.cardButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.cardButtons > :not(:last-child) {
+  flex: 1 1 200px;
+}
+
+/* ── списки: совпадения и последние выдачи ───────────────────────────────── */
+.list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.list li + li {
+  border-top: 1px solid var(--line-soft);
+}
+.row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 8px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+/* Только с мышью: на телефоне подсветка «залипает» после касания и выглядит как выбранная строка. */
+@media (hover: hover) {
+  .row:hover .rowFio {
+    color: var(--accent);
+  }
+}
+.rowFio {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.rowMeta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.issuedMark {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-weight: 600;
+}

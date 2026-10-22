@@ -877,6 +877,8 @@ export function buildViewsWithPlan(
       mdgLabel: (u.mdg_status && MDG_LABELS[u.mdg_status]) || MDG_NO_ANSWER,
       date: localIsoDate(new Date(u.registered_at), options.timeZone ?? DEFAULT_TIME_ZONE),
       requestId: joinRequestByUser.get(u.id) ?? null,
+      // Дата по поясу кампании, а не toISOString(): выдача в половине первого ночи по Москве иначе ушла бы во вчера.
+      kitIssuedOn: u.kit_issued_at ? localIsoDate(new Date(u.kit_issued_at), options.timeZone ?? DEFAULT_TIME_ZONE) : null,
     });
   }
   for (const r of joinRequests) {
@@ -903,6 +905,7 @@ export function buildViewsWithPlan(
       mdgLabel: `Заявка: ${BUCKET_NAMES[bucketById.get(r.id)!]}`,
       date: validIsoDate(r.date),
       requestId: r.id,
+      kitIssuedOn: null,
     });
   }
   // Карточки, внесённые вручную (кого нет ни среди зарегистрированных, ни среди заявок).
@@ -928,6 +931,7 @@ export function buildViewsWithPlan(
       mdgLabel: 'Не спрошено',
       date: localIsoDate(new Date(p.created_at), options.timeZone ?? DEFAULT_TIME_ZONE),
       requestId: null,
+      kitIssuedOn: null,
     });
   }
   people.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || a.key.localeCompare(b.key));

@@ -597,9 +597,10 @@ export function buildPeople(): PeopleView {
       mdgLabel: raw.cancelled ? 'Отказался от групп' : item?.bucket === 'done' ? 'Уже в группе' : 'Хочет в группу',
       date: dateMinus(raw.waitingDays),
       requestId: raw.id,
+      kitIssuedOn: null,
     };
   });
-  const extras: PersonItem[] = RAW_EXTRA_PEOPLE.map((p) => ({ ...p, place: p.place ?? p.district, address: p.address ?? null, schedule: p.schedule ?? null, hobby: p.hobby ?? null, profession: p.profession ?? null, family: p.family ?? null, note: p.note ?? null, church: p.church ?? null, leaderName: p.leaderName ?? null, preferredContact: p.preferredContact ?? null, addressGeo: p.address ? ('found' as const) : null, personId: p.personId ?? null, groups: groupsOf(p.key), requestId: null, strange: demoStrangeOf(p.phone, p.key) }));
+  const extras: PersonItem[] = RAW_EXTRA_PEOPLE.map((p) => ({ ...p, place: p.place ?? p.district, address: p.address ?? null, schedule: p.schedule ?? null, hobby: p.hobby ?? null, profession: p.profession ?? null, family: p.family ?? null, note: p.note ?? null, church: p.church ?? null, leaderName: p.leaderName ?? null, preferredContact: p.preferredContact ?? null, addressGeo: p.address ? ('found' as const) : null, personId: p.personId ?? null, groups: groupsOf(p.key), requestId: null, kitIssuedOn: p.kitIssuedOn ?? null, strange: demoStrangeOf(p.phone, p.key) }));
   return { generatedAt: GENERATED_AT, items: [...fromRequests, ...extras] };
 }
 

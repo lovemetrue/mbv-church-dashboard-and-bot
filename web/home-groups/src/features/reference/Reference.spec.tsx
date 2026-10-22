@@ -297,9 +297,37 @@ describe('«Справочник»: экран', () => {
     const table = await screen.findByRole('table');
     expect(within(table).getByRole('columnheader', { name: /№/ })).toBeInTheDocument();
     const rowOf = (name: string) => dataRows().find((r) => within(r).queryByText(name))!;
+    // За «№» по умолчанию идёт «Набор»: номер — предпоследняя ячейка.
+    const noCell = (row: HTMLElement) => Array.from(row.querySelectorAll('td')).at(-2)!;
+    expect(noCell(rowOf('Дарья Ефимова')).textContent).toBe('1');
+    expect(noCell(rowOf('Софья Титова')).textContent).toBe('—');
+  });
+
+  test('столбец «Набор»: выдан или нет — только у тех, у кого есть регистрация; быстрый отбор «Набор не выдан»', async () => {
+    stubFetchWithFixtures();
+    renderAt(<App />, '/?tab=reference&ent=people');
+    const table = await screen.findByRole('table');
+    expect(within(table).getByRole('columnheader', { name: /Набор/ })).toBeInTheDocument();
+    const rowOf = (name: string) => dataRows().find((r) => within(r).queryByText(name))!;
     const lastCell = (row: HTMLElement) => Array.from(row.querySelectorAll('td')).at(-1)!;
-    expect(lastCell(rowOf('Дарья Ефимова')).textContent).toBe('1');
+    expect(lastCell(rowOf('Дарья Ефимова')).textContent).toBe('Выдан');
+    expect(lastCell(rowOf('Михаил Громов')).textContent).toBe('Не выдан');
+    // У Софьи нет номера регистрации: набор ей выдавать не по чему, ячейка пустая.
     expect(lastCell(rowOf('Софья Титова')).textContent).toBe('—');
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /^Фильтры/ }));
+    await user.click(within(screen.getByRole('dialog', { name: 'Фильтры' })).getByRole('button', { name: 'Набор не выдан' }));
+    await waitFor(() => expect(dataRows().some((r) => within(r).queryByText('Дарья Ефимова'))).toBe(false));
+    expect(dataRows().some((r) => within(r).queryByText('Михаил Громов'))).toBe(true);
+    expect(dataRows().some((r) => within(r).queryByText('Софья Титова'))).toBe(false);
+  });
+
+  test('в карточке человека с регистрацией видно, выдан ли набор и когда', async () => {
+    stubFetchWithFixtures();
+    renderAt(<App />, '/?tab=reference&ent=people&rec=u1');
+    const card = await screen.findByRole('dialog', { name: /Карточка человека/ });
+    expect(within(card).getByText('Выдан 08.10.2026')).toBeInTheDocument();
   });
 
   test('координатор: карточка показывает его группы', async () => {

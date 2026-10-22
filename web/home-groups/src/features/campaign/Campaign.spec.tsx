@@ -60,12 +60,12 @@ describe('«Команда»: переключатель разделов', () =
     expect(getsOf(fetchMock, 'campaign')).toBe(0);
   });
 
-  test('верхних вкладок шесть (с «Группами»): кампания живёт внутри «Команды»', async () => {
+  test('верхних вкладок семь (с «Группами» и «Наборами»): кампания живёт внутри «Команды»', async () => {
     openCampaign();
     await region('Итоги кампании');
     const tabs = within(screen.getByRole('tablist', { name: 'Разделы' })).getAllByRole('tab');
     // У «Заявок» на вкладке стоит число открытых, его в сравнение не берём.
-    expect(tabs.map((t) => (t.textContent ?? '').replace(/\d+$/, ''))).toEqual(['Сегодня', 'Заявки', 'Группы', 'Команда', 'Справочник', 'Настройки']);
+    expect(tabs.map((t) => (t.textContent ?? '').replace(/\d+$/, ''))).toEqual(['Сегодня', 'Заявки', 'Группы', 'Наборы', 'Команда', 'Справочник', 'Настройки']);
     expect(screen.getByRole('tab', { name: 'Команда' })).toHaveAttribute('aria-selected', 'true');
   });
 

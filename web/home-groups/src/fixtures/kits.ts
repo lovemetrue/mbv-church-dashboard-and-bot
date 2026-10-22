@@ -1,4 +1,4 @@
-import type { KitFindOk, KitIssueOk, KitPerson, KitsView } from '@contracts';
+import type { KitFindOk, KitIssueOk, KitPerson, KitSearchOk, KitsView } from '@contracts';
 import { ApiError } from '../shared/api/client';
 import { RAW_EXTRA_PEOPLE } from './raw';
 
@@ -33,6 +33,17 @@ export function buildKits(): KitsView {
     issuedToday: recent.filter((p) => p.issuedAt!.startsWith(today)).length,
     recent,
   };
+}
+
+/** Поиск по ФИО в демо: каждое слово в имени, «ё» как «е» — как на сервере, но без лимита. */
+export function searchDemoKits(body: unknown): KitSearchOk {
+  const norm = (v: string) => v.toLowerCase().replace(/ё/g, 'е');
+  const words = norm(String((body as { query?: unknown } | null)?.query ?? '')).split(/\s+/).filter(Boolean);
+  if (words.join('').length < 3) throw new ApiError(400, 'Введите хотя бы 3 буквы имени или фамилии.', 'bad_request');
+  const items = people()
+    .filter((p) => words.every((w) => norm(p.fio).includes(w)))
+    .map((p) => ({ userId: p.userId, registrationNo: p.registrationNo, fio: p.fio, phoneTail: p.phone ? p.phone.slice(-4) : null, issuedAt: p.issuedAt }));
+  return { ok: true, items, more: false };
 }
 
 /** Разбор кода в демо проще серверного: годится любое число в тексте QR. */

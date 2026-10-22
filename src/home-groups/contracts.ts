@@ -1241,10 +1241,28 @@ export interface KitsView {
   recent: KitPerson[];
 }
 
-/** `POST /api/v1/kits/find`: тело `{ code }` — текст из QR или номер регистрации. */
+/** `POST /api/v1/kits/find`: тело `{ code }` — номер регистрации (или текст из QR). */
 export interface KitFindOk {
   ok: true;
   person: KitPerson;
+}
+
+/** Строка списка при поиске по ФИО: телефон только хвостом — по нему отличают тёзок, спросив у человека. */
+export interface KitMatch {
+  userId: number;
+  registrationNo: number;
+  fio: string;
+  /** Последние четыре цифры телефона; null — телефона нет. */
+  phoneTail: string | null;
+  issuedAt: string | null;
+}
+
+/** `POST /api/v1/kits/search`: тело `{ query }` — часть ФИО, от трёх букв. */
+export interface KitSearchOk {
+  ok: true;
+  items: KitMatch[];
+  /** Совпадений больше, чем показано: нужно уточнить запрос. */
+  more: boolean;
 }
 
 /** `POST /api/v1/kits/issue` и `/undo`: тело `{ userId }`. */

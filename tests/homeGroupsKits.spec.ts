@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { AuditRepo } from '../src/db/repos/audit.repo.js';
 import { UsersRepo } from '../src/db/repos/users.repo.js';
 import { kitPayload } from '../src/core/qr.js';
-import { createKits, parseKitCode } from '../src/home-groups/kits.js';
+import { createKits, kitSearchWords, parseKitCode } from '../src/home-groups/kits.js';
 import { setupTestDb, truncateAll } from './helpers/testDb.js';
 
 describe('разбор того, что прочитал сканер', () => {
@@ -25,6 +25,24 @@ describe('разбор того, что прочитал сканер', () => {
     expect(parseKitCode('12345678901')).toBeNull();
     expect(parseKitCode('')).toBeNull();
     expect(parseKitCode(1042)).toBeNull();
+  });
+});
+
+describe('слова запроса для поиска по ФИО', () => {
+  test('нижний регистр, «ё» как «е», лишние пробелы не мешают', () => {
+    expect(kitSearchWords('  Королёв   ИВАН ')).toEqual(['королев', 'иван']);
+  });
+
+  test('короче трёх букв — пустой запрос, а не пол-списка', () => {
+    expect(kitSearchWords('Ан')).toEqual([]);
+    expect(kitSearchWords('  ')).toEqual([]);
+    expect(kitSearchWords(null)).toEqual([]);
+    expect(kitSearchWords('Ан Бо')).toEqual(['ан', 'бо']);
+  });
+
+  test('спецсимволы LIKE экранируются: «%» не находит всех подряд', () => {
+    expect(kitSearchWords('%%%')).toEqual(['\\%\\%\\%']);
+    expect(kitSearchWords('а_б')).toEqual(['а\\_б']);
   });
 });
 
@@ -85,6 +103,39 @@ describe('выдача наборов', () => {
     expect(await kits().issue({ userId: 'x' }, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
     expect(await kits().issue({ userId: 999 }, 'a')).toMatchObject({ ok: false, error: 'not_found' });
     expect((await db.query("SELECT 1 FROM audit_log WHERE action LIKE 'kit.%'")).rowCount).toBe(0);
+  });
+
+  test('поиск по ФИО: слова в любом порядке, «ё» не мешает, телефон только хвостом, видно, выдан ли набор', async () => {
+    const a = await register('Иван Королёв');
+    await register('Ивана Петрова');
+    await new UsersRepo(db).createManual({ fio: 'Анна Королева', platform: 'telegram', byAdminId: 'x' });
+    await kits().issue({ userId: a.id }, 'p');
+    const out = await kits().search({ query: 'королев иван' });
+    expect(out).toEqual({
+      ok: true, more: false,
+      items: [{ userId: a.id, registrationNo: a.registration_no, fio: 'Иван Королёв', phoneTail: '1122', issuedAt: expect.any(String) }],
+    });
+    const byLast = await kits().search({ query: 'Королев' });
+    if (!byLast.ok) throw new Error('поиск не прошёл');
+    expect(byLast.items.map((i) => [i.fio, i.phoneTail])).toEqual([['Анна Королева', null], ['Иван Королёв', '1122']]);
+  });
+
+  test('поиск: незарегистрированных нет в выдаче, «%» не находит всех, короткий запрос — ошибка', async () => {
+    await register('Иван Петров');
+    await db.query("INSERT INTO users (platform, platform_user_id, chat_id, full_name) VALUES ('telegram', '777', '777', 'Иван Незарегистрированный')");
+    const out = await kits().search({ query: 'иван' });
+    if (!out.ok) throw new Error('поиск не прошёл');
+    expect(out.items.map((i) => i.fio)).toEqual(['Иван Петров']);
+    expect(await kits().search({ query: '%%%' })).toEqual({ ok: true, items: [], more: false });
+    expect(await kits().search({ query: 'Ив' })).toMatchObject({ ok: false, error: 'bad_request', message: 'Введите хотя бы 3 буквы имени или фамилии.' });
+  });
+
+  test('поиск: больше десяти совпадений — показаны десять и признак «уточните»', async () => {
+    for (let i = 0; i < 11; i++) await register(`Иванов ${i}`);
+    const out = await kits().search({ query: 'иванов' });
+    if (!out.ok) throw new Error('поиск не прошёл');
+    expect(out.items).toHaveLength(10);
+    expect(out.more).toBe(true);
   });
 
   test('счётчики: всего, выдано и выдано сегодня по Москве; последние выдачи свежие сверху', async () => {

@@ -365,6 +365,24 @@ export class UsersRepo {
     return rows[0]!;
   }
 
+  /**
+   * Поиск регистрации по ФИО для выдачи набора. Каждое слово должно встретиться в ФИО, в любом порядке
+   * («Петров Иван» найдёт «Иван Петров»), «ё» и «е» не различаются: в анкетах пишут по-разному. Слова
+   * приходят уже приведёнными (`kitSearchWords`), спецсимволы LIKE в них экранированы.
+   */
+  async searchKits(words: readonly string[], limit: number): Promise<KitRow[]> {
+    if (words.length === 0) return [];
+    const conditions = words.map((_, i) => `replace(lower(full_name), 'ё', 'е') LIKE '%' || $${i + 2} || '%'`);
+    const { rows } = await this.db.query<KitRow>(
+      `SELECT ${KIT_COLUMNS} FROM users
+        WHERE registration_no IS NOT NULL AND ${conditions.join(' AND ')}
+        ORDER BY full_name, registration_no
+        LIMIT $1`,
+      [limit, ...words],
+    );
+    return rows;
+  }
+
   /** Последние выдачи, свежие сверху. */
   async recentKits(limit: number): Promise<KitRow[]> {
     const { rows } = await this.db.query<KitRow>(

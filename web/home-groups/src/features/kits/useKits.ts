@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from '@tanstack/react-query';
-import type { KitFindOk, KitIssueOk, KitsView } from '@contracts';
+import type { KitFindOk, KitIssueOk, KitSearchOk, KitsView } from '@contracts';
 import { ApiError, apiGet, apiPost } from '../../shared/api/client';
 import { queryKeys } from '../../shared/api/queries';
 
@@ -21,9 +21,14 @@ export function useKits(): UseQueryResult<KitsView> {
   });
 }
 
-/** Найти участника по тексту из QR или номеру: разбирает сервер (виды QR знает он). Ничего не меняет. */
+/** Найти участника по номеру регистрации: разбирает сервер. Ничего не меняет. */
 export function useFindKit(): UseMutationResult<KitFindOk, Error, string> {
   return useMutation({ mutationFn: (code: string) => apiPost<KitFindOk>('kits/find', { code }) });
+}
+
+/** Поиск по ФИО (на сервере: слова в любом порядке, «ё» как «е»). Ничего не меняет. */
+export function useSearchKits(): UseMutationResult<KitSearchOk, Error, string> {
+  return useMutation({ mutationFn: (query: string) => apiPost<KitSearchOk>('kits/search', { query }) });
 }
 
 /** Выдать или отменить выдачу. После — свежие счётчики и справочник людей (там колонка «Набор»). */

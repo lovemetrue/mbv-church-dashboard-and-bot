@@ -1,7 +1,7 @@
 import { formatPhone } from '../core/phone.js';
 import type { AuditRepo } from '../db/repos/audit.repo.js';
 import type { KitRow, UsersRepo } from '../db/repos/users.repo.js';
-import type { ActionError, KitFindOk, KitIssueOk, KitPerson, KitsView } from './contracts.js';
+import type { ActionError, KitFindOk, KitIssueOk, KitMatch, KitPerson, KitSearchOk, KitsView } from './contracts.js';
 
 type Failure = { ok: false; error: ActionError['error']; message: string };
 const bad = (message: string): Failure => ({ ok: false, error: 'bad_request', message });
@@ -36,6 +36,27 @@ export function parseKitCode(text: unknown): number | null {
   return null;
 }
 
+/** Короче трёх букв запрос находит пол-списка: «Ан» — это и Анна, и Иванов. */
+export const KIT_SEARCH_MIN = 3;
+/** Сколько совпадений показывать: больше на экране телефона уже не просмотреть, проще уточнить. */
+const KIT_SEARCH_LIMIT = 10;
+
+/**
+ * Слова запроса для поиска по ФИО: в нижнем регистре, «ё» как «е», без спецсимволов LIKE. Пустой список —
+ * запрос слишком короткий (меньше трёх букв без пробелов).
+ */
+export function kitSearchWords(query: unknown): string[] {
+  if (typeof query !== 'string') return [];
+  const words = query.toLowerCase().replace(/ё/g, 'е').split(/\s+/).filter(Boolean)
+    .map((w) => w.replace(/[\\%_]/g, (c) => `\\${c}`));
+  return words.join('').replace(/\\/g, '').length >= KIT_SEARCH_MIN ? words : [];
+}
+
+const phoneTail = (phone: string | null): string | null => {
+  const digits = (phone ?? '').replace(/\D/g, '');
+  return digits.length >= 4 ? digits.slice(-4) : null;
+};
+
 /**
  * Кто выдал. Бот пишет id служителя в Telegram (цифры), интерфейс — логин входа. Цифры человеку ничего
  * не скажут, поэтому показываем просто «бот».
@@ -63,7 +84,7 @@ const RECENT = 15;
  * и через интерфейс видна в обоих местах, а повторно выдать не даст условие в базе.
  */
 export function createKits(deps: {
-  users: Pick<UsersRepo, 'kitByRegistrationNo' | 'kitById' | 'markKitIssued' | 'unmarkKitIssued' | 'kitStats' | 'recentKits'>;
+  users: Pick<UsersRepo, 'kitByRegistrationNo' | 'kitById' | 'markKitIssued' | 'unmarkKitIssued' | 'kitStats' | 'recentKits' | 'searchKits'>;
   audit: Pick<AuditRepo, 'write'>;
   timeZone: string;
 }) {
@@ -91,6 +112,22 @@ export function createKits(deps: {
       const row = await deps.users.kitByRegistrationNo(no);
       if (!row) return { ok: false, error: 'not_found', message: `Регистрации №${no} нет.` };
       return { ok: true, person: toPerson(row) };
+    },
+
+    /** Поиск по ФИО, когда QR нет под рукой. Ничего не меняет и в журнал не пишется. */
+    async search(body: unknown): Promise<KitSearchOk | Failure> {
+      const words = kitSearchWords(isRecord(body) ? body['query'] : undefined);
+      if (words.length === 0) return bad(`Введите хотя бы ${KIT_SEARCH_MIN} буквы имени или фамилии.`);
+      // На одну строку больше лимита: так видно, что совпадений больше, без отдельного подсчёта.
+      const rows = await deps.users.searchKits(words, KIT_SEARCH_LIMIT + 1);
+      const items: KitMatch[] = rows.slice(0, KIT_SEARCH_LIMIT).map((row) => ({
+        userId: row.id,
+        registrationNo: row.registration_no,
+        fio: row.full_name?.trim() || 'Без имени',
+        phoneTail: phoneTail(row.phone),
+        issuedAt: row.kit_issued_at ? new Date(row.kit_issued_at).toISOString() : null,
+      }));
+      return { ok: true, items, more: rows.length > KIT_SEARCH_LIMIT };
     },
 
     async issue(body: unknown, actor: string): Promise<KitIssueOk | Failure> {

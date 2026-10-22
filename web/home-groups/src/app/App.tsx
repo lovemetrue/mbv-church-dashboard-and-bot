@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useMe } from '../shared/api/queries';
 import { ru } from '../shared/i18n/ru';
@@ -8,6 +8,7 @@ import { AssistantChat } from '../features/assistant-chat';
 import { isRegistrationPath, RegistrationPage } from '../features/create/RegistrationPage';
 import { RequestsScreen } from '../features/requests/RequestsScreen';
 import { GroupsScreen } from '../features/groups/GroupsScreen';
+import { KitsScreen } from '../features/kits/KitsScreen';
 import { ReferenceScreen } from '../features/reference/ReferenceScreen';
 import { SettingsScreen } from '../features/settings/SettingsScreen';
 import { TeamScreen } from '../features/team/TeamScreen';
@@ -15,9 +16,6 @@ import { TodayScreen } from '../features/today/TodayScreen';
 import styles from './App.module.css';
 import { Header } from './Header';
 import { PANEL_ID, Tabs, tabDomId } from './Tabs';
-
-/** «Наборы» отдельным файлом: распознаватель QR весомый, а нужен он только тем, кто выдаёт наборы. */
-const KitsScreen = lazy(() => import('../features/kits/KitsScreen').then((m) => ({ default: m.KitsScreen })));
 
 /**
  * «Настройки» только для полного входа. Роль приходит отдельным запросом, поэтому пока её нет,
@@ -62,11 +60,7 @@ function Shell() {
         {nav.tab === 'today' && <TodayScreen />}
         {nav.tab === 'requests' && <RequestsScreen />}
         {nav.tab === 'groups' && <GroupsScreen />}
-        {nav.tab === 'kits' && (
-          <Suspense fallback={<LoadingState />}>
-            <KitsScreen />
-          </Suspense>
-        )}
+        {nav.tab === 'kits' && <KitsScreen />}
         {nav.tab === 'team' && <TeamScreen />}
         {nav.tab === 'reference' && <ReferenceScreen />}
         {nav.tab === 'settings' && <SettingsRoute />}

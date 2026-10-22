@@ -145,6 +145,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
         kitCalls.push({ name: 'find', body });
         return (body as { code?: string }).code === 'нет' ? { ok: false, error: 'not_found', message: 'Регистрации №5 нет.' } : { ok: true, person: kitPerson };
       },
+      search: async (body: unknown) => { kitCalls.push({ name: 'search', body }); return { ok: true, items: [], more: false }; },
       issue: async (body: unknown, actor: string) => { kitCalls.push({ name: 'issue', body, actor }); return { ok: true, person: kitPerson, changed: true }; },
       undo: async (body: unknown, actor: string) => { kitCalls.push({ name: 'undo', body, actor }); return { ok: true, person: kitPerson, changed: false }; },
     } as never,
@@ -1631,6 +1632,10 @@ describe('выдача наборов', () => {
     const inv = app.invalidations();
     await post(cookie, 'kits/find', { code: '1042' });
     expect(app.invalidations()).toBe(inv);
+    const found = await post(cookie, 'kits/search', { query: 'Петров' });
+    expect(await found.json()).toEqual({ ok: true, items: [], more: false });
+    expect(app.kitCalls.at(-1)).toEqual({ name: 'search', body: { query: 'Петров' } });
+    expect(app.invalidations()).toBe(inv);
     await post(cookie, 'kits/issue', { userId: 12 });
     expect(app.invalidations()).toBe(inv + 1);
     // Отмена в заглушке ничего не меняет (changed: false) — сбрасывать нечего.
@@ -1648,6 +1653,7 @@ describe('выдача наборов', () => {
     const cookie = await signIn(REGULAR);
     expect((await fetch(`${app.base}/api/v1/kits/issue`, { headers: { cookie } })).status).toBe(404);
     expect((await fetch(`${app.base}/api/v1/kits/undo`, { headers: { cookie } })).status).toBe(404);
+    expect((await fetch(`${app.base}/api/v1/kits/search`, { headers: { cookie } })).status).toBe(404);
   });
 });
 

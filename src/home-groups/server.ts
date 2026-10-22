@@ -173,9 +173,9 @@ const PERSON_EDIT_PATH = /^\/api\/v1\/persons\/(\d{1,15})\/(update|delete)$/;
 /** Контакты человека из справочника: регистрация (u12) или человек из заявки (r345). Любой вход. */
 const CONTACT_PATH = /^\/api\/v1\/people\/([ur]\d{1,15})\/update$/;
 const BULK_PATH = '/api/v1/requests/bulk';
-/** Выдача наборов: найти участника по QR или номеру, отметить выдачу, отменить ошибочную. Любой вход. */
+/** Выдача наборов: найти участника по номеру или ФИО, отметить выдачу, отменить ошибочную. Любой вход. */
 const KITS_PATH = '/api/v1/kits';
-const KIT_POST_PATH = /^\/api\/v1\/kits\/(find|issue|undo)$/;
+const KIT_POST_PATH = /^\/api\/v1\/kits\/(find|search|issue|undo)$/;
 const PERSON_STRANGE_PATH = '/api/v1/people/strange';
 const RECONCILE_READY_PATH = '/api/v1/requests/reconcile-ready';
 const ASSISTANT_RUN_PATH = '/api/v1/assistant/run';
@@ -680,6 +680,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     const call = await readAuthedJson(req, res, sid);
     if (!call) return;
     const outcome = action === 'find' ? await deps.kits.find(call.body)
+      : action === 'search' ? await deps.kits.search(call.body)
       : action === 'issue' ? await deps.kits.issue(call.body, call.actor)
       : await deps.kits.undo(call.body, call.actor);
     if (!outcome.ok) {
@@ -687,7 +688,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       return;
     }
     // Поиск ничего не меняет; после выдачи справочник людей должен сразу показать отметку.
-    if (action !== 'find' && 'changed' in outcome && outcome.changed) {
+    if ('changed' in outcome && 'person' in outcome && outcome.changed) {
       deps.invalidateViews();
       logger.info({ actor: call.actor, action, userId: outcome.person.userId }, 'домашние группы: выдача набора');
     }

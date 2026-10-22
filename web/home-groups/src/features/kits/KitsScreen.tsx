@@ -1,74 +1,70 @@
-import { useRef, useState, type ChangeEvent, type FormEvent } from 'react';
-import type { KitPerson, KitsView } from '@contracts';
-import { formatDateTime } from '../../entities/format';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import type { KitMatch, KitPerson, KitsView } from '@contracts';
+import { formatDateTime, formatPhone } from '../../entities/format';
 import { serverText } from '../../shared/api/serverText';
 import { ru } from '../../shared/i18n/ru';
 import { Button, ErrorState, LoadingState } from '../../shared/ui';
-import { Camera, liveCameraAvailable } from './Camera';
-import { decodePhoto } from './decode';
 import styles from './Kits.module.css';
-import { useFindKit, useKitAction, useKits } from './useKits';
+import { useFindKit, useKitAction, useKits, useSearchKits } from './useKits';
 
 const t = ru.kits;
 const errorText = (error: unknown): string => serverText(error, { network: t.network, fallback: t.fallback });
 
-/** Что сейчас на экране под сканером: найденный участник с итогом последнего действия или ошибка. */
+/** Номер регистрации (с «№» или без) открывает карточку сразу, остальное — поиск по ФИО. */
+const isNumber = (query: string): boolean => /^№?\s*\d+$/.test(query);
+
+/** Что сейчас на экране под поиском: список совпадений, найденный участник или ошибка. */
 type Result =
+  | { kind: 'list'; items: KitMatch[]; more: boolean }
   | { kind: 'person'; person: KitPerson; done: 'issued' | 'undone' | null }
   | { kind: 'error'; message: string };
 
 /**
- * «Наборы»: координатор сканирует QR из карточки регистрации (с экрана телефона участника или с распечатки)
- * и отмечает выдачу. Отметка та же, что ставит бот, когда служитель сканирует QR камерой Telegram.
+ * «Наборы»: координатор у стола выдачи находит участника по номеру регистрации (он в карточке под QR) или по
+ * ФИО и отмечает выдачу. Отметка та же, что ставит бот (кнопка «📦 Выдать набор» и QR в Telegram).
  *
- * Сразу после сканирования набор не отмечается: сначала карточка с именем и кнопка «Выдать набор». Лишняя
- * секунда, зато чужой код, случайно попавший в кадр, не запишется молча, а повторная выдача видна сразу.
+ * Сканера здесь пока нет: живой камере браузер нужен https, а интерфейс открывают по http. Код камеры и
+ * распознавания лежит в истории (коммит «Вкладка «Наборы»: выдача наборов кампании по QR с телефона»).
+ *
+ * Найденного не отмечаем сразу: сначала карточка с именем и кнопка «Выдать набор», так тёзка или опечатка
+ * не запишется молча, а повторная выдача видна сразу.
  */
 export function KitsScreen() {
   const kits = useKits();
   const find = useFindKit();
+  const search = useSearchKits();
   const issue = useKitAction('issue');
   const undo = useKitAction('undo');
   const [result, setResult] = useState<Result | null>(null);
-  const [camera, setCamera] = useState(false);
-  const [cameraError, setCameraError] = useState<string | null>(null);
-  const [photoState, setPhotoState] = useState<'idle' | 'reading'>('idle');
-  const [manual, setManual] = useState('');
-  const photoRef = useRef<HTMLInputElement>(null);
-  const live = liveCameraAvailable();
+  const [query, setQuery] = useState('');
+  const busy = find.isPending || search.isPending;
+  const resultRef = useRef<HTMLDivElement>(null);
 
-  const lookup = (code: string) => {
-    if (find.isPending) return;
-    find.mutate(code, {
-      onSuccess: (out) => {
-        setResult({ kind: 'person', person: out.person, done: null });
-        // Короткая вибрация: координатор смотрит на участника, а не в экран, и так понимает, что код прочитан.
-        navigator.vibrate?.(60);
-      },
+  // На телефоне результат появляется ниже края экрана (над ним счётчики и поиск): без прокрутки координатор
+  // не видит, что человек нашёлся, и ищет кнопку «Выдать набор». В jsdom метода нет, отсюда `?.`.
+  useEffect(() => {
+    if (result) resultRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+  }, [result]);
+
+  const open = (registrationNo: number) => {
+    find.mutate(String(registrationNo), {
+      onSuccess: (out) => setResult({ kind: 'person', person: out.person, done: null }),
       onError: (error) => setResult({ kind: 'error', message: errorText(error) }),
     });
   };
 
-  const onPhoto = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    // Сбрасываем выбор: иначе второй снимок с тем же именем файла не вызвал бы onChange.
-    e.target.value = '';
-    if (!file) return;
-    setPhotoState('reading');
-    try {
-      const text = await decodePhoto(file);
-      if (text) lookup(text);
-      else setResult({ kind: 'error', message: t.photoNotFound });
-    } catch {
-      setResult({ kind: 'error', message: t.photoNotFound });
-    } finally {
-      setPhotoState('idle');
-    }
-  };
-
-  const onManual = (e: FormEvent) => {
+  const onSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if (manual.trim()) lookup(manual.trim());
+    const q = query.trim();
+    if (!q || busy) return;
+    if (isNumber(q)) {
+      open(Number(q.replace(/\D/g, '')));
+      return;
+    }
+    search.mutate(q, {
+      onSuccess: (out) => setResult({ kind: 'list', items: out.items, more: out.more }),
+      onError: (error) => setResult({ kind: 'error', message: errorText(error) }),
+    });
   };
 
   const act = (action: 'issue' | 'undo', person: KitPerson) => {
@@ -81,63 +77,43 @@ export function KitsScreen() {
 
   const next = () => {
     setResult(null);
-    setManual('');
-    find.reset();
+    setQuery('');
   };
 
   return (
     <div className={styles.page}>
       <Summary query={kits} />
 
-      <section className={styles.panel} aria-labelledby="kits-scan">
-        <h2 id="kits-scan" className={styles.title}>{t.scanTitle}</h2>
-        <p className={styles.hint}>{t.scanHint}</p>
-        {!live && <p className={styles.notice}>{t.insecure}</p>}
-        {camera && (
-          <Camera
-            paused={result !== null || find.isPending}
-            onCode={lookup}
-            onError={(message) => { setCamera(false); setCameraError(message); }}
-          />
-        )}
-        {cameraError && <p className={styles.notice} role="alert">{cameraError}</p>}
-        <div className={styles.scanButtons}>
-          {live && (
-            <Button variant={camera ? 'default' : 'primary'} size="big" onClick={() => { setCameraError(null); setCamera((on) => !on); }}>
-              {camera ? t.stopCamera : t.startCamera}
-            </Button>
-          )}
-          <Button variant={live ? 'default' : 'primary'} size="big" disabled={photoState === 'reading'} onClick={() => photoRef.current?.click()}>
-            {photoState === 'reading' ? t.photoReading : t.photo}
-          </Button>
-          {/* capture: телефон сразу открывает камеру, а не галерею. Работает и по http. */}
-          <input ref={photoRef} className={styles.fileInput} type="file" accept="image/*" capture="environment" tabIndex={-1} aria-hidden="true" onChange={(e) => void onPhoto(e)} />
-        </div>
-        <form className={styles.manual} onSubmit={onManual}>
-          <label className={styles.manualLabel} htmlFor="kit-manual">{t.manualLabel}</label>
-          <div className={styles.manualRow}>
+      <section className={styles.panel} aria-labelledby="kits-find">
+        <h2 id="kits-find" className={styles.title}>{t.findTitle}</h2>
+        <p className={styles.hint}>{t.findHint}</p>
+        <form className={styles.search} onSubmit={onSubmit} role="search">
+          <label className={styles.searchLabel} htmlFor="kit-query">{t.queryLabel}</label>
+          <div className={styles.searchRow}>
             <input
-              id="kit-manual"
-              className={styles.manualInput}
-              inputMode="numeric"
+              id="kit-query"
+              className={styles.searchInput}
+              type="search"
+              enterKeyHint="search"
               autoComplete="off"
-              placeholder={t.manualPlaceholder}
-              value={manual}
-              onChange={(e) => setManual(e.target.value)}
+              autoCorrect="off"
+              spellCheck={false}
+              placeholder={t.queryPlaceholder}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
             />
-            <Button type="submit" disabled={find.isPending || !manual.trim()}>{find.isPending ? t.finding : t.find}</Button>
+            <Button type="submit" variant="primary" size="big" disabled={busy || !query.trim()}>{busy ? t.finding : t.find}</Button>
           </div>
         </form>
       </section>
 
-      <div aria-live="polite">
+      <div ref={resultRef} className={styles.result} aria-live="polite">
         {result?.kind === 'error' && (
           <section className={`${styles.panel} ${styles.errorCard}`} role="alert">
             <p className={styles.errorText}>{result.message}</p>
-            {camera && <p className={styles.hint}>{t.brightness}</p>}
-            <Button onClick={next}>{t.next}</Button>
           </section>
         )}
+        {result?.kind === 'list' && <Matches items={result.items} more={result.more} onOpen={open} />}
         {result?.kind === 'person' && (
           <PersonCard
             result={result}
@@ -149,7 +125,7 @@ export function KitsScreen() {
         )}
       </div>
 
-      <Recent query={kits} onOpen={(p) => lookup(String(p.registrationNo))} />
+      <Recent query={kits} onOpen={(p) => open(p.registrationNo)} />
     </div>
   );
 }
@@ -178,6 +154,36 @@ function Summary({ query }: { query: ReturnType<typeof useKits> }) {
   );
 }
 
+/** Совпадения по ФИО. Телефон хвостом: по нему отличают тёзок, спросив у человека, а целиком на экран не выводим. */
+function Matches({ items, more, onOpen }: { items: KitMatch[]; more: boolean; onOpen: (registrationNo: number) => void }) {
+  if (items.length === 0) {
+    return (
+      <section className={styles.panel}>
+        <p className={styles.hint}>{t.nobody}</p>
+      </section>
+    );
+  }
+  return (
+    <section className={styles.panel} aria-label={t.resultsLabel}>
+      {items.length > 1 && <p className={styles.hint}>{t.pick}</p>}
+      <ul className={styles.list}>
+        {items.map((m) => (
+          <li key={m.userId}>
+            <button type="button" className={styles.row} aria-label={t.open(m.fio)} onClick={() => onOpen(m.registrationNo)}>
+              <span className={styles.rowFio}>{m.fio}</span>
+              <span className={`${styles.rowMeta} num`}>
+                №{m.registrationNo} · {m.phoneTail ? t.phoneTail(m.phoneTail) : t.noPhone}
+                {m.issuedAt && <span className={styles.issuedMark}>{t.issuedMark}</span>}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {more && <p className={styles.hint}>{t.more}</p>}
+    </section>
+  );
+}
+
 function PersonCard({ result, busy, onIssue, onUndo, onNext }: {
   result: Extract<Result, { kind: 'person' }>;
   busy: boolean;
@@ -195,7 +201,7 @@ function PersonCard({ result, busy, onIssue, onUndo, onNext }: {
       <p className={styles.fio}>{person.fio}</p>
       <p className={styles.meta}>
         <span className="num">{t.regNo(person.registrationNo)}</span>
-        {person.phone && <span className="num">{person.phone}</span>}
+        {person.phone && <span className="num">{formatPhone(person.phone)}</span>}
       </p>
       <p className={styles.status}>
         {issued ? t.issuedAt(formatDateTime(person.issuedAt), person.issuedBy) : t.notIssued}
@@ -226,13 +232,13 @@ function Recent({ query, onOpen }: { query: ReturnType<typeof useKits>; onOpen: 
       {query.data.recent.length === 0 ? (
         <p className={styles.hint}>{t.recentEmpty}</p>
       ) : (
-        <ul className={styles.recent}>
+        <ul className={styles.list}>
           {query.data.recent.map((p) => (
             <li key={p.userId}>
-              {/* По нажатию — та же карточка, что после сканирования: оттуда же и отменяют ошибочную выдачу. */}
-              <button type="button" className={styles.recentRow} aria-label={t.open(p.fio)} onClick={() => onOpen(p)}>
-                <span className={styles.recentFio}>{p.fio}</span>
-                <span className={`${styles.recentMeta} num`}>№{p.registrationNo} · {formatDateTime(p.issuedAt)}{p.issuedBy ? ` · ${p.issuedBy}` : ''}</span>
+              {/* По нажатию — та же карточка, что после поиска: оттуда же и отменяют ошибочную выдачу. */}
+              <button type="button" className={styles.row} aria-label={t.open(p.fio)} onClick={() => onOpen(p)}>
+                <span className={styles.rowFio}>{p.fio}</span>
+                <span className={`${styles.rowMeta} num`}>№{p.registrationNo} · {formatDateTime(p.issuedAt)}{p.issuedBy ? ` · ${p.issuedBy}` : ''}</span>
               </button>
             </li>
           ))}

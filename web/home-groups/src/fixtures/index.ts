@@ -18,7 +18,7 @@ import { buildCoordinators, buildGroups, buildPeople, buildRequests, buildToday 
 import { RAW_REQUESTS } from './raw';
 import { setDemoStrange, strangeKey } from './strange';
 import { buildCampaign } from './campaign';
-import { buildKits, demoKitAction, findDemoKit } from './kits';
+import { buildKits, demoKitAction, findDemoKit, searchDemoKits } from './kits';
 import { fixtureChatClear, fixtureChatHistory, fixtureChatReply } from './chat';
 import { buildOthers, reconcileDemoOther, reconcileDemoReady } from './others';
 import { buildTeam } from './team';
@@ -176,6 +176,7 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
   if (clean === 'map/loaded') return { apiKey: 'demo-map-key', loadsThisMonth: 8, monthlyLimit: 100 };
   if (clean === 'settings/geocoder-test') return { ok: true, ms: 420 };
   if (clean === 'kits/find') return findDemoKit(body);
+  if (clean === 'kits/search') return searchDemoKits(body);
   if (clean === 'kits/issue' || clean === 'kits/undo') return demoKitAction(clean === 'kits/issue' ? 'issue' : 'undo', body);
   // Массовое действие: в демо все выбранные «обработаны», ничего не пропущено.
   if (clean === 'requests/bulk') return { ok: true, done: ((body ?? {}) as { ids?: number[] }).ids?.length ?? 0, skipped: 0 };

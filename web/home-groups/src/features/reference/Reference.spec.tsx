@@ -421,8 +421,8 @@ describe('«Справочник»: закрытые группы по умол�
     expect(activeChips().map((li) => li.textContent?.replace('×', ''))).toEqual([CANCELLED_CHIP, TAKES_NEW_CHIP]);
   });
 
-  test('«Принимает новых» по умолчанию прячет группы с «Не направлять», служения и закрытые; чип снимается', async () => {
-    stubFetchWithFixtures({ groups: () => json(groupsWith(2, { format: 'Служение' })) });
+  test('«Принимает новых» по умолчанию прячет группы с «Не направлять» и камерные; чип снимается', async () => {
+    stubFetchWithFixtures({ groups: () => json(groupsWith(2, { chamber: true })) });
     const user = userEvent.setup();
     renderAt(<App />, '/?tab=reference');
     await screen.findByRole('table');

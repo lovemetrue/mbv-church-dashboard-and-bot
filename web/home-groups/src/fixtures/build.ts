@@ -75,7 +75,7 @@ const DATA_CHANGES: ReadonlyMap<number, DataChange[] | null> = new Map([
 
 const capOf = (g: RawGroup): number => g.capacity ?? DEFAULT_CAPACITY;
 const freeOf = (g: RawGroup): number => Math.max(0, capOf(g) - (g.people ?? 0));
-const accepting = (g: RawGroup): boolean => g.status === 'Функционирует' && g.acceptsNew && !g.doNotRefer;
+const accepting = (g: RawGroup): boolean => g.status === 'Функционирует' && g.acceptsNew && !g.doNotRefer && !g.chamber;
 
 /** Демо-координаты: около центра района группы, со сдвигом по номеру, чтобы метки не слипались. */
 const DEMO_CENTERS: Record<string, [number, number]> = {
@@ -99,7 +99,7 @@ export function groupBrief(g: RawGroup): GroupBrief {
     people: g.people,
     capacity: capOf(g),
     free: freeOf(g),
-    format: g.format,
+    direction: g.direction,
     isNew: g.isNew,
     // «Увядший листочек»: людей нет (потенциальные и закрытые не в счёт), как считает сервер.
     empty: g.status !== 'Потенциальная' && g.status !== 'Закрыта' && (g.people ?? 0) === 0,
@@ -556,6 +556,8 @@ export function buildGroups(): GroupsView {
     campaignRegistered: g.campaignRegistered,
     campaignOnly: g.campaignOnly,
     doNotRefer: g.doNotRefer,
+    chamber: g.chamber,
+    contactsHidden: false,
     composition: g.composition,
     coordinator: g.coordinator,
     verifiedDaysAgo: g.verifiedDaysAgo,
@@ -635,8 +637,8 @@ export function buildCoordinators(): CoordinatorsView {
     return {
       id: i + 1,
       name,
-      role: (COORDINATOR_ROLES[name] ?? ['Координатор малых групп']).join(', '),
-      roleIds: (COORDINATOR_ROLES[name] ?? ['Координатор малых групп']).map((role) => DEMO_TEAM_ROLES.find((r) => r.name === role)!.id),
+      role: (COORDINATOR_ROLES[name] ?? ['Координатор']).join(', '),
+      roleIds: (COORDINATOR_ROLES[name] ?? ['Координатор']).map((role) => DEMO_TEAM_ROLES.find((r) => r.name === role)!.id),
       groups: gs.length,
       people: gs.reduce((a, g) => a + (g.people ?? 0), 0),
       verified30: gs.filter((g) => g.verifiedDaysAgo != null && g.verifiedDaysAgo <= 30).length,

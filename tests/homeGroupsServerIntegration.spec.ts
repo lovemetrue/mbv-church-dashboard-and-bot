@@ -39,7 +39,7 @@ beforeEach(async () => {
   coordinators = new CoordinatorsRepo(db);
 });
 
-const GROUP = { format: 'Молодежная' as const, status: 'Функционирует' as const };
+const GROUP = { direction: 'Молодёжное служение' as const, status: 'Функционирует' as const };
 
 function isoDaysAgo(days: number): string {
   const d = new Date(Date.now() - days * 86_400_000);

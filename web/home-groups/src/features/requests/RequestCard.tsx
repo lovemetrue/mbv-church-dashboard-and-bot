@@ -120,7 +120,7 @@ function DisplacedVariant({
       <div className={styles.candHead}>
         <b>Группа {groupLabel(g)}</b>
         <GroupMarks g={g} />
-        <span className={styles.note}>{[g.leader, g.format].filter(Boolean).join(' · ')}</span>
+        <span className={styles.note}>{[g.leader, g.direction].filter(Boolean).join(' · ')}</span>
       </div>
       <p className={styles.note}>{ru.requests.alt.displacedBy(displaced.takenBy.join(', '))}</p>
       <div className={styles.candFoot}>

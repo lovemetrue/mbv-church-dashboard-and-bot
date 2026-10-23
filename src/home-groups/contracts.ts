@@ -165,7 +165,8 @@ export interface GroupBrief {
   capacity: number;
   /** Свободных мест (не меньше нуля). */
   free: number;
-  format: string | null;
+  /** Направление группы (справочник «Настройки → Направления»). */
+  direction: string;
   /** Новая группа (зелёный росток): «Функционирует», открыта меньше четырёх месяцев назад, сколько бы в ней ни было людей. Остальным статусам не ставится. */
   isNew: boolean;
   /**
@@ -1063,7 +1064,8 @@ export interface CreateRegistrationOk {
 /** Справочники для форм: серверные списки, чтобы интерфейс не держал свою копию. */
 export interface FormMeta {
   districts: string[];
-  groupFormats: string[];
+  /** Направления групп из справочника («Настройки → Направления»): основное, подростковое, молодёжное служение, филиалы. */
+  groupDirections: string[];
   groupStatuses: string[];
   compositions: string[];
   requestStatuses: string[];
@@ -1173,6 +1175,16 @@ export interface GroupItem extends GroupBrief {
   /** «Работает только в кампанию» (бывший статус «Кампания», миграция 047). */
   campaignOnly: boolean;
   doNotRefer: boolean;
+  /**
+   * «Камерная группа» — служителей или отдельного служения (миграция 052): людей в неё не направляют, а адрес и
+   * телефоны видят только лидеры (катализатор, старший координатор), ответственный координатор и полный вход.
+   */
+  chamber: boolean;
+  /**
+   * Адрес и телефоны этой группы от вошедшего скрыты (камерная группа, а он не лидер и не её координатор): поля
+   * `phone`, `coLeaderPhone`, `address`, `coords` пусты не потому, что их нет. Скрывает сервер, интерфейс только поясняет.
+   */
+  contactsHidden: boolean;
   composition: string | null;
   coordinator: string | null;
   /** Дней с последней обратной связи; null — не было. */
@@ -1572,11 +1584,12 @@ export interface DeliveryOk {
 }
 
 /**
- * Что роль команды значит для сервиса: distributor — распределитель (на него автоматически назначаются новые заявки,
- * после входа видит свои и ничьи), coordinator — координатор групп (свои группы и обращения «хочу открыть группу»),
- * senior — старший координатор (всё, без отборов).
+ * Что роль команды значит для сервиса (ролей пять, миграция 051): distributor — распределитель (на него автоматически
+ * назначаются новые заявки, после входа видит свои и ничьи), senior_distributor — старший распределитель (все заявки,
+ * без отборов; заявки ему сами не раздаются), coordinator — координатор групп (свои группы и обращения «хочу открыть
+ * группу»), senior — старший координатор и catalyst — катализатор (лидеры: всё без отборов и контакты камерных групп).
  */
-export type TeamRoleKind = 'distributor' | 'coordinator' | 'senior';
+export type TeamRoleKind = 'catalyst' | 'senior_distributor' | 'distributor' | 'senior' | 'coordinator';
 
 /** Роль в «Настройки → Роли команды». */
 export interface TeamRoleItem {
@@ -1589,6 +1602,18 @@ export interface TeamRoleItem {
 
 export interface TeamRolesView {
   items: TeamRoleItem[];
+}
+
+/** Направление группы в «Настройки → Направления» (основное, подростковое, молодёжное служение, филиалы). */
+export interface GroupDirectionItem {
+  id: number;
+  name: string;
+  /** Сколько действующих групп с этим направлением: направление с группами удалить нельзя. */
+  groups: number;
+}
+
+export interface GroupDirectionsView {
+  items: GroupDirectionItem[];
 }
 
 /**

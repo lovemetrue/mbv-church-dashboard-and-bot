@@ -359,7 +359,7 @@ describe('«+ Создать»: группа', () => {
 
     await user.type(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' }), 'Ольга Крылова');
     await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Район' }), 'Приморский');
-    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Формат группы' }), 'Молодежная');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Направление' }), 'Молодёжное служение');
     await user.selectOptions(within(dialog).getByRole('combobox', { name: 'День' }), 'Вт');
     await user.type(within(dialog).getByRole('textbox', { name: 'Время' }), '19:00');
     await user.type(within(dialog).getByRole('textbox', { name: 'Сколько человек' }), '8');
@@ -375,7 +375,7 @@ describe('«+ Создать»: группа', () => {
         fields: {
           leader: 'Ольга Крылова',
           district: 'Приморский',
-          format: 'Молодежная',
+          direction: 'Молодёжное служение',
           status: 'Функционирует',
           day: 'Вт',
           time: '19:00',
@@ -393,6 +393,21 @@ describe('«+ Создать»: группа', () => {
     expect(currentSearch().get('rec')).toBe('13');
   });
 
+  test('направление по умолчанию — основное служение; «Камерная группа» и «Не направлять» — галочками', async () => {
+    const fetchMock = stubFetchWithFixtures({ me: meOf(null), 'groups/create': () => json({ ok: true, id: 14 }) });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const dialog = await ready(await openForm(user, 'Группа'));
+    expect(within(dialog).getByRole('combobox', { name: 'Направление' })).toHaveValue('Основное служение');
+    await user.type(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' }), 'Ольга Крылова');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Район' }), 'Приморский');
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Камерная группа: служителей или отдельного служения' }));
+    expect(within(dialog).getByRole('checkbox', { name: 'Не направлять в эту группу' })).not.toBeChecked();
+    await user.click(within(dialog).getByRole('button', { name: 'Создать группу' }));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect(posts(fetchMock)[0]!.body).toMatchObject({ fields: { direction: 'Основное служение', chamber: '1' } });
+  });
+
   test('поля старого дашборда: соведущий, состав галочками, обучение, обратная связь и флажки; ни «Приёма новых», ни «№ в реестре» нет', async () => {
     const fetchMock = stubFetchWithFixtures({ me: meOf(null), 'groups/create': () => json({ ok: true, id: 14 }) });
     const user = userEvent.setup();
@@ -400,7 +415,7 @@ describe('«+ Создать»: группа', () => {
     const dialog = await ready(await openForm(user, 'Группа'));
     await user.type(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' }), 'Ольга Крылова');
     await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Район' }), 'Приморский');
-    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Формат группы' }), 'Молодежная');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Направление' }), 'Молодёжное служение');
     await user.type(within(dialog).getByRole('textbox', { name: 'Со-ведущий' }), 'Анна Петрова');
     await user.type(within(dialog).getByRole('textbox', { name: 'Телефон соведущего' }), '+7 921 000-11-44');
     const composition = within(dialog).getByRole('group', { name: 'Состав' });
@@ -418,7 +433,7 @@ describe('«+ Создать»: группа', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Создать группу' }));
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
     expect(posts(fetchMock)[0]!.body.fields).toEqual({
-      leader: 'Ольга Крылова', district: 'Приморский', format: 'Молодежная', status: 'Функционирует',
+      leader: 'Ольга Крылова', district: 'Приморский', direction: 'Молодёжное служение', status: 'Функционирует',
       coLeader: 'Анна Петрова', coLeaderPhone: '+7 921 000-11-44', composition: 'Мужская, Ментальная',
       training: 'Да', feedbackAt: '2026-09-10', checked: '1', campaignRegistered: '1',
     });
@@ -436,11 +451,11 @@ describe('«+ Создать»: группа', () => {
     // Подставленное правится как обычно.
     await user.type(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' }), ' Ивановна');
     await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Район' }), 'Приморский');
-    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Формат группы' }), 'Молодежная');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Направление' }), 'Молодёжное служение');
     await user.click(within(dialog).getByRole('button', { name: 'Создать группу' }));
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
     expect(posts(fetchMock)[0]!.body.fields).toEqual({
-      leader: 'Ольга Домова Ивановна', phone: '+79110001122', district: 'Приморский', format: 'Молодежная', status: 'Функционирует',
+      leader: 'Ольга Домова Ивановна', phone: '+79110001122', district: 'Приморский', direction: 'Молодёжное служение', status: 'Функционирует',
     });
   });
 
@@ -471,7 +486,7 @@ describe('«+ Создать»: потенциальная группа и «40 
     expect(forty).toBeChecked();
     await user.type(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' }), 'Ольга Крылова');
     await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Район' }), 'Приморский');
-    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Формат группы' }), 'Молодежная');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Направление' }), 'Молодёжное служение');
     await user.click(within(dialog).getByRole('button', { name: 'Создать группу' }));
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
     expect(posts(fetchMock)[0]!.body.fields).toMatchObject({ status: 'Потенциальная', campaignRegistered: '1' });

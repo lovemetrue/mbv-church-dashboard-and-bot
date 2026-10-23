@@ -96,13 +96,23 @@ describe('несколько ролей у одного человека', () =>
   test('распределитель и координатор сразу: в «Хотят в группу» — свои и ничьи, в «Хотят открыть группу» — свои', async () => {
     const leads = buildOthers().filter((o) => o.type === 'lead_group' && o.state === 'open');
     const name = leads[0]!.responsible!;
-    stubFetchWithFixtures({ me: personal(name, 'Координатор малых групп, Распределитель', ['coordinator', 'distributor']) });
+    stubFetchWithFixtures({ me: personal(name, 'Координатор, Распределитель', ['coordinator', 'distributor']) });
     renderAt(<App />, '/?tab=requests');
     await waitFor(async () => expect(await respSelect()).toHaveValue('~'));
     cleanup();
-    stubFetchWithFixtures({ me: personal(name, 'Координатор малых групп, Распределитель', ['coordinator', 'distributor']) });
+    stubFetchWithFixtures({ me: personal(name, 'Координатор, Распределитель', ['coordinator', 'distributor']) });
     renderAt(<App />, '/?tab=requests&view=leads');
     await waitFor(async () => expect(await respSelect()).toHaveValue(name));
+  });
+
+  test.each([
+    ['катализатор', ['catalyst', 'distributor', 'coordinator']],
+    ['старший распределитель', ['senior_distributor', 'distributor']],
+  ] as const)('%s с ещё одной ролью видит все заявки, без отборов', async (_who, kinds) => {
+    stubFetchWithFixtures({ me: personal('Лебедева А.', 'Роли', [...kinds]) });
+    renderAt(<App />, '/?tab=requests');
+    expect(await respSelect()).toHaveValue('');
+    await waitFor(async () => expect(await requestRows()).toHaveLength(buildRequests().items.length));
   });
 
   test('старший координатор с ещё одной ролью видит всё, без отборов', async () => {

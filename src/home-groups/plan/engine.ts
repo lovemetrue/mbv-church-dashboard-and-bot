@@ -60,6 +60,7 @@ export function exclusionReason(r: PlanRequest, g: PlanGroup, settings: PlanSett
   if (!PASSING_STATUSES.has(g.status)) return `статус «${g.status}»`;
   if (!g.acceptsNew) return 'не принимает новых';
   if (g.doNotRefer) return 'отмечена «Не направлять»';
+  if (g.chamber) return 'камерная группа';
   if (freePlaces(g) <= 0) return 'группа заполнена';
   if (r.ageRange && g.ageRange && !overlaps(r.ageRange, g.ageRange)) return 'возраст группы не подходит';
   if (r.district !== null && !districtReachable(r.district, g.district, settings)) return `другой район (${g.district})`;
@@ -208,7 +209,7 @@ function scoreGroup(r: PlanRequest, g: PlanGroup, known: KnownParams, settings: 
  * null — человек не подходит.
  */
 export function scoreProspect(r: PlanRequest, g: PlanGroup, settings: PlanSettings): ScoredGroup | null {
-  const open: PlanGroup = { ...g, status: 'Функционирует', acceptsNew: true, doNotRefer: false, people: 0, capacity: Math.max(g.capacity, 1) };
+  const open: PlanGroup = { ...g, status: 'Функционирует', acceptsNew: true, doNotRefer: false, chamber: false, people: 0, capacity: Math.max(g.capacity, 1) };
   if (exclusionReason(r, open, settings) !== null) return null;
   return scoreGroup(r, open, knownParamsOf(r), settings);
 }

@@ -1,6 +1,7 @@
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { AuditRepo } from '../src/db/repos/audit.repo.js';
+import { GroupDirectionsRepo } from '../src/db/repos/groupDirections.repo.js';
 import { GroupsRepo } from '../src/db/repos/groups.repo.js';
 import { RequestsRepo } from '../src/db/repos/requests.repo.js';
 import { composeViews, engine as realEngine } from '../src/home-groups/composition.js';
@@ -17,7 +18,7 @@ afterAll(async () => { await db.end(); });
 beforeEach(async () => { await truncateAll(db); });
 
 const views = () => composeViews(db, realEngine, { defaultCapacity: 10, ttlMs: 0, timeZone: 'Europe/Moscow' })();
-const creator = () => createRecordCreator({ requests: new RequestsRepo(db), groups: new GroupsRepo(db), audit: new AuditRepo(db) });
+const creator = () => createRecordCreator({ requests: new RequestsRepo(db), groups: new GroupsRepo(db), directions: new GroupDirectionsRepo(db), audit: new AuditRepo(db) });
 
 async function leaderRequest(): Promise<{ requestId: number; userId: number }> {
   const userId = await seedUser(db, { id: '501', fio: 'Пётр Ведущий', phone: '+79215550011' });
@@ -42,7 +43,6 @@ describe('черновик группы по заявке', () => {
         leader: 'Пётр Ведущий',
         phone: '+79215550011',
         status: 'Потенциальная',
-        format: 'Основная церковь',
         district: 'Приморский',
         age: '25-40',
         address: 'Савушкина 5',
@@ -58,7 +58,8 @@ describe('черновик группы по заявке', () => {
        VALUES ('join_group', 'Новая', 'Анна', 'где-то', 'пн или ср', 'ui') RETURNING id::int AS id`,
     );
     const draft = (await views()).groupDrafts.get(rows[0]!.id)!;
-    expect(Object.keys(draft.fields).sort()).toEqual(['comment', 'format', 'leader', 'status']);
+    // Направления в черновике нет: форма ставит первое из справочника (основное), как у любой новой группы.
+    expect(Object.keys(draft.fields).sort()).toEqual(['comment', 'leader', 'status']);
   });
 });
 
@@ -66,7 +67,7 @@ describe('создание группы по заявке', () => {
   test('группа связана с заявкой и с регистрацией ведущего; заявка видит свою группу; в ленте заявки — запись', async () => {
     const { requestId, userId } = await leaderRequest();
     const draft = (await views()).groupDrafts.get(requestId)!;
-    const out = await creator().group({ fields: { ...draft.fields, sourceRequestId: String(requestId) } }, 'p_ivanova');
+    const out = await creator().group({ fields: { ...draft.fields, direction: 'Основное служение', sourceRequestId: String(requestId) } }, 'p_ivanova');
     if (!out.ok) throw new Error(out.message);
     const { rows } = await db.query('SELECT leader, status, district, source_request_id::int AS req, leader_user_id::int AS leader_user FROM groups WHERE id = $1', [out.id]);
     expect(rows[0]).toEqual({ leader: 'Пётр Ведущий', status: 'Потенциальная', district: 'Приморский', req: requestId, leader_user: userId });
@@ -80,7 +81,7 @@ describe('создание группы по заявке', () => {
 
   test('вторую группу по той же заявке не завести; после удаления первой — можно', async () => {
     const { requestId } = await leaderRequest();
-    const fields = { leader: 'Пётр', district: 'Приморский', format: 'Основная церковь', status: 'Потенциальная', sourceRequestId: String(requestId) };
+    const fields = { leader: 'Пётр', district: 'Приморский', direction: 'Основное служение', status: 'Потенциальная', sourceRequestId: String(requestId) };
     const first = await creator().group({ fields }, 'a');
     if (!first.ok) throw new Error(first.message);
     expect(await creator().group({ fields }, 'a')).toMatchObject({ ok: false, error: 'conflict', message: expect.stringMatching(/уже заведена: ДГ-/) });
@@ -90,14 +91,14 @@ describe('создание группы по заявке', () => {
   });
 
   test('заявки нет — отказ, группа не заводится; кривой номер — отказ', async () => {
-    const fields = { leader: 'Пётр', district: 'Приморский', format: 'Основная церковь', status: 'Потенциальная' };
+    const fields = { leader: 'Пётр', district: 'Приморский', direction: 'Основное служение', status: 'Потенциальная' };
     expect(await creator().group({ fields: { ...fields, sourceRequestId: '999' } }, 'a')).toMatchObject({ ok: false, error: 'not_found' });
     expect(await creator().group({ fields: { ...fields, sourceRequestId: 'abc' } }, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
     expect((await db.query('SELECT 1 FROM groups')).rowCount).toBe(0);
   });
 
   test('без заявки группа заводится как раньше, без связи', async () => {
-    const out = await creator().group({ fields: { leader: 'Пётр', district: 'Приморский', format: 'Основная церковь', status: 'Функционирует' } }, 'a');
+    const out = await creator().group({ fields: { leader: 'Пётр', district: 'Приморский', direction: 'Основное служение', status: 'Функционирует' } }, 'a');
     if (!out.ok) throw new Error(out.message);
     expect((await db.query('SELECT source_request_id FROM groups WHERE id = $1', [out.id])).rows[0]).toEqual({ source_request_id: null });
   });

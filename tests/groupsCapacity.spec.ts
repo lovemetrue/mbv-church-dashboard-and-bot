@@ -13,8 +13,8 @@ beforeEach(async () => { await truncateAll(db); });
 
 async function group(leader: string, status: string, people: number | null, extra = ''): Promise<number> {
   const { rows } = await db.query<{ id: number }>(
-    `INSERT INTO groups (leader, district, format, status, people, source${extra ? ', ' + extra.split('=')[0] : ''})
-     VALUES ($1, 'Приморский', 'Основная церковь', $2, $3, 'таблица'${extra ? ', ' + extra.split('=')[1] : ''}) RETURNING id`,
+    `INSERT INTO groups (leader, district, direction_id, status, people, source${extra ? ', ' + extra.split('=')[0] : ''})
+     VALUES ($1, 'Приморский', group_direction_id('Основная церковь'), $2, $3, 'таблица'${extra ? ', ' + extra.split('=')[1] : ''}) RETURNING id`,
     [leader, status, people],
   );
   return rows[0]!.id;

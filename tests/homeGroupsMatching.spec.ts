@@ -18,8 +18,8 @@ const service = () => composeService(db, realEngine, { defaultCapacity: 10, ttlM
 
 async function group(over: { people?: number; district?: string; age?: string } = {}): Promise<number> {
   return (await db.query<{ id: number }>(
-    `INSERT INTO groups (leader, district, format, status, people, age, source)
-     VALUES ('Ведущий', $1, 'Основная церковь', 'Функционирует', $2, $3, 'ui') RETURNING id`,
+    `INSERT INTO groups (leader, district, direction_id, status, people, age, source)
+     VALUES ('Ведущий', $1, group_direction_id('Основная церковь'), 'Функционирует', $2, $3, 'ui') RETURNING id`,
     [over.district ?? 'Приморский', over.people ?? 3, over.age ?? '25-40'],
   )).rows[0]!.id;
 }

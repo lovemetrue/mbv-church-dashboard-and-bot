@@ -10,7 +10,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 const view: TeamRolesView = {
   items: [
-    { id: 1, name: 'Координатор малых групп', kind: 'coordinator', members: 9 },
+    { id: 1, name: 'Координатор', kind: 'coordinator', members: 9 },
     { id: 3, name: 'Распределитель', kind: 'distributor', members: 0 },
   ],
 };
@@ -32,16 +32,16 @@ describe('«Настройки → Роли команды»', () => {
     open();
     const { rows } = await roles();
     expect(rows).toHaveLength(2);
-    expect(within(rows[0]!).getByRole('textbox', { name: 'Название' })).toHaveValue('Координатор малых групп');
+    expect(within(rows[0]!).getByRole('textbox', { name: 'Название' })).toHaveValue('Координатор');
     expect(within(rows[0]!).getByRole('combobox', { name: 'Что значит' })).toHaveValue('coordinator');
     expect(within(rows[0]!).getByText('у 9 чел.')).toBeInTheDocument();
-    const remove = within(rows[0]!).getByRole('button', { name: 'Удалить роль «Координатор малых групп»' });
+    const remove = within(rows[0]!).getByRole('button', { name: 'Удалить роль «Координатор»' });
     expect(remove).toBeDisabled();
     expect(remove).toHaveAttribute('title', expect.stringMatching(/сначала смените им роль/));
     expect(within(rows[1]!).getByRole('button', { name: 'Удалить роль «Распределитель»' })).toBeEnabled();
     // Подписи в списке короткие (на телефоне длинные обрезались бы), а что значит каждая — сказано над списком.
     expect(within(within(rows[0]!).getByRole('combobox', { name: 'Что значит' })).getAllByRole('option').map((o) => o.textContent))
-      .toEqual(['Без особых настроек', 'Распределитель', 'Координатор групп', 'Старший координатор']);
+      .toEqual(['Без особых настроек', 'Катализатор', 'Старший распределитель', 'Распределитель', 'Старший координатор', 'Координатор групп']);
     expect(screen.getByText(/сервис сам раздаёт ему новые заявки/)).toBeInTheDocument();
   });
 

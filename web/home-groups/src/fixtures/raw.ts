@@ -4,6 +4,8 @@
  * Представления (предложения, матрица, корзины) считает build.ts, чтобы цифры не расходились.
  */
 
+import type { TeamRoleKind } from '@contracts';
+
 export type Slot = 'утро' | 'день' | 'вечер';
 
 export interface RawGroup {
@@ -22,10 +24,13 @@ export interface RawGroup {
   status: string;
   acceptsNew: boolean;
   doNotRefer: boolean;
+  /** «Камерная группа»: людей не направляют, контакты видят не все (миграция 052). */
+  chamber: boolean;
   people: number | null;
   capacity: number | null;
   verifiedDaysAgo: number | null;
-  format: string | null;
+  /** Направление из справочника («Основное служение», филиал). */
+  direction: string;
   composition: string | null;
   coordinator: string | null;
   comment: string | null;
@@ -99,10 +104,11 @@ const g = (x: Partial<RawGroup> & Pick<RawGroup, 'id' | 'leader' | 'district' | 
   status: 'Функционирует',
   acceptsNew: true,
   doNotRefer: false,
+  chamber: false,
   people: null,
   capacity: 12,
   verifiedDaysAgo: null,
-  format: null,
+  direction: 'Основное служение',
   composition: null,
   coordinator: null,
   comment: null,
@@ -114,20 +120,20 @@ const g = (x: Partial<RawGroup> & Pick<RawGroup, 'id' | 'leader' | 'district' | 
 });
 
 export const RAW_GROUPS: RawGroup[] = [
-  g({ id: 1, no: 12, leader: 'Ольга К.', phone: '79112003145', district: 'Приморский', metro: 'Комендантский пр.', street: 'Комендантский пр.', ages: ['18–25', '26–35'], day: 'Вт', slot: 'вечер', people: 8, capacity: 12, verifiedDaysAgo: 6, format: 'Смешанная', composition: 'Студенты и молодые специалисты', coordinator: 'Трофимова С.' }),
-  g({ id: 2, no: 27, leaderKey: 'u2', leader: 'Андрей М.', coLeader: 'Наталья М.', phone: '79212004477', district: 'Приморский', metro: 'Беговая', street: 'ул. Шаврова', ages: ['26–35', '36–45'], day: 'Чт', slot: 'вечер', people: 11, capacity: 12, verifiedDaysAgo: 14, format: 'Семейная', composition: 'Семьи с детьми', coordinator: 'Петров Г.' }),
-  g({ id: 3, no: 31, leader: 'Марина Л.', phone: '79052006612', district: 'Выборгский', metro: 'Озерки', street: 'пр. Просвещения', ages: ['36–45', '46+'], day: 'Пн', slot: 'день', people: 6, capacity: 14, verifiedDaysAgo: 41, format: 'Женская', composition: 'Женщины', coordinator: 'Трофимова С.', comment: 'Просила не присылать новых до конца месяца, но места есть.' }),
-  g({ id: 4, no: 8, leader: 'Игорь Т.', phone: '79312003390', district: 'Центральный', metro: 'Лиговский пр.', street: 'Лиговский пр.', ages: ['18–25'], day: 'Ср', slot: 'вечер', people: 9, capacity: 10, verifiedDaysAgo: 3, format: 'Молодёжная', composition: 'Молодёжь', coordinator: 'Лебедева А.' }),
-  g({ id: 5, isNew: true, campaignRegistered: true, campaignOnly: true, no: 15, leader: 'Светлана Р.', phone: '79112008851', district: 'Калининский', metro: 'Академическая', street: 'Гражданский пр.', ages: ['26–35', '36–45'], day: 'Сб', slot: 'утро', people: 5, capacity: 12, verifiedDaysAgo: 9, format: 'Смешанная', coordinator: 'Морозов Д.' }),
-  g({ id: 6, no: 40, leader: 'Павел Д.', phone: '79992005502', district: 'Невский', metro: 'Ломоносовская', street: 'пр. Большевиков', ages: ['26–35'], day: 'Пт', slot: 'вечер', people: 12, capacity: 12, verifiedDaysAgo: 5, format: 'Мужская', composition: 'Мужчины', coordinator: 'Лебедева А.' }),
-  g({ id: 7, no: 22, leader: 'Елена и Сергей Н.', phone: '79212007704', district: 'Красногвардейский', metro: 'Ладожская', street: 'Индустриальный пр.', ages: ['36–45', '46+'], people: 7, capacity: 12, verifiedDaysAgo: 63, format: 'Семейная', coordinator: 'Трофимова С.', comment: 'День и время уточнить: переносили встречи.' }),
-  g({ id: 8, isNew: true, campaignRegistered: true, no: 19, leader: 'Дмитрий В.', district: 'Приморский', metro: 'Старая Деревня', ages: ['18–25', '26–35'], people: 4, capacity: 12, verifiedDaysAgo: 28, format: 'Смешанная', coordinator: 'Петров Г.' }),
-  g({ id: 9, no: 35, leader: 'Анна С.', phone: '79052009930', district: 'Калининский', metro: 'Политехническая', ages: ['46+'], day: 'Вт', slot: 'день', people: 10, capacity: 14, verifiedDaysAgo: 11, format: 'Женская', coordinator: 'Лебедева А.' }),
-  g({ id: 10, no: 3, leader: 'Виктор П.', phone: '79312001128', district: 'Выборгский', metro: 'Лесная', street: 'ул. Харченко', ages: ['26–35', '36–45'], day: 'Ср', slot: 'вечер', status: 'На паузе', acceptsNew: false, people: 5, capacity: 12, verifiedDaysAgo: 22, format: 'Смешанная', coordinator: 'Трофимова С.' }),
-  g({ id: 11, no: 44, leader: 'Ксения Б.', phone: '79112006643', district: 'Центральный', metro: 'Владимирская', street: 'ул. Марата', ages: ['26–35'], day: 'Чт', slot: 'вечер', people: 6, capacity: 12, verifiedDaysAgo: 7, format: 'Смешанная', coordinator: 'Морозов Д.' }),
-  g({ id: 12, isNew: true, no: null, leader: 'Татьяна Ф.', phone: '79212005519', district: 'Невский', metro: 'Новочеркасская', street: 'ул. Седова', ages: ['36–45', '46+'], day: 'Пн', slot: 'вечер', people: null, capacity: null, verifiedDaysAgo: null, format: 'Женская', coordinator: 'Морозов Д.', doNotRefer: true, comment: 'Новая группа без номера в реестре; пока никого не направлять.' }),
+  g({ id: 1, no: 12, leader: 'Ольга К.', phone: '79112003145', district: 'Приморский', metro: 'Комендантский пр.', street: 'Комендантский пр.', ages: ['18–25', '26–35'], day: 'Вт', slot: 'вечер', people: 8, capacity: 12, verifiedDaysAgo: 6, composition: 'Студенты и молодые специалисты', coordinator: 'Трофимова С.' }),
+  g({ id: 2, no: 27, leaderKey: 'u2', leader: 'Андрей М.', coLeader: 'Наталья М.', phone: '79212004477', district: 'Приморский', metro: 'Беговая', street: 'ул. Шаврова', ages: ['26–35', '36–45'], day: 'Чт', slot: 'вечер', people: 11, capacity: 12, verifiedDaysAgo: 14, composition: 'Семьи с детьми', coordinator: 'Петров Г.' }),
+  g({ id: 3, no: 31, leader: 'Марина Л.', phone: '79052006612', district: 'Выборгский', metro: 'Озерки', street: 'пр. Просвещения', ages: ['36–45', '46+'], day: 'Пн', slot: 'день', people: 6, capacity: 14, verifiedDaysAgo: 41, composition: 'Женщины', coordinator: 'Трофимова С.', comment: 'Просила не присылать новых до конца месяца, но места есть.' }),
+  g({ id: 4, no: 8, leader: 'Игорь Т.', phone: '79312003390', district: 'Центральный', metro: 'Лиговский пр.', street: 'Лиговский пр.', ages: ['18–25'], day: 'Ср', slot: 'вечер', people: 9, capacity: 10, verifiedDaysAgo: 3, direction: 'Молодёжное служение', composition: 'Молодёжь', coordinator: 'Лебедева А.' }),
+  g({ id: 5, direction: 'Филиал «Серебристый»', isNew: true, campaignRegistered: true, campaignOnly: true, no: 15, leader: 'Светлана Р.', phone: '79112008851', district: 'Калининский', metro: 'Академическая', street: 'Гражданский пр.', ages: ['26–35', '36–45'], day: 'Сб', slot: 'утро', people: 5, capacity: 12, verifiedDaysAgo: 9, coordinator: 'Морозов Д.' }),
+  g({ id: 6, no: 40, leader: 'Павел Д.', phone: '79992005502', district: 'Невский', metro: 'Ломоносовская', street: 'пр. Большевиков', ages: ['26–35'], day: 'Пт', slot: 'вечер', people: 12, capacity: 12, verifiedDaysAgo: 5, composition: 'Мужчины', coordinator: 'Лебедева А.' }),
+  g({ id: 7, no: 22, leader: 'Елена и Сергей Н.', phone: '79212007704', district: 'Красногвардейский', metro: 'Ладожская', street: 'Индустриальный пр.', ages: ['36–45', '46+'], people: 7, capacity: 12, verifiedDaysAgo: 63, coordinator: 'Трофимова С.', comment: 'День и время уточнить: переносили встречи.' }),
+  g({ id: 8, isNew: true, campaignRegistered: true, no: 19, leader: 'Дмитрий В.', district: 'Приморский', metro: 'Старая Деревня', ages: ['18–25', '26–35'], people: 4, capacity: 12, verifiedDaysAgo: 28, coordinator: 'Петров Г.' }),
+  g({ id: 9, no: 35, leader: 'Анна С.', phone: '79052009930', district: 'Калининский', metro: 'Политехническая', ages: ['46+'], day: 'Вт', slot: 'день', people: 10, capacity: 14, verifiedDaysAgo: 11, coordinator: 'Лебедева А.' }),
+  g({ id: 10, no: 3, leader: 'Виктор П.', phone: '79312001128', district: 'Выборгский', metro: 'Лесная', street: 'ул. Харченко', ages: ['26–35', '36–45'], day: 'Ср', slot: 'вечер', status: 'На паузе', acceptsNew: false, people: 5, capacity: 12, verifiedDaysAgo: 22, coordinator: 'Трофимова С.' }),
+  g({ id: 11, no: 44, leader: 'Ксения Б.', phone: '79112006643', district: 'Центральный', metro: 'Владимирская', street: 'ул. Марата', ages: ['26–35'], day: 'Чт', slot: 'вечер', people: 6, capacity: 12, verifiedDaysAgo: 7, coordinator: 'Морозов Д.' }),
+  g({ id: 12, isNew: true, no: null, leader: 'Татьяна Ф.', phone: '79212005519', district: 'Невский', metro: 'Новочеркасская', street: 'ул. Седова', ages: ['36–45', '46+'], day: 'Пн', slot: 'вечер', people: null, capacity: null, verifiedDaysAgo: null, coordinator: 'Морозов Д.', doNotRefer: true, chamber: true, comment: 'Группа служителей без номера в реестре; людей не направлять.' }),
   // Закрытая группа: по умолчанию в «Справочнике» скрыта, видна после снятия отбора. Длинное ФИО показывает обрезку.
-  g({ id: 13, no: 6, leader: 'Борис Олегович Ширяев-Коваленко', phone: '79215550134', district: 'Приморский', metro: 'Удельная', ages: ['46+'], status: 'Закрыта', acceptsNew: false, people: 0, capacity: 12, format: 'Смешанная', comment: 'Встречи закончились в сентябре, группа закрыта.' }),
+  g({ id: 13, no: 6, leader: 'Борис Олегович Ширяев-Коваленко', phone: '79215550134', district: 'Приморский', metro: 'Удельная', ages: ['46+'], status: 'Закрыта', acceptsNew: false, people: 0, capacity: 12, comment: 'Встречи закончились в сентябре, группа закрыта.' }),
 ];
 
 const r = (
@@ -228,19 +234,22 @@ export const RAW_EXTRA_PEOPLE: RawPerson[] = [
   { key: 'p1', fio: 'Нина Воронцова', phone: '79110005511', ageLabel: '46+', district: 'Приморский', from: 'Внесён вручную', mdgLabel: 'Уже в группе', date: '2026-08-18', userId: null, registrationNo: null, personId: 1 },
 ];
 
-/** Справочник ролей команды в демо — те же основные роли, что заводит миграция 049, и одна без особого смысла. */
-export const DEMO_TEAM_ROLES: { id: number; name: string; kind: 'distributor' | 'coordinator' | 'senior' | null }[] = [
-  { id: 1, name: 'Координатор малых групп', kind: 'coordinator' },
+/** Направления групп в демо — те же, что заводит миграция 052. */
+export const DEMO_DIRECTIONS = ['Основное служение', 'Подростковое служение', 'Молодёжное служение', 'Филиал «Серебристый»'];
+
+/** Справочник ролей команды в демо — те же пять ролей, что оставляет миграция 051. */
+export const DEMO_TEAM_ROLES: { id: number; name: string; kind: TeamRoleKind | null }[] = [
+  { id: 1, name: 'Координатор', kind: 'coordinator' },
   { id: 2, name: 'Старший координатор', kind: 'senior' },
   { id: 3, name: 'Распределитель', kind: 'distributor' },
-  { id: 4, name: 'Молодёжный координатор', kind: 'coordinator' },
-  { id: 5, name: 'Катализатор', kind: null },
+  { id: 4, name: 'Старший распределитель', kind: 'senior_distributor' },
+  { id: 5, name: 'Катализатор', kind: 'catalyst' },
 ];
 
 /** Роли людей в демо: у Петрова две — так в демо видно, что ролей бывает несколько. */
 export const COORDINATOR_ROLES: Record<string, string[]> = {
-  'Трофимова С.': ['Координатор малых групп'],
-  'Петров Г.': ['Катализатор', 'Координатор малых групп'],
+  'Трофимова С.': ['Координатор'],
+  'Петров Г.': ['Катализатор', 'Координатор'],
   'Лебедева А.': ['Старший координатор'],
-  'Морозов Д.': ['Координатор малых групп'],
+  'Морозов Д.': ['Координатор'],
 };

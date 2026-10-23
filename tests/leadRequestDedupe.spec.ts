@@ -58,8 +58,8 @@ const leadRequests = async () => {
 /** Группа реестра с этим номером у ведущего. */
 const seedGroup = (status: string, phone = PHONE) =>
   db.query(
-    `INSERT INTO groups (leader, district, format, status, phone, phones, source)
-     VALUES ('Петров Пётр', 'Приморский', 'Молодежная', $1, $2, ARRAY[$2], 'таблица')`,
+    `INSERT INTO groups (leader, district, direction_id, status, phone, phones, source)
+     VALUES ('Петров Пётр', 'Приморский', group_direction_id('Молодежная'), $1, $2, ARRAY[$2], 'таблица')`,
     [status, phone],
   );
 

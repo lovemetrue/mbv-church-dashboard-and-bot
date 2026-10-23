@@ -155,16 +155,17 @@ export class PlacementRepo {
       if (PlacementRepo.isFailure(state)) return state;
 
       const { rows } = await c.query<{
-        id: number; leader: string; status: string; open_to_new: string | null; do_not_refer: boolean; people: number | null;
+        id: number; leader: string; status: string; open_to_new: string | null; do_not_refer: boolean; chamber: boolean; people: number | null;
         capacity: number | null;
       }>(
-        `SELECT id, leader, status, open_to_new, do_not_refer, people, capacity
+        `SELECT id, leader, status, open_to_new, do_not_refer, chamber, people, capacity
            FROM groups WHERE id = $1 AND archived_at IS NULL FOR SHARE`,
         [groupId],
       );
       const g = rows[0];
       if (!g) return fail('group_unavailable', 'Группа не найдена или в архиве.');
       if (g.do_not_refer) return fail('group_unavailable', 'В эту группу направлять нельзя («Не направлять»).');
+      if (g.chamber) return fail('group_unavailable', 'В эту группу направлять нельзя: она камерная (служителей или отдельного служения).');
       if (!PASSING_STATUSES.has(g.status)) return fail('group_unavailable', `Группа не принимает людей: статус «${g.status}».`);
       // Мест нет — не запрет: координатор мог договориться с ведущим. Но решает он осознанно (force).
       if (!opts.force && g.people !== null && g.people >= (g.capacity ?? opts.defaultCapacity)) {

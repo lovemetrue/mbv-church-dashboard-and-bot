@@ -1,5 +1,5 @@
 import type { Pool } from 'pg';
-import type { GroupFormat, GroupStatus } from '../../core/groups.js';
+import type { GroupStatus } from '../../core/groups.js';
 
 /** Откуда взялась запись о группе. Видно в дашборде и определяет, что можно удалить. */
 export type GroupSource = 'таблица' | 'бот' | 'ui';
@@ -9,7 +9,11 @@ export interface HomeGroupInput {
   leader: string;
   phone?: string | null;
   district: string;
-  format: GroupFormat;
+  /**
+   * Направление словами («Основное служение», «Филиал «Серебристый»», миграция 052): находится по названию
+   * (`group_direction_id`); прежние слова формата («Молодежная») ложатся на новые, незнакомое — на основное.
+   */
+  direction: string;
   status: GroupStatus;
   people?: number | null;
 }
@@ -42,6 +46,11 @@ export interface GroupInput extends HomeGroupInput {
   campaignRegistered?: boolean | null;
   /** «Не направлять»: группа скрыта из подбора. undefined при правке — не менять. */
   doNotRefer?: boolean | null;
+  /**
+   * «Камерная группа» (служителей или отдельного служения): людей не направляют, адрес и телефоны видят только лидеры,
+   * ответственный координатор и полный вход. undefined при правке — не менять.
+   */
+  chamber?: boolean | null;
   /** «Работает только в кампанию» (бывший статус «Кампания»). undefined при правке — не менять. */
   campaignOnly?: boolean | null;
   /** Мест в группе; null — общее значение по умолчанию. undefined при правке — не менять (старый дашборд поля не знает). */
@@ -71,13 +80,17 @@ export interface GroupRow {
   opened_on: string | null;
   comment: string | null;
   training: string | null;
-  format: string;
+  /** Направление (название из справочника `group_directions`) и его номер. */
+  direction: string;
+  direction_id: number;
   status: string;
   checked: boolean | null;
   campaign_registered: boolean;
   /** «Работает только в кампанию» (миграция 047, бывший статус «Кампания»). */
   campaign_only: boolean;
   do_not_refer: boolean;
+  /** «Камерная группа» (миграция 052). */
+  chamber: boolean;
   /** Мест в группе; null — общее значение по умолчанию. */
   capacity: number | null;
   /** Регистрация ведущего (users.id), если обращение «уже веду группу» сверено со справочником. */
@@ -115,7 +128,9 @@ export interface DashboardGroup {
   opened_on: string | null;
   comment: string | null;
   training: string | null;
-  format: string;
+  /** Направление словами (справочник `group_directions`). */
+  direction: string;
+  direction_id: number;
   status: string;
   checked: boolean | null;
   source: GroupSource;
@@ -126,6 +141,8 @@ export interface DashboardGroup {
   campaign_only: boolean;
   /** «Не направлять»: из подбора такая группа скрыта. */
   do_not_refer: boolean;
+  /** «Камерная группа»: из подбора скрыта, адрес и телефоны видят не все (см. `contactsVisible` в home-groups). */
+  chamber: boolean;
   /** Мест в группе; null — общее значение по умолчанию. */
   capacity: number | null;
   /** Регистрация ведущего (users.id): связь появляется при разборе обращения «уже веду группу». */
@@ -136,8 +153,12 @@ export interface DashboardGroup {
 
 const COLUMNS = `no, leader, open_to_new, phone, phones, age, district, metro, address,
                  composition, day, "time", people, coordinator, feedback_at, comment,
-                 training, format, status, checked, campaign_registered, source, added_by,
-                 added_platform, co_leader, co_leader_phone, do_not_refer, opened_on, capacity, campaign_only`;
+                 training, direction_id, status, checked, campaign_registered, source, added_by,
+                 added_platform, co_leader, co_leader_phone, do_not_refer, opened_on, capacity, campaign_only, chamber`;
+
+/** Строка группы с названием направления: `RETURNING *` его не знает, поэтому запросы оборачиваются в этот выбор. */
+const withDirection = (from: string): string =>
+  `SELECT g.*, g.direction_id::int AS direction_id, d.name AS direction FROM ${from} g JOIN group_directions d ON d.id = g.direction_id`;
 
 // Колонки типа date приходят строкой «2026-08-20» — так настроен пул (src/db/pool.ts).
 
@@ -157,9 +178,11 @@ export class GroupsRepo {
     platform: string | null = null,
   ): Promise<GroupRow> {
     const { rows } = await this.db.query<GroupRow>(
-      `INSERT INTO groups (${COLUMNS})
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
-       RETURNING *`,
+      `WITH ins AS (
+         INSERT INTO groups (${COLUMNS})
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,group_direction_id($18),$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
+         RETURNING *
+       ) ${withDirection('ins')}`,
       [
         input.no ?? null,
         input.leader,
@@ -178,7 +201,7 @@ export class GroupsRepo {
         input.feedbackAt ?? null,
         input.comment ?? null,
         input.training ?? null,
-        input.format,
+        input.direction,
         input.status,
         input.checked ?? null,
         // Потенциальная группа по умолчанию участвует в «40 днях» (просьба служителей); заданное явно — как задали.
@@ -192,6 +215,7 @@ export class GroupsRepo {
         input.openedOn ?? null,
         input.capacity ?? null,
         input.campaignOnly ?? false,
+        input.chamber ?? false,
       ],
     );
     const row = rows[0]!;
@@ -209,19 +233,22 @@ export class GroupsRepo {
    */
   async update(id: number, input: GroupInput): Promise<GroupRow | null> {
     const { rows } = await this.db.query<GroupRow>(
-      `UPDATE groups SET
-         no = $2, leader = $3, open_to_new = $4, phone = $5, phones = $6, age = $7,
-         district = $8, metro = $9, address = $10, composition = $11, day = $12,
-         "time" = $13, people = $14, coordinator = $15, feedback_at = $16, comment = $17,
-         training = $18, format = $19, status = $20, checked = $21, campaign_registered = $22,
-         co_leader = $23, co_leader_phone = $24,
-         do_not_refer = COALESCE($25, do_not_refer),
-         campaign_only = COALESCE($29, campaign_only),
-         opened_on = $26,
-         capacity = CASE WHEN $27::boolean THEN $28::integer ELSE capacity END,
-         source = CASE WHEN source = 'таблица' THEN 'ui' ELSE source END
-       WHERE id = $1 AND archived_at IS NULL
-       RETURNING *`,
+      `WITH upd AS (
+         UPDATE groups SET
+           no = $2, leader = $3, open_to_new = $4, phone = $5, phones = $6, age = $7,
+           district = $8, metro = $9, address = $10, composition = $11, day = $12,
+           "time" = $13, people = $14, coordinator = $15, feedback_at = $16, comment = $17,
+           training = $18, direction_id = group_direction_id($19), status = $20, checked = $21, campaign_registered = $22,
+           co_leader = $23, co_leader_phone = $24,
+           do_not_refer = COALESCE($25, do_not_refer),
+           chamber = COALESCE($30, chamber),
+           campaign_only = COALESCE($29, campaign_only),
+           opened_on = $26,
+           capacity = CASE WHEN $27::boolean THEN $28::integer ELSE capacity END,
+           source = CASE WHEN source = 'таблица' THEN 'ui' ELSE source END
+         WHERE id = $1 AND archived_at IS NULL
+         RETURNING *
+       ) ${withDirection('upd')}`,
       [
         id,
         input.no ?? null,
@@ -241,7 +268,7 @@ export class GroupsRepo {
         input.feedbackAt ?? null,
         input.comment ?? null,
         input.training ?? null,
-        input.format,
+        input.direction,
         input.status,
         input.checked ?? null,
         input.campaignRegistered ?? false,
@@ -252,6 +279,7 @@ export class GroupsRepo {
         input.capacity !== undefined,
         input.capacity ?? null,
         input.campaignOnly ?? null,
+        input.chamber ?? null,
       ],
     );
     const row = rows[0];
@@ -304,13 +332,13 @@ export class GroupsRepo {
   }
 
   async findActive(id: number): Promise<GroupRow | null> {
-    const { rows } = await this.db.query<GroupRow>('SELECT * FROM groups WHERE id = $1 AND archived_at IS NULL', [id]);
+    const { rows } = await this.db.query<GroupRow>(`${withDirection('groups')} WHERE g.id = $1 AND g.archived_at IS NULL`, [id]);
     return rows[0] ?? null;
   }
 
   async listActive(limit = 50): Promise<GroupRow[]> {
     const { rows } = await this.db.query<GroupRow>(
-      `SELECT * FROM groups WHERE archived_at IS NULL ORDER BY created_at DESC, id DESC LIMIT $1`,
+      `${withDirection('groups')} WHERE g.archived_at IS NULL ORDER BY g.created_at DESC, g.id DESC LIMIT $1`,
       [limit],
     );
     return rows;
@@ -366,10 +394,12 @@ export class GroupsRepo {
    */
   private async syncCampaignRegistered(id: number): Promise<GroupRow | null> {
     const { rows } = await this.db.query<GroupRow>(
-      `UPDATE groups g SET campaign_registered = true
-        WHERE g.id = $1 AND g.campaign_registered = false
-          AND EXISTS (SELECT 1 FROM users u WHERE u.complete = true AND u.phone = ANY(g.phones))
-        RETURNING *`,
+      `WITH upd AS (
+         UPDATE groups g SET campaign_registered = true
+          WHERE g.id = $1 AND g.campaign_registered = false
+            AND EXISTS (SELECT 1 FROM users u WHERE u.complete = true AND u.phone = ANY(g.phones))
+          RETURNING g.*
+       ) ${withDirection('upd')}`,
       [id],
     );
     return rows[0] ?? null;
@@ -377,11 +407,13 @@ export class GroupsRepo {
 
   async archive(id: number): Promise<GroupRow | null> {
     const { rows } = await this.db.query<GroupRow>(
-      `UPDATE groups
-          SET archived_at = now(),
-              source = CASE WHEN source = 'таблица' THEN 'ui' ELSE source END
-        WHERE id = $1 AND archived_at IS NULL
-        RETURNING *`,
+      `WITH upd AS (
+         UPDATE groups
+            SET archived_at = now(),
+                source = CASE WHEN source = 'таблица' THEN 'ui' ELSE source END
+          WHERE id = $1 AND archived_at IS NULL
+          RETURNING *
+       ) ${withDirection('upd')}`,
       [id],
     );
     return rows[0] ?? null;
@@ -393,8 +425,8 @@ export class GroupsRepo {
    */
   async forDashboard(): Promise<DashboardGroup[]> {
     const { rows } = await this.db.query<GroupRow>(
-      `SELECT * FROM groups WHERE archived_at IS NULL
-        ORDER BY no NULLS LAST, created_at, id`,
+      `${withDirection('groups')} WHERE g.archived_at IS NULL
+        ORDER BY g.no NULLS LAST, g.created_at, g.id`,
     );
     return rows.map((r) => ({
       id: r.id,
@@ -418,13 +450,15 @@ export class GroupsRepo {
       opened_on: r.opened_on,
       comment: r.comment,
       training: r.training,
-      format: r.format,
+      direction: r.direction,
+      direction_id: Number(r.direction_id),
       status: r.status,
       checked: r.checked,
       source: r.source,
       campaign_registered: r.campaign_registered,
       campaign_only: r.campaign_only,
       do_not_refer: r.do_not_refer,
+      chamber: r.chamber,
       capacity: r.capacity ?? null,
       leader_user_id: r.leader_user_id === null || r.leader_user_id === undefined ? null : Number(r.leader_user_id),
       source_request_id: r.source_request_id === null || r.source_request_id === undefined ? null : Number(r.source_request_id),

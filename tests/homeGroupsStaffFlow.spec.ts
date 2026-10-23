@@ -159,6 +159,30 @@ describe('личные входы целиком', () => {
     } finally { app.server.close(); }
   });
 
+  test('камерная группа: координатору — без адреса и телефонов, её координатору и катализатору — с ними, общему входу — как раньше', async () => {
+    const app = await start();
+    try {
+      const boss = (await app.login('super_mbv_admin', SHARED.super)).cookie!;
+      const passwordFor = async (name: string, role: string) => {
+        const id = await seedCoordinator(db, name, [role]);
+        const out = await (await app.api(boss, 'settings/staff/generate-password', { coordinatorId: id })).json() as { login: string; password: string };
+        return (await app.login(out.login, out.password)).cookie!;
+      };
+      const stranger = await passwordFor('Петров Глеб', 'Координатор');
+      const own = await passwordFor('Лебедева Анна', 'Координатор');
+      const catalyst = await passwordFor('Родионов Давид', 'Катализатор');
+      await db.query(`INSERT INTO groups (leader, district, status, phone, phones, address, coordinator, chamber, source)
+        VALUES ('Иван Служитель', 'Приморский', 'Функционирует', '+79110001122', ARRAY['+79110001122'], 'ул. Тайная, 2', 'Лебедева Анна', true, 'ui')`);
+      const seen = async (cookie: string) =>
+        ((await (await app.api(cookie, 'groups')).json()) as { items: { leader: string; phone: string | null; address: string | null; contactsHidden: boolean }[] }).items[0]!;
+      expect(await seen(stranger)).toMatchObject({ leader: 'Иван Служитель', phone: null, address: null, contactsHidden: true });
+      expect(await seen(own)).toMatchObject({ address: 'ул. Тайная, 2', contactsHidden: false });
+      expect(await seen(catalyst)).toMatchObject({ address: 'ул. Тайная, 2', contactsHidden: false });
+      expect(await seen((await app.login('mbv_admin', SHARED.regular)).cookie!)).toMatchObject({ address: 'ул. Тайная, 2' });
+      expect(await seen(boss)).toMatchObject({ address: 'ул. Тайная, 2' });
+    } finally { app.server.close(); }
+  });
+
   test('действия личного входа в журнале подписаны логином человека', async () => {
     const app = await start();
     try {

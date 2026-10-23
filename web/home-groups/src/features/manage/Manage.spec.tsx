@@ -111,12 +111,34 @@ describe('правка группы', () => {
   });
 
   test('значение, которого нет в справочнике формы, остаётся выбранным и не считается изменением', async () => {
-    stubFetchWithFixtures();
+    // Направление успели убрать из справочника (или список формы устарел), а у группы оно стоит: форма его не теряет.
+    stubFetchWithFixtures({ groups: () => json(groupsWith(1, { direction: 'Филиал «Старый»' })) });
     const user = userEvent.setup();
     const { dialog } = await openGroupEdit(user, 1);
-    // В демо-справочнике нет формата «Смешанная», но у группы он стоит: форма не должна его терять.
-    expect(within(dialog).getByRole('combobox', { name: 'Формат группы' })).toHaveValue('Смешанная');
+    expect(within(dialog).getByRole('combobox', { name: 'Направление' })).toHaveValue('Филиал «Старый»');
     expect(saveButton(dialog)).toBeDisabled();
+  });
+
+  test('направление — из справочника направлений; «Камерная группа» ставится галочкой и уходит как chamber', async () => {
+    const fetchMock = stubFetchWithFixtures({ 'groups/1/update': () => json({ ok: true }) });
+    const user = userEvent.setup();
+    const { dialog } = await openGroupEdit(user, 1);
+    const direction = within(dialog).getByRole('combobox', { name: 'Направление' });
+    expect(within(direction).getAllByRole('option').map((o) => o.textContent).slice(1))
+      .toEqual(['Основное служение', 'Подростковое служение', 'Молодёжное служение', 'Филиал «Серебристый»']);
+    await user.selectOptions(direction, 'Филиал «Серебристый»');
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Камерная группа: служителей или отдельного служения' }));
+    await user.click(saveButton(dialog));
+    await waitFor(() => expect(posts(fetchMock)).toEqual([{ path: 'groups/1/update', body: { fields: { direction: 'Филиал «Серебристый»', chamber: '1' } } }]));
+  });
+
+  test('камерная группа со скрытыми контактами: в форме нет адреса и телефонов, а под полями сказано почему', async () => {
+    stubFetchWithFixtures({ groups: () => json(groupsWith(1, { chamber: true, contactsHidden: true, phone: null, address: null, coLeaderPhone: null })) });
+    const user = userEvent.setup();
+    const { card, dialog } = await openGroupEdit(user, 1);
+    for (const name of ['Адрес', 'Телефон', 'Телефон соведущего']) expect(within(dialog).queryByRole('textbox', { name })).not.toBeInTheDocument();
+    expect(dialog).toHaveTextContent('Адрес и телефоны этой группы скрыты: она камерная.');
+    expect(card).toHaveTextContent('Адрес и телефоны этой группы скрыты');
   });
 
   test('«Сохранить» неактивна, пока ничего не изменено, и снова гаснет, если вернуть прежнее значение', async () => {
@@ -546,8 +568,8 @@ describe('координаторы: правка и удаление', () => {
     expect(within(dialog).getByRole('textbox', { name: 'ФИО' })).toHaveValue('Трофимова С.');
     // Роли — галочки из справочника ролей (их бывает несколько), отмечены текущие.
     const roles = within(dialog).getByRole('group', { name: 'Роли' });
-    expect(within(roles).getAllByRole('checkbox').map((c) => c.closest('label')!.textContent)).toEqual(['Координатор малых групп', 'Старший координатор', 'Распределитель', 'Молодёжный координатор', 'Катализатор']);
-    expect(within(roles).getByRole('checkbox', { name: 'Координатор малых групп' })).toBeChecked();
+    expect(within(roles).getAllByRole('checkbox').map((c) => c.closest('label')!.textContent)).toEqual(['Координатор', 'Старший координатор', 'Распределитель', 'Старший распределитель', 'Катализатор']);
+    expect(within(roles).getByRole('checkbox', { name: 'Координатор' })).toBeChecked();
     expect(within(roles).getByRole('checkbox', { name: 'Катализатор' })).not.toBeChecked();
     expect(saveButton(dialog)).toBeDisabled();
   });
@@ -714,7 +736,7 @@ describe('«+ Создать» → «Координатор»', () => {
     await user.click(await screen.findByRole('menuitem', { name: 'Координатор' }));
     const dialog = await screen.findByRole('dialog', { name: 'Новый координатор' });
     await user.type(await within(dialog).findByRole('textbox', { name: 'ФИО' }), 'Иванова Е.');
-    await user.click(within(within(dialog).getByRole('group', { name: 'Роли' })).getByRole('checkbox', { name: 'Координатор малых групп' }));
+    await user.click(within(within(dialog).getByRole('group', { name: 'Роли' })).getByRole('checkbox', { name: 'Координатор' }));
     await user.click(within(dialog).getByRole('button', { name: 'Добавить координатора' }));
     await screen.findByRole('status', { name: 'Координатор добавлен' });
 

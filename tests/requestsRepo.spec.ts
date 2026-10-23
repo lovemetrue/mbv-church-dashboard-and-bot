@@ -15,7 +15,7 @@ let groups: GroupsRepo;
 
 const REQUEST_MIN = { fio: 'Петров Пётр', type: 'join_group' as const, status: 'Новая' as const };
 const GROUP_MIN = {
-  leader: 'Иванова Мария', district: 'Невский', format: 'Молодежная' as const, status: 'Функционирует' as const,
+  leader: 'Иванова Мария', district: 'Невский', direction: 'Молодёжное служение' as const, status: 'Функционирует' as const,
 };
 
 beforeAll(async () => { db = await setupTestDb(); });

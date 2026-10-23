@@ -84,7 +84,7 @@ export function groupDataRows(g: GroupItem, openPerson?: (key: string) => void):
     },
     { label: 'Подтверждена', value: verifiedText(g.verifiedDaysAgo) },
     { label: 'Координатор', value: orNone(g.coordinator) },
-    { label: 'Формат', value: orNone(g.format) },
+    { label: 'Направление', value: g.direction },
     { label: 'Состав', value: orNone(g.composition) },
     { label: 'Со-ведущий', value: orNone(g.coLeader) },
     { label: 'Телефон', value: g.phone ? <span className="num">{formatPhone(g.phone)}</span> : noValue },
@@ -99,6 +99,9 @@ export function groupDataRows(g: GroupItem, openPerson?: (key: string) => void):
     // Бывший статус «Кампания»: показываем только у отмеченных, «Нет» у остальных был бы шумом.
     ...(g.campaignOnly ? [{ label: 'Только в кампанию', value: ru.reference.yes }] : []),
     ...(g.doNotRefer ? [{ label: 'Не направлять', value: <Pill tone="crit">{ru.reference.yes}</Pill> }] : []),
+    ...(g.chamber ? [{ label: 'Камерная', value: <Pill tone="crit">{ru.reference.yes}</Pill> }] : []),
+    // Телефоны и адрес пусты не потому, что их нет: сервер скрыл контакты камерной группы от этого входа.
+    ...(g.contactsHidden ? [{ label: 'Контакты', value: ru.manage.group.contactsHidden }] : []),
     ...(g.comment ? [{ label: 'Комментарий', value: g.comment }] : []),
   ];
 }

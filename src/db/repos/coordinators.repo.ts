@@ -1,7 +1,8 @@
 import type { Pool, PoolClient } from 'pg';
 
 /** Что роль значит для сервиса (см. миграцию 049): автоназначение заявок и отборы после личного входа. */
-export type TeamRoleKind = 'distributor' | 'coordinator' | 'senior';
+export type { TeamRoleKind } from '../../home-groups/contracts.js';
+import type { TeamRoleKind } from '../../home-groups/contracts.js';
 
 export interface CoordinatorRow {
   id: number;

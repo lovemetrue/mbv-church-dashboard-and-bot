@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { AuditRepo } from '../src/db/repos/audit.repo.js';
 import { CoordinatorsRepo } from '../src/db/repos/coordinators.repo.js';
 import { TeamRolesRepo } from '../src/db/repos/teamRoles.repo.js';
+import { GroupDirectionsRepo } from '../src/db/repos/groupDirections.repo.js';
 import { GroupsRepo } from '../src/db/repos/groups.repo.js';
 import { RequestsRepo } from '../src/db/repos/requests.repo.js';
 import { UsersRepo } from '../src/db/repos/users.repo.js';
@@ -15,13 +16,13 @@ afterAll(async () => { await db.end(); });
 beforeEach(async () => { await truncateAll(db); });
 
 const manager = () => createManager({
-  groups: new GroupsRepo(db), coordinators: new CoordinatorsRepo(db), teamRoles: new TeamRolesRepo(db), requests: new RequestsRepo(db), users: new UsersRepo(db), audit: new AuditRepo(db),
+  groups: new GroupsRepo(db), coordinators: new CoordinatorsRepo(db), teamRoles: new TeamRolesRepo(db), directions: new GroupDirectionsRepo(db), requests: new RequestsRepo(db), users: new UsersRepo(db), audit: new AuditRepo(db),
 });
 
 async function group(): Promise<number> {
   const { rows } = await db.query<{ id: number }>(
-    `INSERT INTO groups (leader, district, format, status, people, phone, phones, address, co_leader_phone, day, "time", comment, source)
-     VALUES ('Иван Петров', 'Приморский', 'Основная церковь', 'Функционирует', 5, '+79110001122', ARRAY['+79110001122'], 'ул. Секретная 1', '+79213334455', 'Пн', '19:00', 'заметка', 'таблица') RETURNING id`,
+    `INSERT INTO groups (leader, district, direction_id, status, people, phone, phones, address, co_leader_phone, day, "time", comment, source)
+     VALUES ('Иван Петров', 'Приморский', group_direction_id('Основная церковь'), 'Функционирует', 5, '+79110001122', ARRAY['+79110001122'], 'ул. Секретная 1', '+79213334455', 'Пн', '19:00', 'заметка', 'таблица') RETURNING id`,
   );
   return rows[0]!.id;
 }
@@ -85,7 +86,7 @@ describe('правка группы из нового интерфейса', () 
     expect((await g(id)).capacity).toBe(6);
     // Старый дашборд шлёт форму целиком, но поля не знает: вместимость остаётся как была.
     const repo = new GroupsRepo(db);
-    await repo.update(id, { leader: 'Иван Петров', district: 'Приморский', format: 'Основная церковь', status: 'Функционирует' } as never);
+    await repo.update(id, { leader: 'Иван Петров', district: 'Приморский', direction: 'Основное служение', status: 'Функционирует' } as never);
     expect((await g(id)).capacity).toBe(6);
     await manager().updateGroup(id, { fields: { capacity: '' } }, 'a');
     expect((await g(id)).capacity).toBeNull();
@@ -180,8 +181,8 @@ describe('координаторы', () => {
     const created = await m.createCoordinator({ fields: { name: 'Анна Смирнова', role: 'Координатор' } }, 'a');
     expect(created).toMatchObject({ ok: true });
     if (!created.ok) throw new Error('нет id');
-    expect(await m.updateCoordinator(created.id, { fields: { role: 'Руководитель' } }, 'a')).toEqual({ ok: true });
-    expect((await db.query('SELECT c.name, coordinator_role_names(c.id) AS role FROM coordinators c WHERE c.id=$1', [created.id])).rows[0]).toEqual({ name: 'Анна Смирнова', role: 'Руководитель' });
+    expect(await m.updateCoordinator(created.id, { fields: { role: 'Старший координатор' } }, 'a')).toEqual({ ok: true });
+    expect((await db.query('SELECT c.name, coordinator_role_names(c.id) AS role FROM coordinators c WHERE c.id=$1', [created.id])).rows[0]).toEqual({ name: 'Анна Смирнова', role: 'Старший координатор' });
   });
 
   test('новый интерфейс отмечает несколько ролей из справочника; правка имени роли не трогает', async () => {
@@ -253,7 +254,7 @@ describe('«Работает только в кампанию» и «40 дней
 
   test('потенциальная группа заводится с «40 днями», если о них не сказано; сказанное явно — как сказано', async () => {
     const repo = new GroupsRepo(db);
-    const base = { leader: 'Ведущий', district: 'Приморский', format: 'Молодежная' } as const;
+    const base = { leader: 'Ведущий', district: 'Приморский', direction: 'Молодёжное служение' } as const;
     expect((await repo.create({ ...base, status: 'Потенциальная' }, 'бот')).campaign_registered).toBe(true);
     expect((await repo.create({ ...base, status: 'Потенциальная', campaignRegistered: false }, 'ui')).campaign_registered).toBe(false);
     expect((await repo.create({ ...base, status: 'Функционирует' }, 'бот')).campaign_registered).toBe(false);

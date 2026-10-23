@@ -171,7 +171,7 @@ describe('закрытие и возврат заявки в работу', () =
 
   test('при закрытии действующие предложения заменяются', async () => {
     const r = await request();
-    const g = (await db.query<{ id: number }>(`INSERT INTO groups (leader, district, format, status, source) VALUES ('И','Приморский','Основная церковь','Функционирует','ui') RETURNING id`)).rows[0]!.id;
+    const g = (await db.query<{ id: number }>(`INSERT INTO groups (leader, district, direction_id, status, source) VALUES ('И','Приморский',group_direction_id('Основная церковь'),'Функционирует','ui') RETURNING id`)).rows[0]!.id;
     await db.query(`INSERT INTO placement_proposals (request_id, group_id, source) VALUES ($1, $2, 'script')`, [r, g]);
     await repo.closeRequest(r, 'cancel', 'declined', null, 'a');
     expect((await db.query('SELECT status FROM placement_proposals')).rows).toEqual([{ status: 'superseded' }]);
@@ -183,7 +183,7 @@ describe('закрытие и возврат заявки в работу', () =
   });
 
   test('возврат в работу очищает группу и причину, пишет «было → стало»', async () => {
-    const g = (await db.query<{ id: number }>(`INSERT INTO groups (leader, district, format, status, source) VALUES ('И','Приморский','Основная церковь','Функционирует','ui') RETURNING id`)).rows[0]!.id;
+    const g = (await db.query<{ id: number }>(`INSERT INTO groups (leader, district, direction_id, status, source) VALUES ('И','Приморский',group_direction_id('Основная церковь'),'Функционирует','ui') RETURNING id`)).rows[0]!.id;
     const r = await request();
     await db.query(`UPDATE requests SET status='Исполнена', group_id=$2, final_group='ДГ-0001, И' WHERE id=$1`, [r, g]);
     expect(await repo.reopen(r, 'a')).toEqual({ ok: true });

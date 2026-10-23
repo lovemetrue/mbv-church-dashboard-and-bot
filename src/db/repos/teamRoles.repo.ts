@@ -9,7 +9,7 @@ export interface TeamRoleRow {
   members: number;
 }
 
-export const TEAM_ROLE_KINDS: readonly TeamRoleKind[] = ['distributor', 'coordinator', 'senior'];
+export const TEAM_ROLE_KINDS: readonly TeamRoleKind[] = ['catalyst', 'senior_distributor', 'distributor', 'senior', 'coordinator'];
 
 const isUniqueViolation = (err: unknown): boolean => (err as { code?: string } | null)?.code === '23505';
 

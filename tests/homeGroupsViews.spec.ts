@@ -22,7 +22,7 @@ function group(over: Partial<DashboardGroup> & { id: number }): DashboardGroup {
     no: over.id, leader: `Ведущий ${over.id}`, phone: null, phones: [], open_to_new: null, age: null,
     district: 'Приморский', metro: null, address: null, composition: null, day: null, time: null, people: null,
     coordinator: null, co_leader: null, co_leader_phone: null, feedback_at: null, opened_on: null, comment: null, training: null,
-    format: 'Молодежная', status: 'Функционирует', checked: null, source: 'таблица', campaign_registered: false,
+    direction: 'Молодёжное служение', status: 'Функционирует', checked: null, source: 'таблица', campaign_registered: false,
     do_not_refer: false, leader_user_id: null,
     ...over,
   };
@@ -537,12 +537,12 @@ describe('группы справочника', () => {
       groups: [group({
         id: 1, leader: 'Мария', co_leader: 'Пётр', phones: ['+79111234567'], phone: '8 911 123-45-67; Мария',
         age: '25-40', day: 'Четверг', time: '19:00', composition: 'Семейная', coordinator: 'Анна', comment: 'Тихо',
-        format: 'Молодежная', status: 'Функционирует', metro: 'Беговая',
+        direction: 'Молодёжное служение', status: 'Функционирует', metro: 'Беговая',
       })],
     });
     expect(views.groups.items[0]).toMatchObject({
       leader: 'Мария', coLeader: 'Пётр', phone: '+7 911 123-45-67', ageText: '25-40', day: 'Чт', slot: 'вечер',
-      status: 'Функционирует', composition: 'Семейная', coordinator: 'Анна', comment: 'Тихо', format: 'Молодежная',
+      status: 'Функционирует', composition: 'Семейная', coordinator: 'Анна', comment: 'Тихо', direction: 'Молодёжное служение',
       whenText: 'Чт, вечер', metro: 'Беговая',
     });
   });

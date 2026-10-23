@@ -3,9 +3,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import type { Pool } from 'pg';
 import { setupTestDb, truncateAll } from './helpers/testDb.js';
 
-/** Миграция 047 запускается один раз при деплое; тут гоняем её SQL (без ALTER: колонка уже есть) на готовых данных. */
+/**
+ * Миграция 047 запускается один раз при деплое; тут гоняем её SQL на готовых данных — без ALTER (колонка уже есть) и
+ * без представления помощника: оно ссылается на колонку format, которую миграция 052 убрала.
+ */
 const sql = readFileSync(new URL('../migrations/047_campaign_only_and_potential_40_days.sql', import.meta.url), 'utf8')
-  .replace(/ALTER TABLE groups ADD COLUMN campaign_only[^;]*;/, '');
+  .replace(/ALTER TABLE groups ADD COLUMN campaign_only[^;]*;/, '')
+  .replace(/CREATE OR REPLACE VIEW assistant\.groups[^;]*;/, '');
 let db: Pool;
 
 beforeAll(async () => { db = await setupTestDb(); });
@@ -14,8 +18,8 @@ beforeEach(async () => { await truncateAll(db); });
 
 const group = async (status: string, over: { source?: string; registered?: boolean; archived?: boolean } = {}) =>
   (await db.query<{ id: number }>(
-    `INSERT INTO groups (leader, format, district, status, source, campaign_registered, archived_at)
-     VALUES ('Ведущий', 'Молодежная', 'Приморский', $1, $2, $3, $4) RETURNING id`,
+    `INSERT INTO groups (leader, direction_id, district, status, source, campaign_registered, archived_at)
+     VALUES ('Ведущий', group_direction_id('Молодежная'), 'Приморский', $1, $2, $3, $4) RETURNING id`,
     [status, over.source ?? 'таблица', over.registered ?? false, over.archived ? new Date() : null],
   )).rows[0]!.id;
 const row = async (id: number) =>

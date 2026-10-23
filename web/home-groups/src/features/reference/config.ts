@@ -29,15 +29,11 @@ export interface EntityConfig<T> {
 
 const yesNo = (v: boolean): string => (v ? ru.reference.yes : ru.reference.no);
 
-/** Типы групп, куда новых людей не направляют: служение и закрытая группа набирают своих. */
-const NOT_FOR_NEW_FORMATS: readonly string[] = ['Служение', 'Приватная (Закрытая)'];
-
 /**
- * «Принимает новых» в списке — вычисляемое: не служение, не закрытая и не отмечена «Не направлять». Поля «Приём
- * новых» больше нет: его «НЕТ» перенесено в «Не направлять» (миграция 046), остальное подбору не мешало.
+ * «Принимает новых» в списке — вычисляемое: не камерная (служителей или отдельного служения набирают своих) и не
+ * отмечена «Не направлять». Поля «Приём новых» больше нет: его «НЕТ» перенесено в «Не направлять» (миграция 046).
  */
-export const takesNew = (g: Pick<GroupItem, 'format' | 'doNotRefer'>): boolean =>
-  !g.doNotRefer && !NOT_FOR_NEW_FORMATS.includes(g.format ?? '');
+export const takesNew = (g: Pick<GroupItem, 'chamber' | 'doNotRefer'>): boolean => !g.doNotRefer && !g.chamber;
 
 const f = (key: string, extra?: Omit<FieldDef, 'key'>): FieldDef => ({ key, ...extra });
 
@@ -66,7 +62,8 @@ export const groupsConfig: EntityConfig<GroupItem> = {
     f('Только в кампанию', { groupable: true }),
     f('Принимает новых', { groupable: true }),
     f('Не направлять', { groupable: true }),
-    f('Формат', { groupable: true }),
+    f('Камерная', { groupable: true }),
+    f('Направление', { groupable: true }),
     f('Состав'),
     f('Координатор', { groupable: true }),
     f('Проверена, дн.', { kind: 'number' }),
@@ -77,7 +74,7 @@ export const groupsConfig: EntityConfig<GroupItem> = {
   columns: [
     'Код', 'Ведущий', 'Район', 'Возраст', 'Когда', 'Места', 'Статус', 'Данные проверены', 'Здоровье',
     'Со-ведущий', 'Телефон', 'Метро', 'Адрес', 'День', 'Время', 'Мест свободно', 'Вместимость',
-    'Принимает новых', 'Не направлять', '40 дней', 'Только в кампанию', 'Формат', 'Состав', 'Координатор', 'Проверена, дн.', 'Комментарий', 'В составе',
+    'Принимает новых', 'Не направлять', 'Камерная', '40 дней', 'Только в кампанию', 'Направление', 'Состав', 'Координатор', 'Проверена, дн.', 'Комментарий', 'В составе',
   ],
   defaultColumns: ['Код', 'Ведущий', 'Район', 'Возраст', 'Когда', 'Места', 'Статус', 'Данные проверены', 'Здоровье'],
   // Закрытые группы нужны редко и только мешают в общем списке; находятся, если снять отбор.
@@ -133,7 +130,8 @@ export const groupsConfig: EntityConfig<GroupItem> = {
     'Только в кампанию': yesNo(g.campaignOnly),
     'Принимает новых': yesNo(takesNew(g)),
     'Не направлять': yesNo(g.doNotRefer),
-    Формат: g.format,
+    Камерная: yesNo(g.chamber),
+    Направление: g.direction,
     Состав: g.composition,
     Координатор: g.coordinator,
     'Проверена, дн.': g.verifiedDaysAgo,

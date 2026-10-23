@@ -32,6 +32,7 @@ import type {
   SuggestLoginOk,
   TeamRoleKind,
   TeamRolesView,
+  GroupDirectionsView,
   UpdateStaffBody,
 } from '@contracts';
 import { ApiError, apiGet, apiPost } from '../../shared/api/client';
@@ -62,6 +63,7 @@ export const settingsKeys = {
   addresses: ['settings', 'geocoder', 'addresses'],
   map: ['settings', 'map'],
   teamRoles: ['settings', 'team-roles'],
+  directions: ['settings', 'directions'],
 } as const;
 
 const common = {
@@ -351,6 +353,34 @@ export function useTeamRoleActions() {
     },
     async remove(id: number): Promise<void> {
       await apiPost('settings/team-roles/delete', { id });
+      await refresh();
+    },
+  };
+}
+
+export function useSettingsDirections(): UseQueryResult<GroupDirectionsView> {
+  return useQuery({ queryKey: settingsKeys.directions, queryFn: ({ signal }) => apiGet<GroupDirectionsView>('settings/directions', signal), ...common });
+}
+
+/**
+ * Справочник направлений групп. После правки перечитываем всё, где видно название направления: сам справочник,
+ * группы (столбец и карточка) и списки форм (направление выбирают из них).
+ */
+export function useDirectionActions() {
+  const queryClient = useQueryClient();
+  const refresh = () =>
+    Promise.all([settingsKeys.directions, queryKeys.groups, FORM_META_KEY].map((queryKey) => queryClient.invalidateQueries({ queryKey })));
+  return {
+    async create(name: string): Promise<void> {
+      await apiPost('settings/directions/create', { name });
+      await refresh();
+    },
+    async update(id: number, name: string): Promise<void> {
+      await apiPost('settings/directions/update', { id, name });
+      await refresh();
+    },
+    async remove(id: number): Promise<void> {
+      await apiPost('settings/directions/delete', { id });
       await refresh();
     },
   };

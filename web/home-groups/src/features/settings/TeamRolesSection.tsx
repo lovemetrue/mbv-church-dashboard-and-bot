@@ -11,7 +11,7 @@ import styles from './Settings.module.css';
 import r from './TeamRoles.module.css';
 
 const t = ru.settings.teamRoles;
-const KINDS: readonly (TeamRoleKind | '')[] = ['', 'distributor', 'coordinator', 'senior'];
+const KINDS: readonly (TeamRoleKind | '')[] = ['', 'catalyst', 'senior_distributor', 'distributor', 'senior', 'coordinator'];
 const kindLabel = (k: TeamRoleKind | ''): string => (k === '' ? t.kinds.none : t.kinds[k]);
 const errorText = (e: unknown): string => serverText(e, { network: t.network, fallback: t.fallback });
 

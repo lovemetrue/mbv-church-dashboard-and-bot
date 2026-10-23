@@ -78,6 +78,16 @@ function feedbackNow(days: number | null): string {
  * изменённое; очищенное поле стирает номер.
  */
 export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
+  const spec = groupEditFields(g, meta);
+  // Контакты камерной группы сервер этому входу не прислал: пустые поля выглядели бы как «нет телефона», а вписанное
+  // в них затёрло бы настоящий. Поэтому их в форме нет, а под полями сказано почему.
+  if (!g.contactsHidden) return spec;
+  return { ...spec, fields: spec.fields.filter((f) => !CONTACT_FIELDS.has(f.name)), note: m.group.contactsHidden };
+}
+
+const CONTACT_FIELDS: ReadonlySet<string> = new Set(['address', 'phone', 'coLeaderPhone']);
+
+function groupEditFields(g: GroupItem, meta: FormMeta): EditSpec {
   const t = m.group.fields;
   const keep = m.group.keepHint;
   return {
@@ -87,7 +97,7 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
       // Подбор сопоставляет сначала по адресу, а если он пуст — по метро или ориентиру: оба поля видны и правятся здесь.
       { name: 'address', label: t.address, kind: 'text', wide: true, hint: m.group.addressHint },
       { name: 'metro', label: t.metro, kind: 'text', wide: true, hint: m.group.metroHint },
-      { name: 'format', label: t.format, kind: 'select', required: true, options: withCurrent(meta.groupFormats, g.format) },
+      { name: 'direction', label: t.direction, kind: 'select', required: true, options: withCurrent(meta.groupDirections, g.direction) },
       { name: 'status', label: t.status, kind: 'select', required: true, options: withCurrent(meta.groupStatuses, g.status) },
       { name: 'people', label: t.people, kind: 'text', inputMode: 'numeric', placeholder: m.group.peoplePlaceholder },
       {
@@ -121,12 +131,13 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
       { name: 'campaignRegistered', label: t.campaignRegistered, kind: 'checkbox', wide: true },
       { name: 'campaignOnly', label: t.campaignOnly, kind: 'checkbox', wide: true },
       { name: 'doNotRefer', label: m.group.doNotRefer, kind: 'checkbox', wide: true, hint: m.group.doNotReferHint },
+      { name: 'chamber', label: m.group.chamber, kind: 'checkbox', wide: true, hint: m.group.chamberHint },
     ],
     initial: {
       leader: g.leader,
       district: g.district,
       metro: g.metro ?? '',
-      format: g.format ?? '',
+      direction: g.direction,
       status: g.status,
       people: g.people === null ? '' : String(g.people),
       capacity: g.capacityOwn === null ? '' : String(g.capacityOwn),
@@ -147,6 +158,7 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
       openedOn: g.openedOn ?? '',
       comment: g.comment ?? '',
       doNotRefer: g.doNotRefer ? '1' : '',
+      chamber: g.chamber ? '1' : '',
     },
   };
 }

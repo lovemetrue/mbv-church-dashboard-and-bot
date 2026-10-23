@@ -662,10 +662,10 @@ describe('пароли для команды из справочника', () =>
 
   test('у человека несколько ролей: названия через запятую, смыслы списком без повторов', async () => {
     const c = setup();
-    const id = await seedCoordinator(db, 'Родионов Давид', ['Распределитель', 'Координатор малых групп', 'Катализатор']);
+    const id = await seedCoordinator(db, 'Родионов Давид', ['Распределитель', 'Координатор', 'Катализатор']);
     await c.service.generatePassword({ coordinatorId: id }, 'super_mbv_admin');
     expect(await c.service.personOf(DAVID)).toEqual({
-      login: DAVID, name: 'Родионов Давид', teamRole: 'Катализатор, Координатор малых групп, Распределитель', teamKinds: ['coordinator', 'distributor'],
+      login: DAVID, name: 'Родионов Давид', teamRole: 'Катализатор, Координатор, Распределитель', teamKinds: ['catalyst', 'coordinator', 'distributor'],
     });
   });
 

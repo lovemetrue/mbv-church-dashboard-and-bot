@@ -49,11 +49,11 @@ describe('потенциальные группы из заявок «хочу �
   });
 
   test('человек, который уже ведёт группу (по ссылке или по телефону ведущего), потенциальной группы не получает', async () => {
-    await db.query(`INSERT INTO groups (leader, phones, district, format, status, source) VALUES ('Давний Ведущий', ARRAY['+79001110001'], 'Невский', 'Основная церковь', 'Функционирует', 'таблица')`);
+    await db.query(`INSERT INTO groups (leader, phones, district, direction_id, status, source) VALUES ('Давний Ведущий', ARRAY['+79001110001'], 'Невский', group_direction_id('Основная церковь'), 'Функционирует', 'таблица')`);
     await lead(1);
     expect(await groups()).toHaveLength(1);
     const linked = await seedUser(db, { id: '500', phone: '+79005550000' });
-    await db.query(`INSERT INTO groups (leader, district, format, status, source, leader_user_id) VALUES ('Связанный', 'Невский', 'Основная церковь', 'Функционирует', 'ui', $1)`, [linked]);
+    await db.query(`INSERT INTO groups (leader, district, direction_id, status, source, leader_user_id) VALUES ('Связанный', 'Невский', group_direction_id('Основная церковь'), 'Функционирует', 'ui', $1)`, [linked]);
     await repo.create(linked, 'lead_group');
     expect(await groups()).toHaveLength(2);
   });

@@ -74,7 +74,8 @@ async function main(): Promise<void> {
     // Три набора одним запросом к странице: иначе она делала бы три обращения
     // и часть блоков рисовалась бы раньше остальных.
     data: async () => ({
-      groups: await groups.forDashboard(),
+      // Старая страница знает направление как «формат»: так его поле и называется в её форме.
+      groups: (await groups.forDashboard()).map((g) => ({ ...g, format: g.direction })),
       requests: await requests.forDashboard(),
       coordinators: await coordinators.listActive(),
       leaderCandidates: await users.leaderCandidates(),

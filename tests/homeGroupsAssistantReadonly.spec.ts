@@ -10,10 +10,10 @@ afterAll(async () => { await db.end(); });
 beforeEach(async () => { await truncateAll(db); });
 
 async function seed() {
-  const g1 = (await db.query<{ id: number }>(`INSERT INTO groups (leader, phone, district, format, status, people, coordinator, source)
-    VALUES ('Иван Петров', '+79110001122', 'Приморский', 'Основная церковь', 'Функционирует', 12, 'Анна Координатор', 'ui') RETURNING id`)).rows[0]!.id;
-  await db.query(`INSERT INTO groups (leader, phone, district, format, status, people, source)
-    VALUES ('иван  петров', '8 911 000-11-22', 'Невский', 'Основная церковь', 'Функционирует', 4, 'ui')`);
+  const g1 = (await db.query<{ id: number }>(`INSERT INTO groups (leader, phone, district, direction_id, status, people, coordinator, source)
+    VALUES ('Иван Петров', '+79110001122', 'Приморский', group_direction_id('Основная церковь'), 'Функционирует', 12, 'Анна Координатор', 'ui') RETURNING id`)).rows[0]!.id;
+  await db.query(`INSERT INTO groups (leader, phone, district, direction_id, status, people, source)
+    VALUES ('иван  петров', '8 911 000-11-22', 'Невский', group_direction_id('Основная церковь'), 'Функционирует', 4, 'ui')`);
   const u = (await db.query<{ id: number; registration_no: number }>(`INSERT INTO users (platform, platform_user_id, chat_id, full_name, phone, registration_no, registered_at, complete)
     VALUES ('telegram', 'u1', '', 'Мария Секретная', '+79215550011', nextval('registration_no_seq'), now(), true) RETURNING id, registration_no`)).rows[0]!;
   await db.query(`INSERT INTO requests (user_id, type, status, fio, phone, group_id, note, origin) VALUES ($1, 'join_group', 'Исполнена', 'Мария Секретная', '+79215550011', $2, 'звонить Сергею на 89990001122', 'ui')`, [u.id, g1]);

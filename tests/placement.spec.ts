@@ -13,8 +13,8 @@ beforeEach(async () => { await truncateAll(db); });
 
 async function group(over: { status?: string; people?: number | null; doNotRefer?: boolean; leader?: string; archived?: boolean } = {}): Promise<number> {
   const { rows } = await db.query<{ id: number }>(
-    `INSERT INTO groups (leader, district, format, status, people, do_not_refer, source, archived_at)
-     VALUES ($1, 'Приморский', 'Основная церковь', $2, $3, $4, 'ui', CASE WHEN $5 THEN now() END) RETURNING id`,
+    `INSERT INTO groups (leader, district, direction_id, status, people, do_not_refer, source, archived_at)
+     VALUES ($1, 'Приморский', group_direction_id('Основная церковь'), $2, $3, $4, 'ui', CASE WHEN $5 THEN now() END) RETURNING id`,
     [over.leader ?? 'Иван Петров', over.status ?? 'Функционирует', over.people ?? 3, over.doNotRefer ?? false, over.archived ?? false],
   );
   return rows[0]!.id;

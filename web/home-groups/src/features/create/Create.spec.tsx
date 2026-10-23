@@ -154,6 +154,30 @@ describe('«+ Создать»: заявка', () => {
     });
   });
 
+  test('улица и дом, удобные дни галочками и время суток, хобби, профессия и семья уходят на сервер', async () => {
+    const fetchMock = stubFetchWithFixtures({ me: meOf(null), 'requests/create': () => json({ ok: true, id: 101 }) });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const dialog = await ready(await openForm(user, 'Заявка'));
+    await user.type(within(dialog).getByRole('textbox', { name: 'ФИО' }), 'Мария Соколова');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Улица и дом' }), 'Савушкина 5');
+    const days = within(dialog).getByRole('group', { name: 'Удобные дни' });
+    expect(within(days).getAllByRole('checkbox').map((c) => c.getAttribute('aria-label') ?? c.closest('label')?.textContent)).toEqual(['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']);
+    await user.click(within(days).getByRole('checkbox', { name: 'Сб' }));
+    await user.click(within(days).getByRole('checkbox', { name: 'Вт' }));
+    const time = within(dialog).getByRole('combobox', { name: 'Удобное время' });
+    expect(within(time).getAllByRole('option').map((o) => o.textContent)).toEqual(['любое', 'Утро', 'День', 'Вечер']);
+    await user.selectOptions(time, 'Утро');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Хобби' }), 'хор');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Профессия' }), 'врач');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Семейное положение' }), 'замужем');
+    await user.click(within(dialog).getByRole('button', { name: 'Создать заявку' }));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect(posts(fetchMock)[0]!.body.fields).toMatchObject({
+      address: 'Савушкина 5', days: 'вт, сб', time: 'утро', hobby: 'хор', profession: 'врач', family: 'замужем',
+    });
+  });
+
   test('под «О чём заявка» подсказка: форма — для обращений без регистрации, регистрация заводит заявку сама', async () => {
     stubFetchWithFixtures({ me: meOf(null) });
     const user = userEvent.setup();

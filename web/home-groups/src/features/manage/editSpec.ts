@@ -14,6 +14,8 @@ export interface EditField {
   required?: boolean;
   /** Для select и multi. */
   options?: string[];
+  /** Подписи пунктов select, когда значение — номер записи (роль из справочника), а не сама подпись. */
+  labels?: Record<string, string>;
   /** Пояснение под полем. */
   hint?: string;
   placeholder?: string;
@@ -149,14 +151,24 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
   };
 }
 
-export function coordinatorEditSpec(c: CoordinatorItem): EditSpec {
+/** Роль — из справочника ролей: уходит номером (`roleId`), а название подтягивается сервером. */
+export function coordinatorEditSpec(c: CoordinatorItem, meta: FormMeta): EditSpec {
   const t = m.coordinator.fields;
   return {
     fields: [
       { name: 'name', label: t.name, kind: 'text', required: true, wide: true },
-      { name: 'role', label: t.role, kind: 'text', required: true, wide: true },
+      {
+        name: 'roleId',
+        label: t.role,
+        kind: 'select',
+        required: true,
+        wide: true,
+        options: meta.teamRoles.map((r) => String(r.id)),
+        labels: Object.fromEntries(meta.teamRoles.map((r) => [String(r.id), r.name])),
+        hint: ru.create.coordinatorRoleHint,
+      },
     ],
-    initial: { name: c.name, role: c.role },
+    initial: { name: c.name, roleId: String(c.roleId) },
     note: m.coordinator.renameNote,
   };
 }

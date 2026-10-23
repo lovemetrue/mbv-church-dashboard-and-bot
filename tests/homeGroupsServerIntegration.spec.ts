@@ -59,8 +59,8 @@ async function seed() {
   const gone = await groups.create({ ...GROUP, leader: 'Удалённый', district: 'Приморский' }, 'ui');
   await groups.archive(gone.id);
 
-  await coordinators.create({ name: 'Анна Смирнова', role: 'Координатор' });
-  const retired = await coordinators.create({ name: 'Ушедший', role: 'Координатор' });
+  await coordinators.create({ name: 'Анна Смирнова', role: { name: 'Координатор' } });
+  const retired = await coordinators.create({ name: 'Ушедший', role: { name: 'Координатор' } });
   await coordinators.archive(retired.id);
 
   const tg = await seedUser(db, { id: '1', fio: 'Дарья Ефимова', mdgStatus: 'join', platform: 'telegram' });

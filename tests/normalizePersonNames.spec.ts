@@ -12,7 +12,7 @@ afterAll(async () => { await db.end(); });
 beforeEach(async () => { await truncateAll(db); });
 
 const coordinator = (name: string, archived = false) =>
-  db.query(`INSERT INTO coordinators (name, role, archived_at) VALUES ($1, 'Координатор', $2)`, [name, archived ? new Date() : null]);
+  db.query(`INSERT INTO coordinators (name, role_id, archived_at) VALUES ($1, team_role_id('Координатор'), $2)`, [name, archived ? new Date() : null]);
 const request = async (responsible: string | null) =>
   (await db.query<{ id: number }>(`INSERT INTO requests (type, fio, responsible) VALUES ('join_group', 'Заявитель', $1) RETURNING id`, [responsible])).rows[0]!.id;
 const group = async (coordinatorName: string | null) =>

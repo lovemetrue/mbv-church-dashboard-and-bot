@@ -135,6 +135,12 @@ export interface RequestInput {
   cancelReason?: string | null;
   attendance?: string | null;
   requestedAt?: string | null;
+  /** Улица и дом, удобное время, хобби, профессия, семья — те же поля, что правятся в карточке («Править данные»). */
+  street?: string | null;
+  schedule?: string | null;
+  hobby?: string | null;
+  profession?: string | null;
+  family?: string | null;
 }
 
 // Колонки типа date приходят строкой (см. src/db/pool.ts); created_at — timestamptz,
@@ -189,8 +195,8 @@ export class RequestsRepo {
       await c.query(`SELECT pg_advisory_xact_lock(hashtext('hg_auto_assign'))`);
       const { rows } = await c.query<{ name: string }>(
         `SELECT c.name
-           FROM coordinators c
-          WHERE c.archived_at IS NULL AND lower(c.role) LIKE '%распределител%'
+           FROM coordinators c JOIN team_roles tr ON tr.id = c.role_id
+          WHERE c.archived_at IS NULL AND tr.kind = 'distributor'
           ORDER BY (SELECT count(*) FROM requests r
                      WHERE r.responsible = c.name AND r.archived_at IS NULL AND r.status NOT IN ('Исполнена', 'Аннулирована')),
                    c.id
@@ -222,8 +228,9 @@ export class RequestsRepo {
     const { rows } = await this.db.query<{ id: number }>(
       `INSERT INTO requests (type, status, fio, phone, phones, age, place, responsible, source,
                              ministry, note, extra, recommended, recommended_at, final_group,
-                             cancel_reason, attendance, requested_at, group_id, origin)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'ui')
+                             cancel_reason, attendance, requested_at, group_id,
+                             manual_street, manual_schedule, hobby, profession, family_status, origin)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,'ui')
        RETURNING id`,
       [
         input.type,
@@ -245,6 +252,11 @@ export class RequestsRepo {
         input.attendance ?? null,
         input.requestedAt ?? null,
         input.groupId ?? null,
+        input.street ?? null,
+        input.schedule ?? null,
+        input.hobby ?? null,
+        input.profession ?? null,
+        input.family ?? null,
       ],
     );
     await this.afterCreate(rows[0]!.id, input.type, !input.responsible);

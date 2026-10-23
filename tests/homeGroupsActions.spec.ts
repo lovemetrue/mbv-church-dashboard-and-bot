@@ -471,7 +471,7 @@ describe('создание и параметры подбора через HTTP 
   });
 
   test('справочники форм берутся с сервера, координаторы — из базы', async () => {
-    await db.query(`INSERT INTO coordinators (name, role, source) VALUES ('Анна Координатор', 'Координатор', 'ui')`);
+    await db.query(`INSERT INTO coordinators (name, role_id, source) VALUES ('Анна Координатор', team_role_id('Координатор'), 'ui')`);
     const app = await startAdmin();
     try {
       const meta = await app.get('form-meta');

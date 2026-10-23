@@ -26,9 +26,11 @@ import { ContactsRepo } from '../db/repos/contacts.repo.js';
 import { createReconciler } from './reconcile/service.js';
 import { createStrange } from './strange.js';
 import { createKits } from './kits.js';
+import { createTeamRoles } from './teamRoles.js';
 import { MembersRepo } from '../db/repos/members.repo.js';
 import { GeocodeRepo } from '../db/repos/geocode.repo.js';
 import { StrangeRepo } from '../db/repos/strange.repo.js';
+import { TeamRolesRepo } from '../db/repos/teamRoles.repo.js';
 import { createAssistant } from './assistant/service.js';
 import { ChatHistoryRepo } from '../db/repos/chatHistory.repo.js';
 import { createChat } from './assistant/chat.js';
@@ -177,7 +179,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   const contacts = createContacts({ contacts: new ContactsRepo(db) });
   const usersRepo = new UsersRepo(db);
   const manager = createManager({
-    groups: new GroupsRepo(db), coordinators: new CoordinatorsRepo(db), requests: requestsRepo, users: usersRepo, audit: new AuditRepo(db),
+    groups: new GroupsRepo(db), coordinators: new CoordinatorsRepo(db), teamRoles: new TeamRolesRepo(db), requests: requestsRepo, users: usersRepo, audit: new AuditRepo(db),
   });
   // Кампания «40 дней» (только чтение): те же репозитории и тот же расчёт, что у бота и старого дашборда.
   const campaign = async (): Promise<CampaignView | null> => opts.campaignSchedule
@@ -192,9 +194,10 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   });
   const auditRepo = new AuditRepo(db);
   const audit = (actor: string, action: string, after: unknown) => auditRepo.write(actor, action, 'export', null, after);
+  const teamRoles = createTeamRoles({ repo: new TeamRolesRepo(db), audit: auditRepo });
   const kits = createKits({ users: usersRepo, audit: auditRepo, timeZone: opts.timeZone ?? 'Europe/Moscow' });
-  const formMeta = createFormMeta({ defaultCapacity: opts.defaultCapacity, coordinators: new CoordinatorsRepo(db), groups: new GroupsRepo(db), users: usersRepo });
-  return { load, views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, geocoderConfig, geocodeAddresses, mapConfig, chat, members, contacts, reconciler, strange, kits, formMeta };
+  const formMeta = createFormMeta({ defaultCapacity: opts.defaultCapacity, coordinators: new CoordinatorsRepo(db), teamRoles: new TeamRolesRepo(db), groups: new GroupsRepo(db), users: usersRepo });
+  return { load, views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, geocoderConfig, geocodeAddresses, mapConfig, chat, members, contacts, reconciler, strange, kits, teamRoles, formMeta };
 }
 
 export function composeViews(db: Pool, engine: PlanEngineApi, opts: ComposeOptions): ViewsSource {

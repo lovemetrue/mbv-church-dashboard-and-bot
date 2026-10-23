@@ -46,6 +46,15 @@ describe('регистрация участника в «Домашних гру
     expect(request).toMatchObject({ schedule: 'среда вечером', address: 'ул. Есенина, 1' });
   });
 
+  test('удобные дни и время галочками, хобби, профессия и семья сохраняются в регистрацию', async () => {
+    const out = await registrar().register({
+      fields: { fio: 'Иван Петров', phone: '+7 911 000-11-22', mdgStatus: 'join', days: 'сб', time: 'утро', hobby: 'футбол', profession: 'инженер', family: 'холост' },
+    }, 'a');
+    if (!out.ok) throw new Error('регистрация не прошла');
+    const { rows } = await db.query('SELECT schedule_raw, hobby, profession, family_status FROM users WHERE id=$1', [out.id]);
+    expect(rows[0]).toEqual({ schedule_raw: 'сб утром', hobby: 'футбол', profession: 'инженер', family_status: 'холост' });
+  });
+
   test('без ответа про Малую группу заявки нет и уведомления нет', async () => {
     const out = await registrar().register({ fields: { fio: 'Иван Петров', phone: '+7 911 000-11-22' } }, 'a');
     expect(out.ok).toBe(true);
@@ -99,6 +108,21 @@ describe('заявка из «+ Создать» уведомляет служи
   test('без уведомителя заявка заводится молча', async () => {
     const out = await creator({}).request({ fields: { fio: 'Анна Смирнова', type: 'join_group', status: 'Новая' } }, 'a');
     expect(out.ok).toBe(true);
+  });
+
+  test('адрес, удобные дни и время, хобби, профессия и семья сохраняются в заявку и видны подбору', async () => {
+    const out = await creator({}).request({ fields: {
+      fio: 'Анна Смирнова', type: 'join_group', status: 'Новая',
+      address: 'Савушкина 5', days: 'ср,пн', time: 'вечер', hobby: 'хор', profession: 'врач', family: 'замужем, двое детей',
+    } }, 'a');
+    if (!out.ok) throw new Error(out.message);
+    const { rows } = await db.query('SELECT manual_street, manual_schedule, hobby, profession, family_status FROM requests WHERE id = $1', [out.id]);
+    expect(rows[0]).toEqual({
+      manual_street: 'Савушкина 5', manual_schedule: 'пн, ср вечером', hobby: 'хор', profession: 'врач', family_status: 'замужем, двое детей',
+    });
+    // Подбор и карточка читают те же поля, что правка «Править данные».
+    const request = (await new RequestsRepo(db).forDashboard()).find((r) => r.id === out.id);
+    expect(request).toMatchObject({ manual_street: 'Савушкина 5', manual_schedule: 'пн, ср вечером', hobby: 'хор', profession: 'врач', family: 'замужем, двое детей' });
   });
 
   test('неверная форма не создаёт заявку и никого не уведомляет', async () => {

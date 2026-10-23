@@ -944,6 +944,7 @@ export function buildViewsWithPlan(
       id: c.id,
       name: c.name,
       role: c.role,
+      roleId: c.role_id,
       groups: own.length,
       people: own.reduce((sum, p) => sum + (p.people ?? 0), 0),
       verified30: own.filter((p) => p.verifiedDaysAgo !== null && p.verifiedDaysAgo <= FRESH_FEEDBACK_DAYS).length,

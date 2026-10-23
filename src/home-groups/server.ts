@@ -21,6 +21,7 @@ import type { Members } from './members.js';
 import type { Contacts } from './contacts.js';
 import type { Strange } from './strange.js';
 import type { Kits } from './kits.js';
+import type { TeamRoles } from './teamRoles.js';
 import type { Reconciler } from './reconcile/service.js';
 import { registrationCardPage } from '../dashboard/registrationCard.js';
 import type { Settings } from '../platform/settings/service.js';
@@ -89,6 +90,8 @@ export interface HomeGroupsDeps {
   contacts: Contacts;
   /** Метка «Странный человек». */
   strange: Strange;
+  /** Справочник ролей команды («Настройки → Роли команды», только полный вход). */
+  teamRoles: TeamRoles;
   /** Выдача наборов участникам кампании по QR. */
   kits: Kits;
   /** Разбор «других обращений» по справочникам групп и людей. */
@@ -158,7 +161,7 @@ const CONTENT_TYPES: Record<string, string> = {
 
 class BodyTooLarge extends Error {}
 
-const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode|staff\/generate-password|bot\/extra-questions|bot\/send-extra-questions|assistant\/enabled|assistant\/llm|assistant\/llm-test|geocoder|geocoder-test|geocoder-retry|geocoder-reject|map)$/;
+const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode|staff\/generate-password|team-roles\/create|team-roles\/update|team-roles\/delete|bot\/extra-questions|bot\/send-extra-questions|assistant\/enabled|assistant\/llm|assistant\/llm-test|geocoder|geocoder-test|geocoder-retry|geocoder-reject|map)$/;
 const MAP_LOADED_PATH = '/api/v1/map/loaded';
 const CREATE_PATH = /^\/api\/v1\/(requests|groups|people|coordinators)\/create$/;
 /** `POST /api/v1/groups/5/update`: правка и удаление записей справочника. */
@@ -781,6 +784,9 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       'staff/reset': () => deps.staff.reset(call.body, call.actor),
       'staff/personal-mode': () => deps.staff.setPersonalMode(call.body, call.actor),
       'staff/generate-password': () => deps.staff.generatePassword(call.body, call.actor),
+      'team-roles/create': () => deps.teamRoles.create(call.body, call.actor),
+      'team-roles/update': () => deps.teamRoles.update(call.body, call.actor),
+      'team-roles/delete': () => deps.teamRoles.delete(call.body, call.actor),
       'bot/extra-questions': () => deps.botSettings.setExtraQuestions(call.body, call.actor),
       'bot/send-extra-questions': () => deps.botSettings.sendExtraInvites(call.body, call.actor),
       'assistant/llm': () => deps.llmConfig.save(call.body, call.actor),
@@ -798,6 +804,8 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
       return;
     }
+    // Название роли видно в справочнике команды и в «Сводке»: снимок с прежним названием сбрасываем.
+    if (action.startsWith('team-roles/')) deps.invalidateViews();
     logger.info({ actor: call.actor, action }, 'домашние группы: изменение в настройках');
     // Ответ как есть: у создания и сброса там способ доставки ссылки, у подсказки логина — сам логин.
     sendJson(res, 200, outcome);
@@ -863,6 +871,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       '/api/v1/settings/geocoder': () => deps.geocoderConfig.view(),
       '/api/v1/settings/geocoder/addresses': () => deps.geocodeAddresses.table(),
       '/api/v1/settings/map': () => deps.mapConfig.view(),
+      '/api/v1/settings/team-roles': () => deps.teamRoles.view(),
       '/api/v1/settings/assistant': async () => ({ ...(await deps.assistant.view()), llm: await deps.llmConfig.view() }),
     };
     const settingsRoute = Object.hasOwn(settingsRead, path) ? settingsRead[path] : undefined;

@@ -17,7 +17,6 @@ import {
 } from '../../shared/filters';
 import { downloadCsv, toCsv } from '../../shared/csv';
 import { ru } from '../../shared/i18n/ru';
-import { teamKindOf } from '../../entities/teamRole';
 import { ENTITY_IDS, useAppNav, type EntityId } from '../../shared/nav';
 import { Button, Chip, ErrorState, LoadingState, Popover } from '../../shared/ui';
 import { CoordinatorCard, GroupCard, PersonCard } from './Cards';
@@ -91,7 +90,7 @@ export function GroupsWorkplace() {
   const groups = useGroups();
   const person = useMe().data?.person;
   const myName = person?.name ?? null;
-  const coordinator = teamKindOf(person?.teamRole) === 'coordinator';
+  const coordinator = person?.teamKind === 'coordinator';
   // При личном входе первым быстрым отбором — «Мои группы». Координатору он ещё и стоит по умолчанию вместо «Принимает
   // новых» (чипы снимаются): ему по работе нужны все свои группы, включая «Не направлять», а чужие — нет.
   const config = useMemo(() => {

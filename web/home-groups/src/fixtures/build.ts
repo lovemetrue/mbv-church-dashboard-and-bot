@@ -35,6 +35,7 @@ import type {
 import {
   AGE_COLUMNS,
   COORDINATOR_ROLES,
+  DEMO_TEAM_ROLES,
   DISTRICTS,
   GENERATED_AT,
   NEIGHBORS,
@@ -616,7 +617,8 @@ export function buildCoordinators(): CoordinatorsView {
     return {
       id: i + 1,
       name,
-      role: COORDINATOR_ROLES[name] ?? 'Координатор',
+      role: COORDINATOR_ROLES[name] ?? 'Координатор малых групп',
+      roleId: DEMO_TEAM_ROLES.find((r) => r.name === (COORDINATOR_ROLES[name] ?? 'Координатор малых групп'))!.id,
       groups: gs.length,
       people: gs.reduce((a, g) => a + (g.people ?? 0), 0),
       verified30: gs.filter((g) => g.verifiedDaysAgo != null && g.verifiedDaysAgo <= 30).length,

@@ -148,6 +148,25 @@ describe('форма группы', () => {
   });
 });
 
+describe('удобные дни и время в форме заявки', () => {
+  test('галочки дней и время суток складываются во фразу, как её пишут боту; дни — по порядку недели', () => {
+    const r = parseRequestForm(form({ ...REQUEST_MIN, days: 'сб,пн, ср', time: 'вечер' }));
+    expect(r).toMatchObject({ ok: true, value: { schedule: 'пн, ср, сб вечером' } });
+    expect(parseRequestForm(form({ ...REQUEST_MIN, time: 'день' }))).toMatchObject({ ok: true, value: { schedule: 'днём' } });
+    expect(parseRequestForm(form({ ...REQUEST_MIN, days: 'вс' }))).toMatchObject({ ok: true, value: { schedule: 'вс' } });
+    expect(parseRequestForm(form(REQUEST_MIN))).toMatchObject({ ok: true, value: { schedule: null } });
+  });
+
+  test('готовый текст времени важнее галочек: так шлёт старый дашборд', () => {
+    expect(parseRequestForm(form({ ...REQUEST_MIN, schedule: 'после работы', days: 'пн' }))).toMatchObject({ ok: true, value: { schedule: 'после работы' } });
+  });
+
+  test('день или время не из списка — отказ, а не молчаливая потеря', () => {
+    expect(parseRequestForm(form({ ...REQUEST_MIN, days: 'пн,понедельник' }))).toMatchObject({ ok: false, error: 'Удобные дни выбираются из списка.' });
+    expect(parseRequestForm(form({ ...REQUEST_MIN, time: 'ночь' }))).toMatchObject({ ok: false, error: 'Удобное время выбирается из списка.' });
+  });
+});
+
 describe('форма заявки', () => {
   test('минимальный набор проходит', () => {
     const r = parseRequestForm(form(REQUEST_MIN));
@@ -214,7 +233,13 @@ describe('форма участника (координатора)', () => {
   test('ФИО и роль проходят', () => {
     const r = parseCoordinatorForm(form({ name: 'Петрова Мария', role: 'Координатор малых групп' }));
     expect(r.ok).toBe(true);
-    if (r.ok) expect(r.value).toEqual({ name: 'Петрова Мария', role: 'Координатор малых групп' });
+    if (r.ok) expect(r.value).toEqual({ name: 'Петрова Мария', role: { name: 'Координатор малых групп' } });
+  });
+
+  test('роль из справочника приходит номером и важнее роли словами', () => {
+    const r = parseCoordinatorForm(form({ name: 'Петрова Мария', roleId: '3', role: 'Координатор' }));
+    expect(r).toEqual({ ok: true, value: { name: 'Петрова Мария', role: { id: 3 } } });
+    expect(parseCoordinatorForm(form({ name: 'Петрова Мария', roleId: 'три' }))).toMatchObject({ ok: false, error: 'Роль выбирается из списка.' });
   });
 
   test('без ФИО не принимается', () => {
@@ -237,7 +262,7 @@ describe('форма участника (координатора)', () => {
   test('правка с номером и полями проходит', () => {
     const r = parseCoordinatorUpdate(form({ id: '5', name: 'Петрова Мария', role: 'Координатор' }));
     expect(r.ok).toBe(true);
-    if (r.ok) expect(r.value).toEqual({ id: 5, input: { name: 'Петрова Мария', role: 'Координатор' } });
+    if (r.ok) expect(r.value).toEqual({ id: 5, input: { name: 'Петрова Мария', role: { name: 'Координатор' } } });
   });
 });
 

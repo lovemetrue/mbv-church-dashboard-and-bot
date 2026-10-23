@@ -116,6 +116,8 @@ export interface Me {
      * свои и ничьи заявки, координатор — свои группы и свои обращения «хочу открыть группу», старший — всё.
      */
     teamRole: string | null;
+    /** Что роль значит для сервиса — из справочника ролей, а не угадыванием по названию; null — без особого смысла. */
+    teamKind: TeamRoleKind | null;
   };
   /** Состояние помощника для кнопки «✦ Помощник»: показывается, когда ключ задан, помощник включён и база готова. */
   assistant?: { available: boolean; enabled: boolean; chat: boolean };
@@ -1034,6 +1036,11 @@ export interface FormMeta {
   ageGroups: string[];
   /** Имена координаторов для поля «Координатор» / «Ответственный». */
   coordinators: string[];
+  /** Справочник ролей команды: форма координатора выбирает роль из него. */
+  teamRoles: { id: number; name: string }[];
+  /** «Удобные дни» и «Удобное время» в заявке и регистрации: сервер собирает из них фразу «пн, ср вечером». */
+  scheduleDays: { value: string; label: string }[];
+  scheduleTimes: { value: string; label: string }[];
   /** Церкви для формы регистрации. */
   churches: string[];
   /** Ответ про малую группу в регистрации (value → подпись). */
@@ -1276,7 +1283,10 @@ export interface KitIssueOk {
 export interface CoordinatorItem {
   id: number;
   name: string;
+  /** Название роли из справочника ролей — для показа и отборов. */
   role: string;
+  /** Ссылка на роль: её выбирает форма правки. */
+  roleId: number;
   groups: number;
   people: number;
   /** Групп с обратной связью за последние 30 дней. */
@@ -1523,4 +1533,24 @@ export interface DeliveryOk {
   /** Логин созданного пользователя (при create). */
   login?: string;
   id?: number;
+}
+
+/**
+ * Что роль команды значит для сервиса: distributor — распределитель (на него автоматически назначаются новые заявки,
+ * после входа видит свои и ничьи), coordinator — координатор групп (свои группы и обращения «хочу открыть группу»),
+ * senior — старший координатор (всё, без отборов).
+ */
+export type TeamRoleKind = 'distributor' | 'coordinator' | 'senior';
+
+/** Роль в «Настройки → Роли команды». */
+export interface TeamRoleItem {
+  id: number;
+  name: string;
+  kind: TeamRoleKind | null;
+  /** Сколько действующих людей с этой ролью в справочнике команды: роль с людьми удалить нельзя. */
+  members: number;
+}
+
+export interface TeamRolesView {
+  items: TeamRoleItem[];
 }

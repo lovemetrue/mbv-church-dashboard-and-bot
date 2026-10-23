@@ -139,6 +139,12 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
       forRequest: async (id: number, body: unknown, actor: string) => { strangeCalls.push({ name: 'request', id, body, actor }); return { ok: true }; },
       forPerson: async (body: unknown, actor: string) => { strangeCalls.push({ name: 'person', body, actor }); return { ok: true }; },
     } as never,
+    teamRoles: {
+      view: async () => ({ items: [{ id: 1, name: 'Распределитель', kind: 'distributor', members: 2 }] }),
+      create: async (body: unknown, actor: string) => { kitCalls.push({ name: 'role.create', body, actor }); return { ok: true, id: 7 }; },
+      update: async (body: unknown, actor: string) => { kitCalls.push({ name: 'role.update', body, actor }); return { ok: true }; },
+      delete: async (body: unknown, actor: string) => { kitCalls.push({ name: 'role.delete', body, actor }); return { ok: false, error: 'conflict', message: 'Роль есть у людей в справочнике команды: сначала смените им роль.' }; },
+    } as never,
     kits: {
       view: async () => { kitCalls.push({ name: 'view' }); return { generatedAt: 'g', registered: 3, issued: 1, issuedToday: 1, recent: [] }; },
       find: async (body: unknown) => {
@@ -1487,6 +1493,24 @@ describe('помощник по разбору заявок', () => {
     expect((await post(await signIn(REGULAR), 'settings/geocoder-reject', { address: 'ул. Тест, 1' })).status).toBe(403);
     expect((await post(sup, 'settings/geocoder-reject', { address: 'ул. Тест, 1' })).status).toBe(200);
     expect(app.llmCalls.at(-1)).toEqual({ name: 'geo-reject', body: { address: 'ул. Тест, 1' } });
+  });
+
+  test('роли команды: список и правка только у полного входа; правка сбрасывает снимок, отказ приходит словами', async () => {
+    expect((await fetch(`${app.base}/api/v1/settings/team-roles`, { headers: { cookie: await signIn(REGULAR) } })).status).toBe(403);
+    expect((await post(await signIn(REGULAR), 'settings/team-roles/create', { name: 'Пастор' })).status).toBe(403);
+    const sup = await signIn(SUPER);
+    const view = await fetch(`${app.base}/api/v1/settings/team-roles`, { headers: { cookie: sup } });
+    expect(await view.json()).toEqual({ items: [{ id: 1, name: 'Распределитель', kind: 'distributor', members: 2 }] });
+    const inv = app.invalidations();
+    const made = await post(sup, 'settings/team-roles/create', { name: 'Пастор', kind: null });
+    expect(await made.json()).toEqual({ ok: true, id: 7 });
+    expect(app.kitCalls.at(-1)).toEqual({ name: 'role.create', body: { name: 'Пастор', kind: null }, actor: SUPER.login });
+    expect((await post(sup, 'settings/team-roles/update', { id: 7, name: 'Пастор церкви' })).status).toBe(200);
+    expect(app.invalidations()).toBe(inv + 2);
+    const refused = await post(sup, 'settings/team-roles/delete', { id: 1 });
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toMatchObject({ error: 'conflict', message: expect.stringMatching(/сначала смените им роль/) });
+    expect((await fetch(`${app.base}/api/v1/settings/team-roles/delete`, { headers: { cookie: sup } })).status).toBe(404);
   });
 
   test('ключ карты: настройки и сохранение только у полного входа, а страница получает ключ и расход при любом входе', async () => {

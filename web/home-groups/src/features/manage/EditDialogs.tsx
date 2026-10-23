@@ -44,14 +44,16 @@ export function GroupEditDialog({ g, onClose, onSaved }: { g: GroupItem; onClose
 export function CoordinatorEditDialog({ c, onClose, onSaved }: { c: CoordinatorItem; onClose: () => void; onSaved: () => void }) {
   const guard = useGuardedClose(onClose);
   return (
-    <Modal title={ru.manage.coordinator.editTitle(c.name)} onClose={guard.close}>
-      <EditForm
-        spec={coordinatorEditSpec(c)}
-        path={`coordinators/${c.id}/update`}
-        onClose={guard.close}
-        onSaved={onSaved}
-        onBusyChange={guard.setBusy}
-      />
-    </Modal>
+    <FormMetaGate title={ru.manage.coordinator.editTitle(c.name)} onClose={guard.close}>
+      {(meta) => (
+        <EditForm
+          spec={coordinatorEditSpec(c, meta)}
+          path={`coordinators/${c.id}/update`}
+          onClose={guard.close}
+          onSaved={onSaved}
+          onBusyChange={guard.setBusy}
+        />
+      )}
+    </FormMetaGate>
   );
 }

@@ -1,6 +1,7 @@
 import { parseCoordinatorForm, parseGroupForm } from '../dashboard/forms.js';
 import type { AuditRepo } from '../db/repos/audit.repo.js';
-import type { CoordinatorsRepo } from '../db/repos/coordinators.repo.js';
+import type { CoordinatorsRepo, RoleRef } from '../db/repos/coordinators.repo.js';
+import type { TeamRolesRepo } from '../db/repos/teamRoles.repo.js';
 import type { GroupRow, GroupsRepo } from '../db/repos/groups.repo.js';
 import type { RequestsRepo } from '../db/repos/requests.repo.js';
 import type { UsersRepo } from '../db/repos/users.repo.js';
@@ -18,6 +19,9 @@ import { fieldsToForm } from './create.js';
 const fail = (error: 'bad_request' | 'not_found', message: string): ActionOutcome => ({ ok: false, error, message });
 
 /** Поля группы, которые можно менять отсюда. Телефоны и адрес видны в форме и правятся как обычные поля. */
+/** Что в строке справочника команды правится: ФИО и роль (ссылкой из списка или, в старом дашборде, словами). */
+const COORDINATOR_EDITABLE: readonly string[] = ['name', 'roleId', 'role'];
+
 const GROUP_EDITABLE = [
   'leader', 'district', 'format', 'status', 'people', 'day', 'time', 'composition', 'coordinator', 'coLeader',
   'feedbackAt', 'openedOn', 'comment', 'age', 'metro', 'openToNew', 'training', 'no', 'checked', 'doNotRefer',
@@ -48,10 +52,17 @@ function groupToFields(g: GroupRow): URLSearchParams {
 export function createManager(deps: {
   groups: Pick<GroupsRepo, 'findActive' | 'update' | 'archive'>;
   coordinators: Pick<CoordinatorsRepo, 'create' | 'findActive' | 'rename' | 'archive'>;
+  teamRoles: Pick<TeamRolesRepo, 'exists'>;
   requests: Pick<RequestsRepo, 'archive'>;
   users: Pick<UsersRepo, 'findById' | 'delete'>;
   audit: Pick<AuditRepo, 'write'>;
 }) {
+  /** Роль из списка должна быть в справочнике: иначе база откажет ссылкой, а человек увидит «ошибку сервера». */
+  const checkRole = async (role: RoleRef): Promise<Extract<ActionOutcome, { ok: false }> | null> =>
+    'id' in role && !(await deps.teamRoles.exists(role.id))
+      ? (fail('bad_request', 'Такой роли нет в справочнике: обновите страницу и выберите роль снова.') as Extract<ActionOutcome, { ok: false }>)
+      : null;
+
   return {
     async updateGroup(id: number, body: unknown, actor: string): Promise<ActionOutcome> {
       const given = fieldsToForm(body);
@@ -100,8 +111,10 @@ export function createManager(deps: {
       if (typeof form === 'string') return fail('bad_request', form) as Extract<ActionOutcome, { ok: false }>;
       const parsed = parseCoordinatorForm(form);
       if (!parsed.ok) return fail('bad_request', parsed.error) as Extract<ActionOutcome, { ok: false }>;
+      const roleError = await checkRole(parsed.value.role);
+      if (roleError) return roleError;
       const created = await deps.coordinators.create(parsed.value, 'ui');
-      await deps.audit.write(actor, 'coordinator.create', 'coordinator', created.id, { role: parsed.value.role });
+      await deps.audit.write(actor, 'coordinator.create', 'coordinator', created.id, { role: created.role });
       return { ok: true, id: created.id };
     },
 
@@ -111,13 +124,17 @@ export function createManager(deps: {
       if (given.size === 0) return fail('bad_request', 'Нечего менять.');
       const current = await deps.coordinators.findActive(id);
       if (!current) return fail('not_found', 'Участник команды не найден.');
-      const merged = new URLSearchParams({ name: current.name, role: current.role });
-      for (const [k, v] of given) if (k === 'name' || k === 'role') merged.set(k, v);
+      const merged = new URLSearchParams({ name: current.name, roleId: String(current.role_id) });
+      for (const [k, v] of given) if (COORDINATOR_EDITABLE.includes(k)) merged.set(k, v);
+      // Роль словами (так пишет только старый дашборд) заменяет ссылку: иначе осталась бы прежняя роль.
+      if (given.has('role') && !given.has('roleId')) merged.delete('roleId');
       const parsed = parseCoordinatorForm(merged);
       if (!parsed.ok) return fail('bad_request', parsed.error);
+      const roleError = await checkRole(parsed.value.role);
+      if (roleError) return roleError;
       const updated = await deps.coordinators.rename(id, parsed.value);
       if (!updated) return fail('not_found', 'Участник команды не найден.');
-      await deps.audit.write(actor, 'coordinator.update', 'coordinator', id, { fields: [...given.keys()].filter((k) => k === 'name' || k === 'role') });
+      await deps.audit.write(actor, 'coordinator.update', 'coordinator', id, { fields: [...given.keys()].filter((k) => COORDINATOR_EDITABLE.includes(k)) });
       return { ok: true };
     },
 

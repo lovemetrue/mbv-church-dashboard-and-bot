@@ -121,7 +121,7 @@ describe('личные входы целиком', () => {
     const app = await start();
     try {
       const boss = (await app.login('super_mbv_admin', SHARED.super)).cookie!;
-      const { rows } = await db.query<{ id: number }>(`INSERT INTO coordinators (name, role, source) VALUES ('Родионов Давид', 'Распределитель', 'ui') RETURNING id::int AS id`);
+      const { rows } = await db.query<{ id: number }>(`INSERT INTO coordinators (name, role_id, source) VALUES ('Родионов Давид', team_role_id('Распределитель'), 'ui') RETURNING id::int AS id`);
       const r = await app.api(boss, 'settings/staff/generate-password', { coordinatorId: rows[0]!.id });
       expect(r.status).toBe(200);
       const out = await r.json() as { ok: true; login: string; password: string };
@@ -141,7 +141,7 @@ describe('личные входы целиком', () => {
     const app = await start();
     try {
       const boss = (await app.login('super_mbv_admin', SHARED.super)).cookie!;
-      const { rows } = await db.query<{ id: number }>(`INSERT INTO coordinators (name, role, source) VALUES ('Родионов Давид', 'Распределитель', 'ui') RETURNING id::int AS id`);
+      const { rows } = await db.query<{ id: number }>(`INSERT INTO coordinators (name, role_id, source) VALUES ('Родионов Давид', team_role_id('Распределитель'), 'ui') RETURNING id::int AS id`);
       const out = await (await app.api(boss, 'settings/staff/generate-password', { coordinatorId: rows[0]!.id })).json() as { login: string; password: string };
       const david = await app.login(out.login, out.password);
       expect(david.status).toBe(302);

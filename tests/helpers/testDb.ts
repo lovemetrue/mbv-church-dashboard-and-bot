@@ -27,8 +27,13 @@ export async function setupTestDb(): Promise<Pool> {
 export async function truncateAll(db: Pool): Promise<void> {
   await db.query(
     `TRUNCATE users, sessions, admin_sessions, requests, campaign_days, broadcasts, deliveries, groups, coordinators,
-       placement_proposals, request_hints, group_members, persons, strange_marks, geocode_cache, assistant_chat_messages, audit_log, app_settings, system_errors, agent_prompts, staff, staff_tokens
+       placement_proposals, request_hints, group_members, persons, strange_marks, geocode_cache, assistant_chat_messages, audit_log, app_settings, system_errors, agent_prompts, staff, staff_tokens, team_roles
      RESTART IDENTITY CASCADE`,
+  );
+  // Основные роли заводит миграция 049; после очистки возвращаем их, как на свежей базе.
+  await db.query(
+    `INSERT INTO team_roles (name, kind) VALUES
+       ('Координатор малых групп', 'coordinator'), ('Старший координатор', 'senior'), ('Распределитель', 'distributor')`,
   );
   // Номера регистрации в тестах должны начинаться заново, иначе ожидания «№1» ломаются.
   await db.query('ALTER SEQUENCE registration_no_seq RESTART WITH 1');

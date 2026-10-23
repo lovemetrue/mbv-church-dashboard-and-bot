@@ -557,7 +557,7 @@ describe('пароли для команды из справочника', () =>
   const enter = (c: Ctx, issued: { password: string }, ip: string) => c.auth.login(issued.password, ip, DAVID);
   const member = async (name: string, role = 'Координатор', archived = false) =>
     (await db.query<{ id: number }>(
-      `INSERT INTO coordinators (name, role, source, archived_at) VALUES ($1, $2, 'ui', $3) RETURNING id::int AS id`,
+      `INSERT INTO coordinators (name, role_id, source, archived_at) VALUES ($1, team_role_id($2), 'ui', $3) RETURNING id::int AS id`,
       [name, role, archived ? new Date() : null],
     )).rows[0]!.id;
 
@@ -649,10 +649,19 @@ describe('пароли для команды из справочника', () =>
     const id = await member('Родионов Давид');
     await c.service.generatePassword({ coordinatorId: id }, 'super_mbv_admin');
     await db.query(`UPDATE coordinators SET name = 'Родионов Давид Петрович' WHERE id = $1`, [id]);
-    expect(await c.service.personOf(DAVID)).toEqual({ login: DAVID, name: 'Родионов Давид Петрович', teamRole: 'Координатор' });
+    expect(await c.service.personOf(DAVID)).toEqual({ login: DAVID, name: 'Родионов Давид Петрович', teamRole: 'Координатор', teamKind: 'coordinator' });
     await c.service.create(POLINA, 'super_mbv_admin');
-    expect(await c.service.personOf('p_ivanova')).toEqual({ login: 'p_ivanova', name: 'Полина Иванова', teamRole: null });
+    expect(await c.service.personOf('p_ivanova')).toEqual({ login: 'p_ivanova', name: 'Полина Иванова', teamRole: null, teamKind: null });
     expect(await c.service.personOf('нет_такого')).toBeNull();
+  });
+
+  test('смысл роли берётся из справочника ролей, а не из её названия', async () => {
+    const c = setup();
+    const id = await member('Родионов Давид');
+    await c.service.generatePassword({ coordinatorId: id }, 'super_mbv_admin');
+    // Название без слова «распределитель», но в справочнике роль отмечена распределителем.
+    await db.query(`UPDATE team_roles SET name = 'Обзвон', kind = 'distributor' WHERE id = (SELECT role_id FROM coordinators WHERE id = $1)`, [id]);
+    expect(await c.service.personOf(DAVID)).toMatchObject({ teamRole: 'Обзвон', teamKind: 'distributor' });
   });
 
   test('в журнале — кто кому выдал пароль, но не сам пароль', async () => {

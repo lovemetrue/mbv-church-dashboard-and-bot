@@ -1,5 +1,5 @@
 import type { FormMeta } from '@contracts';
-import { DISTRICTS, RAW_GROUPS } from './raw';
+import { DEMO_TEAM_ROLES, DISTRICTS, RAW_GROUPS } from './raw';
 
 /**
  * Справочники форм «Создать» в демо. Списки — те же по смыслу, что отдаёт сервер (там они
@@ -21,6 +21,12 @@ export function buildFormMeta(): FormMeta {
     ],
     ageGroups: ['18-25', '25-40', '40-55', '55+'],
     coordinators: ['Трофимова С.', 'Петров Г.', 'Лебедева А.', 'Морозов Д.'],
+    teamRoles: DEMO_TEAM_ROLES.map(({ id, name }) => ({ id, name })),
+    scheduleDays: [
+      { value: 'пн', label: 'Пн' }, { value: 'вт', label: 'Вт' }, { value: 'ср', label: 'Ср' }, { value: 'чт', label: 'Чт' },
+      { value: 'пт', label: 'Пт' }, { value: 'сб', label: 'Сб' }, { value: 'вс', label: 'Вс' },
+    ],
+    scheduleTimes: [{ value: 'утро', label: 'Утро' }, { value: 'день', label: 'День' }, { value: 'вечер', label: 'Вечер' }],
     churches: ['МБВ Колизей', 'МБВ Филиалы', 'МБВ онлайн', 'Другая церковь', 'Не посещаю церковь'],
     // Подписи в третьем лице: форму заполняет служитель за человека (как на сервере).
     mdgStatuses: [

@@ -1,9 +1,10 @@
-import { parseGroupForm, parseRequestForm } from '../dashboard/forms.js';
+import { SCHEDULE_DAYS, SCHEDULE_TIMES, parseGroupForm, parseRequestForm } from '../dashboard/forms.js';
 import { ALL_DISTRICTS, ALL_GROUP_STATUSES, COMPOSITIONS, FORMATS, groupCode } from '../core/groups.js';
 import { allChurchOptions } from '../core/churches.js';
 import { AGE_GROUPS } from '../core/texts.js';
 import type { AuditRepo } from '../db/repos/audit.repo.js';
 import type { CoordinatorsRepo } from '../db/repos/coordinators.repo.js';
+import type { TeamRolesRepo } from '../db/repos/teamRoles.repo.js';
 import type { GroupsRepo } from '../db/repos/groups.repo.js';
 import { REQUEST_STATUSES, type RequestsRepo, type RequestWithUser } from '../db/repos/requests.repo.js';
 import type { LeaderCandidate, UsersRepo } from '../db/repos/users.repo.js';
@@ -106,6 +107,7 @@ function candidateLabel(c: LeaderCandidate): string {
 export function createFormMeta(deps: {
   defaultCapacity: number;
   coordinators: Pick<CoordinatorsRepo, 'listActive'>;
+  teamRoles: Pick<TeamRolesRepo, 'list'>;
   groups: Pick<GroupsRepo, 'forDashboard'>;
   users: Pick<UsersRepo, 'leaderCandidates'>;
 }): () => Promise<FormMeta> {
@@ -118,6 +120,9 @@ export function createFormMeta(deps: {
     requestTypes: REQUEST_TYPES,
     ageGroups: [...AGE_GROUPS],
     coordinators: (await deps.coordinators.listActive()).map((c) => c.name),
+    teamRoles: (await deps.teamRoles.list()).map((r) => ({ id: r.id, name: r.name })),
+    scheduleDays: SCHEDULE_DAYS.map(({ value, label }) => ({ value, label })),
+    scheduleTimes: SCHEDULE_TIMES.map(({ value, label }) => ({ value, label })),
     churches: allChurchOptions(),
     mdgStatuses: MDG_STATUSES,
     openToNew: OPEN_TO_NEW,

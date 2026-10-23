@@ -510,7 +510,7 @@ describe('участники (координаторы) через дашбор�
     const r = await post('/coordinator/create', { name: 'Петрова Мария', role: 'Координатор малых групп' }, cookie);
     expect(r.status).toBe(200);
 
-    const { rows } = await db.query('SELECT name, role, source FROM coordinators');
+    const { rows } = await db.query('SELECT c.name, r.name AS role, c.source FROM coordinators c JOIN team_roles r ON r.id = c.role_id');
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ name: 'Петрова Мария', role: 'Координатор малых групп', source: 'ui' });
   });
@@ -525,14 +525,14 @@ describe('участники (координаторы) через дашбор�
 
   test('участника можно исправить', async () => {
     const cookie = await login();
-    const created = await coordinatorsRepo.create({ name: 'Петрова Мария', role: 'Координатор' });
+    const created = await coordinatorsRepo.create({ name: 'Петрова Мария', role: { name: 'Координатор' } });
 
     const r = await post('/coordinator/update', {
       id: String(created.id), name: 'Петрова Мария Ивановна', role: 'Старший координатор',
     }, cookie);
     expect(r.status).toBe(200);
 
-    const after = await db.query('SELECT name, role FROM coordinators WHERE id = $1', [created.id]);
+    const after = await db.query('SELECT c.name, r.name AS role FROM coordinators c JOIN team_roles r ON r.id = c.role_id WHERE c.id = $1', [created.id]);
     expect(after.rows[0]).toMatchObject({ name: 'Петрова Мария Ивановна', role: 'Старший координатор' });
   });
 
@@ -544,7 +544,7 @@ describe('участники (координаторы) через дашбор�
 
   test('участника можно убрать, и он пропадает из списка', async () => {
     const cookie = await login();
-    const created = await coordinatorsRepo.create({ name: 'Лишний', role: 'Координатор' });
+    const created = await coordinatorsRepo.create({ name: 'Лишний', role: { name: 'Координатор' } });
 
     const r = await post('/coordinator/delete', { id: String(created.id) }, cookie);
     expect(r.status).toBe(200);
@@ -553,13 +553,13 @@ describe('участники (координаторы) через дашбор�
 
   test('повторное удаление участника отвечает 404', async () => {
     const cookie = await login();
-    const created = await coordinatorsRepo.create({ name: 'Раз', role: 'Координатор' });
+    const created = await coordinatorsRepo.create({ name: 'Раз', role: { name: 'Координатор' } });
     await post('/coordinator/delete', { id: String(created.id) }, cookie);
     expect((await post('/coordinator/delete', { id: String(created.id) }, cookie)).status).toBe(404);
   });
 
   test('без сессии не заводит, не правит и не удаляет', async () => {
-    const created = await coordinatorsRepo.create({ name: 'Петрова Мария', role: 'Координатор' });
+    const created = await coordinatorsRepo.create({ name: 'Петрова Мария', role: { name: 'Координатор' } });
     const bare = (path: string, fields: Record<string, string>) =>
       fetch(`${base}${path}`, {
         method: 'POST',

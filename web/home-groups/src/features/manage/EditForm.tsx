@@ -134,7 +134,7 @@ export function EditForm({ spec: given, path, onClose, onSaved, onBusyChange, re
             <option value="">{ru.manage.notChosen}</option>
             {(f.options ?? []).map((o) => (
               <option key={o} value={o}>
-                {o}
+                {f.labels?.[o] ?? o}
               </option>
             ))}
           </select>

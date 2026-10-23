@@ -1,3 +1,4 @@
+import type { TeamRoleKind } from './coordinators.repo.js';
 import type { Pool, PoolClient } from 'pg';
 
 export interface StaffRow {
@@ -255,26 +256,28 @@ export class StaffRepo {
   }
 
   /** Как зовут человека в справочнике команды и его роль там (по связи `coordinator_id`), а без связи — ФИО учётной записи. */
-  async displayName(login: string): Promise<{ name: string; teamRole: string | null } | null> {
-    const { rows } = await this.db.query<{ name: string; team_role: string | null }>(
-      `SELECT COALESCE(c.name, s.full_name) AS name, c.role AS team_role
+  async displayName(login: string): Promise<{ name: string; teamRole: string | null; teamKind: TeamRoleKind | null } | null> {
+    const { rows } = await this.db.query<{ name: string; team_role: string | null; team_kind: TeamRoleKind | null }>(
+      `SELECT COALESCE(c.name, s.full_name) AS name, r.name AS team_role, r.kind AS team_kind
          FROM staff s LEFT JOIN coordinators c ON c.id = s.coordinator_id AND c.archived_at IS NULL
+         LEFT JOIN team_roles r ON r.id = c.role_id
         WHERE lower(s.login) = lower($1)`,
       [login],
     );
     const row = rows[0];
-    return row ? { name: row.name, teamRole: row.team_role } : null;
+    return row ? { name: row.name, teamRole: row.team_role, teamKind: row.team_kind } : null;
   }
 
   /** Команда из справочника (координаторы, распределители) и их учётные записи; без удалённых из справочника. */
   async team(): Promise<TeamAccountRow[]> {
     const { rows } = await this.db.query<TeamAccountRow>(
-      `SELECT c.id::int AS coordinator_id, c.name, c.role AS team_role, a.id::int AS staff_id, a.login, a.active,
+      `SELECT c.id::int AS coordinator_id, c.name, r.name AS team_role, a.id::int AS staff_id, a.login, a.active,
               (a.password_hash IS NOT NULL) AS has_password, a.last_login_at
          FROM coordinators c
+         JOIN team_roles r ON r.id = c.role_id
          LEFT JOIN LATERAL (${TEAM_ACCOUNT}) a ON true
         WHERE c.archived_at IS NULL
-        ORDER BY c.role, c.name, c.id`,
+        ORDER BY r.name, c.name, c.id`,
     );
     return rows.map((r) => ({ ...r, has_password: r.has_password === true }));
   }

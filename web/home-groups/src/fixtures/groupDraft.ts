@@ -17,7 +17,6 @@ export function demoGroupDraft(requestId: number): GroupDraftView {
     fields: {
       leader: item.fio,
       status: 'Потенциальная',
-      format: 'Основная церковь',
       comment: [`Заведена по заявке №${requestId}`, item.place ? `Место: ${item.place}` : null].filter(Boolean).join('. ') + '.',
       ...(item.phone ? { phone: item.phone } : {}),
       ...(district ? { district } : {}),

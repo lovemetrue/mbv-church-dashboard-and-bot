@@ -22,7 +22,12 @@ export interface ContactValues {
   note: string | null;
   /** Только у заявки: поля из таблицы церкви. У человека в «Людях» их нет, и форма их не рисует. */
   table?: RequestTableFields;
+  /** Контакты скрыты сервером (запись не своя): полей с ними в форме нет, иначе маска затёрла бы настоящий номер. */
+  contactsHidden?: boolean;
 }
+
+/** Поля, которых при скрытых контактах в форме нет: сервер их не прислал. */
+const HIDDEN_CONTACT_FIELDS: ReadonlySet<string> = new Set(['phone', 'address', 'hobby', 'profession', 'family']);
 
 /** Порядок и подписи полей — единственное место: формы правки и добавления человека строятся только отсюда. */
 export const CONTACT_FIELD_DEFS: EditField[] = [
@@ -57,8 +62,9 @@ const TABLE_FIELD_DEFS: EditField[] = [
 
 export function contactEditSpec(v: ContactValues): EditSpec {
   const t = v.table;
+  const all = t ? [...CONTACT_FIELD_DEFS, ...TABLE_FIELD_DEFS] : CONTACT_FIELD_DEFS;
   return {
-    fields: t ? [...CONTACT_FIELD_DEFS, ...TABLE_FIELD_DEFS] : CONTACT_FIELD_DEFS,
+    fields: v.contactsHidden ? all.filter((x) => !HIDDEN_CONTACT_FIELDS.has(x.name)) : all,
     initial: {
       ...(t
         ? {
@@ -82,6 +88,6 @@ export function contactEditSpec(v: ContactValues): EditSpec {
       // У заявки показ склеивает заметку с «Дополнительно»; править надо порознь, иначе сохранение заметки задвоило бы «Дополнительно».
       note: (t ? t.note : v.note) ?? '',
     },
-    note: f.sharedHint,
+    note: v.contactsHidden ? `${f.sharedHint} ${f.contactsHidden}` : f.sharedHint,
   };
 }

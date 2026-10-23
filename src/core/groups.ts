@@ -34,8 +34,6 @@ export const DISTRICTS = [
 /** Код группы для людей: «ДГ-0012». Один на интерфейс и на запись «утверждена: …» в заявке. */
 export const groupCode = (id: number): string => `ДГ-${String(id).padStart(4, '0')}`;
 
-export const FORMATS = ['Основная церковь', 'Молодежная', 'Приватная (Закрытая)', 'Служение'] as const;
-
 /** Статусы, которые имеет смысл ставить при заведении: «Закрыта» здесь была бы бессмысленна. */
 export const GROUP_STATUSES = ['Функционирует', 'Потенциальная', 'На паузе'] as const;
 
@@ -56,11 +54,11 @@ export const ALL_GROUP_STATUSES = [
 ] as const;
 
 /**
- * «Формат группы» в дашборде: из них можно отметить несколько сразу («Мужская, Ментальная»).
+ * Состав группы («Формат группы» в старом дашборде): из них можно отметить несколько сразу («Мужская, Ментальная»).
  * Хранится в колонке composition текстом через запятую; порядок здесь — порядок записи.
- * «Семейная», «Служение» и «Приватная» убраны по просьбе служителей: «Служение» и «Приватная (Закрытая)» — это
- * тип группы (`FORMATS`), а не состав. Где они стояли, миграция 046 поставила «Смешанная»; тот же список — в SQL
- * этой миграции и в `COMPOSITION_OPTIONS` старого дашборда.
+ * «Семейная», «Служение» и «Приватная» убраны по просьбе служителей: «Служение» и «Приватная (Закрытая)» — не состав,
+ * а вид группы (теперь отметка «Камерная группа», миграция 052). Где они стояли, миграция 046 поставила «Смешанная»;
+ * тот же список — в SQL этой миграции и в `COMPOSITION_OPTIONS` старого дашборда.
  */
 export const COMPOSITIONS = ['Смешанная', 'Мужская', 'Женская', 'Ментальная'] as const;
 
@@ -68,7 +66,6 @@ export const COMPOSITIONS = ['Смешанная', 'Мужская', 'Женск
 export const ALL_DISTRICTS = [...DISTRICTS, 'Не указан'] as const;
 
 export type District = (typeof DISTRICTS)[number];
-export type GroupFormat = (typeof FORMATS)[number];
 export type GroupStatus = (typeof GROUP_STATUSES)[number];
 
 const byIndex = <T>(list: readonly T[], raw: string): T | null => {
@@ -77,7 +74,6 @@ const byIndex = <T>(list: readonly T[], raw: string): T | null => {
 };
 
 export const districtByIndex = (raw: string): District | null => byIndex(DISTRICTS, raw);
-export const formatByIndex = (raw: string): GroupFormat | null => byIndex(FORMATS, raw);
 export const statusByIndex = (raw: string): GroupStatus | null => byIndex(GROUP_STATUSES, raw);
 
 /** Число участников: пусто — это «не знаем», а не ноль. */

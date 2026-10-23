@@ -145,6 +145,12 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
       update: async (body: unknown, actor: string) => { kitCalls.push({ name: 'role.update', body, actor }); return { ok: true }; },
       delete: async (body: unknown, actor: string) => { kitCalls.push({ name: 'role.delete', body, actor }); return { ok: false, error: 'conflict', message: 'Роль есть у людей в справочнике команды: сначала смените им роль.' }; },
     } as never,
+    groupDirections: {
+      view: async () => ({ items: [{ id: 1, name: 'Основное служение', groups: 70 }] }),
+      create: async (body: unknown, actor: string) => { kitCalls.push({ name: 'direction.create', body, actor }); return { ok: true, id: 5 }; },
+      update: async (body: unknown, actor: string) => { kitCalls.push({ name: 'direction.update', body, actor }); return { ok: true }; },
+      delete: async (body: unknown, actor: string) => { kitCalls.push({ name: 'direction.delete', body, actor }); return { ok: false, error: 'conflict', message: 'У направления есть группы: сначала смените им направление.' }; },
+    } as never,
     kits: {
       view: async () => { kitCalls.push({ name: 'view' }); return { generatedAt: 'g', registered: 3, issued: 1, issuedToday: 1, recent: [] }; },
       find: async (body: unknown) => {
@@ -1511,6 +1517,22 @@ describe('помощник по разбору заявок', () => {
     expect(refused.status).toBe(409);
     expect(await refused.json()).toMatchObject({ error: 'conflict', message: expect.stringMatching(/сначала смените им роль/) });
     expect((await fetch(`${app.base}/api/v1/settings/team-roles/delete`, { headers: { cookie: sup } })).status).toBe(404);
+  });
+
+  test('направления групп: список и правка только у полного входа; правка сбрасывает снимок, отказ приходит словами', async () => {
+    expect((await fetch(`${app.base}/api/v1/settings/directions`, { headers: { cookie: await signIn(REGULAR) } })).status).toBe(403);
+    expect((await post(await signIn(REGULAR), 'settings/directions/create', { name: 'Филиал «Север»' })).status).toBe(403);
+    const sup = await signIn(SUPER);
+    const view = await fetch(`${app.base}/api/v1/settings/directions`, { headers: { cookie: sup } });
+    expect(await view.json()).toEqual({ items: [{ id: 1, name: 'Основное служение', groups: 70 }] });
+    const inv = app.invalidations();
+    expect(await (await post(sup, 'settings/directions/create', { name: 'Филиал «Север»' })).json()).toEqual({ ok: true, id: 5 });
+    expect(app.kitCalls.at(-1)).toEqual({ name: 'direction.create', body: { name: 'Филиал «Север»' }, actor: SUPER.login });
+    expect((await post(sup, 'settings/directions/update', { id: 5, name: 'Филиал «Северный»' })).status).toBe(200);
+    expect(app.invalidations()).toBe(inv + 2);
+    const refused = await post(sup, 'settings/directions/delete', { id: 1 });
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toMatchObject({ error: 'conflict', message: expect.stringMatching(/сначала смените им направление/) });
   });
 
   test('ключ карты: настройки и сохранение только у полного входа, а страница получает ключ и расход при любом входе', async () => {

@@ -16,7 +16,7 @@ const request = async (responsible: string | null) =>
   (await db.query<{ id: number }>(`INSERT INTO requests (type, fio, responsible) VALUES ('join_group', 'Заявитель', $1) RETURNING id`, [responsible])).rows[0]!.id;
 const group = async (coordinatorName: string | null) =>
   (await db.query<{ id: number }>(
-    `INSERT INTO groups (leader, format, district, status, source, coordinator) VALUES ('Ведущий', 'Молодежная', 'Приморский', 'Функционирует', 'ui', $1) RETURNING id`,
+    `INSERT INTO groups (leader, direction_id, district, status, source, coordinator) VALUES ('Ведущий', group_direction_id('Молодежная'), 'Приморский', 'Функционирует', 'ui', $1) RETURNING id`,
     [coordinatorName],
   )).rows[0]!.id;
 const responsibleOf = async (id: number) => (await db.query(`SELECT responsible, origin FROM requests WHERE id = $1`, [id])).rows[0];

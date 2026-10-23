@@ -16,12 +16,12 @@ beforeEach(async () => { await truncateAll(db); repo = new CoordinatorsRepo(db);
 
 describe('заведение и список участников', () => {
   test('заведённый в дашборде помечается источником ui', async () => {
-    const row = await repo.create({ name: 'Петрова Мария', roles: [{ name: 'Координатор малых групп' }] });
-    expect(row).toMatchObject({ name: 'Петрова Мария', role: 'Координатор малых групп', source: 'ui' });
+    const row = await repo.create({ name: 'Петрова Мария', roles: [{ name: 'Координатор' }] });
+    expect(row).toMatchObject({ name: 'Петрова Мария', role: 'Координатор', source: 'ui' });
   });
 
   test('listActive отдаёт по роли и имени', async () => {
-    await repo.create({ name: 'Иванов Иван', roles: [{ name: 'Ответственный' }] });
+    await repo.create({ name: 'Иванов Иван', roles: [{ name: 'Распределитель' }] });
     await repo.create({ name: 'Петрова Мария', roles: [{ name: 'Координатор' }] });
     const rows = await repo.listActive();
     expect(rows.map((r) => r.name)).toEqual(['Петрова Мария', 'Иванов Иван']);
@@ -79,12 +79,12 @@ describe('роли — ссылки на справочник ролей', () =>
   });
 
   test('у человека несколько ролей: названия через запятую по алфавиту, смыслы без повторов', async () => {
-    const ids = await Promise.all(['Распределитель', 'Координатор малых групп', 'Катализатор'].map(roleId));
+    const ids = await Promise.all(['Распределитель', 'Координатор', 'Катализатор'].map(roleId));
     const row = await repo.create({ name: 'Родионов Давид', roles: [...ids.map((id) => ({ id })), { id: ids[0]! }] });
     expect(row).toMatchObject({
-      role: 'Катализатор, Координатор малых групп, Распределитель',
+      role: 'Катализатор, Координатор, Распределитель',
       role_ids: [ids[2], ids[1], ids[0]],
-      role_kinds: ['coordinator', 'distributor'],
+      role_kinds: ['catalyst', 'coordinator', 'distributor'],
     });
   });
 
@@ -101,18 +101,19 @@ describe('роли — ссылки на справочник ролей', () =>
     expect((await db.query("SELECT 1 FROM team_roles WHERE lower(name) = 'распределитель'")).rowCount).toBe(1);
   });
 
-  test('незнакомое название заводит новую роль, смысл угадывается по словам, как раньше', async () => {
-    expect(await repo.create({ name: 'А', roles: [{ name: 'Молодёжный координатор' }] })).toMatchObject({ role: 'Молодёжный координатор', role_kinds: ['coordinator'] });
-    expect(await repo.create({ name: 'Б', roles: [{ name: 'Пастор' }] })).toMatchObject({ role: 'Пастор', role_kinds: [] });
+  test('незнакомое название новой роли не заводит, а ложится на одну из пяти по словам', async () => {
+    expect(await repo.create({ name: 'А', roles: [{ name: 'Молодёжный координатор' }] })).toMatchObject({ role: 'Координатор', role_kinds: ['coordinator'] });
+    expect(await repo.create({ name: 'Б', roles: [{ name: 'Пастор' }] })).toMatchObject({ role: 'Координатор', role_kinds: ['coordinator'] });
+    expect((await db.query('SELECT 1 FROM team_roles')).rowCount).toBe(5);
   });
 
-  test('«Катализатор» есть в справочнике сразу, без особого смысла', async () => {
-    expect((await db.query("SELECT kind FROM team_roles WHERE name = 'Катализатор'")).rows).toEqual([{ kind: null }]);
+  test('«Катализатор» есть в справочнике сразу, со своим смыслом', async () => {
+    expect((await db.query("SELECT kind FROM team_roles WHERE name = 'Катализатор'")).rows).toEqual([{ kind: 'catalyst' }]);
   });
 
   test('переименование роли в справочнике сразу видно у всех, у кого она стоит', async () => {
-    const a = await repo.create({ name: 'А', roles: [{ name: 'Координатор малых групп' }] });
-    await repo.create({ name: 'Б', roles: [{ name: 'Координатор малых групп' }] });
+    const a = await repo.create({ name: 'А', roles: [{ name: 'Координатор' }] });
+    await repo.create({ name: 'Б', roles: [{ name: 'Координатор' }] });
     await db.query("UPDATE team_roles SET name = 'Координатор МГ' WHERE id = $1", [a.role_ids[0]]);
     expect((await repo.listActive()).map((r) => r.role)).toEqual(['Координатор МГ', 'Координатор МГ']);
   });

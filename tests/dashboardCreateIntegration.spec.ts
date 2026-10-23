@@ -171,7 +171,7 @@ describe('форма группы пишет в базу', () => {
     const r = await post('/group/create', {
       leader: 'Иванова Мария Петровна',
       district: 'Невский',
-      format: 'Молодежная',
+      direction: 'Молодёжное служение',
       status: 'Функционирует',
       phone: '+7 900 111-22-33',
       metro: 'Пионерская',
@@ -191,12 +191,12 @@ describe('форма группы пишет в базу', () => {
     }, cookie);
     expect(r.status).toBe(200);
 
-    const { rows } = await db.query('SELECT * FROM groups');
+    const { rows } = await db.query('SELECT g.*, d.name AS direction FROM groups g JOIN group_directions d ON d.id = g.direction_id');
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       leader: 'Иванова Мария Петровна',
       district: 'Невский',
-      format: 'Молодежная',
+      direction: 'Молодёжное служение',
       status: 'Функционирует',
       phone: '+79001112233',
       phones: ['+79001112233'],
@@ -226,7 +226,7 @@ describe('форма группы пишет в базу', () => {
   test('созданную запись можно убрать со страницы', async () => {
     const cookie = await login();
     await post('/group/create', {
-      leader: 'Ошибочная Запись', district: 'Невский', format: 'Служение', status: 'Потенциальная',
+      leader: 'Ошибочная Запись', district: 'Невский', direction: 'Основное служение', status: 'Потенциальная',
     }, cookie);
     const { rows } = await db.query<{ id: number }>('SELECT id FROM groups');
     const del = await post('/leader/delete', { id: String(rows[0]!.id) }, cookie);
@@ -241,7 +241,7 @@ describe('форма группы пишет в базу', () => {
   test('отказ формы ничего не пишет', async () => {
     const cookie = await login();
     const r = await post('/group/create', {
-      leader: 'Кто-то', district: 'Марсианский', format: 'Молодежная', status: 'Функционирует',
+      leader: 'Кто-то', district: 'Марсианский', direction: 'Молодёжное служение', status: 'Функционирует',
     }, cookie);
     expect(r.status).toBe(400);
     const { rows } = await db.query('SELECT count(*)::int AS n FROM groups');
@@ -393,7 +393,7 @@ describe('ведение заявки в дашборде', () => {
   test('быстрое назначение группы через переключатель статуса', async () => {
     const cookie = await login();
     await post('/group/create', {
-      leader: 'Иванова Мария', district: 'Невский', format: 'Молодежная', status: 'Функционирует',
+      leader: 'Иванова Мария', district: 'Невский', direction: 'Молодёжное служение', status: 'Функционирует',
     }, cookie);
     const { rows: g } = await db.query<{ id: number }>('SELECT id FROM groups');
 
@@ -411,7 +411,7 @@ describe('ведение заявки в дашборде', () => {
 });
 
 describe('правка и удаление в списках', () => {
-  const GROUP = { leader: 'Иванова Мария', district: 'Невский', format: 'Молодежная', status: 'Функционирует' };
+  const GROUP = { leader: 'Иванова Мария', district: 'Невский', direction: 'Молодёжное служение', status: 'Функционирует' };
 
   test('группу можно исправить прямо из списка', async () => {
     const cookie = await login();
@@ -512,7 +512,8 @@ describe('участники (координаторы) через дашбор�
 
     const { rows } = await db.query('SELECT c.name, coordinator_role_names(c.id) AS role, c.source FROM coordinators c');
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ name: 'Петрова Мария', role: 'Координатор малых групп', source: 'ui' });
+    // Старый дашборд пишет роль словами: «Координатор малых групп» ложится на «Координатора» (миграция 051).
+    expect(rows[0]).toMatchObject({ name: 'Петрова Мария', role: 'Координатор', source: 'ui' });
   });
 
   test('отказ формы ничего не пишет', async () => {

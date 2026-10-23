@@ -90,9 +90,9 @@ export function GroupsWorkplace() {
   const groups = useGroups();
   const person = useMe().data?.person;
   const myName = person?.name ?? null;
-  // Старший координатор смотрит за всеми группами, даже если он ещё и координатор своих.
+  // Старший координатор и катализатор смотрят за всеми группами, даже если они ещё и координаторы своих.
   const kinds = person?.teamKinds ?? [];
-  const coordinator = kinds.includes('coordinator') && !kinds.includes('senior');
+  const coordinator = kinds.includes('coordinator') && !kinds.includes('senior') && !kinds.includes('catalyst');
   // При личном входе первым быстрым отбором — «Мои группы». Координатору он ещё и стоит по умолчанию вместо «Принимает
   // новых» (чипы снимаются): ему по работе нужны все свои группы, включая «Не направлять», а чужие — нет.
   const config = useMemo(() => {

@@ -13,7 +13,7 @@ const service = () => composeService(db, engine, { defaultCapacity: 10, ttlMs: 0
 
 async function seed() {
   const g = (await db.query<{ id: number }>(
-    `INSERT INTO groups (leader, district, format, status, source, people) VALUES ('Ведущий Иван', 'Приморский', 'очно', 'Функционирует', 'ui', 3) RETURNING id`,
+    `INSERT INTO groups (leader, district, direction_id, status, source, people) VALUES ('Ведущий Иван', 'Приморский', group_direction_id('очно'), 'Функционирует', 'ui', 3) RETURNING id`,
   )).rows[0]!.id;
   let n = 0;
   const mk = async (fio: string) => (await db.query<{ id: number }>(

@@ -14,7 +14,7 @@ let repo: GroupsRepo;
 const MIN = {
   leader: 'Петров Пётр Петрович',
   district: 'Приморский',
-  format: 'Молодежная' as const,
+  direction: 'Молодёжное служение' as const,
   status: 'Функционирует' as const,
 };
 

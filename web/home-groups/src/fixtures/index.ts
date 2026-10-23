@@ -22,6 +22,7 @@ import { setDemoStrange, strangeKey } from './strange';
 import { buildCampaign } from './campaign';
 import { buildKits, demoKitAction, findDemoKit, searchDemoKits } from './kits';
 import { buildTeamRoles, teamRoleAction } from './teamRoles';
+import { buildDirections, directionAction } from './directions';
 import { demoGroupDraft } from './groupDraft';
 import { fixtureChatClear, fixtureChatHistory, fixtureChatReply } from './chat';
 import { buildOthers, reconcileDemoOther, reconcileDemoReady } from './others';
@@ -81,6 +82,8 @@ export function fixtureResponse(path: string): unknown {
       return buildSettingsBot();
     case 'settings/team-roles':
       return buildTeamRoles();
+    case 'settings/directions':
+      return buildDirections();
     case 'settings/assistant':
       return buildSettingsAssistant();
     case 'settings/geocoder':
@@ -189,6 +192,10 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
   // Роли команды в демо меняются до перезагрузки страницы (fixtures/teamRoles.ts).
   if (clean === 'settings/team-roles/create' || clean === 'settings/team-roles/update' || clean === 'settings/team-roles/delete') {
     return teamRoleAction(clean.slice('settings/team-roles/'.length) as 'create' | 'update' | 'delete', body);
+  }
+  // Направления групп в демо тоже меняются до перезагрузки (fixtures/directions.ts).
+  if (clean === 'settings/directions/create' || clean === 'settings/directions/update' || clean === 'settings/directions/delete') {
+    return directionAction(clean.slice('settings/directions/'.length) as 'create' | 'update' | 'delete', body);
   }
   if (clean === 'kits/find') return findDemoKit(body);
   if (clean === 'kits/search') return searchDemoKits(body);

@@ -33,10 +33,10 @@ async function enabled(llm: LlmClient | null) {
   return svc;
 }
 async function seed() {
-  await db.query(`INSERT INTO groups (leader, phone, district, format, status, people, source) VALUES
-    ('Иван Петров', '+79110001122', 'Приморский', 'Основная церковь', 'Функционирует', 14, 'ui'),
-    ('Иван Петров', '+79110001122', 'Невский', 'Основная церковь', 'Функционирует', 5, 'ui'),
-    ('Пётр Сидоров', '+79215550011', 'Приморский', 'Основная церковь', 'Функционирует', 11, 'ui')`);
+  await db.query(`INSERT INTO groups (leader, phone, district, direction_id, status, people, source) VALUES
+    ('Иван Петров', '+79110001122', 'Приморский', group_direction_id('Основная церковь'), 'Функционирует', 14, 'ui'),
+    ('Иван Петров', '+79110001122', 'Невский', group_direction_id('Основная церковь'), 'Функционирует', 5, 'ui'),
+    ('Пётр Сидоров', '+79215550011', 'Приморский', group_direction_id('Основная церковь'), 'Функционирует', 11, 'ui')`);
   await db.query(`INSERT INTO users (platform, platform_user_id, chat_id, full_name, phone, registration_no, registered_at, complete)
     VALUES ('telegram', 'u1', '', 'Мария Секретная', '+79990001122', nextval('registration_no_seq'), now(), true)`);
 }

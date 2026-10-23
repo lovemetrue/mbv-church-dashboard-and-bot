@@ -17,7 +17,7 @@ const service = () => composeService(db, createFakeEngine().engine, { defaultCap
 
 async function group(leader: string, phone: string | null = null): Promise<number> {
   const { rows } = await db.query<{ id: number }>(
-    `INSERT INTO groups (leader, phone, phones, district, format, status, source) VALUES ($1, $2, $3, 'Приморский', 'очно', 'Функционирует', 'таблица') RETURNING id`,
+    `INSERT INTO groups (leader, phone, phones, district, direction_id, status, source) VALUES ($1, $2, $3, 'Приморский', group_direction_id('очно'), 'Функционирует', 'таблица') RETURNING id`,
     [leader, phone, phone ? [phone] : []],
   );
   return rows[0]!.id;

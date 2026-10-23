@@ -12,9 +12,9 @@ export function useResponsible(view: RequestsView): { value: string; myName: str
   const person = useMe().data?.person;
   const myName = person?.name ?? null;
   const kinds = person?.teamKinds ?? [];
-  // Ролей бывает несколько: распределитель и координатор сразу получает умолчание каждой роли в её списке. Старший
-  // координатор смотрит за всеми, поэтому его роль снимает умолчания остальных.
-  const senior = kinds.includes('senior');
+  // Ролей бывает несколько: распределитель и координатор сразу получает умолчание каждой роли в её списке. Старшие и
+  // катализатор смотрят за всеми, поэтому их роль снимает умолчания остальных.
+  const senior = kinds.some((k) => k === 'senior' || k === 'senior_distributor' || k === 'catalyst');
   const byDefault = !myName || senior ? ''
     : kinds.includes('distributor') && view !== 'leads' ? RESP_MINE
     : kinds.includes('coordinator') && view === 'leads' ? myName

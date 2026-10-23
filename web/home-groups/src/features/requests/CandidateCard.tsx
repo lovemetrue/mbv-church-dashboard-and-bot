@@ -25,7 +25,7 @@ export function CandidateCard({ candidate, main = false, action }: CandidateCard
       <div className={styles.candHead}>
         <b>Группа {groupLabel(group)}</b>
         <GroupMarks g={group} />
-        <span className={styles.note}>{[group.leader, group.format].filter(Boolean).join(' · ')}</span>
+        <span className={styles.note}>{[group.leader, group.direction].filter(Boolean).join(' · ')}</span>
         <span className={`${styles.candScore} num`}>
           {value}
           <small>{caption}</small>

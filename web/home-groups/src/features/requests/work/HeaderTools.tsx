@@ -23,7 +23,12 @@ export function HeaderTools({ subject, group }: { subject: WorkSubject; group?: 
           <Pencil />
         </IconButton>
       )}
-      <PhoneTools phone={subject.phone} name={subject.fio} noPhone={isOpenSubject(subject) ? w.noPhone : w.noPhoneClosed} />
+      <PhoneTools
+        phone={subject.phone}
+        name={subject.fio}
+        noPhone={isOpenSubject(subject) ? w.noPhone : w.noPhoneClosed}
+        hiddenHint={subject.contactsHidden ? w.phoneHidden : undefined}
+      />
       {group && (
         <IconButton label={c.openGroup(group.code)} onClick={() => nav.openGroup(group.id)}>
           <ArrowOut />

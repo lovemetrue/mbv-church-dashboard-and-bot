@@ -155,7 +155,7 @@ export function groupSpec(meta: FormMeta): FormSpec {
   const fields: FieldSpec[] = [
     { name: 'leader', label: t.leader, kind: 'text', required: true, wide: true, autoComplete: 'off' },
     { name: 'district', label: t.district, kind: 'select', required: true, options: opts(meta.districts) },
-    { name: 'format', label: t.format, kind: 'select', required: true, options: opts(meta.groupFormats) },
+    { name: 'direction', label: t.direction, kind: 'select', required: true, options: opts(meta.groupDirections) },
     {
       name: 'status',
       label: t.status,
@@ -190,6 +190,8 @@ export function groupSpec(meta: FormMeta): FormSpec {
     { name: 'checked', label: t.checked, kind: 'checkbox' },
     { name: 'campaignRegistered', label: t.campaignRegistered, kind: 'checkbox' },
     { name: 'campaignOnly', label: t.campaignOnly, kind: 'checkbox' },
+    { name: 'doNotRefer', label: t.doNotRefer, kind: 'checkbox', hint: ru.manage.group.doNotReferHint },
+    { name: 'chamber', label: t.chamber, kind: 'checkbox', hint: ru.manage.group.chamberHint },
   ];
   // Готовых вести группу из бота можно выбрать: ФИО и телефон подставятся и останутся правимыми.
   // Список пуст — поле не рисуем: выбирать не из кого.
@@ -210,7 +212,8 @@ export function groupSpec(meta: FormMeta): FormSpec {
   return {
     fields,
     address: { name: 'address', label: t.address, kind: 'text', wide: true, autoComplete: 'off' },
-    initial: { status: known(meta.groupStatuses, 'Функционирует') },
+    // Направление по умолчанию — первое в справочнике (основное служение), как у групп, заведённых без него.
+    initial: { status: known(meta.groupStatuses, 'Функционирует'), direction: meta.groupDirections[0] ?? '' },
   };
 }
 

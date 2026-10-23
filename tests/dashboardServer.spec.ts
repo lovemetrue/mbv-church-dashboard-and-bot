@@ -181,7 +181,7 @@ describe('живые данные из базы', () => {
     const sid = (await login('очень-секретно')).headers.get('set-cookie')!.split(';')[0]!;
     live = [{ leader: 'Ведущий Из Базы' }];
     liveRequests = [{ fio: 'Заявка Из Базы' }];
-    liveCoordinators = [{ name: 'Координатор Из Базы', role: 'Координатор малых групп' }];
+    liveCoordinators = [{ name: 'Координатор Из Базы', role: 'Координатор' }];
     const html = await (await fetch(base, { headers: { cookie: sid } })).text();
     expect(html).toContain('Ведущий Из Базы');
     expect(html).toContain('Заявка Из Базы');
@@ -312,7 +312,7 @@ describe('адрес монтирования для страницы', () => {
 
 describe('создание группы со страницы', () => {
   const body = (o: Record<string, string>) => new URLSearchParams(o);
-  const MIN = { leader: 'Иванова Мария', district: 'Невский', format: 'Молодежная', status: 'Функционирует' };
+  const MIN = { leader: 'Иванова Мария', district: 'Невский', direction: 'Молодёжное служение', status: 'Функционирует' };
 
   const post = (path: string, params: URLSearchParams, cookie?: string) =>
     fetch(`${base}${path}`, {
@@ -461,7 +461,7 @@ describe('отдельное приложение «/registration»', () => {
   test('HG_LIVE на «/registration» не несёт ни групп, ни заявок, ни списка участников — только справочник церквей', async () => {
     live = [{ leader: 'Ведущий Из Базы' }];
     liveRequests = [{ fio: 'Заявка Из Базы' }];
-    liveCoordinators = [{ name: 'Координатор Из Базы', role: 'Координатор малых групп' }];
+    liveCoordinators = [{ name: 'Координатор Из Базы', role: 'Координатор' }];
 
     const sid = (await login('очень-секретно', regBase)).headers.get('set-cookie')!.split(';')[0]!;
     const html = await (await fetch(regBase, { headers: { cookie: sid } })).text();
@@ -491,7 +491,7 @@ describe('отдельное приложение «/registration»', () => {
     const r = await fetch(`${regBase}/group/create`, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: sid },
-      body: new URLSearchParams({ leader: 'Кто-то', district: 'Невский', format: 'Молодежная', status: 'Функционирует' }),
+      body: new URLSearchParams({ leader: 'Кто-то', district: 'Невский', direction: 'Молодёжное служение', status: 'Функционирует' }),
     });
     expect(r.status).toBe(404);
     expect(createdGroups).toEqual([]);

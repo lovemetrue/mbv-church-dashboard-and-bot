@@ -15,7 +15,7 @@ const draft = (patch: Partial<GroupDraftView> = {}): GroupDraftView => ({
   fio: 'Олег Кравцов',
   ownGroup: null,
   fields: {
-    leader: 'Олег Кравцов', phone: '+7 921 000 22 33', status: 'Потенциальная', format: 'Основная церковь',
+    leader: 'Олег Кравцов', phone: '+7 921 000 22 33', status: 'Потенциальная',
     district: 'Приморский', age: '25-40', address: 'Савушкина 5', day: 'Ср', comment: 'Заведена по заявке №208 («Уже ведёт группу»).',
   },
   ...patch,
@@ -42,13 +42,15 @@ describe('«Создать группу по заявке»', () => {
     expect(within(dialog).getByRole('combobox', { name: 'Район' })).toHaveValue('Приморский');
     expect(within(dialog).getByRole('combobox', { name: 'Статус' })).toHaveValue('Потенциальная');
     expect(within(dialog).getByRole('combobox', { name: 'День' })).toHaveValue('Ср');
+    // Направления в черновике нет: форма ставит первое из справочника, как у любой новой группы.
+    expect(within(dialog).getByRole('combobox', { name: 'Направление' })).toHaveValue('Основное служение');
     // Ведущий уже известен — это человек из заявки, выбирать из зарегистрированных незачем.
     expect(within(dialog).queryByRole('combobox', { name: /Подобрать из зарегистрированных/ })).not.toBeInTheDocument();
 
     await user.click(within(dialog).getByRole('button', { name: 'Создать группу' }));
     await waitFor(() => expect(posts(fetchMock).map((p) => p.path)).toEqual(['groups/create']));
     expect(posts(fetchMock)[0]!.body.fields).toMatchObject({
-      sourceRequestId: String(LEADER), leader: 'Олег Кравцов', district: 'Приморский', status: 'Потенциальная', day: 'Ср', address: 'Савушкина 5',
+      sourceRequestId: String(LEADER), direction: 'Основное служение', leader: 'Олег Кравцов', district: 'Приморский', status: 'Потенциальная', day: 'Ср', address: 'Савушкина 5',
     });
     expect(await within(section).findByText('Группа ДГ-0057 заведена.')).toBeInTheDocument();
     await user.click(within(section).getByRole('button', { name: 'Открыть группу ДГ-0057' }));

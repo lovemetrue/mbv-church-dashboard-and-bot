@@ -53,32 +53,38 @@ async function main() {
      * строки удаление выше не затронуло, они остались. Значит их надо узнать и не
      * вставлять заново, иначе появится дубль (а удалённое ещё и воскреснет).
      *
-     * Узнаём по номеру в реестре, а если его нет — по ведущему, формату и району:
-     * у 32 групп из 116 номера нет вовсе.
+     * Узнаём по номеру в реестре, а если его нет — по ведущему, направлению и району:
+     * у 32 групп из 116 номера нет вовсе. В таблице направление записано прежним словом
+     * формата («Молодежная»), поэтому сравниваем номера направлений: слово переводит
+     * `group_direction_id` (миграция 052), как и при вставке ниже.
      */
     const adopted = await db.query(
-      `SELECT no, leader, format, district FROM groups WHERE source <> 'таблица'`,
+      `SELECT no, leader, direction_id::int AS direction_id, district FROM groups WHERE source <> 'таблица'`,
     );
     const byNo = new Set(adopted.rows.filter((r) => r.no !== null).map((r) => r.no));
     const bySignature = new Set(
-      adopted.rows.filter((r) => r.no === null).map((r) => `${r.leader}|${r.format}|${r.district}`),
+      adopted.rows.filter((r) => r.no === null).map((r) => `${r.leader}|${r.direction_id}|${r.district}`),
     );
-    const isAdopted = (g) =>
+    const directionOf = async (word) =>
+      (await db.query('SELECT group_direction_id($1)::int AS id', [word])).rows[0].id;
+    const isAdopted = async (g) =>
       g.no !== null && g.no !== undefined
         ? byNo.has(g.no)
-        : bySignature.has(`${g.leader}|${g.format}|${g.district}`);
+        : bySignature.has(`${g.leader}|${await directionOf(g.format)}|${g.district}`);
 
     let skipped = 0;
     for (const g of groups) {
-      if (isAdopted(g)) {
+      if (await isAdopted(g)) {
         skipped += 1;
         continue;
       }
       await db.query(
         `INSERT INTO groups (no, leader, open_to_new, phone, phones, age, district, metro, address,
                              composition, day, "time", people, coordinator, feedback_at, comment,
-                             training, format, status, checked, source)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'таблица')`,
+                             training, direction_id, chamber, status, checked, source)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
+                 -- Прежние «Приватная» и «Служение» — камерные группы основного направления (миграция 052).
+                 group_direction_id($18), lower(btrim($18)) IN ('приватная (закрытая)', 'служение'), $19, $20, 'таблица')`,
         [
           g.no ?? null, g.leader, orNull(g.open_to_new), orNull(g.phone), g.phones ?? [],
           orNull(g.age), g.district, orNull(g.metro), orNull(g.address), orNull(g.composition),

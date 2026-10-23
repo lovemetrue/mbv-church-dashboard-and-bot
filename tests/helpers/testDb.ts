@@ -27,21 +27,27 @@ export async function setupTestDb(): Promise<Pool> {
 export async function truncateAll(db: Pool): Promise<void> {
   await db.query(
     `TRUNCATE users, sessions, admin_sessions, requests, campaign_days, broadcasts, deliveries, groups, coordinators,
-       placement_proposals, request_hints, group_members, persons, strange_marks, geocode_cache, assistant_chat_messages, audit_log, app_settings, system_errors, agent_prompts, staff, staff_tokens, team_roles
+       placement_proposals, request_hints, group_members, persons, strange_marks, geocode_cache, assistant_chat_messages, audit_log, app_settings, system_errors, agent_prompts, staff, staff_tokens, team_roles, group_directions
      RESTART IDENTITY CASCADE`,
   );
-  // Основные роли заводит миграция 049; после очистки возвращаем их, как на свежей базе.
+  // Пять ролей заводят миграции 049 и 051; после очистки возвращаем их, как на свежей базе.
   await db.query(
     `INSERT INTO team_roles (name, kind) VALUES
-       ('Координатор малых групп', 'coordinator'), ('Старший координатор', 'senior'), ('Распределитель', 'distributor'), ('Катализатор', NULL)`,
+       ('Катализатор', 'catalyst'), ('Старший распределитель', 'senior_distributor'), ('Распределитель', 'distributor'),
+       ('Старший координатор', 'senior'), ('Координатор', 'coordinator')`,
+  );
+  // Направления групп заводит миграция 052 — тоже возвращаем; первое (основное) — направление по умолчанию.
+  await db.query(
+    `INSERT INTO group_directions (name, position) VALUES
+       ('Основное служение', 1), ('Подростковое служение', 2), ('Молодёжное служение', 3), ('Филиал «Серебристый»', 4)`,
   );
   // Номера регистрации в тестах должны начинаться заново, иначе ожидания «№1» ломаются.
   await db.query('ALTER SEQUENCE registration_no_seq RESTART WITH 1');
 }
 
 /**
- * Человек в справочнике команды с ролями словами (как в таблице церкви): роли находит или заводит `team_role_id`,
- * миграция 049. Возвращает его id.
+ * Человек в справочнике команды с ролями словами (как в таблице церкви): роль по названию находит `team_role_id`
+ * (миграция 051: незнакомое название ложится на одну из пяти ролей). Возвращает его id.
  */
 export async function seedCoordinator(
   db: Pool,

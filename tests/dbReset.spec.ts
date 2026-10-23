@@ -103,7 +103,7 @@ describe('кнопка очистки базы', () => {
     await seedUser(db, { id: USER });
     // Данные из выгрузки: группа и заявка, у заявки участника в боте нет.
     await deps.groups.create(
-      { leader: 'Из Таблицы', district: 'Невский', format: 'Основная церковь', status: 'Функционирует' },
+      { leader: 'Из Таблицы', district: 'Невский', direction: 'Основное служение', status: 'Функционирует' },
       'таблица',
     );
     await db.query(

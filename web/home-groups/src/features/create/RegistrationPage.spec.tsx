@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { App } from '../../app/App';
-import { renderAt, stubFetchWithFixtures } from '../../test/render';
+import { currentSearch, renderAt, stubFetchWithFixtures } from '../../test/render';
 import { getPaths, getsOf, json, posts } from '../../test/calls';
 import { buildFormMeta } from '../../fixtures/formMeta';
 
@@ -24,12 +24,15 @@ async function openPage(overrides: Parameters<typeof stubFetchWithFixtures>[0] =
 }
 
 describe('страница /registration: что на экране', () => {
-  test('только форма регистрации: ни шапки, ни вкладок, ни поиска, ни меню «Создать»', async () => {
+  test('только стойка: две вкладки — «Регистрация» и «Наборы»; ни шапки, ни разделов приложения, ни поиска, ни «Создать»', async () => {
     await openPage();
-    expect(screen.getByRole('heading', { level: 1, name: 'Регистрация участника' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Стойка регистрации' })).toBeInTheDocument();
     expect(fio()).toBeInTheDocument();
     expect(phone()).toBeInTheDocument();
-    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    const tabs = screen.getByRole('tablist', { name: 'Разделы стойки' });
+    expect(within(tabs).getAllByRole('tab').map((t) => t.textContent)).toEqual(['Регистрация', 'Наборы']);
+    expect(within(tabs).getByRole('tab', { name: 'Регистрация' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('tablist', { name: 'Разделы' })).not.toBeInTheDocument();
     expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '+ Создать' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Распределено/)).not.toBeInTheDocument();
@@ -68,7 +71,7 @@ describe('страница /registration: что на экране', () => {
     stubFetchWithFixtures();
     renderAt(<App />, '/?tab=reference');
     expect(await screen.findByRole('tablist', { name: 'Разделы' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { level: 1, name: 'Регистрация участника' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 1, name: 'Стойка регистрации' })).not.toBeInTheDocument();
   });
 
   test('если справочники не загрузились, есть «Повторить», а «Отмены» нет', async () => {
@@ -139,5 +142,37 @@ describe('страница /registration: регистрация', () => {
     await user.click(submit());
     expect(await screen.findByRole('alert')).toHaveTextContent('Укажите телефон: не меньше десяти цифр.');
     expect(fio()).toHaveValue('Анна Петрова');
+  });
+});
+
+describe('стойка: группа и наборы на той же странице', () => {
+  test('«Группа» открывает форму новой группы; после создания — код группы и «Завести ещё группу»', async () => {
+    const fetchMock = await openPage({ 'groups/create': () => json({ ok: true, id: 57 }) });
+    const user = userEvent.setup();
+    await user.click(within(screen.getByRole('group', { name: 'Кого регистрируем' })).getByRole('button', { name: 'Группа' }));
+    expect(currentSearch().get('what')).toBe('group');
+    await user.type(await screen.findByRole('textbox', { name: 'ФИО ведущего' }), 'Ольга Крылова');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Район' }), 'Приморский');
+    await user.click(screen.getByRole('button', { name: 'Создать группу' }));
+    expect(await screen.findByText('Группа ДГ-0057 заведена.')).toBeInTheDocument();
+    expect(posts(fetchMock)).toEqual([{ path: 'groups/create', body: { fields: expect.objectContaining({ leader: 'Ольга Крылова', district: 'Приморский', direction: 'Основное служение' }) } }]);
+    await user.click(screen.getByRole('button', { name: 'Завести ещё группу' }));
+    expect(screen.getByRole('textbox', { name: 'ФИО ведущего' })).toHaveValue('');
+  });
+
+  test('вкладка «Наборы» — выдача наборов; данные остальных разделов не запрашиваются', async () => {
+    const fetchMock = await openPage();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('tab', { name: 'Наборы' }));
+    expect(await screen.findByLabelText('Номер или ФИО')).toBeInTheDocument();
+    expect(getsOf(fetchMock, 'kits')).toBeGreaterThan(0);
+    for (const path of ['today', 'requests', 'groups', 'people', 'team']) expect(getsOf(fetchMock, path)).toBe(0);
+  });
+
+  test('вкладка запоминается в адресе: по ссылке ?view=kits стойка открывается сразу на наборах', async () => {
+    stubFetchWithFixtures();
+    renderAt(<App />, `${PAGE}?view=kits`);
+    expect(await screen.findByRole('tab', { name: 'Наборы' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('textbox', { name: 'ФИО' })).not.toBeInTheDocument();
   });
 });

@@ -20,10 +20,11 @@ describe('«Настройки → Роли команды»', () => {
     await new CoordinatorsRepo(db).create({ name: 'Анна', roles: [{ name: 'Распределитель' }] });
     const view = await roles().view();
     expect(view.items).toEqual([
-      { id: expect.any(Number), name: 'Катализатор', kind: null, members: 1 },
-      { id: expect.any(Number), name: 'Координатор малых групп', kind: 'coordinator', members: 0 },
+      { id: expect.any(Number), name: 'Катализатор', kind: 'catalyst', members: 1 },
+      { id: expect.any(Number), name: 'Координатор', kind: 'coordinator', members: 0 },
       { id: expect.any(Number), name: 'Распределитель', kind: 'distributor', members: 2 },
       { id: expect.any(Number), name: 'Старший координатор', kind: 'senior', members: 0 },
+      { id: expect.any(Number), name: 'Старший распределитель', kind: 'senior_distributor', members: 0 },
     ]);
   });
 
@@ -44,7 +45,7 @@ describe('«Настройки → Роли команды»', () => {
 
   test('переименование и смена смысла видны у людей с этой ролью', async () => {
     const coordinators = new CoordinatorsRepo(db);
-    const c = await coordinators.create({ name: 'Анна', roles: [{ name: 'Координатор малых групп' }] });
+    const c = await coordinators.create({ name: 'Анна', roles: [{ name: 'Координатор' }] });
     expect(await roles().update({ id: c.role_ids[0]!, name: 'Координатор МГ', kind: 'senior' }, 'boss')).toEqual({ ok: true });
     expect(await coordinators.findActive(c.id)).toMatchObject({ role: 'Координатор МГ', role_kinds: ['senior'] });
     expect(await roles().update({ id: c.role_ids[0]!, name: 'Распределитель', kind: null }, 'boss')).toMatchObject({ ok: false, error: 'conflict' });

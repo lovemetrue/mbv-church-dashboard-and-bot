@@ -5,7 +5,7 @@ import {
 
 const form = (o: Record<string, string>) => new URLSearchParams(o);
 
-const GROUP_MIN = { leader: 'Иванова Мария', district: 'Невский', format: 'Молодежная', status: 'Функционирует' };
+const GROUP_MIN = { leader: 'Иванова Мария', district: 'Невский', direction: 'Молодёжное служение', status: 'Функционирует' };
 const REQUEST_MIN = { fio: 'Петров Пётр', type: 'join_group', status: 'В работе' };
 
 describe('форма группы: соведущий и состав', () => {
@@ -98,11 +98,19 @@ describe('форма группы', () => {
     if (!r.ok) expect(r.error).toContain('ведущего');
   });
 
-  test('район, формат и статус только из справочника', () => {
-    for (const [field, bad] of [['district', 'Марсианский'], ['format', 'Какой-то'], ['status', 'Непонятно']] as const) {
+  test('район и статус только из справочника', () => {
+    for (const [field, bad] of [['district', 'Марсианский'], ['status', 'Непонятно']] as const) {
       const r = parseGroupForm(form({ ...GROUP_MIN, [field]: bad }));
       expect(r.ok, field).toBe(false);
     }
+  });
+
+  test('направление обязательно; новое поле direction главнее прежнего format, а есть ли оно в справочнике — решает база', () => {
+    const { direction: _new, ...noDirection } = GROUP_MIN;
+    expect(parseGroupForm(form({ ...noDirection, direction: '  ' }))).toMatchObject({ ok: false, error: expect.stringContaining('направление') });
+    expect(parseGroupForm(form({ ...noDirection, format: 'Молодежная' }))).toMatchObject({ ok: true, value: { direction: 'Молодежная' } });
+    expect(parseGroupForm(form({ ...noDirection, format: 'Молодежная', direction: 'Филиал «Серебристый»' })))
+      .toMatchObject({ ok: true, value: { direction: 'Филиал «Серебристый»' } });
   });
 
   test('закрыть группу через форму можно, хотя бот такой статус не предлагает', () => {
@@ -231,9 +239,9 @@ describe('форма заявки', () => {
 
 describe('форма участника (координатора)', () => {
   test('ФИО и роль проходят', () => {
-    const r = parseCoordinatorForm(form({ name: 'Петрова Мария', role: 'Координатор малых групп' }));
+    const r = parseCoordinatorForm(form({ name: 'Петрова Мария', role: 'Координатор' }));
     expect(r.ok).toBe(true);
-    if (r.ok) expect(r.value).toEqual({ name: 'Петрова Мария', roles: [{ name: 'Координатор малых групп' }] });
+    if (r.ok) expect(r.value).toEqual({ name: 'Петрова Мария', roles: [{ name: 'Координатор' }] });
   });
 
   test('роли из справочника приходят номерами через запятую, без повторов, и важнее роли словами', () => {

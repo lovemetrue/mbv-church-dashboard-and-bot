@@ -22,6 +22,8 @@ import type { Contacts } from './contacts.js';
 import type { Strange } from './strange.js';
 import type { Kits } from './kits.js';
 import type { TeamRoles } from './teamRoles.js';
+import type { GroupDirections } from './groupDirections.js';
+import { draftFor, formMetaFor, groupsFor, kitPersonFor, peopleFor, requestsFor, type Viewer } from './contactsAccess.js';
 import type { Reconciler } from './reconcile/service.js';
 import { registrationCardPage } from '../dashboard/registrationCard.js';
 import type { Settings } from '../platform/settings/service.js';
@@ -92,6 +94,8 @@ export interface HomeGroupsDeps {
   strange: Strange;
   /** Справочник ролей команды («Настройки → Роли команды», только полный вход). */
   teamRoles: TeamRoles;
+  /** Справочник направлений групп («Настройки → Направления», только полный вход). */
+  groupDirections: GroupDirections;
   /** Выдача наборов участникам кампании по QR. */
   kits: Kits;
   /** Разбор «других обращений» по справочникам групп и людей. */
@@ -161,7 +165,7 @@ const CONTENT_TYPES: Record<string, string> = {
 
 class BodyTooLarge extends Error {}
 
-const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode|staff\/generate-password|team-roles\/create|team-roles\/update|team-roles\/delete|bot\/extra-questions|bot\/send-extra-questions|assistant\/enabled|assistant\/llm|assistant\/llm-test|geocoder|geocoder-test|geocoder-retry|geocoder-reject|map)$/;
+const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode|staff\/generate-password|team-roles\/create|team-roles\/update|team-roles\/delete|directions\/create|directions\/update|directions\/delete|bot\/extra-questions|bot\/send-extra-questions|assistant\/enabled|assistant\/llm|assistant\/llm-test|geocoder|geocoder-test|geocoder-retry|geocoder-reject|map)$/;
 const MAP_LOADED_PATH = '/api/v1/map/loaded';
 const CREATE_PATH = /^\/api\/v1\/(requests|groups|people|coordinators)\/create$/;
 /** `POST /api/v1/groups/5/update`: правка и удаление записей справочника. */
@@ -681,6 +685,16 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
    * Наборы. Отмена доступна любому входу, как и выдача: ошибку у стола исправляет тот, кто её сделал, а полного
    * входа рядом может не быть. Удалением отмена не считается — регистрация остаётся, снимается только отметка.
    */
+  /** Кто смотрит — для скрытия контактов (contactsAccess.ts). null — сессии нет. */
+  async function viewerOf(sid: string | undefined): Promise<Viewer | null> {
+    const role = await deps.auth.roleOf(sid);
+    if (!role) return null;
+    const identity = await deps.auth.identityOf?.(sid);
+    // Личный вход, не найденный в «Пользователях», — не общий вход: лишнего ему не показываем.
+    const person = identity ? ((await deps.staff.personOf(identity.login)) ?? { name: identity.login, teamKinds: [] }) : null;
+    return { role, person };
+  }
+
   async function handleKit(req: IncomingMessage, res: ServerResponse, action: string, sid: string | undefined): Promise<void> {
     const call = await readAuthedJson(req, res, sid);
     if (!call) return;
@@ -697,7 +711,8 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       deps.invalidateViews();
       logger.info({ actor: call.actor, action, userId: outcome.person.userId }, 'домашние группы: выдача набора');
     }
-    sendJson(res, 200, outcome);
+    const viewer = 'person' in outcome ? await viewerOf(sid) : null;
+    sendJson(res, 200, viewer && 'person' in outcome ? { ...outcome, person: kitPersonFor(outcome.person, viewer) } : outcome);
   }
 
   /** Разобрать сразу все обращения, у которых сервер находит ровно одну группу точно. */
@@ -789,6 +804,9 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       'team-roles/create': () => deps.teamRoles.create(call.body, call.actor),
       'team-roles/update': () => deps.teamRoles.update(call.body, call.actor),
       'team-roles/delete': () => deps.teamRoles.delete(call.body, call.actor),
+      'directions/create': () => deps.groupDirections.create(call.body, call.actor),
+      'directions/update': () => deps.groupDirections.update(call.body, call.actor),
+      'directions/delete': () => deps.groupDirections.delete(call.body, call.actor),
       'bot/extra-questions': () => deps.botSettings.setExtraQuestions(call.body, call.actor),
       'bot/send-extra-questions': () => deps.botSettings.sendExtraInvites(call.body, call.actor),
       'assistant/llm': () => deps.llmConfig.save(call.body, call.actor),
@@ -806,8 +824,8 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
       return;
     }
-    // Название роли видно в справочнике команды и в «Сводке»: снимок с прежним названием сбрасываем.
-    if (action.startsWith('team-roles/')) deps.invalidateViews();
+    // Название роли видно в справочнике команды и в «Сводке», направление — у групп: снимок с прежним названием сбрасываем.
+    if (action.startsWith('team-roles/') || action.startsWith('directions/')) deps.invalidateViews();
     logger.info({ actor: call.actor, action }, 'домашние группы: изменение в настройках');
     // Ответ как есть: у создания и сброса там способ доставки ссылки, у подсказки логина — сам логин.
     sendJson(res, 200, outcome);
@@ -874,6 +892,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       '/api/v1/settings/geocoder/addresses': () => deps.geocodeAddresses.table(),
       '/api/v1/settings/map': () => deps.mapConfig.view(),
       '/api/v1/settings/team-roles': () => deps.teamRoles.view(),
+      '/api/v1/settings/directions': () => deps.groupDirections.view(),
       '/api/v1/settings/assistant': async () => ({ ...(await deps.assistant.view()), llm: await deps.llmConfig.view() }),
     };
     const settingsRoute = Object.hasOwn(settingsRead, path) ? settingsRead[path] : undefined;
@@ -899,9 +918,12 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     if (exp) { await handleExport(res, exp[1]!, sid); return; }
     const draft = GROUP_DRAFT_PATH.exec(path);
     if (draft) {
-      const found = (await deps.views()).groupDrafts?.get(Number(draft[1]));
+      const views = await deps.views();
+      const found = views.groupDrafts?.get(Number(draft[1]));
       if (!found) { sendJson(res, 404, { error: 'not_found', message: 'Заявка не найдена.' }); return; }
-      sendJson(res, 200, found);
+      const viewer = await viewerOf(sid);
+      if (!viewer) { sendJson(res, 401, { error: 'unauthorized' }); return; }
+      sendJson(res, 200, draftFor(found, viewer, views.requests));
       return;
     }
     const person = PERSON_PATH.exec(path);
@@ -921,14 +943,30 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     }
     if (path === KITS_PATH) { sendJson(res, 200, await deps.kits.view()); return; }
     if (path === '/api/v1/map/config') { sendJson(res, 200, await deps.mapConfig.bootstrap()); return; }
-    if (path === '/api/v1/form-meta') { sendJson(res, 200, await deps.formMeta()); return; }
+    if (path === '/api/v1/form-meta') {
+      const viewer = await viewerOf(sid);
+      if (!viewer) { sendJson(res, 401, { error: 'unauthorized' }); return; }
+      sendJson(res, 200, formMetaFor(await deps.formMeta(), viewer));
+      return;
+    }
+
+    // Контакты зависят от того, кто смотрит (contactsAccess.ts), а снимок один на всех: скрываем на выходе.
+    const personal: Record<string, (v: Views, viewer: Viewer) => unknown> = {
+      '/api/v1/requests': (v, viewer) => requestsFor(v.requests, viewer),
+      '/api/v1/groups': (v, viewer) => groupsFor(v.groups, viewer, v.requests),
+      '/api/v1/people': (v, viewer) => peopleFor(v.people, viewer, v.groups, v.requests),
+    };
+    const personalRoute = Object.hasOwn(personal, path) ? personal[path] : undefined;
+    if (personalRoute) {
+      const viewer = await viewerOf(sid);
+      if (!viewer) { sendJson(res, 401, { error: 'unauthorized' }); return; }
+      sendJson(res, 200, personalRoute(await deps.views(), viewer));
+      return;
+    }
 
     const pick: Record<string, (v: Views) => unknown> = {
       '/api/v1/team': (v) => v.team,
       '/api/v1/today': (v) => v.today,
-      '/api/v1/requests': (v) => v.requests,
-      '/api/v1/groups': (v) => v.groups,
-      '/api/v1/people': (v) => v.people,
       '/api/v1/coordinators': (v) => v.coordinators,
     };
     const select = Object.hasOwn(pick, path) ? pick[path] : undefined;

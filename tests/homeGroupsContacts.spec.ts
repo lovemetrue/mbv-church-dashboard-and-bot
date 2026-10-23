@@ -105,7 +105,7 @@ describe('правка из заявки доходит до человека', 
 
   test('карточка, внесённая вручную, хранит те же поля: адрес, время, хобби, профессию, семейное положение', async () => {
     const members = createMembers({ members: new MembersRepo(db), audit: new AuditRepo(db) });
-    const g = (await db.query<{ id: number }>(`INSERT INTO groups (leader, district, format, status, source) VALUES ('Иван', 'Приморский', 'Основная церковь', 'Функционирует', 'ui') RETURNING id`)).rows[0]!.id;
+    const g = (await db.query<{ id: number }>(`INSERT INTO groups (leader, district, direction_id, status, source) VALUES ('Иван', 'Приморский', group_direction_id('Основная церковь'), 'Функционирует', 'ui') RETURNING id`)).rows[0]!.id;
     expect(await members.add(g, { newPerson: { fio: 'Анна Новая', address: 'Юкки', hobby: 'бег' } }, 'тест')).toMatchObject({ ok: true });
     const id = (await db.query<{ id: number }>('SELECT id FROM persons')).rows[0]!.id;
     expect(await members.updatePerson(id, { fields: { schedule: 'вторник', profession: 'повар', family: 'вдова' } }, 'тест')).toEqual({ ok: true });

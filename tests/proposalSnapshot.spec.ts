@@ -12,8 +12,8 @@ beforeEach(async () => { await truncateAll(db); });
 
 const base = { district: 'Приморский', ageRange: [25, 35] as [number, number], days: [] as never[], slot: null, street: null };
 async function seed() {
-  const g1 = (await db.query<{ id: number }>(`INSERT INTO groups (leader, district, format, status, source) VALUES ('Один', 'Приморский', 'очно', 'Функционирует', 'ui') RETURNING id`)).rows[0]!.id;
-  const g2 = (await db.query<{ id: number }>(`INSERT INTO groups (leader, district, format, status, source) VALUES ('Два', 'Невский', 'очно', 'Функционирует', 'ui') RETURNING id`)).rows[0]!.id;
+  const g1 = (await db.query<{ id: number }>(`INSERT INTO groups (leader, district, direction_id, status, source) VALUES ('Один', 'Приморский', group_direction_id('очно'), 'Функционирует', 'ui') RETURNING id`)).rows[0]!.id;
+  const g2 = (await db.query<{ id: number }>(`INSERT INTO groups (leader, district, direction_id, status, source) VALUES ('Два', 'Невский', group_direction_id('очно'), 'Функционирует', 'ui') RETURNING id`)).rows[0]!.id;
   const r = (await db.query<{ id: number }>(`INSERT INTO requests (type, fio, status, origin) VALUES ('join_group', 'Человек', 'Новая', 'ui') RETURNING id`)).rows[0]!.id;
   return { g1, g2, r };
 }

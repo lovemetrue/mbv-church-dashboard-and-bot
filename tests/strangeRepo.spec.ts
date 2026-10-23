@@ -19,7 +19,7 @@ async function request(opts: { userId?: number | null; status?: string } = {}): 
   return rows[0]!.id;
 }
 const proposal = async (requestId: number) => {
-  const g = (await db.query<{ id: number }>(`INSERT INTO groups (leader, district, format, status, source) VALUES ('Ведущий', 'Приморский', 'очно', 'Функционирует', 'ui') RETURNING id`)).rows[0]!.id;
+  const g = (await db.query<{ id: number }>(`INSERT INTO groups (leader, district, direction_id, status, source) VALUES ('Ведущий', 'Приморский', group_direction_id('очно'), 'Функционирует', 'ui') RETURNING id`)).rows[0]!.id;
   await db.query(`INSERT INTO placement_proposals (request_id, group_id, source, confidence, rationale) VALUES ($1, $2, 'script', 80, '[]'::jsonb)`, [requestId, g]);
 };
 const proposalStatus = async (requestId: number) => (await db.query('SELECT status FROM placement_proposals WHERE request_id = $1', [requestId])).rows.map((r) => r.status);

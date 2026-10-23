@@ -13,7 +13,7 @@ beforeEach(async () => { await truncateAll(db); });
 
 const svc = () => createMembers({ members: new MembersRepo(db), audit: new AuditRepo(db), now: () => new Date('2026-10-11T10:00:00Z') });
 const seedGroup = async () => (await db.query<{ id: number }>(
-  `INSERT INTO groups (leader, district, format, status, source) VALUES ('Иван', 'Приморский', 'Основная церковь', 'Функционирует', 'ui') RETURNING id`)).rows[0]!.id;
+  `INSERT INTO groups (leader, district, direction_id, status, source) VALUES ('Иван', 'Приморский', group_direction_id('Основная церковь'), 'Функционирует', 'ui') RETURNING id`)).rows[0]!.id;
 const seedUser = async (name = 'Мария Участница') => (await db.query<{ id: number }>(
   `INSERT INTO users (platform, platform_user_id, chat_id, full_name, phone, registration_no, registered_at, complete)
    VALUES ('telegram', 'u' || nextval('users_id_seq'), '', $1, '+79110001122', nextval('registration_no_seq'), now(), true) RETURNING id`, [name])).rows[0]!.id;

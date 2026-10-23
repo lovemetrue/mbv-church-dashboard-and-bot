@@ -1,10 +1,11 @@
 import { SCHEDULE_DAYS, SCHEDULE_TIMES, parseGroupForm, parseRequestForm } from '../dashboard/forms.js';
-import { ALL_DISTRICTS, ALL_GROUP_STATUSES, COMPOSITIONS, FORMATS, groupCode } from '../core/groups.js';
+import { ALL_DISTRICTS, ALL_GROUP_STATUSES, COMPOSITIONS, groupCode } from '../core/groups.js';
 import { allChurchOptions } from '../core/churches.js';
 import { AGE_GROUPS } from '../core/texts.js';
 import type { AuditRepo } from '../db/repos/audit.repo.js';
 import type { CoordinatorsRepo } from '../db/repos/coordinators.repo.js';
 import type { TeamRolesRepo } from '../db/repos/teamRoles.repo.js';
+import type { GroupDirectionsRepo } from '../db/repos/groupDirections.repo.js';
 import type { GroupsRepo } from '../db/repos/groups.repo.js';
 import { REQUEST_STATUSES, type RequestsRepo, type RequestWithUser } from '../db/repos/requests.repo.js';
 import type { LeaderCandidate, UsersRepo } from '../db/repos/users.repo.js';
@@ -17,6 +18,20 @@ import type { ActionError, FormMeta } from './contracts.js';
 export type CreateOutcome = { ok: true; id: number } | { ok: false; error: ActionError['error']; message: string };
 
 const bad = (message: string): CreateOutcome => ({ ok: false, error: 'bad_request', message });
+
+/**
+ * Направление из формы — одно из справочника (без учёта регистра); вернёт его название как в справочнике. Без проверки
+ * незнакомое слово молча легло бы на основное направление (так `group_direction_id` принимает слова старого дашборда).
+ */
+export async function knownDirection(directions: Pick<GroupDirectionsRepo, 'list'>, name: string): Promise<string | null> {
+  const key = name.trim().toLowerCase();
+  return (await directions.list()).find((d) => d.name.trim().toLowerCase() === key)?.name ?? null;
+}
+
+export const UNKNOWN_DIRECTION = 'Такого направления нет в справочнике: обновите страницу и выберите направление снова.';
+
+/** Отметка формы: «1» или «true» — да. */
+export const flag = (form: URLSearchParams, name: string): boolean => ['1', 'true'].includes(form.get(name) ?? '');
 
 /** Тело запроса → поля формы: объект строк, не слишком большой. */
 export function fieldsToForm(body: unknown): URLSearchParams | string {
@@ -38,6 +53,7 @@ export function fieldsToForm(body: unknown): URLSearchParams | string {
 export function createRecordCreator(deps: {
   requests: Pick<RequestsRepo, 'createFromDashboard' | 'findById'>;
   groups: Pick<GroupsRepo, 'create' | 'requestLinkState' | 'linkToRequest' | 'archive'>;
+  directions: Pick<GroupDirectionsRepo, 'list'>;
   audit: Pick<AuditRepo, 'write'>;
   /** Уведомление служителю о новой заявке; не должно бросать (см. `notifierFromEnv`). */
   notify?: (request: RequestWithUser) => Promise<void>;
@@ -65,6 +81,8 @@ export function createRecordCreator(deps: {
       if (typeof form === 'string') return bad(form);
       const parsed = parseGroupForm(form);
       if (!parsed.ok) return bad(parsed.error);
+      const direction = await knownDirection(deps.directions, parsed.value.direction);
+      if (!direction) return bad(UNKNOWN_DIRECTION);
       const rawRequest = form.get('sourceRequestId')?.trim() ?? '';
       if (rawRequest && !/^\d{1,15}$/.test(rawRequest)) return bad('Неверный номер заявки.');
       const requestId = rawRequest ? Number(rawRequest) : null;
@@ -74,7 +92,9 @@ export function createRecordCreator(deps: {
         if (state !== 'free') return { ok: false, error: 'conflict', message: `По этой заявке группа уже заведена: ${groupCode(state)}.` };
       }
       // source='ui': видно, откуда запись, и повторный перенос таблицы её не затирает.
-      const created = await deps.groups.create(parsed.value as never, 'ui');
+      const created = await deps.groups.create(
+        { ...parsed.value, direction, doNotRefer: flag(form, 'doNotRefer'), chamber: flag(form, 'chamber') }, 'ui',
+      );
       if (requestId !== null && !(await deps.groups.linkToRequest(created.id, requestId))) {
         // Пока заполняли форму, по той же заявке завели другую группу: эту убираем, чтобы не было двух.
         await deps.groups.archive(created.id);
@@ -129,12 +149,13 @@ export function createFormMeta(deps: {
   defaultCapacity: number;
   coordinators: Pick<CoordinatorsRepo, 'listActive'>;
   teamRoles: Pick<TeamRolesRepo, 'list'>;
+  directions: Pick<GroupDirectionsRepo, 'list'>;
   groups: Pick<GroupsRepo, 'forDashboard'>;
   users: Pick<UsersRepo, 'leaderCandidates'>;
 }): () => Promise<FormMeta> {
   return async () => ({
     districts: [...ALL_DISTRICTS],
-    groupFormats: [...FORMATS],
+    groupDirections: (await deps.directions.list()).map((d) => d.name),
     groupStatuses: [...ALL_GROUP_STATUSES],
     compositions: [...COMPOSITIONS],
     requestStatuses: [...REQUEST_STATUSES],

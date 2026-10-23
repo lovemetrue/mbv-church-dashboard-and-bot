@@ -170,8 +170,8 @@ describe('утверждение через HTTP на живой базе', () =
 
   async function seed() {
     const g = (await db.query<{ id: number }>(
-      `INSERT INTO groups (leader, district, format, status, people, source)
-       VALUES ('Иван Петров', 'Приморский', 'Основная церковь', 'Функционирует', 3, 'ui') RETURNING id`,
+      `INSERT INTO groups (leader, district, direction_id, status, people, source)
+       VALUES ('Иван Петров', 'Приморский', group_direction_id('Основная церковь'), 'Функционирует', 3, 'ui') RETURNING id`,
     )).rows[0]!.id;
     const r = (await db.query<{ id: number }>(
       `INSERT INTO requests (type, status, fio, place, origin) VALUES ('join_group', 'Новая', 'Мария Иванова', 'Приморский', 'ui') RETURNING id`,
@@ -380,7 +380,7 @@ describe('создание и параметры подбора через HTTP 
   test('созданная действующая группа появляется в справочнике с кодом, source=ui и ростком: дату открытия ставит база', async () => {
     const app = await startAdmin();
     try {
-      const ok = await app.post('groups/create', { fields: { leader: 'Иван Петров', district: 'Приморский', format: 'Основная церковь', status: 'Функционирует', people: '4' } });
+      const ok = await app.post('groups/create', { fields: { leader: 'Иван Петров', district: 'Приморский', direction: 'Основное служение', status: 'Функционирует', people: '4' } });
       expect(ok.status).toBe(200);
       const { id } = await ok.json() as { id: number };
       const group = (await app.get('groups')).items.find((g: { id: number }) => g.id === id);
@@ -390,7 +390,7 @@ describe('создание и параметры подбора через HTTP 
   });
 
   test('заявка создаётся со всеми полями старого дашборда: группа, служение, рекомендация, посещение, «Дополнительно»', async () => {
-    const groupId = (await db.query<{ id: number }>(`INSERT INTO groups (leader, district, format, status, source) VALUES ('Иван Петров', 'Приморский', 'Основная церковь', 'Функционирует', 'ui') RETURNING id`)).rows[0]!.id;
+    const groupId = (await db.query<{ id: number }>(`INSERT INTO groups (leader, district, direction_id, status, source) VALUES ('Иван Петров', 'Приморский', group_direction_id('Основная церковь'), 'Функционирует', 'ui') RETURNING id`)).rows[0]!.id;
     const app = await startAdmin();
     try {
       const ok = await app.post('requests/create', { fields: {
@@ -411,7 +411,7 @@ describe('создание и параметры подбора через HTTP 
     const app = await startAdmin();
     try {
       const ok = await app.post('groups/create', { fields: {
-        leader: 'Иван Петров', district: 'Приморский', format: 'Основная церковь', status: 'Функционирует',
+        leader: 'Иван Петров', district: 'Приморский', direction: 'Основное служение', status: 'Функционирует',
         composition: 'Ментальная, Мужская', coLeader: 'Анна Петрова', coLeaderPhone: '8 921 000-11-44', openToNew: 'По требованию',
         training: 'Да', feedbackAt: '2026-09-10', no: '85', checked: '1', campaignRegistered: '1',
       } });
@@ -450,8 +450,8 @@ describe('создание и параметры подбора через HTTP 
   });
 
   test.each([
-    [{ leader: 'Х', district: 'Нет такого', format: 'Основная церковь', status: 'Функционирует' }, 'район'],
-    [{ leader: 'Х', district: 'Приморский', format: 'Основная церковь', status: 'Функционирует', people: '500' }, 'Число человек'],
+    [{ leader: 'Х', district: 'Нет такого', direction: 'Основное служение', status: 'Функционирует' }, 'район'],
+    [{ leader: 'Х', district: 'Приморский', direction: 'Основное служение', status: 'Функционирует', people: '500' }, 'Число человек'],
   ])('группа с плохими полями %j отклоняется (%s)', async (fields, fragment) => {
     const app = await startAdmin();
     try {
@@ -487,7 +487,7 @@ describe('создание и параметры подбора через HTTP 
     await db.query(
       `INSERT INTO users (platform, platform_user_id, chat_id, full_name, church, mdg_status, leader_name, preferred_contact, registration_no, complete)
        VALUES ('telegram', '7', '7', 'Ирина Состоит', 'МБВ Колизей', 'member', 'Иван Петров', 'call', 4321, true)`);
-    await db.query(`INSERT INTO groups (leader, district, format, status, co_leader, co_leader_phone, source) VALUES ('Иван Петров', 'Приморский', 'Основная церковь', 'Функционирует', 'Анна', '+79210001144', 'ui')`);
+    await db.query(`INSERT INTO groups (leader, district, direction_id, status, co_leader, co_leader_phone, source) VALUES ('Иван Петров', 'Приморский', group_direction_id('Основная церковь'), 'Функционирует', 'Анна', '+79210001144', 'ui')`);
     const app = await startAdmin();
     try {
       const person = (await app.get('people')).items.find((p: { fio: string }) => p.fio === 'Ирина Состоит');
@@ -498,8 +498,8 @@ describe('создание и параметры подбора через HTTP 
   });
 
   test('справочники форм отдают действующие группы и кандидатов в ведущие из бота (готов открыть или дать дом)', async () => {
-    const groupId = (await db.query<{ id: number }>(`INSERT INTO groups (leader, district, format, status, source) VALUES ('Иван Петров', 'Приморский', 'Основная церковь', 'Функционирует', 'ui') RETURNING id`)).rows[0]!.id;
-    await db.query(`INSERT INTO groups (leader, district, format, status, source, archived_at) VALUES ('Убранная', 'Приморский', 'Основная церковь', 'Закрыта', 'ui', now())`);
+    const groupId = (await db.query<{ id: number }>(`INSERT INTO groups (leader, district, direction_id, status, source) VALUES ('Иван Петров', 'Приморский', group_direction_id('Основная церковь'), 'Функционирует', 'ui') RETURNING id`)).rows[0]!.id;
+    await db.query(`INSERT INTO groups (leader, district, direction_id, status, source, archived_at) VALUES ('Убранная', 'Приморский', group_direction_id('Основная церковь'), 'Закрыта', 'ui', now())`);
     const add = (id: string, name: string, mdg: string) => db.query(
       `INSERT INTO users (platform, platform_user_id, chat_id, full_name, phone, church, mdg_status, location, age, complete)
        VALUES ('telegram', $1, $1, $2, '+79110001122', 'МБВ Колизей', $3, 'Приморский', '25-40', true) RETURNING id`, [id, name, mdg]);
@@ -517,7 +517,7 @@ describe('создание и параметры подбора через HTTP 
   });
 
   test('улица и время, поправленные координатором, меняют понимание заявки сразу и видны в ленте без текста улицы', async () => {
-    await db.query(`INSERT INTO groups (leader, district, format, status, people, source) VALUES ('Иван', 'Приморский', 'Основная церковь', 'Функционирует', 3, 'ui')`);
+    await db.query(`INSERT INTO groups (leader, district, direction_id, status, people, source) VALUES ('Иван', 'Приморский', group_direction_id('Основная церковь'), 'Функционирует', 3, 'ui')`);
     const r = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, fio, place, origin) VALUES ('join_group', 'Новая', 'Мария', 'Приморский', 'ui') RETURNING id`)).rows[0]!.id;
     const app = await startAdmin();
     try {
@@ -568,7 +568,7 @@ describe('создание и параметры подбора через HTTP 
   });
 
   test('после правки района закреплённое предложение помечается «данные изменились»', async () => {
-    await db.query(`INSERT INTO groups (leader, district, format, status, people, source) VALUES ('Иван', 'Приморский', 'Основная церковь', 'Функционирует', 3, 'ui')`);
+    await db.query(`INSERT INTO groups (leader, district, direction_id, status, people, source) VALUES ('Иван', 'Приморский', group_direction_id('Основная церковь'), 'Функционирует', 3, 'ui')`);
     const r = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, fio, place, age, origin) VALUES ('join_group', 'Новая', 'Мария', 'Приморский', '30', 'ui') RETURNING id`)).rows[0]!.id;
     const app = await startAdmin();
     try {
@@ -583,7 +583,7 @@ describe('создание и параметры подбора через HTTP 
   });
 
   test('«закреплено»: после запуска подбора предложение помечено закреплённым, счётчики сходятся', async () => {
-    await db.query(`INSERT INTO groups (leader, district, format, status, people, source) VALUES ('Иван', 'Приморский', 'Основная церковь', 'Функционирует', 3, 'ui')`);
+    await db.query(`INSERT INTO groups (leader, district, direction_id, status, people, source) VALUES ('Иван', 'Приморский', group_direction_id('Основная церковь'), 'Функционирует', 3, 'ui')`);
     await db.query(`INSERT INTO requests (type, status, fio, place, age, origin) VALUES ('join_group', 'Новая', 'Мария', 'Приморский', '30', 'ui')`);
     const app = await startAdmin();
     try {

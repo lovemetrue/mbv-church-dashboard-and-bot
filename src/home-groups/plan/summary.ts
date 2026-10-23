@@ -20,7 +20,7 @@ const CLUSTER_MIN = 2;
 
 /** Группа, которая реально принимает новых людей прямо сейчас. */
 function isAccepting(g: PlanGroup): boolean {
-  return ACCEPTING_STATUSES.has(g.status) && g.acceptsNew && !g.doNotRefer;
+  return ACCEPTING_STATUSES.has(g.status) && g.acceptsNew && !g.doNotRefer && !g.chamber;
 }
 
 function levelOf(demand: number, supply: number): CellLevel {

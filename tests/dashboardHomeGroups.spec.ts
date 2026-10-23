@@ -645,9 +645,10 @@ describe('«Формат группы»: цветные метки и выбор
     expect(html).toContain("f.type === 'multi'");
   });
 
-  test('прежнее поле «Формат» (основная церковь / молодёжная) названо «Тип группы», чтобы не путать', () => {
-    expect(html).toContain("label: 'Тип группы'");
-    expect(html).toContain("['Тип группы', g.format]");
+  test('прежнее поле «Формат» стало «Направлением» со списком из миграции 052, и в карточке так же', () => {
+    expect(html).toContain("{ name: 'format', label: 'Направление', required: true, options: FORM_FORMATS");
+    expect(html).toContain("const FORM_FORMATS = ['Основное служение', 'Подростковое служение', 'Молодёжное служение', 'Филиал «Серебристый»'];");
+    expect(html).toContain("['Направление', g.format]");
   });
 });
 

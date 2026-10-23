@@ -14,7 +14,7 @@ beforeEach(async () => { await truncateAll(db); });
 
 const today = async () => (await db.query<{ d: string }>('SELECT current_date::text AS d')).rows[0]!.d;
 const opened = async (id: number) => (await db.query<{ o: string | null }>('SELECT opened_on::text AS o FROM groups WHERE id = $1', [id])).rows[0]!.o;
-const base = { leader: 'Иван', district: 'Приморский', format: 'Основная церковь' as const };
+const base = { leader: 'Иван', district: 'Приморский', direction: 'Основное служение' as const };
 
 describe('дата открытия группы ставится базой', () => {
   test('группа заведена действующей из формы или бота — открыта сегодня; из выгрузки таблицы даты нет', async () => {
@@ -55,9 +55,9 @@ describe('дата открытия группы ставится базой', (
   });
 
   test('форма принимает дату открытия и отклоняет неверную', () => {
-    const ok = parseGroupForm(new URLSearchParams({ leader: 'Иван', district: 'Приморский', format: 'Основная церковь', status: 'Функционирует', openedOn: '2026-09-01' }));
+    const ok = parseGroupForm(new URLSearchParams({ leader: 'Иван', district: 'Приморский', direction: 'Основное служение', status: 'Функционирует', openedOn: '2026-09-01' }));
     expect(ok).toMatchObject({ ok: true, value: { openedOn: '2026-09-01' } });
-    const bad = parseGroupForm(new URLSearchParams({ leader: 'Иван', district: 'Приморский', format: 'Основная церковь', status: 'Функционирует', openedOn: '01.09.2026' }));
+    const bad = parseGroupForm(new URLSearchParams({ leader: 'Иван', district: 'Приморский', direction: 'Основное служение', status: 'Функционирует', openedOn: '01.09.2026' }));
     expect(bad).toMatchObject({ ok: false });
   });
 

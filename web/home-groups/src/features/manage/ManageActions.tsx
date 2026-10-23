@@ -76,7 +76,7 @@ export function GroupHeaderTools({ g }: { g: GroupItem }) {
       >
         <Pencil />
       </IconButton>
-      <PhoneTools phone={g.phone} name={g.leader} noPhone={m.group.noPhone} />
+      <PhoneTools phone={g.phone} name={g.leader} noPhone={m.group.noPhone} hiddenHint={g.contactsHidden ? m.group.phonesHidden : undefined} />
       {saved && (
         <span className={styles.saved} role="status">
           {m.saved}

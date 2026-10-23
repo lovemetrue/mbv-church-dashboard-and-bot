@@ -2,8 +2,6 @@ import {
   ALL_DISTRICTS,
   COMPOSITIONS,
   ALL_GROUP_STATUSES,
-  FORMATS,
-  type GroupFormat,
   type GroupStatus,
 } from '../core/groups.js';
 import { normalizePhone } from '../core/phone.js';
@@ -91,8 +89,10 @@ export function parseGroupForm(form: URLSearchParams): Parsed<GroupInput> {
   const district = oneOf(form, 'district', ALL_DISTRICTS);
   if (!district) return { ok: false, error: 'Выберите район из списка.' };
 
-  const format = oneOf(form, 'format', FORMATS);
-  if (!format) return { ok: false, error: 'Выберите формат группы из списка.' };
+  // Направление словами: новый интерфейс шлёт `direction`, старый дашборд — прежнее поле `format`. Есть ли такое в
+  // справочнике, проверяет сервис (справочник в базе); здесь — только что оно указано.
+  const direction = text(form, 'direction') ?? text(form, 'format');
+  if (!direction) return { ok: false, error: 'Выберите направление группы из списка.' };
 
   const status = oneOf(form, 'status', ALL_GROUP_STATUSES);
   if (!status) return { ok: false, error: 'Выберите статус группы из списка.' };
@@ -141,7 +141,7 @@ export function parseGroupForm(form: URLSearchParams): Parsed<GroupInput> {
     value: {
       leader,
       district,
-      format: format as GroupFormat,
+      direction,
       status: status as GroupStatus,
       no,
       openToNew: text(form, 'openToNew'),

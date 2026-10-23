@@ -25,8 +25,8 @@ const compose = (llm: LlmClient | null) => composeService(db, engine, { defaultC
 
 async function seedGroup(): Promise<number> {
   const { rows } = await db.query<{ id: number }>(
-    `INSERT INTO groups (leader, district, format, status, people, age, day, "time", source)
-     VALUES ('Иван Секретов', 'Приморский', 'Основная церковь', 'Функционирует', 3, '25-40', 'Пн', '19:00', 'ui') RETURNING id`,
+    `INSERT INTO groups (leader, district, direction_id, status, people, age, day, "time", source)
+     VALUES ('Иван Секретов', 'Приморский', group_direction_id('Основная церковь'), 'Функционирует', 3, '25-40', 'Пн', '19:00', 'ui') RETURNING id`,
   );
   return rows[0]!.id;
 }

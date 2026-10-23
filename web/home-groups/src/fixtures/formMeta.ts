@@ -1,14 +1,14 @@
 import type { FormMeta } from '@contracts';
-import { DEMO_TEAM_ROLES, DISTRICTS, RAW_GROUPS } from './raw';
+import { DEMO_DIRECTIONS, DEMO_TEAM_ROLES, DISTRICTS, RAW_GROUPS } from './raw';
 
 /**
  * Справочники форм «Создать» в демо. Списки — те же по смыслу, что отдаёт сервер (там они
- * берутся из кода бота): районы из фикстур, статусы и форматы как в таблице церкви.
+ * берутся из кода бота): районы из фикстур, статусы как в таблице церкви, направления как в миграции 052.
  */
 export function buildFormMeta(): FormMeta {
   return {
     districts: [...DISTRICTS, 'Не указан'],
-    groupFormats: ['Основная церковь', 'Молодежная', 'Приватная (Закрытая)', 'Служение'],
+    groupDirections: [...DEMO_DIRECTIONS],
     groupStatuses: ['Функционирует', 'Потенциальная', 'На паузе', 'Закрыта', 'Аннулирована', 'Недвижимость'],
     compositions: ['Смешанная', 'Мужская', 'Женская', 'Ментальная'],
     requestStatuses: ['Новая', 'В ожидании', 'В работе', 'На контроле', 'Исполнена', 'Аннулирована'],

@@ -75,7 +75,7 @@ const DATA_CHANGES: ReadonlyMap<number, DataChange[] | null> = new Map([
 
 const capOf = (g: RawGroup): number => g.capacity ?? DEFAULT_CAPACITY;
 const freeOf = (g: RawGroup): number => Math.max(0, capOf(g) - (g.people ?? 0));
-const accepting = (g: RawGroup): boolean => g.status === 'Функционирует' && g.acceptsNew && !g.doNotRefer;
+const accepting = (g: RawGroup): boolean => g.status === 'Функционирует' && g.acceptsNew && !g.doNotRefer && !g.chamber;
 
 /** Демо-координаты: около центра района группы, со сдвигом по номеру, чтобы метки не слипались. */
 const DEMO_CENTERS: Record<string, [number, number]> = {
@@ -99,7 +99,7 @@ export function groupBrief(g: RawGroup): GroupBrief {
     people: g.people,
     capacity: capOf(g),
     free: freeOf(g),
-    format: g.format,
+    direction: g.direction,
     isNew: g.isNew,
     // «Увядший листочек»: людей нет (потенциальные и закрытые не в счёт), как считает сервер.
     empty: g.status !== 'Потенциальная' && g.status !== 'Закрыта' && (g.people ?? 0) === 0,
@@ -332,6 +332,7 @@ export function buildRequests(): RequestsView {
     // Как у сервера: открытую заявку с меткой в автоматический подбор не берут, ей нужна ручная группа.
     const held = strange !== null && bucket !== 'done' && bucket !== 'cancelled';
     return {
+      contactsHidden: false,
       strange,
       id: r.id,
       fio: r.fio,
@@ -556,6 +557,8 @@ export function buildGroups(): GroupsView {
     campaignRegistered: g.campaignRegistered,
     campaignOnly: g.campaignOnly,
     doNotRefer: g.doNotRefer,
+    chamber: g.chamber,
+    contactsHidden: false,
     composition: g.composition,
     coordinator: g.coordinator,
     verifiedDaysAgo: g.verifiedDaysAgo,
@@ -591,6 +594,7 @@ export function buildPeople(): PeopleView {
     const item = requests.items.find((x) => x.id === raw.id);
     return {
       strange: demoStrangeOf(raw.phone, `r${raw.id}`),
+      contactsHidden: false,
       key: `r${raw.id}`,
       personId: null,
       groups: groupsOf(`r${raw.id}`),
@@ -619,7 +623,7 @@ export function buildPeople(): PeopleView {
       kitIssuedOn: null,
     };
   });
-  const extras: PersonItem[] = RAW_EXTRA_PEOPLE.map((p) => ({ ...p, place: p.place ?? p.district, address: p.address ?? null, schedule: p.schedule ?? null, hobby: p.hobby ?? null, profession: p.profession ?? null, family: p.family ?? null, note: p.note ?? null, church: p.church ?? null, leaderName: p.leaderName ?? null, preferredContact: p.preferredContact ?? null, addressGeo: p.address ? ('found' as const) : null, personId: p.personId ?? null, groups: groupsOf(p.key), requestId: null, kitIssuedOn: p.kitIssuedOn ?? null, strange: demoStrangeOf(p.phone, p.key) }));
+  const extras: PersonItem[] = RAW_EXTRA_PEOPLE.map((p) => ({ ...p, place: p.place ?? p.district, address: p.address ?? null, schedule: p.schedule ?? null, hobby: p.hobby ?? null, profession: p.profession ?? null, family: p.family ?? null, note: p.note ?? null, church: p.church ?? null, leaderName: p.leaderName ?? null, preferredContact: p.preferredContact ?? null, addressGeo: p.address ? ('found' as const) : null, personId: p.personId ?? null, groups: groupsOf(p.key), requestId: null, kitIssuedOn: p.kitIssuedOn ?? null, strange: demoStrangeOf(p.phone, p.key), contactsHidden: false }));
   return { generatedAt: GENERATED_AT, items: [...fromRequests, ...extras] };
 }
 
@@ -635,8 +639,8 @@ export function buildCoordinators(): CoordinatorsView {
     return {
       id: i + 1,
       name,
-      role: (COORDINATOR_ROLES[name] ?? ['Координатор малых групп']).join(', '),
-      roleIds: (COORDINATOR_ROLES[name] ?? ['Координатор малых групп']).map((role) => DEMO_TEAM_ROLES.find((r) => r.name === role)!.id),
+      role: (COORDINATOR_ROLES[name] ?? ['Координатор']).join(', '),
+      roleIds: (COORDINATOR_ROLES[name] ?? ['Координатор']).map((role) => DEMO_TEAM_ROLES.find((r) => r.name === role)!.id),
       groups: gs.length,
       people: gs.reduce((a, g) => a + (g.people ?? 0), 0),
       verified30: gs.filter((g) => g.verifiedDaysAgo != null && g.verifiedDaysAgo <= 30).length,

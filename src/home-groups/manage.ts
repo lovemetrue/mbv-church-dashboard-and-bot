@@ -2,11 +2,12 @@ import { parseCoordinatorForm, parseGroupForm } from '../dashboard/forms.js';
 import type { AuditRepo } from '../db/repos/audit.repo.js';
 import type { CoordinatorsRepo, RoleRef } from '../db/repos/coordinators.repo.js';
 import type { TeamRolesRepo } from '../db/repos/teamRoles.repo.js';
+import type { GroupDirectionsRepo } from '../db/repos/groupDirections.repo.js';
 import type { GroupRow, GroupsRepo } from '../db/repos/groups.repo.js';
 import type { RequestsRepo } from '../db/repos/requests.repo.js';
 import type { UsersRepo } from '../db/repos/users.repo.js';
 import type { ActionOutcome } from '../db/repos/placement.repo.js';
-import { fieldsToForm } from './create.js';
+import { UNKNOWN_DIRECTION, fieldsToForm, knownDirection } from './create.js';
 
 /**
  * Правка и удаление записей справочника из нового интерфейса: группы, координаторы, заявки.
@@ -23,11 +24,11 @@ const fail = (error: 'bad_request' | 'not_found', message: string): ActionOutcom
 const COORDINATOR_EDITABLE: readonly string[] = ['name', 'roleIds', 'role'];
 
 const GROUP_EDITABLE = [
-  'leader', 'district', 'format', 'status', 'people', 'day', 'time', 'composition', 'coordinator', 'coLeader',
-  'feedbackAt', 'openedOn', 'comment', 'age', 'metro', 'openToNew', 'training', 'no', 'checked', 'doNotRefer',
+  'leader', 'district', 'direction', 'status', 'people', 'day', 'time', 'composition', 'coordinator', 'coLeader',
+  'feedbackAt', 'openedOn', 'comment', 'age', 'metro', 'openToNew', 'training', 'no', 'checked', 'doNotRefer', 'chamber',
   'phone', 'address', 'coLeaderPhone', 'campaignRegistered', 'capacity', 'campaignOnly',
 ] as const;
-const GROUP_FLAGS = ['checked', 'doNotRefer', 'campaignRegistered', 'campaignOnly'] as const;
+const GROUP_FLAGS = ['checked', 'doNotRefer', 'chamber', 'campaignRegistered', 'campaignOnly'] as const;
 
 /** Состав хранится строкой «Смешанная, Семейная», а форма ждёт отдельные значения: иначе правка любого поля обнулила бы состав. */
 const splitComposition = (v: string | null | undefined): string[] => (v ?? '').split(',').map((x) => x.trim()).filter(Boolean);
@@ -36,7 +37,7 @@ const splitComposition = (v: string | null | undefined): string[] => (v ?? '').s
 function groupToFields(g: GroupRow): URLSearchParams {
   const f = new URLSearchParams();
   const put = (k: string, v: string | number | null | undefined) => { if (v !== null && v !== undefined && String(v) !== '') f.set(k, String(v)); };
-  put('leader', g.leader); put('district', g.district); put('format', g.format); put('status', g.status);
+  put('leader', g.leader); put('district', g.district); put('direction', g.direction); put('status', g.status);
   put('people', g.people); put('day', g.day); put('time', g.time); for (const c of splitComposition(g.composition)) f.append('composition', c);
   put('coordinator', g.coordinator); put('coLeader', g.co_leader); put('feedbackAt', g.feedback_at); put('openedOn', g.opened_on);
   put('comment', g.comment); put('age', g.age); put('metro', g.metro); put('openToNew', g.open_to_new);
@@ -53,6 +54,7 @@ export function createManager(deps: {
   groups: Pick<GroupsRepo, 'findActive' | 'update' | 'archive'>;
   coordinators: Pick<CoordinatorsRepo, 'create' | 'findActive' | 'rename' | 'archive'>;
   teamRoles: Pick<TeamRolesRepo, 'existing'>;
+  directions: Pick<GroupDirectionsRepo, 'list'>;
   requests: Pick<RequestsRepo, 'archive'>;
   users: Pick<UsersRepo, 'findById' | 'delete'>;
   audit: Pick<AuditRepo, 'write'>;
@@ -88,14 +90,19 @@ export function createManager(deps: {
       }
       const parsed = parseGroupForm(merged);
       if (!parsed.ok) return fail('bad_request', parsed.error);
+      // Направление проверяем, только если его меняли: прежнее уже в справочнике, а переименованное — под новым названием.
+      const direction = given.has('direction') ? await knownDirection(deps.directions, parsed.value.direction) : current.direction;
+      if (!direction) return fail('bad_request', UNKNOWN_DIRECTION);
       // Закрытое остаётся как в базе: форма его не видела и затереть не должна.
       const input = {
         ...parsed.value,
+        direction,
         // Телефон и телефон соведущего меняются только если их прислали; адрес — тоже (пустая строка его очищает); иначе остаются как в базе.
         ...(given.has('phone') ? {} : { phone: current.phone, phones: current.phones }),
         ...(given.has('address') ? {} : { address: current.address }),
         ...(given.has('coLeaderPhone') ? {} : { coLeaderPhone: current.co_leader_phone }),
         doNotRefer: given.has('doNotRefer') ? merged.has('doNotRefer') : current.do_not_refer,
+        chamber: given.has('chamber') ? merged.has('chamber') : current.chamber,
       };
       const updated = await deps.groups.update(id, input);
       if (!updated) return fail('not_found', 'Группа не найдена.');

@@ -3,6 +3,7 @@ import { ru } from '../../shared/i18n/ru';
 import { useAppNav } from '../../shared/nav';
 import { Button } from '../../shared/ui';
 import { Answer } from './Answer';
+import { DockFrame, type DockTabs } from './DockFrame';
 import { COUNTER_FROM, MAX_LENGTH } from './model';
 import type { Chat } from './useChat';
 import styles from './Chat.module.css';
@@ -16,10 +17,12 @@ interface PanelProps {
   onClose: () => void;
   /** Ссылка «Настройки → Помощник» только полному входу: обычному туда нельзя. */
   isSuper: boolean;
+  /** Вкладки окна помощника; null — вкладок нет. */
+  tabs?: DockTabs | null;
 }
 
-/** Окно разговора. Не модальное: за ним можно читать страницу, поэтому фокус не заперт, а Esc закрывает только его. */
-export function ChatPanel({ chat, draft, onDraft, onClose, isSuper }: PanelProps) {
+/** Вкладка «Вопрос по базе» окна помощника. */
+export function ChatPanel({ chat, draft, onDraft, onClose, isSuper, tabs = null }: PanelProps) {
   const nav = useAppNav();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -68,31 +71,10 @@ export function ChatPanel({ chat, draft, onDraft, onClose, isSuper }: PanelProps
     }
   }
 
-  // Esc ловим на самом окне и гасим: иначе вместе с ним закрылась бы карточка заявки или записи под ним
-  // (она слушает Esc на document и пропускает только уже погашенное событие).
-  function onPanelKeyDown(e: KeyboardEvent<HTMLElement>) {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      onClose();
-    }
-  }
-
   const showCounter = draft.length >= COUNTER_FROM;
 
   return (
-    <section className={styles.panel} role="dialog" aria-modal="false" aria-label={t.title} onKeyDown={onPanelKeyDown}>
-      <header className={styles.head}>
-        <div className={styles.titles}>
-          <h2 className={styles.title}>
-            {t.title}
-          </h2>
-          <p className={styles.subtitle}>{t.subtitle}</p>
-        </div>
-        <Button variant="ghost" onClick={onClose} aria-label={t.close}>
-          ✕
-        </Button>
-      </header>
-
+    <DockFrame subtitle={t.subtitle} onClose={onClose} tabs={tabs}>
       <div className={styles.scroll} ref={scrollRef}>
         <div role="log" aria-label={t.logLabel} className={styles.log}>
           <div className={`${styles.bubble} ${styles.bot}`}>
@@ -206,6 +188,6 @@ export function ChatPanel({ chat, draft, onDraft, onClose, isSuper }: PanelProps
           {showCounter && <span className={styles.counter}>{t.counter(draft.length, MAX_LENGTH)}</span>}
         </div>
       </form>
-    </section>
+    </DockFrame>
   );
 }

@@ -1334,7 +1334,7 @@ describe('остальные обращения', () => {
 
 describe('разбор помощника в представлениях', () => {
   const hint = (over: Partial<import('../src/db/repos/hints.repo.js').StoredHint> = {}) => ({
-    district: 'Приморский', age: null, days: [], slot: null, questions: [], baseHash: '', ...over,
+    district: 'Приморский', age: null, days: [], slot: null, questions: [], note: null, baseHash: '', ...over,
   });
   const hashOf = async (place: string | null, age: string | null, schedule: string | null) =>
     (await import('../src/home-groups/assistant/brief.js')).baseHash({ place, age, schedule });
@@ -1348,7 +1348,7 @@ describe('разбор помощника в представлениях', () =
     });
     const item = views.requests.items[0]!;
     expect(item.district).toBe('Приморский');
-    expect(item.assistant).toEqual({ filled: ['район'], questions: ['Какой район вам ближе?'] });
+    expect(item.assistant).toEqual({ filled: ['район'], questions: ['Какой район вам ближе?'], note: null });
     expect(item.proposal?.main.group.id).toBe(1);
   });
 
@@ -1361,7 +1361,7 @@ describe('разбор помощника в представлениях', () =
     });
     const item = views.requests.items[0]!;
     expect(item.district).toBe('Приморский');
-    expect(item.assistant).toEqual({ filled: [], questions: ['Вопрос про время есть?'] });
+    expect(item.assistant).toEqual({ filled: [], questions: ['Вопрос про время есть?'], note: null });
   });
 
   test('если запись изменили после разбора, разбор не применяется', async () => {
@@ -1388,7 +1388,9 @@ describe('разбор помощника в представлениях', () =
       hints: new Map([[5, hint({ baseHash: await hashOf(place, null, null) })]]),
       assistant: { available: true, enabled: true },
     });
-    expect(views.requests.assistant).toEqual({ available: true, enabled: true, pending: 1 });
+    expect(views.requests.assistant).toMatchObject({ available: true, enabled: true, pending: 1 });
+    // В окне «ИИ-разбор» — та же неразобранная заявка; разобранная 5 туда не попадает: район по ней определён.
+    expect(views.requests.assistant.review.map((i) => [i.requestId, i.state, i.missing])).toEqual([[1, 'new', ['район']]]);
   });
 
   test('время из разбора подставляется, только когда скрипт его не понял', async () => {

@@ -873,61 +873,6 @@
 }
 
 /* Переключатель: кнопка с role="switch", вся строка нажимается (≥44 px). */
-.switchBox {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-.switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  min-height: var(--tap);
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--ink);
-  font-size: 14px;
-  font-weight: 500;
-  text-align: left;
-}
-.switch:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-.switchTrack {
-  flex: none;
-  width: 40px;
-  height: 22px;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--line);
-  background: var(--surface-2);
-  padding: 2px;
-  display: flex;
-  align-items: center;
-  transition: background 0.15s;
-}
-.switchThumb {
-  width: 16px;
-  height: 16px;
-  border-radius: var(--radius-pill);
-  background: var(--muted);
-  transition: transform 0.15s;
-}
-.switch[aria-checked='true'] .switchTrack {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-.switch[aria-checked='true'] .switchThumb {
-  background: var(--accent-ink);
-  transform: translateX(18px);
-}
-@media (prefers-reduced-motion: reduce) {
-  .switchTrack,
-  .switchThumb {
-    transition: none;
-  }
-}
 
 /* Строка «Пришло новых заявок»: тихая, без рамки и заливки на весь экран. */
 .arrived {
@@ -984,36 +929,6 @@
 }
 
 /* Помощник: кнопка и подсказки в блоке подбора, метка в строке списка и блок в карточке. */
-.assistantRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 12px;
-}
-.assistantRow > button {
-  min-height: var(--tap);
-  max-width: 100%;
-  white-space: normal;
-  text-align: left;
-}
-.assistantHint {
-  margin: 0;
-  font-size: 12px;
-  color: var(--muted);
-  overflow-wrap: anywhere;
-}
-.assistantHint .linkBtn {
-  display: inline-flex;
-  align-items: center;
-  min-height: var(--tap);
-  padding: 0 4px;
-  border: 0;
-  background: transparent;
-  color: var(--accent);
-  font: inherit;
-  text-decoration: underline;
-  cursor: pointer;
-}
 .assistantTag {
   display: inline-block;
   margin-top: 2px;
@@ -1055,4 +970,59 @@
 }
 .assistantCopy button {
   min-height: var(--tap);
+}
+
+/* Значок ✦ помощника в блоке подбора: вместо широкой кнопки — круглый значок с числом заявок, где он может помочь. */
+.helperIcon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap);
+  height: var(--tap);
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--accent);
+  font-size: 18px;
+}
+@media (hover: hover) {
+  .helperIcon:hover {
+    border-color: var(--accent);
+  }
+}
+.helperIcon[aria-busy='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.helperBadge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+}
+.linkInline {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.assistantNoteText {
+  margin: 0 0 8px;
+  padding-left: 8px;
+  border-left: 2px solid var(--line);
+  font-size: 13px;
+  overflow-wrap: anywhere;
 }

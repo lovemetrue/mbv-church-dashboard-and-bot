@@ -18,11 +18,14 @@ export interface ParsedHint {
   days: string[];
   slot: string | null;
   questions: string[];
+  /** Пояснение для служителя: почему что-то осталось неопределённым. Очищено от контактов, до 200 знаков. */
+  note: string | null;
 }
 
 const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 const SLOTS = ['утро', 'день', 'вечер'];
 const MAX_QUESTIONS = 3;
+const MAX_NOTE = 200;
 
 /** Достаёт JSON из ответа модели, даже если он обёрнут в ```json или окружён пояснениями. */
 function extractJson(text: string): unknown {
@@ -79,7 +82,9 @@ export function parseReply(text: string, ctx: ParseContext): ParsedHint[] {
         if (questions.length === MAX_QUESTIONS) break;
       }
     }
-    out.push({ ref, district, age, days, slot, questions });
+    // Длинное пояснение обрезаем, а не выбрасываем: без него служитель не узнает, почему поле пустое.
+    const note = typeof it['comment'] === 'string' ? scrub(it['comment'], MAX_NOTE) : null;
+    out.push({ ref, district, age, days, slot, questions, note });
   }
   return out;
 }

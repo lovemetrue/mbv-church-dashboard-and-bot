@@ -145,7 +145,10 @@ describe('фикстуры', () => {
 
   test('в демо помощник подключён и включён, а разбор есть у двух заявок: с определёнными полями и только с вопросами', () => {
     const view = buildRequests();
-    expect(view.assistant).toEqual({ available: true, enabled: true, pending: 3 });
+    expect(view.assistant).toMatchObject({ available: true, enabled: true, pending: 3 });
+    // Окно «ИИ-разбор»: три ещё не разобранных и одна, где помощник не всё понял (у неё же разбор в карточке).
+    expect(view.assistant.review.map((i) => [i.requestId, i.state])).toEqual([[8, 'reviewed'], [14, 'new'], [17, 'new'], [19, 'new']]);
+    expect(view.items.find((i) => i.id === 8)!.assistant!.note).toBe(view.assistant.review[0]!.note);
     const noted = view.items.filter((i) => i.assistant);
     expect(noted).toHaveLength(2);
     expect(noted.map((i) => i.assistant!.filled.length).sort()).toEqual([0, 2]);

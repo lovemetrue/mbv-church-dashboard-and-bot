@@ -60,15 +60,15 @@ describe('помощник: разбор непонятных заявок', () 
     await svc.assistant.setEnabled(true, 'boss');
 
     const before = (await svc.views()).requests;
-    expect(before.assistant).toEqual({ available: true, enabled: true, pending: 1 });
+    expect(before.assistant).toMatchObject({ available: true, enabled: true, pending: 1 });
     expect(before.items.find((i) => i.id === r)!.proposal).toBeNull();
 
-    expect(await svc.assistant.run('boss')).toEqual({ ok: true, asked: 1, filled: 1, withQuestions: 1, proposals: 1 });
+    expect(await svc.assistant.run('boss')).toEqual({ ok: true, asked: 1, filled: 1, withQuestions: 1, proposals: 1, unanswered: 0 });
 
     const after = (await svc.views()).requests;
     const item = after.items.find((i) => i.id === r)!;
     expect(item.district).toBe('Приморский');
-    expect(item.assistant).toEqual({ filled: ['район'], questions: ['В какие вечера вам удобно?'] });
+    expect(item.assistant).toEqual({ filled: ['район'], questions: ['В какие вечера вам удобно?'], note: null });
     expect(item.proposal?.main.group.id).toBe(g);
     expect(after.assistant.pending).toBe(0);
   });
@@ -120,7 +120,7 @@ describe('помощник: разбор непонятных заявок', () 
     expect((await db.query('SELECT status, group_id FROM requests WHERE id = $1', [r])).rows[0]).toEqual({ status: 'Новая', group_id: null });
     const [e] = (await db.query(`SELECT actor, action, after::text AS after FROM audit_log WHERE action = 'assistant.run'`)).rows;
     expect(e).toMatchObject({ actor: 'boss' });
-    expect(JSON.parse(e.after)).toEqual({ ok: true, asked: 1, filled: 1, withQuestions: 1, proposals: 1, model: 'fake-model' });
+    expect(JSON.parse(e.after)).toEqual({ ok: true, asked: 1, filled: 1, withQuestions: 1, proposals: 1, unanswered: 0, model: 'fake-model' });
     expect(JSON.stringify((await db.query('SELECT * FROM audit_log')).rows)).not.toMatch(/дуба|Мария|911/);
   });
 
@@ -141,7 +141,7 @@ describe('помощник: разбор непонятных заявок', () 
     await seedRequest();
     let release!: () => void;
     const gate = new Promise<void>((r) => { release = r; });
-    const llm: LlmClient = { model: 'm', async complete() { await gate; return { text: '{"items":[]}' }; } };
+    const llm: LlmClient = { model: 'm', async complete(req) { await gate; return { text: answerAll(null)(req) }; } };
     const svc = compose(llm);
     await svc.assistant.setEnabled(true, 'boss');
     const first = svc.assistant.run('a');
@@ -179,5 +179,83 @@ describe('помощник: разбор непонятных заявок', () 
     await svc.assistant.setEnabled(true, 'boss');
     await svc.assistant.run('boss');
     expect(await svc.assistant.view()).toMatchObject({ enabled: true, lastRun: { actor: 'boss', asked: 1, filled: 1, withQuestions: 1, proposals: 1 } });
+  });
+
+  test('ответ не в том виде: разбор не записан, заявки остаются в очереди, служитель получает объяснение', async () => {
+    await seedGroup();
+    const r = await seedRequest();
+    const llm = new FakeLlm(() => 'Извините, я не могу помочь.');
+    const svc = compose(llm);
+    await svc.assistant.setEnabled(true, 'boss');
+    expect(await svc.assistant.run('boss')).toMatchObject({ ok: false, error: 'unavailable', message: expect.stringContaining('не в том виде') });
+    expect((await db.query('SELECT 1 FROM request_hints')).rowCount).toBe(0);
+    const view = (await svc.views()).requests.assistant;
+    expect(view.pending).toBe(1);
+    expect(view.review).toEqual([expect.objectContaining({ requestId: r, state: 'new' })]);
+  });
+
+  test('пропущенную моделью заявку не считают разобранной: она остаётся в очереди, а итог говорит, сколько таких', async () => {
+    await seedGroup();
+    const first = await seedRequest({ place: 'у большого дуба' });
+    const second = await seedRequest({ place: 'у старой мельницы' });
+    // Модель ответила только про первую запись.
+    const svc = compose(new FakeLlm(() => JSON.stringify({ items: [{ ref: 'r1', district: null, comment: 'Ни района, ни метро в записи нет.' }] })));
+    await svc.assistant.setEnabled(true, 'boss');
+    expect(await svc.assistant.run('boss')).toMatchObject({ ok: true, asked: 2, unanswered: 1 });
+    const review = (await svc.views()).requests.assistant.review;
+    // Разобранная (ждёт служителя) стоит первой, неразобранная — за ней; какая из двух попала в r1, решает порядок очереди.
+    expect(review.map((i) => i.state)).toEqual(['reviewed', 'new']);
+    expect(review.map((i) => i.requestId).sort()).toEqual([first, second].sort());
+  });
+});
+
+describe('окно «ИИ-разбор»: что помощник понял, чего нет и почему', () => {
+  test('разобранная заявка с пробелами показывает, чего не хватает, пояснение, вопросы и слова человека', async () => {
+    await seedGroup();
+    const r = await seedRequest({ fio: 'Мария Тайная', place: 'рядом с работой', age: '30' });
+    const svc = compose(new FakeLlm((req) => {
+      const items = (JSON.parse(req.user) as { items: { ref: string }[] }).items;
+      return JSON.stringify({ items: items.map((i) => ({
+        ref: i.ref, district: null, questions: ['В каком районе вам удобнее встречаться?'], comment: 'В записи «рядом с работой» нет ни района, ни метро.',
+      })) });
+    }));
+    await svc.assistant.setEnabled(true, 'boss');
+    expect((await svc.views()).requests.assistant.review).toEqual([{
+      requestId: r, fio: 'Мария Тайная', state: 'new', missing: ['район'], filled: [], questions: [], note: null,
+      place: 'рядом с работой', age: '30', schedule: null,
+    }]);
+    await svc.assistant.run('boss');
+    const after = (await svc.views()).requests;
+    expect(after.assistant.review).toEqual([{
+      requestId: r, fio: 'Мария Тайная', state: 'reviewed', missing: ['район'], filled: [],
+      questions: ['В каком районе вам удобнее встречаться?'], note: 'В записи «рядом с работой» нет ни района, ни метро.',
+      place: 'рядом с работой', age: '30', schedule: null,
+    }]);
+    // То же пояснение видно в карточке заявки.
+    expect(after.items.find((i) => i.id === r)!.assistant).toMatchObject({ note: 'В записи «рядом с работой» нет ни района, ни метро.' });
+  });
+
+  test('служитель вписал район в заявку — заявка уходит из окна, и подбор находит ей группу', async () => {
+    const g = await seedGroup();
+    const r = await seedRequest({ place: 'рядом с работой' });
+    const svc = compose(new FakeLlm(answerAll(null)));
+    await svc.assistant.setEnabled(true, 'boss');
+    await svc.assistant.run('boss');
+    expect((await svc.views()).requests.assistant.review).toHaveLength(1);
+    // Так пишет окно помощника: район спереди, слова человека сохраняются в скобках.
+    expect(await svc.placement.editRequest(r, { place: 'Приморский (рядом с работой)' }, 'boss')).toEqual({ ok: true });
+    const after = (await svc.views()).requests;
+    expect(after.assistant.review).toEqual([]);
+    expect(after.items.find((i) => i.id === r)!.district).toBe('Приморский');
+    expect(after.items.find((i) => i.id === r)!.proposal?.main.group.id).toBe(g);
+  });
+
+  test('когда помощник определил всё, заявка в окне не висит: проверять её — дело метки «Помощник» в списке', async () => {
+    await seedGroup();
+    await seedRequest();
+    const svc = compose(new FakeLlm(answerAll('Приморский')));
+    await svc.assistant.setEnabled(true, 'boss');
+    await svc.assistant.run('boss');
+    expect((await svc.views()).requests.assistant.review).toEqual([]);
   });
 });

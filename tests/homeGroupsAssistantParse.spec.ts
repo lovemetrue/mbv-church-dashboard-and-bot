@@ -7,23 +7,23 @@ const reply = (items: unknown) => JSON.stringify({ items });
 describe('разбор ответа помощника', () => {
   test('верный ответ превращается в разбор по каждой заявке', () => {
     const out = parseReply(reply([
-      { ref: 'r1', district: 'Невский', age: '25-40', days: ['Пн', 'Ср'], slot: 'вечер', questions: ['Какие вечера вам удобны?'] },
-      { ref: 'r2', district: null, age: null, days: [], slot: null, questions: [] },
+      { ref: 'r1', district: 'Невский', age: '25-40', days: ['Пн', 'Ср'], slot: 'вечер', questions: ['Какие вечера вам удобны?'], note: null },
+      { ref: 'r2', district: null, age: null, days: [], slot: null, questions: [], note: null },
     ]), ctx);
     expect(out).toEqual([
-      { ref: 'r1', district: 'Невский', age: '25-40', days: ['Пн', 'Ср'], slot: 'вечер', questions: ['Какие вечера вам удобны?'] },
-      { ref: 'r2', district: null, age: null, days: [], slot: null, questions: [] },
+      { ref: 'r1', district: 'Невский', age: '25-40', days: ['Пн', 'Ср'], slot: 'вечер', questions: ['Какие вечера вам удобны?'], note: null },
+      { ref: 'r2', district: null, age: null, days: [], slot: null, questions: [], note: null },
     ]);
   });
 
   test('ответ в обрамлении ```json и с лишним текстом вокруг всё равно читается', () => {
     const out = parseReply('Вот результат:\n```json\n' + reply([{ ref: 'r1', district: 'Приморский' }]) + '\n```', ctx);
-    expect(out).toEqual([{ ref: 'r1', district: 'Приморский', age: null, days: [], slot: null, questions: [] }]);
+    expect(out).toEqual([{ ref: 'r1', district: 'Приморский', age: null, days: [], slot: null, questions: [], note: null }]);
   });
 
   test('выдуманное отбрасывается: район не из справочника, возраст не из списка, день и время не те', () => {
-    const [h] = parseReply(reply([{ ref: 'r1', district: 'Лахта', age: 'около 30', days: ['Пн', 'Завтра'], slot: 'ночь', questions: [] }]), ctx);
-    expect(h).toEqual({ ref: 'r1', district: null, age: null, days: ['Пн'], slot: null, questions: [] });
+    const [h] = parseReply(reply([{ ref: 'r1', district: 'Лахта', age: 'около 30', days: ['Пн', 'Завтра'], slot: 'ночь', questions: [], note: null }]), ctx);
+    expect(h).toEqual({ ref: 'r1', district: null, age: null, days: ['Пн'], slot: null, questions: [], note: null });
   });
 
   test('район сравнивается без учёта регистра и пробелов, но «Не указан» районом не считается', () => {
@@ -39,7 +39,7 @@ describe('разбор ответа помощника', () => {
   test('вопросов не больше трёх, слишком короткие и длинные отбрасываются, контакты в них вырезаются', () => {
     const [h] = parseReply(reply([{ ref: 'r1', questions: [
       'Какие вечера вам удобны?', 'ok', 'я'.repeat(300), 'Позвоните на 8 911 000-11-22, чтобы уточнить район проживания', 'В каком районе вы живёте?', 'Сколько вам лет примерно?',
-    ] }]), ctx);
+    ], note: null }]), ctx);
     expect(h!.questions).toHaveLength(3);
     expect(h!.questions[0]).toBe('Какие вечера вам удобны?');
     expect(JSON.stringify(h)).not.toMatch(/911|я{20}/);
@@ -55,8 +55,8 @@ describe('разбор ответа помощника', () => {
       ['r2', { district: true, age: false, time: true }],
     ]);
     const out = parseReply(reply([
-      { ref: 'r1', district: 'Невский', age: '25-40', days: ['Пн'], slot: 'вечер', questions: [] },
-      { ref: 'r2', district: 'Невский', age: '25-40', days: ['Пн'], slot: 'вечер', questions: [] },
+      { ref: 'r1', district: 'Невский', age: '25-40', days: ['Пн'], slot: 'вечер', questions: [], note: null },
+      { ref: 'r2', district: 'Невский', age: '25-40', days: ['Пн'], slot: 'вечер', questions: [], note: null },
     ]), { ...ctx, needs });
     expect(out[0]).toMatchObject({ district: null, age: '25-40', days: [], slot: null });
     expect(out[1]).toMatchObject({ district: 'Невский', age: null, days: ['Пн'], slot: 'вечер' });
@@ -65,6 +65,17 @@ describe('разбор ответа помощника', () => {
   test('без списка заказанных полей (старый вызов) ответ принимается целиком', () => {
     const [h] = parseReply(reply([{ ref: 'r1', district: 'Невский', days: ['Пн'] }]), ctx);
     expect(h).toMatchObject({ district: 'Невский', days: ['Пн'] });
+  });
+
+  test('пояснение для служителя читается из comment: контакты вырезаны, длинное обрезано до 200 знаков, нет — пусто', () => {
+    const [a, b, c] = parseReply(reply([
+      { ref: 'r1', comment: 'В записи нет района; человек оставил номер +7 911 000-11-22' },
+      { ref: 'r2', comment: 'Очень длинно. '.repeat(30) },
+      { ref: 'r3' },
+    ]), ctx);
+    expect(a!.note).toBe('В записи нет района; человек оставил номер');
+    expect(b!.note!.length).toBe(200);
+    expect(c!.note).toBeNull();
   });
 });
 

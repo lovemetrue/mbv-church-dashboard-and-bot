@@ -91,11 +91,12 @@ export function createAssistant(deps: {
       try {
         const { assistantCandidates } = buildViewsWithPlan(await deps.load(), deps.engine, new Date(), deps.viewOptions);
         const picked = assistantCandidates.slice(0, MAX_PER_RUN);
-        if (picked.length === 0) return { ok: true, asked: 0, filled: 0, withQuestions: 0, proposals: 0 };
+        if (picked.length === 0) return { ok: true, asked: 0, filled: 0, withQuestions: 0, proposals: 0, unanswered: 0 };
 
         const system = await buildSystemPrompt(deps.prompts);
         let filled = 0;
         let withQuestions = 0;
+        let unanswered = 0;
         for (let i = 0; i < picked.length; i += BATCH) {
           const batch = picked.slice(i, i + BATCH).map((c, j) => ({ ...c, ref: `r${i + j + 1}` }));
           const reply = await llm.complete({
@@ -106,23 +107,31 @@ export function createAssistant(deps: {
             refs: new Set(batch.map((b) => b.ref)), districts, ages, needs: new Map(batch.map((b) => [b.ref, b.needs])),
           });
           const byRef = new Map(parsed.map((p) => [p.ref, p]));
-          // Заявка без ответа тоже получает пустой разбор: иначе каждый запуск спрашивал бы про неё снова и тратил деньги.
-          await deps.hints.upsertMany(batch.map((b) => {
+          unanswered += batch.filter((b) => !byRef.has(b.ref)).length;
+          // Ответ модели записывается, даже если в нём ничего не определено («не знаю» — тоже разбор): повторно такую
+          // заявку не спрашиваем, пока запись не изменится. Пропущенные моделью (и все, если ответ не прочитался) разбора
+          // не получают и остаются в очереди: иначе пропали бы из числа на значке, и служитель не узнал бы, что их не смотрели.
+          await deps.hints.upsertMany(batch.flatMap((b) => {
             const p = byRef.get(b.ref);
-            return {
-              requestId: b.id, district: p?.district ?? null, age: p?.age ?? null, days: p?.days ?? [], slot: p?.slot ?? null,
-              questions: p?.questions ?? [], baseHash: baseHash(b.brief), model: llm.model,
-            };
+            if (!p) return [];
+            return [{
+              requestId: b.id, district: p.district, age: p.age, days: p.days, slot: p.slot,
+              questions: p.questions, note: p.note, baseHash: baseHash(b.brief), model: llm.model,
+            }];
           }));
           for (const p of parsed) {
             if (p.district || p.age || p.days.length > 0 || p.slot) filled += 1;
             if (p.questions.length > 0) withQuestions += 1;
           }
         }
+        if (unanswered === picked.length) {
+          deps.reportError('помощник', new Error('ответ модели не прочитан'), 'разбор заявок: неверный формат ответа');
+          return fail('unavailable', 'Помощник ответил не в том виде, который понимает сервис, поэтому разбор не записан. Попробуйте ещё раз; если повторится, проверьте модель в «Настройки → Помощник».');
+        }
         deps.invalidate();
         // Разбор подставился в данные заявок: теперь обычный подбор может найти им группы.
         const matching = await deps.matching.run(actor);
-        const result: AssistantRunOk = { ok: true, asked: picked.length, filled, withQuestions, proposals: matching.created };
+        const result: AssistantRunOk = { ok: true, asked: picked.length, filled, withQuestions, proposals: matching.created, unanswered };
         const record = { at: new Date().toISOString(), actor, asked: result.asked, filled, withQuestions, proposals: matching.created };
         await deps.settings.set(ASSISTANT_LAST_RUN_KEY, record, actor);
         // В журнал — только числа и модель: ни записей людей, ни ответов модели.

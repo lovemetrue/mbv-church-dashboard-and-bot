@@ -10,16 +10,18 @@ import { openCard, viewWith } from './requestsTestKit';
 
 afterEach(() => vi.unstubAllGlobals());
 
-const RUN_OK = { ok: true, asked: 3, filled: 2, withQuestions: 1, proposals: 4 };
+const RUN_OK = { ok: true, asked: 3, filled: 2, withQuestions: 1, proposals: 4, unanswered: 0 };
 const runOk = () => json(RUN_OK);
 
-const BUTTON = 'Попросить помощника разобрать заявки (3)';
+/** В демо: три заявки ждут разбора, по одной (Станислав Ким) помощник не всё понял — на значке 4. */
+const ICON = 'ИИ-разбор заявок — 4';
 
 /** Очередь заявок с заданным состоянием помощника: так тест «получает от сервера» нужное. */
 const viewAssistant = (assistant: Partial<AssistantStatus>): RequestsView => {
   const view = buildRequests();
-  return { ...view, assistant: { available: true, enabled: true, pending: 3, ...assistant } };
+  return { ...view, assistant: { ...view.assistant, ...assistant } };
 };
+const onlyWaiting = () => viewAssistant({ pending: 0, review: buildRequests().assistant.review.filter((i) => i.state === 'reviewed') });
 
 let client = makeClient();
 beforeEach(() => {
@@ -33,208 +35,243 @@ async function openRequests(overrides: Parameters<typeof stubFetchWithFixtures>[
   return { fetchMock, block };
 }
 
-const helperButton = (block: HTMLElement, name = BUTTON) => within(block).getByRole('button', { name });
+/** Нажать значок ✦ в блоке подбора и дождаться окна помощника. */
+async function openHelper(block: HTMLElement, name: string | RegExp = ICON) {
+  const user = userEvent.setup();
+  await user.click(await within(block).findByRole('button', { name }));
+  const panel = await screen.findByRole('dialog', { name: 'Помощник' });
+  return { user, panel };
+}
 const matchButton = (block: HTMLElement) => within(block).getByRole('button', { name: 'Предложить группы новым заявкам' });
+const runButton = (panel: HTMLElement) => within(panel).getByRole('button', { name: /^Разобрать \(/ });
 
-describe('«Заявки»: помощник в блоке подбора', () => {
-  test('когда помощник подключён и включён, есть вторичная кнопка с числом заявок, которые он может разобрать', async () => {
-    const { block } = await openRequests({ requests: () => json(viewAssistant({ pending: 7 })) });
-    const btn = helperButton(block, 'Попросить помощника разобрать заявки (7)');
-    expect(btn).toBeEnabled();
-    // главная кнопка блока — подбор, помощник второго уровня
-    expect(matchButton(block).className).not.toBe(btn.className);
-  });
-
-  test('если помощник выключен, кнопки нет; полный вход видит подсказку, как его включить, со ссылкой на «Настройки»', async () => {
-    const { block } = await openRequests({ requests: () => json(viewAssistant({ enabled: false })) }, 'super');
-    expect(within(block).queryByRole('button', { name: /Попросить помощника/ })).not.toBeInTheDocument();
-    const hint = await within(block).findByText(/Помощник выключен\./);
-    expect(hint).toHaveTextContent('Помощник выключен. Включить: Настройки → Помощник.');
-    expect(within(block).getByRole('button', { name: 'Настройки → Помощник' })).toBeInTheDocument();
-  });
-
-  test('ссылка «Настройки → Помощник» ведёт в раздел настроек помощника', async () => {
-    const { block } = await openRequests({ requests: () => json(viewAssistant({ enabled: false })) }, 'super');
-    const user = userEvent.setup();
-    await user.click(await within(block).findByRole('button', { name: 'Настройки → Помощник' }));
-    await waitFor(() => expect(document.querySelector('[data-testid="location"]')!.textContent).toContain('tab=settings'));
-    expect(document.querySelector('[data-testid="location"]')!.textContent).toContain('sec=assistant');
-  });
-
-  test('обычный вход при выключенном помощнике видит строку без ссылки на «Настройки»', async () => {
-    const { block } = await openRequests({ requests: () => json(viewAssistant({ enabled: false })) });
-    expect(await within(block).findByText('Помощник выключен. Включить его может полный вход.')).toBeInTheDocument();
-    expect(within(block).queryByRole('button', { name: /Настройки/ })).not.toBeInTheDocument();
+describe('«Заявки»: значок ✦ помощника в блоке подбора', () => {
+  test('вместо широкой кнопки — значок с числом; подпись при наведении «ИИ-разбор заявок — 4»', async () => {
+    const { block } = await openRequests();
+    const icon = await within(block).findByRole('button', { name: ICON });
+    expect(icon).toHaveAttribute('title', ICON);
+    expect(icon).toHaveTextContent('4');
     expect(within(block).queryByRole('button', { name: /Попросить помощника/ })).not.toBeInTheDocument();
   });
 
-  test('если ключ не задан, полный вход видит одну строку про это, а кнопки нет', async () => {
-    const { block } = await openRequests({ requests: () => json(viewAssistant({ available: false, enabled: false })) }, 'super');
-    expect(await within(block).findByText('Помощник не подключён: ключ не задан на сервере.')).toBeInTheDocument();
-    expect(within(block).queryByRole('button', { name: /Попросить помощника/ })).not.toBeInTheDocument();
-    expect(within(block).queryByText(/Помощник выключен/)).not.toBeInTheDocument();
+  test('значок открывает окно помощника на вкладке «Разбор заявок»: сколько разберёт и что для этого прочитает', async () => {
+    const { block } = await openRequests({ me: () => json({ role: 'admin', assistant: { available: true, enabled: true, chat: true } }) });
+    const { panel } = await openHelper(block);
+    expect(panel).toHaveTextContent('Нашёл 3 заявки, где скрипт не понял запись');
+    expect(panel).toHaveTextContent('без имён и телефонов');
+    expect(runButton(panel)).toHaveAccessibleName('Разобрать (3)');
+    // Чат тоже доступен — переключиться можно вкладкой. Без чата вкладок нет совсем (как в остальных тестах здесь).
+    expect(within(panel).getByRole('button', { name: 'Разбор заявок' })).toHaveAttribute('aria-pressed', 'true');
+    await userEvent.setup().click(within(panel).getByRole('button', { name: 'Вопрос по базе' }));
+    const chat = await screen.findByRole('dialog', { name: 'Помощник' });
+    expect(await within(chat).findByRole('textbox', { name: 'Вопрос помощнику' })).toBeInTheDocument();
   });
 
-  test('обычному входу при незаданном ключе помощника в блоке не видно совсем', async () => {
-    const { block } = await openRequests({ requests: () => json(viewAssistant({ available: false, enabled: true })) });
-    expect(within(block).queryByText(/Помощник/)).not.toBeInTheDocument();
-    expect(within(block).queryByRole('button', { name: /Попросить помощника/ })).not.toBeInTheDocument();
+  test('где помощник не справился, он пишет, чего не понял и почему, показывает слова человека и вопросы', async () => {
+    const { block } = await openRequests();
+    const { panel } = await openHelper(block);
+    const list = within(panel).getByRole('region', { name: 'Нужна ваша помощь · 1' });
+    const card = within(list).getByRole('article', { name: 'Станислав Ким' });
+    expect(card).toHaveTextContent('Не понял: район, время');
+    expect(card).toHaveTextContent('Место: «где-то у Пионерской»');
+    expect(card).toHaveTextContent('В записи «где-то у Пионерской» станция названа неуверенно, а дней и времени нет совсем.');
+    expect(card).toHaveTextContent('Рядом с какой станцией метро вы живёте?');
   });
 
-  test('если разбирать нечего, кнопка неактивна, а причина написана рядом и привязана к кнопке', async () => {
-    const { block } = await openRequests({ requests: () => json(viewAssistant({ pending: 0 })) });
-    const btn = helperButton(block, 'Попросить помощника разобрать заявки (0)');
-    expect(btn).toBeDisabled();
-    expect(btn).toHaveAccessibleDescription('Нет заявок, которые помощник может разобрать');
+  test('без пояснения модели так и сказано, а не пусто', async () => {
+    const [item] = buildRequests().assistant.review;
+    const { block } = await openRequests({ requests: () => json(viewAssistant({ review: [{ ...item!, note: null }] })) });
+    const { panel } = await openHelper(block, /^ИИ-разбор заявок/);
+    expect(within(panel).getByRole('article', { name: 'Станислав Ким' })).toHaveTextContent('Пояснения нет: модель не объяснила');
   });
 
-  test('нажатие сначала спрашивает подтверждение и ничего не отправляет, пока человек не согласился', async () => {
-    const { fetchMock, block } = await openRequests({ requests: () => json(viewAssistant({})), 'assistant/run': runOk });
-    const user = userEvent.setup();
-    await user.click(helperButton(block));
-    const dialog = await screen.findByRole('dialog');
-    expect(dialog).toHaveTextContent(
-      'Помощник прочитает записи 3 заявок (возраст, место, удобное время — без имён и телефонов), определит район и время и подскажет вопросы. Это займёт около минуты. Продолжить?',
-    );
-    expect(posts(fetchMock)).toEqual([]);
+  test('ФИО в карточке разбора открывает заявку', async () => {
+    const { block } = await openRequests();
+    const { user, panel } = await openHelper(block);
+    await user.click(within(panel).getByRole('button', { name: 'Открыть заявку: Станислав Ким' }));
+    await waitFor(() => expect(document.querySelector('[data-testid="location"]')!.textContent).toContain('req=8'));
   });
 
-  test('в окне подтверждения число склоняется: «записи 1 заявки», «записи 2 заявок»', async () => {
-    const user = userEvent.setup();
-    const { block } = await openRequests({ requests: () => json(viewAssistant({ pending: 1 })) });
-    await user.click(helperButton(block, 'Попросить помощника разобрать заявки (1)'));
-    expect(await screen.findByRole('dialog')).toHaveTextContent('Помощник прочитает записи 1 заявки (');
-  });
-
-  test('«Отмена» закрывает окно и ничего не отправляет', async () => {
-    const { fetchMock, block } = await openRequests({ requests: () => json(viewAssistant({})), 'assistant/run': runOk });
-    const user = userEvent.setup();
-    await user.click(helperButton(block));
-    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Отмена' }));
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(posts(fetchMock)).toEqual([]);
-  });
-
-  test('согласие шлёт POST assistant/run с пустым телом, пишет итог и перечитывает заявки, «Сегодня» и «Команду»', async () => {
-    const { fetchMock, block } = await openRequests({ requests: () => json(viewAssistant({})), 'assistant/run': runOk });
+  test('«Разобрать» шлёт POST assistant/run с пустым телом, пишет итог словами и перечитывает заявки, «Сегодня» и «Команду»', async () => {
+    const { fetchMock, block } = await openRequests({ 'assistant/run': runOk });
     const invalidate = vi.spyOn(client, 'invalidateQueries');
-    const user = userEvent.setup();
-    await user.click(helperButton(block));
-    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Да, разобрать' }));
-
+    const { user, panel } = await openHelper(block);
+    await user.click(runButton(panel));
     expect(
-      await within(block).findByText('Готово: отправлено 3, определено по 2, вопросы по 1, новых предложений групп 4'),
+      await within(panel).findByText('Разобрал 3: определил данные по 2, вопросы для человека — по 1, после этого подбор предложил групп: 4. Где не справился, объяснил ниже почему.'),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(posts(fetchMock)).toEqual([{ path: 'assistant/run', body: {} }]);
     await waitFor(() => expect(getsOf(fetchMock, 'requests')).toBe(2));
     const keys = invalidate.mock.calls.map(([f]) => (f as { queryKey: unknown }).queryKey);
     expect(keys).toEqual(expect.arrayContaining([['requests'], ['today'], ['team']]));
   });
 
-  test('пока помощник работает, обе кнопки блока неактивны, а второй запуск невозможен', async () => {
+  test('если модель по части заявок не ответила, итог говорит, что они остались в очереди', async () => {
+    const { block } = await openRequests({ 'assistant/run': () => json({ ...RUN_OK, unanswered: 2 }) });
+    const { user, panel } = await openHelper(block);
+    await user.click(runButton(panel));
+    expect(await within(panel).findByText(/По 2 модель не ответила — они остались в очереди/)).toBeInTheDocument();
+  });
+
+  test('пока помощник работает, кнопки подбора неактивны, а второй запуск невозможен', async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
     const { fetchMock, block } = await openRequests({
-      requests: () => json(viewAssistant({})),
       'assistant/run': async () => {
         await gate;
         return runOk();
       },
     });
-    const user = userEvent.setup();
-    await user.click(helperButton(block));
-    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Да, разобрать' }));
-
-    const working = await within(block).findByRole('button', { name: 'Помощник разбирает заявки…' });
-    expect(working).toBeDisabled();
+    const { user, panel } = await openHelper(block);
+    await user.dblClick(runButton(panel));
+    expect(within(panel).getByRole('button', { name: 'Разбираю заявки…' })).toBeDisabled();
     expect(matchButton(block)).toBeDisabled();
     expect(within(block).getByRole('button', { name: 'Пересчитать все предложения' })).toBeDisabled();
     expect(posts(fetchMock)).toHaveLength(1);
     release();
-    await within(block).findByText(/^Готово: отправлено/);
+    await within(panel).findByText(/^Разобрал 3/);
     expect(posts(fetchMock)).toHaveLength(1);
     expect(matchButton(block)).toBeEnabled();
   });
 
-  test('два быстрых подтверждения подряд дают один запрос: окно ещё не успело закрыться', async () => {
-    const { fetchMock, block } = await openRequests({ requests: () => json(viewAssistant({})), 'assistant/run': runOk });
-    const user = userEvent.setup();
-    await user.click(helperButton(block));
-    const confirm = within(await screen.findByRole('dialog')).getByRole('button', { name: 'Да, разобрать' });
-    await user.dblClick(confirm);
-    await within(block).findByText(/^Готово: отправлено/);
-    expect(posts(fetchMock)).toHaveLength(1);
-  });
-
-  test('два подтверждения до перерисовки тоже дают один запрос: окно и кнопка ещё не успели исчезнуть', async () => {
-    const { fetchMock, block } = await openRequests({ requests: () => json(viewAssistant({})), 'assistant/run': runOk });
-    const user = userEvent.setup();
-    await user.click(helperButton(block));
-    const confirm = within(await screen.findByRole('dialog')).getByRole('button', { name: 'Да, разобрать' });
+  test('два нажатия до перерисовки тоже дают один запрос', async () => {
+    const { fetchMock, block } = await openRequests({ 'assistant/run': runOk });
+    const { panel } = await openHelper(block);
+    const btn = runButton(panel);
     act(() => {
-      confirm.click();
-      confirm.click();
+      btn.click();
+      btn.click();
     });
-    await within(block).findByText(/^Готово: отправлено/);
+    await within(panel).findByText(/^Разобрал 3/);
     expect(posts(fetchMock)).toHaveLength(1);
   });
 
-  test('пока идёт подбор, кнопка помощника неактивна', async () => {
+  test('итог не теряется, если окно закрыли, пока шёл разбор', async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
-    const { block } = await openRequests({
-      requests: () => json(viewAssistant({})),
-      'matching/run': async () => {
-        await gate;
-        return json({ ok: true, created: 0, replaced: 0, unchanged: 0 });
+    const { block } = await openRequests({ 'assistant/run': async () => { await gate; return runOk(); } });
+    const { user, panel } = await openHelper(block);
+    await user.click(runButton(panel));
+    await user.click(within(panel).getByRole('button', { name: 'Закрыть помощника' }));
+    release();
+    await waitFor(() => expect(matchButton(block)).toBeEnabled());
+    const again = await openHelper(block, /^ИИ-разбор заявок/);
+    expect(await within(again.panel).findByText(/^Разобрал 3/)).toBeInTheDocument();
+  });
+
+  test('ошибка сервера показывается его словами, «Повторить» запускает снова', async () => {
+    let calls = 0;
+    const { fetchMock, block } = await openRequests({
+      'assistant/run': () => {
+        calls += 1;
+        return calls === 1
+          ? json({ error: 'unavailable', message: 'Помощник ответил не в том виде, который понимает сервис, поэтому разбор не записан.' }, 503)
+          : runOk();
       },
     });
-    const user = userEvent.setup();
-    await user.click(matchButton(block));
-    expect(helperButton(block)).toBeDisabled();
-    release();
-    await within(block).findByText(/^Готово: группы предложены/);
-    expect(helperButton(block)).toBeEnabled();
-  });
-
-  test('ошибка показывается текстом сервера, а кнопка снова доступна', async () => {
-    const { block } = await openRequests({
-      requests: () => json(viewAssistant({})),
-      'assistant/run': () => json({ error: 'unavailable', message: 'Помощник выключен или не задан ключ' }, 503),
-    });
-    const user = userEvent.setup();
-    await user.click(helperButton(block));
-    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Да, разобрать' }));
-    expect(await within(block).findByRole('alert')).toHaveTextContent('Помощник выключен или не задан ключ');
-    expect(helperButton(block)).toBeEnabled();
-  });
-
-  test('если разбор уже идёт (409), показывается текст сервера', async () => {
-    const { block } = await openRequests({
-      requests: () => json(viewAssistant({})),
-      'assistant/run': () => json({ error: 'conflict', message: 'Разбор уже идёт, подождите минуту' }, 409),
-    });
-    const user = userEvent.setup();
-    await user.click(helperButton(block));
-    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Да, разобрать' }));
-    expect(await within(block).findByRole('alert')).toHaveTextContent('Разбор уже идёт, подождите минуту');
+    const { user, panel } = await openHelper(block);
+    await user.click(runButton(panel));
+    expect(await within(panel).findByRole('alert')).toHaveTextContent('Помощник ответил не в том виде');
+    await user.click(within(panel).getByRole('button', { name: 'Повторить' }));
+    await within(panel).findByText(/^Разобрал 3/);
+    expect(posts(fetchMock)).toHaveLength(2);
   });
 
   test('если до сервера не достучались, сказано про связь, а не «Ошибка 0»', async () => {
-    const { block } = await openRequests({
-      requests: () => json(viewAssistant({})),
-      'assistant/run': () => Promise.reject(new TypeError('fetch failed')),
-    });
-    const user = userEvent.setup();
-    await user.click(helperButton(block));
-    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Да, разобрать' }));
-    expect(await within(block).findByRole('alert')).toHaveTextContent('Нет связи с сервером. Разбор не запущен, попробуйте ещё раз.');
+    const { block } = await openRequests({ 'assistant/run': () => Promise.reject(new TypeError('fetch failed')) });
+    const { user, panel } = await openHelper(block);
+    await user.click(runButton(panel));
+    expect(await within(panel).findByRole('alert')).toHaveTextContent('Нет связи с сервером. Разбор не запущен, попробуйте ещё раз.');
+  });
+
+  test('новых непонятных записей нет — кнопки «Разобрать» нет, но заявки, где нужна помощь, видны', async () => {
+    const { block } = await openRequests({ requests: () => json(onlyWaiting()) });
+    const { panel } = await openHelper(block, 'ИИ-разбор заявок — 1');
+    expect(panel).toHaveTextContent('Новых непонятных записей нет');
+    expect(within(panel).queryByRole('button', { name: /^Разобрать/ })).not.toBeInTheDocument();
+    expect(within(panel).getByRole('article', { name: 'Станислав Ким' })).toBeInTheDocument();
+  });
+
+  test('разбирать нечего — значок без числа, а окно объясняет почему', async () => {
+    const { block } = await openRequests({ requests: () => json(viewAssistant({ pending: 0, review: [] })) });
+    const { panel } = await openHelper(block, 'ИИ-разбор заявок');
+    expect(panel).toHaveTextContent('Сейчас разбирать нечего: у открытых заявок скрипт сам понял район, возраст и время.');
+  });
+
+  test('помощник выключен: полный вход читает в окне, как включить, и ссылка ведёт в «Настройки → Помощник»', async () => {
+    const { block } = await openRequests({ requests: () => json(viewAssistant({ enabled: false })) }, 'super');
+    const { user, panel } = await openHelper(block, 'ИИ-разбор заявок');
+    expect(panel).toHaveTextContent('Я выключен. Включить: Настройки → Помощник.');
+    await user.click(within(panel).getByRole('button', { name: 'Настройки → Помощник' }));
+    await waitFor(() => expect(document.querySelector('[data-testid="location"]')!.textContent).toContain('sec=assistant'));
+  });
+
+  test('помощник выключен: обычный вход читает, кто может включить, без ссылки в «Настройки»', async () => {
+    const { block } = await openRequests({ requests: () => json(viewAssistant({ enabled: false })) });
+    const { panel } = await openHelper(block, 'ИИ-разбор заявок');
+    expect(panel).toHaveTextContent('Я выключен. Включить меня может полный вход.');
+    expect(within(panel).queryByRole('button', { name: /Настройки/ })).not.toBeInTheDocument();
+  });
+
+  test('ключ не задан: полный вход видит значок и объяснение в окне, обычному входу значка нет', async () => {
+    const off = { requests: () => json(viewAssistant({ available: false, enabled: false })) };
+    const { block } = await openRequests(off, 'super');
+    const { panel } = await openHelper(block, 'ИИ-разбор заявок');
+    expect(panel).toHaveTextContent('Я не подключён: на сервере не задан ключ модели.');
+  });
+
+  test('обычному входу при незаданном ключе значка нет: сделать с этим он ничего не может', async () => {
+    const { block } = await openRequests({ requests: () => json(viewAssistant({ available: false, enabled: true })) });
+    await screen.findByText(/Автоподбор новых заявок/);
+    expect(within(block).queryByRole('button', { name: /ИИ-разбор/ })).not.toBeInTheDocument();
   });
 });
 
-const NOTE_FULL: AssistantNote = { filled: ['район', 'время'], questions: ['Какая станция метро ближе всего?', 'В какие дни вам удобно?'] };
-const NOTE_QUESTIONS: AssistantNote = { filled: [], questions: ['Сколько вам лет?', 'Где вы живёте?', 'Когда удобно?'] };
+describe('Окно помощника: ответ человека — сразу в заявку', () => {
+  test('выбранный район и время уходят правкой заявки; слова человека остаются в скобках', async () => {
+    const { fetchMock, block } = await openRequests({ [`requests/8/edit`]: () => json({ ok: true }) });
+    const { user, panel } = await openHelper(block);
+    const card = within(panel).getByRole('article', { name: 'Станислав Ким' });
+    await user.selectOptions(await within(card).findByRole('combobox', { name: 'Район' }), 'Приморский');
+    await user.type(within(card).getByRole('textbox', { name: 'Удобные дни и время' }), 'пн вечером');
+    await user.click(within(card).getByRole('button', { name: 'Записать в заявку' }));
+    await waitFor(() =>
+      expect(posts(fetchMock)).toEqual([{ path: 'requests/8/edit', body: { place: 'Приморский (где-то у Пионерской)', schedule: 'пн вечером' } }]),
+    );
+    expect(await within(panel).findByText('Записал в заявку: Станислав Ким. Подбор учтёт новые данные.')).toBeInTheDocument();
+  });
+
+  test('поля только для того, чего не хватает: возраст известен — его не спрашивают', async () => {
+    const { block } = await openRequests();
+    const { panel } = await openHelper(block);
+    const card = within(panel).getByRole('article', { name: 'Станислав Ким' });
+    expect(await within(card).findByRole('combobox', { name: 'Район' })).toBeInTheDocument();
+    expect(within(card).queryByRole('combobox', { name: 'Возраст' })).not.toBeInTheDocument();
+  });
+
+  test('пустой ответ не отправляется: окно просит заполнить хотя бы одно поле', async () => {
+    const { fetchMock, block } = await openRequests();
+    const { user, panel } = await openHelper(block);
+    const card = within(panel).getByRole('article', { name: 'Станислав Ким' });
+    await user.click(within(card).getByRole('button', { name: 'Записать в заявку' }));
+    expect(await within(card).findByRole('alert')).toHaveTextContent('Заполните хотя бы одно поле.');
+    expect(posts(fetchMock)).toEqual([]);
+  });
+
+  test('отказ сервера показан его словами, введённое не стирается', async () => {
+    const { block } = await openRequests({ [`requests/8/edit`]: () => json({ error: 'conflict', message: 'Заявка уже закрыта.' }, 409) });
+    const { user, panel } = await openHelper(block);
+    const card = within(panel).getByRole('article', { name: 'Станислав Ким' });
+    const time = within(card).getByRole('textbox', { name: 'Удобные дни и время' });
+    await user.type(time, 'пн вечером');
+    await user.click(within(card).getByRole('button', { name: 'Записать в заявку' }));
+    expect(await within(card).findByRole('alert')).toHaveTextContent('Заявка уже закрыта.');
+    expect(time).toHaveValue('пн вечером');
+  });
+});
+
+const NOTE_FULL: AssistantNote = { filled: ['район', 'время'], questions: ['Какая станция метро ближе всего?', 'В какие дни вам удобно?'], note: null };
+const NOTE_QUESTIONS: AssistantNote = { filled: [], questions: ['Сколько вам лет?', 'Где вы живёте?', 'Когда удобно?'], note: null };
 
 async function cardBlock(patch: AssistantNote | null, id = 1) {
   stubFetchWithFixtures({ requests: () => json(viewWith(id, { assistant: patch })) });
@@ -277,7 +314,7 @@ describe('Карточка заявки: блок «Помощник»', () => {
   });
 
   test('если определено, но вопросов нет, остаётся строка про определённое без списка и копирования', async () => {
-    const card = await cardBlock({ filled: ['время'], questions: [] });
+    const card = await cardBlock({ filled: ['время'], questions: [], note: null });
     const block = within(card).getByRole('region', { name: 'Помощник' });
     expect(block).toHaveTextContent('Определил помощник: время — проверьте');
     expect(within(block).queryByRole('button', { name: 'Скопировать вопросы' })).not.toBeInTheDocument();
@@ -290,8 +327,13 @@ describe('Карточка заявки: блок «Помощник»', () => {
   });
 
   test('пустой разбор (ни определённого, ни вопросов) блока тоже не рисует', async () => {
-    const card = await cardBlock({ filled: [], questions: [] });
+    const card = await cardBlock({ filled: [], questions: [], note: null });
     expect(within(card).queryByRole('region', { name: 'Помощник' })).not.toBeInTheDocument();
+  });
+
+  test('пояснение помощника видно в карточке, даже если ничего не определено и вопросов нет', async () => {
+    const card = await cardBlock({ filled: [], questions: [], note: 'В записи «как получится» дней и времени не названо.' });
+    expect(within(card).getByRole('region', { name: 'Помощник' })).toHaveTextContent('В записи «как получится» дней и времени не названо.');
   });
 
   test('блок стоит выше «Работы с заявкой»', async () => {

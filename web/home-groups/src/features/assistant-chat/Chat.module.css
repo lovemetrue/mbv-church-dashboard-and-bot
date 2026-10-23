@@ -343,3 +343,33 @@
   color: var(--warn);
   overflow-wrap: anywhere;
 }
+
+/* Вкладки окна помощника: «Разбор заявок» и «Вопрос по базе». */
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.tab {
+  flex: 1;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+.tab[aria-pressed='true'] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--ink);
+}
+@media (hover: hover) {
+  .tab:hover {
+    color: var(--ink);
+  }
+}

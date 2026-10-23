@@ -50,13 +50,6 @@ async function openRequests(overrides: Parameters<typeof stubFetchWithFixtures>[
   return { fetchMock, block };
 }
 
-/** Переключатель включается, когда пришёл ответ `/me`: до него права неизвестны. */
-async function enabledSwitch(block: HTMLElement) {
-  const sw = within(block).getByRole('switch', { name: 'Подбирать новые заявки автоматически' });
-  await waitFor(() => expect(sw).toBeEnabled());
-  return sw;
-}
-
 describe('«Заявки»: подбор для новых заявок', () => {
   test('блок показывает, сколько заявок ждут подбора, и когда подбор запускали в последний раз', async () => {
     const { block } = await openRequests({ requests: () => json(requestsWith({ waiting: 5, saved: 9, lastRun: LAST_RUN })) });
@@ -149,64 +142,60 @@ describe('«Заявки»: подбор для новых заявок', () => 
     expect(within(block).getByRole('button', { name: 'Предложить группы новым заявкам' })).toBeEnabled();
   });
 
+  test('переключателя автоподбора в «Заявках» нет: только строка о его состоянии', async () => {
+    const { block } = await openRequests({ requests: () => json(requestsWith({ auto: true })) });
+    expect(within(block).queryByRole('switch')).not.toBeInTheDocument();
+    expect(within(block).getByText(/Автоподбор новых заявок включён/)).toBeInTheDocument();
+    // Обычному входу в «Настройки» нельзя — ссылки туда у него нет.
+    expect(within(block).queryByRole('button', { name: 'Настройки → Подбор' })).not.toBeInTheDocument();
+  });
+
+  test('полный вход видит ссылку «Настройки → Подбор», и она ведёт в раздел подбора', async () => {
+    const { block } = await openRequests({}, 'super');
+    expect(within(block).getByText(/Автоподбор новых заявок выключен/)).toBeInTheDocument();
+    await userEvent.setup().click(await within(block).findByRole('button', { name: 'Настройки → Подбор' }));
+    await waitFor(() => expect(document.querySelector('[data-testid="location"]')!.textContent).toContain('sec=matching'));
+  });
+});
+
+describe('«Настройки → Подбор»: автоподбор новых заявок', () => {
+  async function openSection(overrides: Parameters<typeof stubFetchWithFixtures>[0] = {}) {
+    const fetchMock = stubFetchWithFixtures({ me: () => json({ role: 'super' }), ...overrides });
+    renderAt(<App />, '/?tab=settings&sec=matching', client);
+    const section = await screen.findByRole('region', { name: 'Подбор' });
+    const sw = await within(section).findByRole('switch', { name: 'Подбирать новые заявки автоматически' });
+    return { fetchMock, section, sw };
+  }
+
   test('переключатель отражает состояние matching.auto', async () => {
-    const { block } = await openRequests({ requests: () => json(requestsWith({ auto: true })) }, 'super');
-    expect(within(block).getByRole('switch', { name: 'Подбирать новые заявки автоматически' })).toBeChecked();
+    const { sw } = await openSection({ requests: () => json(requestsWith({ auto: true })) });
+    expect(sw).toBeChecked();
   });
 
-  test('для обычного входа переключатель виден, но отключён, с подписью про полный вход', async () => {
-    const { fetchMock, block } = await openRequests({}, 'admin');
-    const sw = within(block).getByRole('switch', { name: 'Подбирать новые заявки автоматически' });
-    expect(sw).toBeDisabled();
-    expect(within(block).getByText('Включает только полный вход')).toBeInTheDocument();
-    await userEvent.setup().click(sw);
-    expect(posts(fetchMock)).toHaveLength(0);
-  });
-
-  test('пока роль неизвестна, переключатель отключён: права не угадываем', async () => {
-    const never = new Promise<Response>(() => {});
-    const { block } = await openRequests({ me: () => never });
-    expect(within(block).getByRole('switch', { name: 'Подбирать новые заявки автоматически' })).toBeDisabled();
-  });
-
-  test('для полного входа переключатель шлёт {enabled:true} и после ответа перечитывает заявки', async () => {
+  test('включение шлёт {enabled:true} и после ответа перечитывает заявки', async () => {
     let enabled = false;
-    const { fetchMock, block } = await openRequests(
-      {
-        'matching/auto': () => {
-          enabled = true;
-          return json({ ok: true });
-        },
-        requests: () => json(requestsWith({ auto: enabled })),
+    const { fetchMock, sw } = await openSection({
+      'matching/auto': () => {
+        enabled = true;
+        return json({ ok: true });
       },
-      'super',
-    );
-    const sw = await enabledSwitch(block);
-    expect(within(block).queryByText('Включает только полный вход')).not.toBeInTheDocument();
+      requests: () => json(requestsWith({ auto: enabled })),
+    });
     await userEvent.setup().click(sw);
-
     expect(posts(fetchMock)).toEqual([{ path: 'matching/auto', body: { enabled: true } }]);
     await waitFor(() => expect(sw).toBeChecked());
   });
 
   test('выключение шлёт {enabled:false}', async () => {
-    const { fetchMock, block } = await openRequests(
-      { 'matching/auto': () => json({ ok: true }), requests: () => json(requestsWith({ auto: true })) },
-      'super',
-    );
-    await userEvent.setup().click(await enabledSwitch(block));
+    const { fetchMock, sw } = await openSection({ 'matching/auto': () => json({ ok: true }), requests: () => json(requestsWith({ auto: true })) });
+    await userEvent.setup().click(sw);
     expect(posts(fetchMock)).toEqual([{ path: 'matching/auto', body: { enabled: false } }]);
   });
 
-  test('ответ 403 на переключатель показывает текст про полный вход, а состояние не меняется', async () => {
-    const { block } = await openRequests(
-      { 'matching/auto': () => json({ error: 'forbidden', message: 'служебный текст сервера' }, 403) },
-      'super',
-    );
-    const sw = await enabledSwitch(block);
+  test('ответ 403 показывает текст про полный вход, а состояние не меняется', async () => {
+    const { section, sw } = await openSection({ 'matching/auto': () => json({ error: 'forbidden', message: 'служебный текст сервера' }, 403) });
     await userEvent.setup().click(sw);
-    const alert = await within(block).findByRole('alert');
-    expect(alert).toHaveTextContent('Включает только полный вход');
+    expect(await within(section).findByRole('alert')).toHaveTextContent('Включает только полный вход');
     expect(sw).not.toBeChecked();
     expect(sw).toBeEnabled();
   });

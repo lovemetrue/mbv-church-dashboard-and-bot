@@ -126,7 +126,7 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
   if (clean === 'assistant/chat') return fixtureChatReply(body);
   if (clean === 'assistant/chat/clear') return fixtureChatClear();
   // Помощник: в демо он «разобрал» все три заявки, которые ждали разбора; данные при этом не меняются.
-  if (clean === 'assistant/run') return { ok: true, asked: 3, filled: 2, withQuestions: 2, proposals: 1 };
+  if (clean === 'assistant/run') return { ok: true, asked: 3, filled: 2, withQuestions: 2, proposals: 1, unanswered: 0 };
   // Пересчёт всех предложений: в демо сервера нет, поэтому «заменено» нулевое, а изменившиеся данные считаем обновлёнными.
   if (clean === 'matching/rerun-all') {
     const open = buildRequests().items.filter((r) => r.proposal && r.bucket !== 'done');

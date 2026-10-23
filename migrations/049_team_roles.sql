@@ -7,8 +7,9 @@
 --      coordinator — координатор групп: после входа видит свои группы и свои обращения «хочу открыть группу»;
 --      senior      — старший координатор: видит всё, без отборов;
 --      NULL        — роль без особого смысла для сервиса (отборов не ставит).
---  • coordinators.role_id — ссылка на роль вместо текста. Текстовая колонка удаляется: держать оба значения —
---    значит дать им разойтись.
+--  • coordinator_roles — какие роли у человека. Ролей может быть несколько («Координатор малых групп» и
+--    «Распределитель» сразу), поэтому это отдельная таблица связей, а не колонка у координатора. Текстовая колонка
+--    coordinators.role удаляется: держать оба значения — значит дать им разойтись.
 CREATE TABLE team_roles (
   id          bigserial   PRIMARY KEY,
   name        text        NOT NULL CHECK (btrim(name) <> ''),
@@ -50,25 +51,47 @@ BEGIN
 END
 $$;
 
--- Основные роли — сразу, чтобы в форме было из чего выбрать даже на пустой базе.
+-- Основные роли — сразу, чтобы в форме было из чего выбрать даже на пустой базе. «Катализатор» — роль служения без
+-- особого смысла для сервиса: отборов не ставит и заявок не получает (смысл можно задать в «Настройках»).
 INSERT INTO team_roles (name, kind) VALUES
   ('Координатор малых групп', 'coordinator'),
   ('Старший координатор', 'senior'),
-  ('Распределитель', 'distributor')
+  ('Распределитель', 'distributor'),
+  ('Катализатор', NULL)
 ON CONFLICT (lower(btrim(name))) DO NOTHING;
 
-ALTER TABLE coordinators ADD COLUMN role_id bigint REFERENCES team_roles(id);
--- Каждое уже записанное название становится ролью (с угаданным смыслом), координатор получает на неё ссылку.
--- Удалённые (archived) тоже: строка остаётся в базе, и ссылка у неё должна быть.
-UPDATE coordinators SET role_id = team_role_id(CASE WHEN btrim(role) = '' THEN 'Без роли' ELSE role END);
-ALTER TABLE coordinators ALTER COLUMN role_id SET NOT NULL;
-CREATE INDEX coordinators_role_idx ON coordinators (role_id);
+-- Роли человека. Удалить роль, пока она у кого-то есть, база не даст (RESTRICT); удаление человека из базы
+-- (а не мягкое, archived_at) уносит и его роли.
+CREATE TABLE coordinator_roles (
+  coordinator_id bigint NOT NULL REFERENCES coordinators(id) ON DELETE CASCADE,
+  role_id        bigint NOT NULL REFERENCES team_roles(id) ON DELETE RESTRICT,
+  PRIMARY KEY (coordinator_id, role_id)
+);
+CREATE INDEX coordinator_roles_role_idx ON coordinator_roles (role_id);
 
--- Помощнику роль по-прежнему видна словами. CREATE OR REPLACE с тем же набором столбцов сохраняет права
--- роли assistant_ro; заодно представление перестаёт зависеть от текстовой колонки, и её можно удалить.
+-- Каждое уже записанное название становится ролью (с угаданным смыслом), человек получает на неё ссылку.
+-- Удалённые (archived) тоже: строка остаётся в базе, и роль у неё должна быть.
+INSERT INTO coordinator_roles (coordinator_id, role_id)
+SELECT id, team_role_id(CASE WHEN btrim(role) = '' THEN 'Без роли' ELSE role END) FROM coordinators;
+
+-- Роли человека словами, через запятую, в порядке названий — для показа и для помощника.
+CREATE FUNCTION coordinator_role_names(p_coordinator bigint) RETURNS text
+LANGUAGE sql STABLE AS $$
+  SELECT string_agg(r.name, ', ' ORDER BY r.name)
+    FROM coordinator_roles cr JOIN team_roles r ON r.id = cr.role_id
+   WHERE cr.coordinator_id = p_coordinator
+$$;
+
+-- Помощнику роли по-прежнему видны словами. CREATE OR REPLACE с тем же набором столбцов сохраняет права
+-- роли assistant_ro; заодно представление перестаёт зависеть от текстовой колонки, и её можно удалить. Роли собраны
+-- подзапросом, а не через coordinator_role_names: функция выполнялась бы с правами помощника, а у него нет доступа к
+-- таблицам вне схемы assistant; таблицы внутри представления читаются с правами его владельца.
 CREATE OR REPLACE VIEW assistant.coordinators AS
-SELECT c.id, assistant.name_ref('Координатор', c.name) AS coordinator, r.name AS role
-  FROM coordinators c JOIN team_roles r ON r.id = c.role_id
+SELECT c.id, assistant.name_ref('Координатор', c.name) AS coordinator,
+       coalesce((SELECT string_agg(r.name, ', ' ORDER BY r.name)
+                   FROM coordinator_roles cr JOIN team_roles r ON r.id = cr.role_id
+                  WHERE cr.coordinator_id = c.id), '') AS role
+  FROM coordinators c
  WHERE c.archived_at IS NULL;
 
 ALTER TABLE coordinators DROP COLUMN role;

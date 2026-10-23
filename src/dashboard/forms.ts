@@ -301,13 +301,16 @@ export function parseRequestUpdate(form: URLSearchParams): Parsed<{ id: number; 
 export function parseCoordinatorForm(form: URLSearchParams): Parsed<CoordinatorInput> {
   const name = text(form, 'name');
   if (!name) return { ok: false, error: 'Укажите ФИО.' };
-  // Новый интерфейс выбирает роль из справочника (roleId), старый дашборд пишет её словами (role).
-  const roleId = optionalId(form, 'roleId');
-  if (roleId === 'invalid') return { ok: false, error: 'Роль выбирается из списка.' };
-  if (roleId) return { ok: true, value: { name, role: { id: roleId } } };
+  // Новый интерфейс отмечает роли из справочника галочками (roleIds: «1, 3»), старый дашборд пишет одну роль словами (role).
+  const rawIds = text(form, 'roleIds');
+  if (rawIds) {
+    const ids = rawIds.split(',').map((v) => v.trim()).filter(Boolean);
+    if (ids.some((v) => !/^\d{1,15}$/.test(v))) return { ok: false, error: 'Роли выбираются из списка.' };
+    return { ok: true, value: { name, roles: [...new Set(ids.map(Number))].map((id) => ({ id })) } };
+  }
   const role = text(form, 'role');
-  if (!role) return { ok: false, error: 'Укажите роль.' };
-  return { ok: true, value: { name, role: { name: role } } };
+  if (!role) return { ok: false, error: 'Отметьте хотя бы одну роль.' };
+  return { ok: true, value: { name, roles: [{ name: role }] } };
 }
 
 export function parseCoordinatorUpdate(form: URLSearchParams): Parsed<{ id: number; input: CoordinatorInput }> {

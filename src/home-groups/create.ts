@@ -37,7 +37,7 @@ export function fieldsToForm(body: unknown): URLSearchParams | string {
 
 export function createRecordCreator(deps: {
   requests: Pick<RequestsRepo, 'createFromDashboard' | 'findById'>;
-  groups: Pick<GroupsRepo, 'create'>;
+  groups: Pick<GroupsRepo, 'create' | 'requestLinkState' | 'linkToRequest' | 'archive'>;
   audit: Pick<AuditRepo, 'write'>;
   /** Уведомление служителю о новой заявке; не должно бросать (см. `notifierFromEnv`). */
   notify?: (request: RequestWithUser) => Promise<void>;
@@ -56,14 +56,35 @@ export function createRecordCreator(deps: {
       return { ok: true, id };
     },
 
+    /**
+     * Новая группа; с `sourceRequestId` — «Создать группу по заявке»: группа связывается с заявкой (`source_request_id`)
+     * и с регистрацией человека как ведущего. По одной заявке — одна действующая группа.
+     */
     async group(body: unknown, actor: string): Promise<CreateOutcome> {
       const form = fieldsToForm(body);
       if (typeof form === 'string') return bad(form);
       const parsed = parseGroupForm(form);
       if (!parsed.ok) return bad(parsed.error);
+      const rawRequest = form.get('sourceRequestId')?.trim() ?? '';
+      if (rawRequest && !/^\d{1,15}$/.test(rawRequest)) return bad('Неверный номер заявки.');
+      const requestId = rawRequest ? Number(rawRequest) : null;
+      if (requestId !== null) {
+        const state = await deps.groups.requestLinkState(requestId);
+        if (state === 'missing') return { ok: false, error: 'not_found', message: 'Заявка не найдена: возможно, её удалили.' };
+        if (state !== 'free') return { ok: false, error: 'conflict', message: `По этой заявке группа уже заведена: ${groupCode(state)}.` };
+      }
       // source='ui': видно, откуда запись, и повторный перенос таблицы её не затирает.
       const created = await deps.groups.create(parsed.value as never, 'ui');
-      await deps.audit.write(actor, 'group.create', 'group', created.id, { status: parsed.value.status, district: parsed.value.district });
+      if (requestId !== null && !(await deps.groups.linkToRequest(created.id, requestId))) {
+        // Пока заполняли форму, по той же заявке завели другую группу: эту убираем, чтобы не было двух.
+        await deps.groups.archive(created.id);
+        return { ok: false, error: 'conflict', message: 'По этой заявке только что завели другую группу: обновите страницу.' };
+      }
+      await deps.audit.write(actor, 'group.create', 'group', created.id, {
+        status: parsed.value.status, district: parsed.value.district, ...(requestId !== null ? { fromRequest: requestId } : {}),
+      });
+      // И в ленту заявки: по ней видно, что группа заведена, кем и когда.
+      if (requestId !== null) await deps.audit.write(actor, 'request.group_created', 'request', requestId, { groupId: created.id });
       return { ok: true, id: created.id };
     },
   };

@@ -195,8 +195,10 @@ export class RequestsRepo {
       await c.query(`SELECT pg_advisory_xact_lock(hashtext('hg_auto_assign'))`);
       const { rows } = await c.query<{ name: string }>(
         `SELECT c.name
-           FROM coordinators c JOIN team_roles tr ON tr.id = c.role_id
-          WHERE c.archived_at IS NULL AND tr.kind = 'distributor'
+           FROM coordinators c
+          WHERE c.archived_at IS NULL
+            AND EXISTS (SELECT 1 FROM coordinator_roles cr JOIN team_roles tr ON tr.id = cr.role_id
+                         WHERE cr.coordinator_id = c.id AND tr.kind = 'distributor')
           ORDER BY (SELECT count(*) FROM requests r
                      WHERE r.responsible = c.name AND r.archived_at IS NULL AND r.status NOT IN ('Исполнена', 'Аннулирована')),
                    c.id

@@ -233,13 +233,14 @@ describe('форма участника (координатора)', () => {
   test('ФИО и роль проходят', () => {
     const r = parseCoordinatorForm(form({ name: 'Петрова Мария', role: 'Координатор малых групп' }));
     expect(r.ok).toBe(true);
-    if (r.ok) expect(r.value).toEqual({ name: 'Петрова Мария', role: { name: 'Координатор малых групп' } });
+    if (r.ok) expect(r.value).toEqual({ name: 'Петрова Мария', roles: [{ name: 'Координатор малых групп' }] });
   });
 
-  test('роль из справочника приходит номером и важнее роли словами', () => {
-    const r = parseCoordinatorForm(form({ name: 'Петрова Мария', roleId: '3', role: 'Координатор' }));
-    expect(r).toEqual({ ok: true, value: { name: 'Петрова Мария', role: { id: 3 } } });
-    expect(parseCoordinatorForm(form({ name: 'Петрова Мария', roleId: 'три' }))).toMatchObject({ ok: false, error: 'Роль выбирается из списка.' });
+  test('роли из справочника приходят номерами через запятую, без повторов, и важнее роли словами', () => {
+    const r = parseCoordinatorForm(form({ name: 'Петрова Мария', roleIds: '3, 1,3', role: 'Координатор' }));
+    expect(r).toEqual({ ok: true, value: { name: 'Петрова Мария', roles: [{ id: 3 }, { id: 1 }] } });
+    expect(parseCoordinatorForm(form({ name: 'Петрова Мария', roleIds: '1, три' }))).toMatchObject({ ok: false, error: 'Роли выбираются из списка.' });
+    expect(parseCoordinatorForm(form({ name: 'Петрова Мария' }))).toMatchObject({ ok: false, error: 'Отметьте хотя бы одну роль.' });
   });
 
   test('без ФИО не принимается', () => {
@@ -262,7 +263,7 @@ describe('форма участника (координатора)', () => {
   test('правка с номером и полями проходит', () => {
     const r = parseCoordinatorUpdate(form({ id: '5', name: 'Петрова Мария', role: 'Координатор' }));
     expect(r.ok).toBe(true);
-    if (r.ok) expect(r.value).toEqual({ id: 5, input: { name: 'Петрова Мария', role: { name: 'Координатор' } } });
+    if (r.ok) expect(r.value).toEqual({ id: 5, input: { name: 'Петрова Мария', roles: [{ name: 'Координатор' }] } });
   });
 });
 

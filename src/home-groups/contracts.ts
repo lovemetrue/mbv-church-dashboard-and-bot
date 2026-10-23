@@ -116,8 +116,11 @@ export interface Me {
      * свои и ничьи заявки, координатор — свои группы и свои обращения «хочу открыть группу», старший — всё.
      */
     teamRole: string | null;
-    /** Что роль значит для сервиса — из справочника ролей, а не угадыванием по названию; null — без особого смысла. */
-    teamKind: TeamRoleKind | null;
+    /**
+     * Что роли значат для сервиса — из справочника ролей, а не угадыванием по названию. Ролей у человека бывает
+     * несколько (координатор и распределитель сразу), поэтому список; пустой — особых настроек нет.
+     */
+    teamKinds: TeamRoleKind[];
   };
   /** Состояние помощника для кнопки «✦ Помощник»: показывается, когда ключ задан, помощник включён и база готова. */
   assistant?: { available: boolean; enabled: boolean; chat: boolean };
@@ -389,6 +392,8 @@ export interface RequestItem {
   original: OriginalField[];
   /** Куда человека утвердили (для bucket = done). */
   finalGroup: GroupBrief | null;
+  /** Группа, заведённая по этой заявке («Создать группу по заявке»); null — нет. */
+  ownGroup: { id: number; code: string } | null;
   /** Название группы текстом, если группа в реестре не нашлась. */
   finalGroupText: string | null;
   responsible: string | null;
@@ -898,6 +903,8 @@ export interface OtherItem {
    * обращения (район, возраст, время, улица). null — у других обращений.
    */
   prospects?: Prospects | null;
+  /** Группа, заведённая по этому обращению: потенциальная из «хочу открыть» или «Создать группу по заявке»; null — нет. */
+  ownGroup: { id: number; code: string } | null;
 }
 
 export interface Prospects {
@@ -1285,8 +1292,8 @@ export interface CoordinatorItem {
   name: string;
   /** Название роли из справочника ролей — для показа и отборов. */
   role: string;
-  /** Ссылка на роль: её выбирает форма правки. */
-  roleId: number;
+  /** Ссылки на роли (их бывает несколько): их отмечает форма правки. */
+  roleIds: number[];
   groups: number;
   people: number;
   /** Групп с обратной связью за последние 30 дней. */
@@ -1553,4 +1560,17 @@ export interface TeamRoleItem {
 
 export interface TeamRolesView {
   items: TeamRoleItem[];
+}
+
+/**
+ * `GET /api/v1/requests/:id/group-draft`: поля формы «Новая группа», заполненные по заявке («Создать группу по заявке»).
+ * Группа создаётся обычным `POST /groups/create` с полем `sourceRequestId` — так она связывается с заявкой.
+ */
+export interface GroupDraftView {
+  requestId: number;
+  fio: string;
+  /** Имена — как у полей формы группы (`leader`, `phone`, `district`…). Чего по заявке не понять, того здесь нет. */
+  fields: Record<string, string>;
+  /** Группа, уже заведённая по этой заявке; null — ещё нет. Второй по той же заявке не завести. */
+  ownGroup: { id: number; code: string } | null;
 }

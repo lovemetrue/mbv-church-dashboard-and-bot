@@ -22,6 +22,7 @@ import { setDemoStrange, strangeKey } from './strange';
 import { buildCampaign } from './campaign';
 import { buildKits, demoKitAction, findDemoKit, searchDemoKits } from './kits';
 import { buildTeamRoles, teamRoleAction } from './teamRoles';
+import { demoGroupDraft } from './groupDraft';
 import { fixtureChatClear, fixtureChatHistory, fixtureChatReply } from './chat';
 import { buildOthers, reconcileDemoOther, reconcileDemoReady } from './others';
 import { buildTeam } from './team';
@@ -30,13 +31,13 @@ import { buildTeam } from './team';
  * Личный вход в демо включает `localStorage['hg.demo.person']` (имя из справочника) и `hg.demo.role` (роль в команде:
  * от неё зависят отборы по умолчанию), их ставит `npm run shots:guide`.
  */
-function demoPerson(): { login: string; name: string; teamRole: string | null; teamKind: TeamRoleKind | null } | null {
+function demoPerson(): { login: string; name: string; teamRole: string | null; teamKinds: TeamRoleKind[] } | null {
   try {
     const name = globalThis.localStorage?.getItem('hg.demo.person');
     const teamRole = globalThis.localStorage?.getItem('hg.demo.role') ?? null;
     // Смысл роли — из справочника ролей демо, как на сервере, а не по словам в названии.
-    const teamKind = DEMO_TEAM_ROLES.find((r) => r.name === teamRole)?.kind ?? null;
-    return name ? { login: 'demo', name, teamRole, teamKind } : null;
+    const kind = DEMO_TEAM_ROLES.find((r) => r.name === teamRole)?.kind ?? null;
+    return name ? { login: 'demo', name, teamRole, teamKinds: kind ? [kind] : [] } : null;
   } catch {
     return null;
   }
@@ -44,6 +45,8 @@ function demoPerson(): { login: string; name: string; teamRole: string | null; t
 
 /** Ответ «сервера» в режиме фикстур. Путь — как в apiGet: «today», «requests»… */
 export function fixtureResponse(path: string): unknown {
+  const draft = /^requests\/(\d+)\/group-draft$/.exec(path.replace(/^\/+/, '').replace(/\/+$/, ''));
+  if (draft) return demoGroupDraft(Number(draft[1]));
   switch (path.replace(/^\/+/, '').replace(/\/+$/, '')) {
     case 'me': {
       // Снимки для инструкции координатору: «вошёл по личному паролю» (обычный доступ, имя из справочника команды).

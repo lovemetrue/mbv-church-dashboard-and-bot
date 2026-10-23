@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import type { Pool } from 'pg';
-import { setupTestDb, truncateAll } from './helpers/testDb.js';
+import { seedCoordinator, setupTestDb, truncateAll } from './helpers/testDb.js';
 
 /** Миграция 045 запускается один раз при деплое; тут гоняем её SQL на готовых данных. */
 const sql = readFileSync(new URL('../migrations/045_normalize_person_names.sql', import.meta.url), 'utf8');
@@ -11,8 +11,7 @@ beforeAll(async () => { db = await setupTestDb(); });
 afterAll(async () => { await db.end(); });
 beforeEach(async () => { await truncateAll(db); });
 
-const coordinator = (name: string, archived = false) =>
-  db.query(`INSERT INTO coordinators (name, role_id, archived_at) VALUES ($1, team_role_id('Координатор'), $2)`, [name, archived ? new Date() : null]);
+const coordinator = (name: string, archived = false) => seedCoordinator(db, name, ['Координатор'], { archived });
 const request = async (responsible: string | null) =>
   (await db.query<{ id: number }>(`INSERT INTO requests (type, fio, responsible) VALUES ('join_group', 'Заявитель', $1) RETURNING id`, [responsible])).rows[0]!.id;
 const group = async (coordinatorName: string | null) =>

@@ -32,7 +32,7 @@ function memoryStore(): SessionStore {
 
 const { engine } = createFakeEngine();
 const sampleViews = () => buildViews({
-  groups: [], requests: [], participants: [], coordinators: [{ id: 1, name: 'Анна', role: 'Координатор', source: 'ui' }],
+  groups: [], requests: [], participants: [], coordinators: [{ id: 1, name: 'Анна', role: 'Координатор', role_ids: [1], role_kinds: ['coordinator'], source: 'ui' }],
 }, engine, new Date('2026-10-10T09:00:00Z'));
 
 let root: string;
@@ -1625,6 +1625,21 @@ describe('метка «Странный человек»', () => {
     const cookie = await signIn(REGULAR);
     expect((await fetch(`${app.base}/api/v1/requests/9/strange`, { headers: { cookie } })).status).toBe(404);
     expect((await fetch(`${app.base}/api/v1/people/strange`, { headers: { cookie } })).status).toBe(404);
+  });
+});
+
+describe('черновик группы по заявке', () => {
+  test('без входа 401; обычный вход получает черновик; нет такой заявки — 404', async () => {
+    const draft = { requestId: 7, fio: 'Пётр', fields: { leader: 'Пётр', status: 'Потенциальная' }, ownGroup: null };
+    app.setViews(async () => ({ ...sampleViews(), groupDrafts: new Map([[7, draft]]) }));
+    try {
+      expect((await fetch(`${app.base}/api/v1/requests/7/group-draft`)).status).toBe(401);
+      const cookie = await signIn(REGULAR);
+      const r = await fetch(`${app.base}/api/v1/requests/7/group-draft`, { headers: { cookie } });
+      expect(r.status).toBe(200);
+      expect(await r.json()).toEqual(draft);
+      expect((await fetch(`${app.base}/api/v1/requests/8/group-draft`, { headers: { cookie } })).status).toBe(404);
+    } finally { app.setViews(async () => sampleViews()); }
   });
 });
 

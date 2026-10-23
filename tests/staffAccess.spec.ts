@@ -7,7 +7,7 @@ import { PersonalAuth } from '../src/platform/auth/personalAuth.js';
 import { hashToken } from '../src/platform/auth/password.js';
 import { createStaffService, RESET_PER_HOUR } from '../src/platform/auth/staffService.js';
 import type { MailMessage, Mailer } from '../src/platform/mail/mailer.js';
-import { setupTestDb, truncateAll } from './helpers/testDb.js';
+import { seedCoordinator, setupTestDb, truncateAll } from './helpers/testDb.js';
 
 let db: Pool;
 beforeAll(async () => { db = await setupTestDb(); });
@@ -555,11 +555,7 @@ describe('пароли для команды из справочника', () =>
   const IP = { a: '10.0.0.1', b: '10.0.0.2', c: '10.0.0.3' };
   /** Вход по выданному: «пароль» и строка рядом в одном вызове сканер принимает за утёкшие учётные данные. */
   const enter = (c: Ctx, issued: { password: string }, ip: string) => c.auth.login(issued.password, ip, DAVID);
-  const member = async (name: string, role = 'Координатор', archived = false) =>
-    (await db.query<{ id: number }>(
-      `INSERT INTO coordinators (name, role_id, source, archived_at) VALUES ($1, team_role_id($2), 'ui', $3) RETURNING id::int AS id`,
-      [name, role, archived ? new Date() : null],
-    )).rows[0]!.id;
+  const member = (name: string, role = 'Координатор', archived = false) => seedCoordinator(db, name, [role], { archived });
 
   test('в обзоре вся команда из справочника — координаторы и распределители, без удалённых; учётных записей пока нет', async () => {
     const c = setup();
@@ -649,9 +645,9 @@ describe('пароли для команды из справочника', () =>
     const id = await member('Родионов Давид');
     await c.service.generatePassword({ coordinatorId: id }, 'super_mbv_admin');
     await db.query(`UPDATE coordinators SET name = 'Родионов Давид Петрович' WHERE id = $1`, [id]);
-    expect(await c.service.personOf(DAVID)).toEqual({ login: DAVID, name: 'Родионов Давид Петрович', teamRole: 'Координатор', teamKind: 'coordinator' });
+    expect(await c.service.personOf(DAVID)).toEqual({ login: DAVID, name: 'Родионов Давид Петрович', teamRole: 'Координатор', teamKinds: ['coordinator'] });
     await c.service.create(POLINA, 'super_mbv_admin');
-    expect(await c.service.personOf('p_ivanova')).toEqual({ login: 'p_ivanova', name: 'Полина Иванова', teamRole: null, teamKind: null });
+    expect(await c.service.personOf('p_ivanova')).toEqual({ login: 'p_ivanova', name: 'Полина Иванова', teamRole: null, teamKinds: [] });
     expect(await c.service.personOf('нет_такого')).toBeNull();
   });
 
@@ -660,8 +656,17 @@ describe('пароли для команды из справочника', () =>
     const id = await member('Родионов Давид');
     await c.service.generatePassword({ coordinatorId: id }, 'super_mbv_admin');
     // Название без слова «распределитель», но в справочнике роль отмечена распределителем.
-    await db.query(`UPDATE team_roles SET name = 'Обзвон', kind = 'distributor' WHERE id = (SELECT role_id FROM coordinators WHERE id = $1)`, [id]);
-    expect(await c.service.personOf(DAVID)).toMatchObject({ teamRole: 'Обзвон', teamKind: 'distributor' });
+    await db.query(`UPDATE team_roles SET name = 'Обзвон', kind = 'distributor' WHERE id = (SELECT role_id FROM coordinator_roles WHERE coordinator_id = $1)`, [id]);
+    expect(await c.service.personOf(DAVID)).toMatchObject({ teamRole: 'Обзвон', teamKinds: ['distributor'] });
+  });
+
+  test('у человека несколько ролей: названия через запятую, смыслы списком без повторов', async () => {
+    const c = setup();
+    const id = await seedCoordinator(db, 'Родионов Давид', ['Распределитель', 'Координатор малых групп', 'Катализатор']);
+    await c.service.generatePassword({ coordinatorId: id }, 'super_mbv_admin');
+    expect(await c.service.personOf(DAVID)).toEqual({
+      login: DAVID, name: 'Родионов Давид', teamRole: 'Катализатор, Координатор малых групп, Распределитель', teamKinds: ['coordinator', 'distributor'],
+    });
   });
 
   test('в журнале — кто кому выдал пароль, но не сам пароль', async () => {

@@ -151,24 +151,26 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
   };
 }
 
-/** Роль — из справочника ролей: уходит номером (`roleId`), а название подтягивается сервером. */
+/** Роли — из справочника ролей галочками (их бывает несколько): уходят номерами через запятую (`roleIds`). */
 export function coordinatorEditSpec(c: CoordinatorItem, meta: FormMeta): EditSpec {
   const t = m.coordinator.fields;
+  const options = meta.teamRoles.map((r) => String(r.id));
   return {
     fields: [
       { name: 'name', label: t.name, kind: 'text', required: true, wide: true },
       {
-        name: 'roleId',
+        name: 'roleIds',
         label: t.role,
-        kind: 'select',
+        kind: 'multi',
         required: true,
         wide: true,
-        options: meta.teamRoles.map((r) => String(r.id)),
+        options,
         labels: Object.fromEntries(meta.teamRoles.map((r) => [String(r.id), r.name])),
         hint: ru.create.coordinatorRoleHint,
       },
     ],
-    initial: { name: c.name, roleId: String(c.roleId) },
+    // В порядке списка, как их складывает `toggleInList`: иначе форма сочла бы неизменённые роли правкой.
+    initial: { name: c.name, roleIds: options.filter((id) => c.roleIds.includes(Number(id))).join(', ') },
     note: m.coordinator.renameNote,
   };
 }

@@ -12,10 +12,12 @@ import type { ActivityRow, AuditRow } from '../../db/repos/audit.repo.js';
 import type { DashboardRequest } from '../../db/repos/requests.repo.js';
 import type { RegisteredParticipant } from '../../db/repos/users.repo.js';
 import type { CoordinatorRow } from '../../db/repos/coordinators.repo.js';
-import { groupCode } from '../../core/groups.js';
+import { ALL_DISTRICTS, groupCode } from '../../core/groups.js';
+import { AGE_GROUPS } from '../../core/texts.js';
 import { inputSignature } from '../plan/signature.js';
 import { formatPhone } from '../../core/phone.js';
 import { CONTACT_LABEL } from '../../core/csv.js';
+import type { GroupDraftView } from '../contracts.js';
 import type {
   Bucket, Candidate, Counters, CoordinatorItem, CoordinatorsView, GroupBrief, GroupItem, GroupsView,
   HealthItem, LogEntry, MatchingStatus, NoPlan, StrangeMark, DataChange, OriginalField, ParamInfo, RequestTableFields, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, GroupMember, OtherItem, Prospects, ProspectItem, RequestsView, TeamView, TodayView,
@@ -79,6 +81,11 @@ export interface Views {
   groups: GroupsView;
   people: PeopleView;
   coordinators: CoordinatorsView;
+  /**
+   * Черновики «Создать группу по заявке» (по номеру заявки): отдаются по одному, `GET /requests/:id/group-draft`, а
+   * не вместе со списком — открывают их редко, а полей много.
+   */
+  groupDrafts: Map<number, GroupDraftView>;
 }
 
 const DEFAULT_CAPACITY = 10;
@@ -155,6 +162,10 @@ function auditText(a: AuditRow): string | null {
     }
     case 'request.need_call':
       return `Отмечено «нужен звонок» · ${a.actor}`;
+    case 'request.group_created': {
+      const id = Number(after['groupId']);
+      return `По заявке заведена группа ${Number.isFinite(id) ? groupCode(id) : '—'} · ${a.actor}`;
+    }
     case 'request.need_call_off':
       return `Отметка «нужен звонок» снята · ${a.actor}`;
     case 'request.params': {
@@ -461,6 +472,45 @@ export function buildViewsWithPlan(
     };
   };
 
+  // ── группа, заведённая по заявке ─────────────────────────────────────────
+  // Связь — `source_request_id` (миграция 032): потенциальная группа из «хочу открыть» или «Создать группу по заявке».
+  const groupBySourceRequest = new Map<number, DashboardGroup>();
+  for (const g of input.groups) if (g.source_request_id != null) groupBySourceRequest.set(g.source_request_id, g);
+  const ownGroupOf = (r: DashboardRequest): { id: number; code: string } | null => {
+    const g = groupBySourceRequest.get(r.id);
+    return g ? { id: g.id, code: groupCode(g.id) } : null;
+  };
+  const DISTRICT_SET: ReadonlySet<string> = new Set(ALL_DISTRICTS);
+  const AGE_SET: ReadonlySet<string> = new Set(AGE_GROUPS);
+  /**
+   * Поля формы «Новая группа» по заявке: ведущий — сам человек, район и улица — как их понял подбор, день — если человек
+   * назвал ровно один. Группа новая, поэтому «Потенциальная»: в подбор она пойдёт, когда её переведут в «Функционирует».
+   * Всё, что в поля не легло (место словами, удобное время), уходит в комментарий: служитель допишет руками.
+   */
+  const groupDraftOf = (r: DashboardRequest): GroupDraftView => {
+    const lead = planRequestOf(r);
+    const place = nonBlank(r.place);
+    const schedule = scheduleOf(r).text;
+    const age = nonBlank(r.age);
+    const phone = nonBlank(r.phone) ?? nonBlank(r.phones?.[0]);
+    const fields: Record<string, string> = {
+      leader: nonBlank(r.fio) ?? '',
+      status: 'Потенциальная',
+      format: 'Основная церковь',
+      comment: [
+        `Заведена по заявке №${r.id} («${TYPE_LABEL[r.type as OtherItem['type']] ?? 'обращение'}»)`,
+        place ? `Место: ${place}` : null,
+        schedule ? `Удобное время: ${schedule}` : null,
+      ].filter(Boolean).join('. ') + '.',
+      ...(phone ? { phone } : {}),
+      ...(lead.district && DISTRICT_SET.has(lead.district) ? { district: lead.district } : {}),
+      ...(age && AGE_SET.has(age) ? { age } : {}),
+      ...(lead.street ? { address: lead.street } : {}),
+      ...(lead.days.length === 1 ? { day: lead.days[0]! } : {}),
+    };
+    return { requestId: r.id, fio: nonBlank(r.fio) ?? 'Без имени', fields, ownGroup: ownGroupOf(r) };
+  };
+
   // ── метка «Странный человек» ──────────────────────────────────────────────
   // Метка лежит на ключе человека (u12, r345, p7), а записей на одного человека бывает несколько (регистрация, заявка из
   // таблицы, карточка): поэтому метка действует и на тот же телефон. Так её не потерять, если заявку завели по-другому.
@@ -648,6 +698,7 @@ export function buildViewsWithPlan(
       noPlan,
       assistant: assistantNote(r),
       finalGroup: finalBrief,
+      ownGroup: ownGroupOf(r),
       finalGroupText: bucket === 'done' && !finalBrief ? nonBlank(r.final_group) : null,
       responsible: nonBlank(r.responsible),
       note: joinParts([r.note, r.extra], ' | '),
@@ -659,10 +710,8 @@ export function buildViewsWithPlan(
   // Координатор при звонке говорит «могли бы направить к вам N человек»: считаем всех открытых «хочу в группу», кому
   // будущая группа подходит, даже если подбор уже предложил им другую (её код — рядом). Будущая группа — потенциальная,
   // заведённая по обращению (`source_request_id`, миграция 032), а без неё — ответы самого обращения.
-  const futureGroupByRequest = new Map<number, DashboardGroup>();
-  for (const g of input.groups) if (g.source_request_id != null) futureGroupByRequest.set(g.source_request_id, g);
   const prospectsOf = (r: DashboardRequest): Prospects => {
-    const linked = futureGroupByRequest.get(r.id);
+    const linked = groupBySourceRequest.get(r.id);
     let future = linked ? planGroupById.get(linked.id) ?? null : null;
     if (!future) {
       const lead = planRequestOf(r);
@@ -719,6 +768,7 @@ export function buildViewsWithPlan(
     table: tableFieldsOf(r),
     log: logOf(r, null),
     prospects: r.type === 'lead_group' && otherState(r) === 'open' ? prospectsOf(r) : null,
+    ownGroup: ownGroupOf(r),
   });
   const otherOpen = otherAll.filter((r) => otherState(r) === 'open').map(otherItem)
     .sort((a, b) => Number(b.callback) - Number(a.callback) || (b.waitingDays ?? -1) - (a.waitingDays ?? -1) || a.id - b.id);
@@ -944,7 +994,7 @@ export function buildViewsWithPlan(
       id: c.id,
       name: c.name,
       role: c.role,
-      roleId: c.role_id,
+      roleIds: c.role_ids,
       groups: own.length,
       people: own.reduce((sum, p) => sum + (p.people ?? 0), 0),
       verified30: own.filter((p) => p.verifiedDaysAgo !== null && p.verifiedDaysAgo <= FRESH_FEEDBACK_DAYS).length,
@@ -996,6 +1046,7 @@ export function buildViewsWithPlan(
     groups: { generatedAt, items: groupItems },
     people: { generatedAt, items: people },
     coordinators: { generatedAt, items: coordinatorItems },
+    groupDrafts: new Map(input.requests.map((r) => [r.id, groupDraftOf(r)])),
   };
   return { views, plan, openRequestIds: openRequests.map((r) => r.id), signatures, snapshots, assistantCandidates };
 }

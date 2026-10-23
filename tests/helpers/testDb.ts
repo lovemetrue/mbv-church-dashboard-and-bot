@@ -33,10 +33,29 @@ export async function truncateAll(db: Pool): Promise<void> {
   // Основные роли заводит миграция 049; после очистки возвращаем их, как на свежей базе.
   await db.query(
     `INSERT INTO team_roles (name, kind) VALUES
-       ('Координатор малых групп', 'coordinator'), ('Старший координатор', 'senior'), ('Распределитель', 'distributor')`,
+       ('Координатор малых групп', 'coordinator'), ('Старший координатор', 'senior'), ('Распределитель', 'distributor'), ('Катализатор', NULL)`,
   );
   // Номера регистрации в тестах должны начинаться заново, иначе ожидания «№1» ломаются.
   await db.query('ALTER SEQUENCE registration_no_seq RESTART WITH 1');
+}
+
+/**
+ * Человек в справочнике команды с ролями словами (как в таблице церкви): роли находит или заводит `team_role_id`,
+ * миграция 049. Возвращает его id.
+ */
+export async function seedCoordinator(
+  db: Pool,
+  name: string,
+  roles: string[],
+  opts: { source?: string; archived?: boolean } = {},
+): Promise<number> {
+  const { rows } = await db.query<{ id: number }>(
+    `INSERT INTO coordinators (name, source, archived_at) VALUES ($1, $2, $3) RETURNING id::int AS id`,
+    [name, opts.source ?? 'ui', opts.archived ? new Date() : null],
+  );
+  const id = rows[0]!.id;
+  await db.query('INSERT INTO coordinator_roles (coordinator_id, role_id) SELECT $1, team_role_id(r) FROM unnest($2::text[]) AS r', [id, roles]);
+  return id;
 }
 
 /** Готовый участник кампании: телефон, ФИО и присвоенный номер регистрации. */

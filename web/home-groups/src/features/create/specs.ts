@@ -48,6 +48,8 @@ export interface FormSpec {
   /** Закрытое поле «Адрес»: рисуется отдельным блоком внизу формы. */
   address?: FieldSpec;
   initial: Record<string, string>;
+  /** Поля, которых в форме не видно, но которые уходят всегда: например, номер заявки, по которой заводят группу. */
+  hidden?: Record<string, string>;
 }
 
 /** Статус заявки, при котором человек уже в группе (как `DONE` на сервере). */
@@ -212,16 +214,17 @@ export function groupSpec(meta: FormMeta): FormSpec {
   };
 }
 
-/** Координатор: ФИО и роль из справочника ролей (уходит номером роли, а не словами). */
+/** Координатор: ФИО и роли из справочника ролей (уходят номерами ролей, а не словами). */
 export function coordinatorSpec(meta: FormMeta): FormSpec {
   const t = ru.create.coordinatorFields;
   return {
     fields: [
       { name: 'name', label: t.name, kind: 'text', required: true, wide: true, autoComplete: 'off' },
+      // Ролей у человека бывает несколько (координатор и распределитель сразу): галочки, уходят номерами через запятую.
       {
-        name: 'roleId',
+        name: 'roleIds',
         label: t.role,
-        kind: 'select',
+        kind: 'multi',
         required: true,
         wide: true,
         options: meta.teamRoles.map((r) => ({ value: String(r.id), label: r.name })),

@@ -262,6 +262,47 @@ export class GroupsRepo {
   }
 
   /** Одна живая (не убранная) группа по номеру. */
+  /**
+   * Можно ли завести группу по заявке: 'missing' — заявки нет (или удалена), число — по ней уже заведена действующая
+   * группа (её номер), 'free' — можно.
+   */
+  async requestLinkState(requestId: number): Promise<'missing' | 'free' | number> {
+    const { rows } = await this.db.query<{ request: boolean; group_id: number | null }>(
+      `SELECT EXISTS (SELECT 1 FROM requests WHERE id = $1 AND archived_at IS NULL) AS request,
+              (SELECT id::int FROM groups WHERE source_request_id = $1 AND archived_at IS NULL) AS group_id`,
+      [requestId],
+    );
+    const row = rows[0]!;
+    return !row.request ? 'missing' : row.group_id ?? 'free';
+  }
+
+  /**
+   * Связать только что заведённую группу с заявкой: ведущий — человек из заявки (его регистрация, если есть), а
+   * заявка помнит свою группу. Удалённая раньше группа по той же заявке связь отпускает: уникальность в базе общая.
+   * false — по заявке успели завести другую действующую группу.
+   */
+  async linkToRequest(groupId: number, requestId: number): Promise<boolean> {
+    const client = await this.db.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('UPDATE groups SET source_request_id = NULL WHERE source_request_id = $1 AND archived_at IS NOT NULL', [requestId]);
+      await client.query(
+        `UPDATE groups g SET source_request_id = $2,
+                leader_user_id = COALESCE(g.leader_user_id, (SELECT user_id FROM requests WHERE id = $2))
+          WHERE g.id = $1`,
+        [groupId, requestId],
+      );
+      await client.query('COMMIT');
+      return true;
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      if ((err as { code?: string } | null)?.code === '23505') return false;
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
   async findActive(id: number): Promise<GroupRow | null> {
     const { rows } = await this.db.query<GroupRow>('SELECT * FROM groups WHERE id = $1 AND archived_at IS NULL', [id]);
     return rows[0] ?? null;

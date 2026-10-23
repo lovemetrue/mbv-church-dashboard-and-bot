@@ -19,8 +19,8 @@ import { fieldsToForm } from './create.js';
 const fail = (error: 'bad_request' | 'not_found', message: string): ActionOutcome => ({ ok: false, error, message });
 
 /** Поля группы, которые можно менять отсюда. Телефоны и адрес видны в форме и правятся как обычные поля. */
-/** Что в строке справочника команды правится: ФИО и роль (ссылкой из списка или, в старом дашборде, словами). */
-const COORDINATOR_EDITABLE: readonly string[] = ['name', 'roleId', 'role'];
+/** Что в строке справочника команды правится: ФИО и роли (галочками из справочника или, в старом дашборде, одной ролью словами). */
+const COORDINATOR_EDITABLE: readonly string[] = ['name', 'roleIds', 'role'];
 
 const GROUP_EDITABLE = [
   'leader', 'district', 'format', 'status', 'people', 'day', 'time', 'composition', 'coordinator', 'coLeader',
@@ -52,16 +52,20 @@ function groupToFields(g: GroupRow): URLSearchParams {
 export function createManager(deps: {
   groups: Pick<GroupsRepo, 'findActive' | 'update' | 'archive'>;
   coordinators: Pick<CoordinatorsRepo, 'create' | 'findActive' | 'rename' | 'archive'>;
-  teamRoles: Pick<TeamRolesRepo, 'exists'>;
+  teamRoles: Pick<TeamRolesRepo, 'existing'>;
   requests: Pick<RequestsRepo, 'archive'>;
   users: Pick<UsersRepo, 'findById' | 'delete'>;
   audit: Pick<AuditRepo, 'write'>;
 }) {
-  /** Роль из списка должна быть в справочнике: иначе база откажет ссылкой, а человек увидит «ошибку сервера». */
-  const checkRole = async (role: RoleRef): Promise<Extract<ActionOutcome, { ok: false }> | null> =>
-    'id' in role && !(await deps.teamRoles.exists(role.id))
-      ? (fail('bad_request', 'Такой роли нет в справочнике: обновите страницу и выберите роль снова.') as Extract<ActionOutcome, { ok: false }>)
-      : null;
+  /** Роли из списка должны быть в справочнике: иначе база откажет ссылкой, а человек увидит «ошибку сервера». */
+  const checkRoles = async (roles: readonly RoleRef[]): Promise<Extract<ActionOutcome, { ok: false }> | null> => {
+    const ids = roles.flatMap((r) => ('id' in r ? [r.id] : []));
+    if (ids.length === 0) return null;
+    const known = new Set(await deps.teamRoles.existing(ids));
+    return ids.every((id) => known.has(id))
+      ? null
+      : (fail('bad_request', 'Такой роли нет в справочнике: обновите страницу и выберите роли снова.') as Extract<ActionOutcome, { ok: false }>);
+  };
 
   return {
     async updateGroup(id: number, body: unknown, actor: string): Promise<ActionOutcome> {
@@ -111,7 +115,7 @@ export function createManager(deps: {
       if (typeof form === 'string') return fail('bad_request', form) as Extract<ActionOutcome, { ok: false }>;
       const parsed = parseCoordinatorForm(form);
       if (!parsed.ok) return fail('bad_request', parsed.error) as Extract<ActionOutcome, { ok: false }>;
-      const roleError = await checkRole(parsed.value.role);
+      const roleError = await checkRoles(parsed.value.roles);
       if (roleError) return roleError;
       const created = await deps.coordinators.create(parsed.value, 'ui');
       await deps.audit.write(actor, 'coordinator.create', 'coordinator', created.id, { role: created.role });
@@ -124,13 +128,13 @@ export function createManager(deps: {
       if (given.size === 0) return fail('bad_request', 'Нечего менять.');
       const current = await deps.coordinators.findActive(id);
       if (!current) return fail('not_found', 'Участник команды не найден.');
-      const merged = new URLSearchParams({ name: current.name, roleId: String(current.role_id) });
+      const merged = new URLSearchParams({ name: current.name, roleIds: current.role_ids.join(', ') });
       for (const [k, v] of given) if (COORDINATOR_EDITABLE.includes(k)) merged.set(k, v);
-      // Роль словами (так пишет только старый дашборд) заменяет ссылку: иначе осталась бы прежняя роль.
-      if (given.has('role') && !given.has('roleId')) merged.delete('roleId');
+      // Роль словами (так пишет только старый дашборд) заменяет роли целиком: иначе остались бы прежние.
+      if (given.has('role') && !given.has('roleIds')) merged.delete('roleIds');
       const parsed = parseCoordinatorForm(merged);
       if (!parsed.ok) return fail('bad_request', parsed.error);
-      const roleError = await checkRole(parsed.value.role);
+      const roleError = await checkRoles(parsed.value.roles);
       if (roleError) return roleError;
       const updated = await deps.coordinators.rename(id, parsed.value);
       if (!updated) return fail('not_found', 'Участник команды не найден.');

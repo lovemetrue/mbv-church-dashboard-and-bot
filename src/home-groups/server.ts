@@ -188,6 +188,8 @@ const ASSISTANT_CHAT_CLEAR_PATH = '/api/v1/assistant/chat/clear';
 const EXPORT_PATH = /^\/api\/v1\/export\/(requests|people)\.csv$/;
 /** `GET /api/v1/people/12/card`: печатная карточка регистрации и её QR. */
 const PERSON_PATH = /^\/api\/v1\/people\/(\d{1,15})\/(qr|card)$/;
+/** `GET /api/v1/requests/12/group-draft`: поля формы «Новая группа» по заявке. Любой вход, как и создание группы. */
+const GROUP_DRAFT_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/group-draft$/;
 const LOGO_PATH = '/api/v1/assets/church-logo.png';
 const MATCHING_PATH = /^\/api\/v1\/matching\/(run|auto|rerun-all)$/;
 
@@ -895,6 +897,13 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
 
     const exp = EXPORT_PATH.exec(path);
     if (exp) { await handleExport(res, exp[1]!, sid); return; }
+    const draft = GROUP_DRAFT_PATH.exec(path);
+    if (draft) {
+      const found = (await deps.views()).groupDrafts?.get(Number(draft[1]));
+      if (!found) { sendJson(res, 404, { error: 'not_found', message: 'Заявка не найдена.' }); return; }
+      sendJson(res, 200, found);
+      return;
+    }
     const person = PERSON_PATH.exec(path);
     if (person) { await handlePerson(res, Number(person[1]), person[2]!); return; }
     if (path === LOGO_PATH) {

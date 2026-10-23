@@ -225,7 +225,7 @@ export const peopleConfig: EntityConfig<PersonItem> = {
 export const coordinatorsConfig: EntityConfig<CoordinatorItem> = {
   id: 'coordinators',
   label: ru.reference.coordinators,
-  fields: [f('Имя'), f('Роль', { groupable: true }), f('Групп', { kind: 'number' }), f('Участников', { kind: 'number' }), f('Подтверждено за 30 дн.', { kind: 'number' })],
+  fields: [f('Имя'), f('Роль', { groupable: true, multi: true }), f('Групп', { kind: 'number' }), f('Участников', { kind: 'number' }), f('Подтверждено за 30 дн.', { kind: 'number' })],
   columns: ['Имя', 'Роль', 'Групп', 'Участников', 'Подтверждено за 30 дн.'],
   defaultColumns: ['Имя', 'Роль', 'Групп', 'Участников', 'Подтверждено за 30 дн.'],
   presets: [

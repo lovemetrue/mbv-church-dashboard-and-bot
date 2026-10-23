@@ -181,32 +181,36 @@ describe('координаторы', () => {
     expect(created).toMatchObject({ ok: true });
     if (!created.ok) throw new Error('нет id');
     expect(await m.updateCoordinator(created.id, { fields: { role: 'Руководитель' } }, 'a')).toEqual({ ok: true });
-    expect((await db.query('SELECT c.name, r.name AS role FROM coordinators c JOIN team_roles r ON r.id = c.role_id WHERE c.id=$1', [created.id])).rows[0]).toEqual({ name: 'Анна Смирнова', role: 'Руководитель' });
+    expect((await db.query('SELECT c.name, coordinator_role_names(c.id) AS role FROM coordinators c WHERE c.id=$1', [created.id])).rows[0]).toEqual({ name: 'Анна Смирнова', role: 'Руководитель' });
   });
 
-  test('новый интерфейс выбирает роль из справочника номером; правка имени роль не трогает', async () => {
+  test('новый интерфейс отмечает несколько ролей из справочника; правка имени роли не трогает', async () => {
     const m = manager();
     const roleId = async (name: string) => (await db.query<{ id: number }>('SELECT id::int AS id FROM team_roles WHERE name = $1', [name])).rows[0]!.id;
-    const distributor = await roleId('Распределитель');
-    const created = await m.createCoordinator({ fields: { name: 'Анна Смирнова', roleId: String(distributor) } }, 'a');
+    const [distributor, catalyst, senior] = await Promise.all(['Распределитель', 'Катализатор', 'Старший координатор'].map(roleId));
+    const created = await m.createCoordinator({ fields: { name: 'Анна Смирнова', roleIds: `${distributor}, ${catalyst}` } }, 'a');
     if (!created.ok) throw new Error('нет id');
-    const now = async () => (await db.query('SELECT name, role_id::int AS role_id FROM coordinators WHERE id=$1', [created.id])).rows[0];
-    expect(await now()).toEqual({ name: 'Анна Смирнова', role_id: distributor });
+    const now = async () => (await db.query(
+      'SELECT name, ARRAY(SELECT role_id::int FROM coordinator_roles WHERE coordinator_id = c.id ORDER BY role_id) AS roles FROM coordinators c WHERE id=$1',
+      [created.id],
+    )).rows[0];
+    const sorted = (...ids: number[]) => [...ids].sort((a, b) => a - b);
+    expect(await now()).toEqual({ name: 'Анна Смирнова', roles: sorted(distributor!, catalyst!) });
     await m.updateCoordinator(created.id, { fields: { name: 'Анна Иванова' } }, 'a');
-    expect(await now()).toEqual({ name: 'Анна Иванова', role_id: distributor });
-    const senior = await roleId('Старший координатор');
-    expect(await m.updateCoordinator(created.id, { fields: { roleId: String(senior) } }, 'a')).toEqual({ ok: true });
-    expect(await now()).toEqual({ name: 'Анна Иванова', role_id: senior });
+    expect(await now()).toEqual({ name: 'Анна Иванова', roles: sorted(distributor!, catalyst!) });
+    expect(await m.updateCoordinator(created.id, { fields: { roleIds: String(senior) } }, 'a')).toEqual({ ok: true });
+    expect(await now()).toEqual({ name: 'Анна Иванова', roles: [senior] });
+    expect(await m.updateCoordinator(created.id, { fields: { roleIds: '' } }, 'a')).toMatchObject({ ok: false, error: 'bad_request', message: 'Отметьте хотя бы одну роль.' });
     const [entry] = (await db.query("SELECT after::text AS after FROM audit_log WHERE action = 'coordinator.create'")).rows;
-    expect(JSON.parse(entry.after)).toEqual({ role: 'Распределитель' });
+    expect(JSON.parse(entry.after)).toEqual({ role: 'Катализатор, Распределитель' });
   });
 
   test('роли, которой нет в справочнике, не поставить: понятный отказ вместо ошибки базы', async () => {
     const m = manager();
-    expect(await m.createCoordinator({ fields: { name: 'Анна', roleId: '999' } }, 'a')).toMatchObject({ ok: false, error: 'bad_request', message: expect.stringMatching(/нет в справочнике/) });
+    expect(await m.createCoordinator({ fields: { name: 'Анна', roleIds: '999' } }, 'a')).toMatchObject({ ok: false, error: 'bad_request', message: expect.stringMatching(/нет в справочнике/) });
     const c = await m.createCoordinator({ fields: { name: 'Анна', role: 'Координатор' } }, 'a');
     if (!c.ok) throw new Error('нет id');
-    expect(await m.updateCoordinator(c.id, { fields: { roleId: '999' } }, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
+    expect(await m.updateCoordinator(c.id, { fields: { roleIds: '1, 999' } }, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
   });
 
   test('переименование переписывает «в работе у» в заявках и координатора в группах', async () => {

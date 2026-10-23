@@ -19,7 +19,8 @@ async function asBefore049(c: PoolClient): Promise<void> {
   await c.query('ALTER TABLE coordinators ADD COLUMN role text');
   await c.query(`CREATE OR REPLACE VIEW assistant.coordinators AS
     SELECT c.id, assistant.name_ref('Координатор', c.name) AS coordinator, c.role FROM coordinators c WHERE c.archived_at IS NULL`);
-  await c.query('ALTER TABLE coordinators DROP COLUMN role_id');
+  await c.query('DROP FUNCTION coordinator_role_names(bigint)');
+  await c.query('DROP TABLE coordinator_roles');
   await c.query('DROP TABLE team_roles');
   await c.query('DROP FUNCTION team_role_id(text)');
   await c.query('DROP FUNCTION team_role_kind_guess(text)');
@@ -50,7 +51,8 @@ describe('миграция 049: роли команды из текста в с�
         ('Ушедший', 'Бывшая роль', now())`);
       await c.query(sql);
       const { rows } = await c.query(
-        `SELECT c.name, r.name AS role, r.kind FROM coordinators c JOIN team_roles r ON r.id = c.role_id ORDER BY c.id`,
+        `SELECT c.name, r.name AS role, r.kind FROM coordinators c
+           JOIN coordinator_roles cr ON cr.coordinator_id = c.id JOIN team_roles r ON r.id = cr.role_id ORDER BY c.id`,
       );
       expect(rows).toEqual([
         { name: 'Антипова Ольга', role: 'Координатор малых групп', kind: 'coordinator' },
@@ -63,8 +65,9 @@ describe('миграция 049: роли команды из текста в с�
         // Удалённым из справочника ссылка тоже нужна: их строки остаются в базе.
         { name: 'Ушедший', role: 'Бывшая роль', kind: null },
       ]);
+      // Четыре основные (с «Катализатором») и три новых названия: «Молодёжный координатор», «Пастор», «Бывшая роль».
       const roles = await c.query('SELECT count(*)::int AS n FROM team_roles');
-      expect(roles.rows[0].n).toBe(6);
+      expect(roles.rows[0].n).toBe(7);
       const column = await c.query(`SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'coordinators' AND column_name = 'role'`);
       expect(column.rowCount).toBe(0);
     });
@@ -83,7 +86,7 @@ describe('миграция 049: роли команды из текста в с�
     await inRolledBack(async (c) => {
       await c.query(`INSERT INTO coordinators (name, role) VALUES ('Без Роли', '  ')`);
       await c.query(sql);
-      const { rows } = await c.query('SELECT r.name FROM coordinators c JOIN team_roles r ON r.id = c.role_id');
+      const { rows } = await c.query('SELECT coordinator_role_names(c.id) AS name FROM coordinators c');
       expect(rows).toEqual([{ name: 'Без роли' }]);
     });
   });

@@ -20,16 +20,18 @@ export class TeamRolesRepo {
   async list(): Promise<TeamRoleRow[]> {
     const { rows } = await this.db.query<TeamRoleRow>(
       `SELECT r.id::int AS id, r.name, r.kind,
-              (SELECT count(*)::int FROM coordinators c WHERE c.role_id = r.id AND c.archived_at IS NULL) AS members
+              (SELECT count(*)::int FROM coordinator_roles cr JOIN coordinators c ON c.id = cr.coordinator_id
+                WHERE cr.role_id = r.id AND c.archived_at IS NULL) AS members
          FROM team_roles r
         ORDER BY r.name`,
     );
     return rows;
   }
 
-  async exists(id: number): Promise<boolean> {
-    const { rowCount } = await this.db.query('SELECT 1 FROM team_roles WHERE id = $1', [id]);
-    return (rowCount ?? 0) > 0;
+  /** Какие из этих ролей есть в справочнике. */
+  async existing(ids: readonly number[]): Promise<number[]> {
+    const { rows } = await this.db.query<{ id: number }>('SELECT id::int AS id FROM team_roles WHERE id = ANY($1::bigint[])', [ids]);
+    return rows.map((r) => r.id);
   }
 
   /** null — такое название уже есть (без учёта регистра и пробелов по краям). */
@@ -62,7 +64,7 @@ export class TeamRolesRepo {
    */
   async delete(id: number): Promise<'ok' | 'missing' | 'in_use'> {
     const { rows } = await this.db.query<{ used: boolean }>(
-      'SELECT EXISTS (SELECT 1 FROM coordinators WHERE role_id = $1) AS used', [id],
+      'SELECT EXISTS (SELECT 1 FROM coordinator_roles WHERE role_id = $1) AS used', [id],
     );
     if (rows[0]?.used) return 'in_use';
     try {

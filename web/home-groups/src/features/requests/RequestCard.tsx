@@ -18,6 +18,7 @@ import { subjectOfRequest } from './work/subject';
 import { HeaderTools } from './work/HeaderTools';
 import { WorkPlace } from './work/WorkPlace';
 import { DeleteRequestSection } from '../manage';
+import { GroupFromRequestSection } from '../create';
 import { AssistantNoteBlock } from './assistant/AssistantNoteBlock';
 
 const noValue = <span className={styles.note}>{ru.reference.notSpecified}</span>;
@@ -548,6 +549,7 @@ export function RequestCard({
       </DrawerSection>
       <AssistantNoteBlock key={`assistant-${r.id}`} note={r.assistant} />
       <WorkPlace key={`work-${r.id}`} subject={subjectOfRequest(r)} onClosed={onClosed} />
+      <GroupFromRequestSection key={`own-group-${r.id}`} requestId={r.id} ownGroup={r.ownGroup} />
       <DrawerSection>
         <Params key={r.id} r={r} />
       </DrawerSection>

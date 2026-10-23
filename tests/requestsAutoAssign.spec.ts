@@ -1,7 +1,7 @@
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { RequestsRepo } from '../src/db/repos/requests.repo.js';
-import { seedUser, setupTestDb, truncateAll } from './helpers/testDb.js';
+import { seedCoordinator, seedUser, setupTestDb, truncateAll } from './helpers/testDb.js';
 
 let db: Pool;
 let repo: RequestsRepo;
@@ -9,7 +9,7 @@ beforeAll(async () => { db = await setupTestDb(); repo = new RequestsRepo(db); }
 afterAll(async () => { await db.end(); });
 beforeEach(async () => { await truncateAll(db); });
 
-const coordinator = (name: string, role: string) => db.query('INSERT INTO coordinators (name, role_id) VALUES ($1, team_role_id($2))', [name, role]);
+const coordinator = (name: string, ...roles: string[]) => seedCoordinator(db, name, roles);
 const responsibleOf = async (id: number) => (await db.query<{ responsible: string | null }>('SELECT responsible FROM requests WHERE id = $1', [id])).rows[0]!.responsible;
 const botRequest = async (n: number, type: 'join_group' | 'lead_group' | 'question' = 'join_group') => {
   const u = await seedUser(db, { id: String(1000 + n) });
@@ -23,8 +23,8 @@ describe('новым заявкам автоматически назначае�
     expect(await responsibleOf(await botRequest(1))).toBe('Анна Распределова');
   });
 
-  test('роль ищется без учёта регистра и в составе нескольких ролей', async () => {
-    await coordinator('Вера', 'координатор малых групп, распределитель');
+  test('распределитель среди нескольких ролей человека тоже получает заявки', async () => {
+    await coordinator('Вера', 'Координатор малых групп', 'Катализатор', 'Распределитель');
     expect(await responsibleOf(await botRequest(1))).toBe('Вера');
   });
 

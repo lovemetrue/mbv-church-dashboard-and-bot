@@ -16,11 +16,13 @@ const idOf = async (name: string) => (await db.query<{ id: number }>('SELECT id:
 
 describe('«Настройки → Роли команды»', () => {
   test('список: основные роли на месте, у каждой — смысл и сколько людей с ней', async () => {
-    await new CoordinatorsRepo(db).create({ name: 'Родионов Давид', role: { name: 'Распределитель' } });
+    await new CoordinatorsRepo(db).create({ name: 'Родионов Давид', roles: [{ name: 'Распределитель' }, { name: 'Катализатор' }] });
+    await new CoordinatorsRepo(db).create({ name: 'Анна', roles: [{ name: 'Распределитель' }] });
     const view = await roles().view();
     expect(view.items).toEqual([
+      { id: expect.any(Number), name: 'Катализатор', kind: null, members: 1 },
       { id: expect.any(Number), name: 'Координатор малых групп', kind: 'coordinator', members: 0 },
-      { id: expect.any(Number), name: 'Распределитель', kind: 'distributor', members: 1 },
+      { id: expect.any(Number), name: 'Распределитель', kind: 'distributor', members: 2 },
       { id: expect.any(Number), name: 'Старший координатор', kind: 'senior', members: 0 },
     ]);
   });
@@ -42,19 +44,19 @@ describe('«Настройки → Роли команды»', () => {
 
   test('переименование и смена смысла видны у людей с этой ролью', async () => {
     const coordinators = new CoordinatorsRepo(db);
-    const c = await coordinators.create({ name: 'Анна', role: { name: 'Координатор малых групп' } });
-    expect(await roles().update({ id: c.role_id, name: 'Координатор МГ', kind: 'senior' }, 'boss')).toEqual({ ok: true });
-    expect(await coordinators.findActive(c.id)).toMatchObject({ role: 'Координатор МГ', role_kind: 'senior' });
-    expect(await roles().update({ id: c.role_id, name: 'Распределитель', kind: null }, 'boss')).toMatchObject({ ok: false, error: 'conflict' });
+    const c = await coordinators.create({ name: 'Анна', roles: [{ name: 'Координатор малых групп' }] });
+    expect(await roles().update({ id: c.role_ids[0]!, name: 'Координатор МГ', kind: 'senior' }, 'boss')).toEqual({ ok: true });
+    expect(await coordinators.findActive(c.id)).toMatchObject({ role: 'Координатор МГ', role_kinds: ['senior'] });
+    expect(await roles().update({ id: c.role_ids[0]!, name: 'Распределитель', kind: null }, 'boss')).toMatchObject({ ok: false, error: 'conflict' });
     expect(await roles().update({ id: 9999, name: 'Х', kind: null }, 'boss')).toMatchObject({ ok: false, error: 'not_found' });
   });
 
   test('удалить можно только роль без людей, в том числе без удалённых из справочника', async () => {
     const coordinators = new CoordinatorsRepo(db);
-    const c = await coordinators.create({ name: 'Анна', role: { name: 'Распределитель' } });
-    expect(await roles().delete({ id: c.role_id }, 'boss')).toMatchObject({ ok: false, error: 'conflict' });
+    const c = await coordinators.create({ name: 'Анна', roles: [{ name: 'Распределитель' }] });
+    expect(await roles().delete({ id: c.role_ids[0]! }, 'boss')).toMatchObject({ ok: false, error: 'conflict' });
     await coordinators.archive(c.id);
-    expect(await roles().delete({ id: c.role_id }, 'boss')).toMatchObject({ ok: false, error: 'conflict' });
+    expect(await roles().delete({ id: c.role_ids[0]! }, 'boss')).toMatchObject({ ok: false, error: 'conflict' });
     const free = await idOf('Старший координатор');
     expect(await roles().delete({ id: free }, 'boss')).toEqual({ ok: true });
     expect(await roles().delete({ id: free }, 'boss')).toMatchObject({ ok: false, error: 'not_found' });

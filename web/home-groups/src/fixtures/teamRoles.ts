@@ -6,7 +6,7 @@ import { COORDINATOR_ROLES, DEMO_TEAM_ROLES } from './raw';
 const roles = DEMO_TEAM_ROLES.map((r) => ({ ...r }));
 let nextId = roles.length + 1;
 
-const membersOf = (name: string): number => Object.values(COORDINATOR_ROLES).filter((role) => role === name).length;
+const membersOf = (name: string): number => Object.values(COORDINATOR_ROLES).filter((roles) => roles.includes(name)).length;
 
 export function buildTeamRoles(): TeamRolesView {
   return {

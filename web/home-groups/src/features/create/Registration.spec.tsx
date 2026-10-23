@@ -405,7 +405,7 @@ describe('регистрация участника: ошибки и повто�
 });
 
 describe('регистрация участника: страница для регистрации на месте', () => {
-  const PAGE_LINE = () => `Страница для регистрации на месте: ${window.location.origin}/registration`;
+  const PAGE_LINE = () => `Стойка регистрации (регистрация участников и групп, выдача наборов): ${window.location.origin}/registration`;
 
   function stubClipboard(writeText: (text: string) => Promise<void>) {
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });

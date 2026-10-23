@@ -79,13 +79,15 @@ function feedbackNow(days: number | null): string {
  */
 export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
   const spec = groupEditFields(g, meta);
-  // Контакты камерной группы сервер этому входу не прислал: пустые поля выглядели бы как «нет телефона», а вписанное
-  // в них затёрло бы настоящий. Поэтому их в форме нет, а под полями сказано почему.
+  // Контактов сервер этому входу не прислал (чужая группа — телефоны, камерная — ещё и адрес): пустые поля или маска
+  // выглядели бы как настоящие, а сохранённые затёрли бы их. Поэтому их в форме нет, а под полями сказано почему.
   if (!g.contactsHidden) return spec;
-  return { ...spec, fields: spec.fields.filter((f) => !CONTACT_FIELDS.has(f.name)), note: m.group.contactsHidden };
+  const hidden = g.chamber ? CHAMBER_FIELDS : PHONE_FIELDS;
+  return { ...spec, fields: spec.fields.filter((f) => !hidden.has(f.name)), note: g.chamber ? m.group.contactsHidden : m.group.phonesHiddenNote };
 }
 
-const CONTACT_FIELDS: ReadonlySet<string> = new Set(['address', 'phone', 'coLeaderPhone']);
+const PHONE_FIELDS: ReadonlySet<string> = new Set(['phone', 'coLeaderPhone']);
+const CHAMBER_FIELDS: ReadonlySet<string> = new Set(['address', 'phone', 'coLeaderPhone']);
 
 function groupEditFields(g: GroupItem, meta: FormMeta): EditSpec {
   const t = m.group.fields;

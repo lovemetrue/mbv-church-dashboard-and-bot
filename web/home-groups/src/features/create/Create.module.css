@@ -398,3 +398,50 @@ textarea.control {
   font-size: 13px;
   color: var(--muted);
 }
+
+/* Вкладки «Стойки регистрации»: две крупные кнопки во всю ширину — в толпе по ним попадают с первого раза. */
+.stationTabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+}
+.stationTab {
+  flex: 1;
+  min-height: var(--tap);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+}
+.stationTab[aria-selected='true'] {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+/* «Участник» / «Группа» — переключатель поменьше, над формой. */
+.stationWhat {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.stationWhatBtn {
+  min-height: 36px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+.stationWhatBtn[aria-pressed='true'] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}

@@ -101,7 +101,7 @@ export function groupDataRows(g: GroupItem, openPerson?: (key: string) => void):
     ...(g.doNotRefer ? [{ label: 'Не направлять', value: <Pill tone="crit">{ru.reference.yes}</Pill> }] : []),
     ...(g.chamber ? [{ label: 'Камерная', value: <Pill tone="crit">{ru.reference.yes}</Pill> }] : []),
     // Телефоны и адрес пусты не потому, что их нет: сервер скрыл контакты камерной группы от этого входа.
-    ...(g.contactsHidden ? [{ label: 'Контакты', value: ru.manage.group.contactsHidden }] : []),
+    ...(g.contactsHidden ? [{ label: 'Контакты', value: g.chamber ? ru.manage.group.contactsHidden : ru.manage.group.phonesHiddenNote }] : []),
     ...(g.comment ? [{ label: 'Комментарий', value: g.comment }] : []),
   ];
 }

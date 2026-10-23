@@ -397,6 +397,11 @@ export interface RequestItem {
   ownGroup: { id: number; code: string } | null;
   /** Название группы текстом, если группа в реестре не нашлась. */
   finalGroupText: string | null;
+  /**
+   * Контакты скрыты от вошедшего (личный вход, а запись не его): телефон замаскирован — видны последние цифры, улицы,
+   * хобби и профессии нет. Откроются, когда заявку возьмут себе («В работе у»). Скрывает сервер, интерфейс поясняет.
+   */
+  contactsHidden: boolean;
   responsible: string | null;
   note: string | null;
   table: RequestTableFields;
@@ -914,6 +919,11 @@ export interface OtherItem {
   source: string;
   waitingDays: number | null;
   callback: boolean;
+  /**
+   * Контакты скрыты от вошедшего (личный вход, а запись не его): телефон замаскирован — видны последние цифры, улицы,
+   * хобби и профессии нет. Откроются, когда заявку возьмут себе («В работе у»). Скрывает сервер, интерфейс поясняет.
+   */
+  contactsHidden: boolean;
   responsible: string | null;
   note: string | null;
   /** Улица и дом, удобное время: те же поля, что у заявки в подбор (форма правки одна). */
@@ -1230,6 +1240,11 @@ export interface PersonItem {
   personId: number | null;
   /** Коды групп, в составе которых человек есть: направленный через сервис или внесённый вручную. */
   groups: string[];
+  /**
+   * Контакты скрыты от вошедшего: человек не из его заявок и не из состава его групп. Телефон замаскирован, адреса,
+   * хобби и профессии нет. Скрывает сервер, интерфейс только поясняет.
+   */
+  contactsHidden: boolean;
   fio: string;
   phone: string | null;
   ageLabel: string | null;

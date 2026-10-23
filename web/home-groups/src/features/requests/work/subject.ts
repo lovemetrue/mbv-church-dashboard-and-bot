@@ -27,12 +27,15 @@ export interface WorkSubject {
   strange: StrangeMark | null;
   /** open — в работе; done — обработана или утверждена; cancelled — аннулирована. */
   state: 'open' | 'done' | 'cancelled';
+  /** Контакты скрыты сервером: заявка не своя (см. `RequestItem.contactsHidden`). */
+  contactsHidden: boolean;
 }
 
 export function subjectOfRequest(r: RequestItem): WorkSubject {
   return {
     kind: 'request',
     id: r.id,
+    contactsHidden: r.contactsHidden,
     fio: r.fio,
     phone: r.phone,
     ageLabel: r.ageLabel,
@@ -55,6 +58,7 @@ export function subjectOfOther(o: OtherItem): WorkSubject {
   return {
     kind: 'other',
     id: o.id,
+    contactsHidden: o.contactsHidden,
     fio: o.fio,
     phone: o.phone,
     ageLabel: o.ageLabel,

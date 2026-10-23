@@ -183,6 +183,27 @@ describe('личные входы целиком', () => {
     } finally { app.server.close(); }
   });
 
+  test('контакты заявки: у ничьей — последние цифры; взял себе («В работе у») — телефон и улица открываются', async () => {
+    const app = await start();
+    try {
+      const boss = (await app.login('super_mbv_admin', SHARED.super)).cookie!;
+      const id = await seedCoordinator(db, 'Петров Глеб', ['Распределитель']);
+      const out = await (await app.api(boss, 'settings/staff/generate-password', { coordinatorId: id })).json() as { login: string; password: string };
+      const gleb = (await app.login(out.login, out.password)).cookie!;
+      const { rows } = await db.query<{ id: number }>(
+        `INSERT INTO requests (type, status, fio, phone, place, manual_street, origin) VALUES ('join_group', 'Новая', 'Мария', '+79110001122', 'Приморский', 'Савушкина 5', 'ui') RETURNING id`,
+      );
+      const seen = async () =>
+        ((await (await app.api(gleb, 'requests')).json()) as { items: { id: number; phone: string | null; street: string | null; contactsHidden: boolean }[] }).items.find((r) => r.id === rows[0]!.id)!;
+      expect(await seen()).toMatchObject({ phone: '… 11-22', street: null, contactsHidden: true });
+      expect((await app.api(gleb, `requests/${rows[0]!.id}/assign`, { responsible: 'Петров Глеб' })).status).toBe(200);
+      expect(await seen()).toMatchObject({ phone: '+7 911 000-11-22', street: 'Савушкина 5', contactsHidden: false });
+      // Полному входу видно всё и до того.
+      const all = ((await (await app.api(boss, 'requests')).json()) as { items: { phone: string | null }[] }).items[0]!;
+      expect(all.phone).toBe('+7 911 000-11-22');
+    } finally { app.server.close(); }
+  });
+
   test('действия личного входа в журнале подписаны логином человека', async () => {
     const app = await start();
     try {

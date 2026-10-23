@@ -63,7 +63,13 @@ export function IconButton({ label, onClick, children, disabled }: { label: stri
  * приложения нет, выручает копирование номера. Номер нигде не записывается и в адресную строку не попадает.
  * Без номера — строка `noPhone` вместо значков.
  */
-export function PhoneTools({ phone, name, noPhone }: { phone: string | null; name: string; noPhone: string }) {
+export function PhoneTools({ phone, name, noPhone, hiddenHint }: {
+  phone: string | null;
+  name: string;
+  noPhone: string;
+  /** Почему вместо номера последние цифры (контакты скрыты сервером): показывается рядом с ними. */
+  hiddenHint?: string;
+}) {
   const [message, setMessage] = useState('');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dial = dialNumber(phone);
@@ -98,6 +104,11 @@ export function PhoneTools({ phone, name, noPhone }: { phone: string | null; nam
             <Copy />
           </IconButton>
         </>
+      ) : phone && hiddenHint ? (
+        // Сервер прислал только последние цифры: позвонить нельзя, но по ним узнают человека, а подпись говорит почему.
+        <span className={styles.noPhone}>
+          <span className="num">{phone}</span> · {hiddenHint}
+        </span>
       ) : (
         <span className={styles.noPhone}>{noPhone}</span>
       )}

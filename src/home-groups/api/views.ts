@@ -690,6 +690,7 @@ export function buildViewsWithPlan(
     requestItems.push({
       id: r.id,
       strange: strangeOfRequest(r),
+      contactsHidden: false,
       fio: pr.fio,
       phone: displayPhone(r.phones, r.phone),
       ageLabel: nonBlank(r.age),
@@ -759,6 +760,7 @@ export function buildViewsWithPlan(
   const otherItem = (r: DashboardRequest): OtherItem => ({
     id: r.id,
     strange: strangeOfRequest(r),
+    contactsHidden: false,
     type: r.type as OtherItem['type'],
     typeLabel: TYPE_LABEL[r.type as OtherItem['type']] ?? 'Обращение',
     gist: gistOf(r),
@@ -924,6 +926,7 @@ export function buildViewsWithPlan(
     people.push({
       key: `u${u.id}`,
       strange: strangeOf(`u${u.id}`, [u.phone]),
+      contactsHidden: false,
       personId: null,
       groups: groupCodesOf(`u${u.id}`),
       fio: nonBlank(u.full_name) ?? 'Без имени',
@@ -954,6 +957,7 @@ export function buildViewsWithPlan(
     people.push({
       key: `r${r.id}`,
       strange: strangeOfRequest(r),
+      contactsHidden: false,
       personId: null,
       groups: groupCodesOf(`r${r.id}`),
       fio: pr.fio,
@@ -980,6 +984,7 @@ export function buildViewsWithPlan(
     people.push({
       key: `p${p.id}`,
       strange: strangeOf(`p${p.id}`, [p.phone]),
+      contactsHidden: false,
       personId: p.id,
       groups: groupCodesOf(`p${p.id}`),
       fio: nonBlank(p.full_name) ?? 'Без имени',

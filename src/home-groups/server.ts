@@ -23,7 +23,7 @@ import type { Strange } from './strange.js';
 import type { Kits } from './kits.js';
 import type { TeamRoles } from './teamRoles.js';
 import type { GroupDirections } from './groupDirections.js';
-import { groupsFor } from './contactsAccess.js';
+import { draftFor, formMetaFor, groupsFor, kitPersonFor, peopleFor, requestsFor, type Viewer } from './contactsAccess.js';
 import type { Reconciler } from './reconcile/service.js';
 import { registrationCardPage } from '../dashboard/registrationCard.js';
 import type { Settings } from '../platform/settings/service.js';
@@ -685,6 +685,16 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
    * Наборы. Отмена доступна любому входу, как и выдача: ошибку у стола исправляет тот, кто её сделал, а полного
    * входа рядом может не быть. Удалением отмена не считается — регистрация остаётся, снимается только отметка.
    */
+  /** Кто смотрит — для скрытия контактов (contactsAccess.ts). null — сессии нет. */
+  async function viewerOf(sid: string | undefined): Promise<Viewer | null> {
+    const role = await deps.auth.roleOf(sid);
+    if (!role) return null;
+    const identity = await deps.auth.identityOf?.(sid);
+    // Личный вход, не найденный в «Пользователях», — не общий вход: лишнего ему не показываем.
+    const person = identity ? ((await deps.staff.personOf(identity.login)) ?? { name: identity.login, teamKinds: [] }) : null;
+    return { role, person };
+  }
+
   async function handleKit(req: IncomingMessage, res: ServerResponse, action: string, sid: string | undefined): Promise<void> {
     const call = await readAuthedJson(req, res, sid);
     if (!call) return;
@@ -701,7 +711,8 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       deps.invalidateViews();
       logger.info({ actor: call.actor, action, userId: outcome.person.userId }, 'домашние группы: выдача набора');
     }
-    sendJson(res, 200, outcome);
+    const viewer = 'person' in outcome ? await viewerOf(sid) : null;
+    sendJson(res, 200, viewer && 'person' in outcome ? { ...outcome, person: kitPersonFor(outcome.person, viewer) } : outcome);
   }
 
   /** Разобрать сразу все обращения, у которых сервер находит ровно одну группу точно. */
@@ -907,9 +918,12 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     if (exp) { await handleExport(res, exp[1]!, sid); return; }
     const draft = GROUP_DRAFT_PATH.exec(path);
     if (draft) {
-      const found = (await deps.views()).groupDrafts?.get(Number(draft[1]));
+      const views = await deps.views();
+      const found = views.groupDrafts?.get(Number(draft[1]));
       if (!found) { sendJson(res, 404, { error: 'not_found', message: 'Заявка не найдена.' }); return; }
-      sendJson(res, 200, found);
+      const viewer = await viewerOf(sid);
+      if (!viewer) { sendJson(res, 401, { error: 'unauthorized' }); return; }
+      sendJson(res, 200, draftFor(found, viewer, views.requests));
       return;
     }
     const person = PERSON_PATH.exec(path);
@@ -929,24 +943,30 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     }
     if (path === KITS_PATH) { sendJson(res, 200, await deps.kits.view()); return; }
     if (path === '/api/v1/map/config') { sendJson(res, 200, await deps.mapConfig.bootstrap()); return; }
-    if (path === '/api/v1/form-meta') { sendJson(res, 200, await deps.formMeta()); return; }
+    if (path === '/api/v1/form-meta') {
+      const viewer = await viewerOf(sid);
+      if (!viewer) { sendJson(res, 401, { error: 'unauthorized' }); return; }
+      sendJson(res, 200, formMetaFor(await deps.formMeta(), viewer));
+      return;
+    }
 
-    // Контакты камерных групп зависят от того, кто смотрит, а снимок один на всех: скрываем на выходе.
-    if (path === '/api/v1/groups') {
-      const role = await deps.auth.roleOf(sid);
-      if (!role) { sendJson(res, 401, { error: 'unauthorized' }); return; }
-      const identity = await deps.auth.identityOf?.(sid);
-      // Личный вход, не найденный в «Пользователях», — не общий вход: лишнего ему не показываем.
-      const person = identity ? ((await deps.staff.personOf(identity.login)) ?? { name: identity.login, teamKinds: [] }) : null;
-      sendJson(res, 200, groupsFor((await deps.views()).groups, { role, person }));
+    // Контакты зависят от того, кто смотрит (contactsAccess.ts), а снимок один на всех: скрываем на выходе.
+    const personal: Record<string, (v: Views, viewer: Viewer) => unknown> = {
+      '/api/v1/requests': (v, viewer) => requestsFor(v.requests, viewer),
+      '/api/v1/groups': (v, viewer) => groupsFor(v.groups, viewer, v.requests),
+      '/api/v1/people': (v, viewer) => peopleFor(v.people, viewer, v.groups, v.requests),
+    };
+    const personalRoute = Object.hasOwn(personal, path) ? personal[path] : undefined;
+    if (personalRoute) {
+      const viewer = await viewerOf(sid);
+      if (!viewer) { sendJson(res, 401, { error: 'unauthorized' }); return; }
+      sendJson(res, 200, personalRoute(await deps.views(), viewer));
       return;
     }
 
     const pick: Record<string, (v: Views) => unknown> = {
       '/api/v1/team': (v) => v.team,
       '/api/v1/today': (v) => v.today,
-      '/api/v1/requests': (v) => v.requests,
-      '/api/v1/people': (v) => v.people,
       '/api/v1/coordinators': (v) => v.coordinators,
     };
     const select = Object.hasOwn(pick, path) ? pick[path] : undefined;

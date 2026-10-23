@@ -67,7 +67,7 @@ export function RecordForm({ spec, path, submitLabel, busyLabel, onClose, onCrea
     const next: Record<string, string> = {};
     for (const f of all) {
       if (f.required && !(values[f.name] ?? '').trim()) {
-        next[f.name] = f.kind === 'select' ? ru.create.requiredChoose(f.label) : ru.create.required(f.label);
+        next[f.name] = f.kind === 'select' ? ru.create.requiredChoose(f.label) : f.kind === 'multi' ? ru.create.requiredPick(f.label) : ru.create.required(f.label);
       }
     }
     setProblems(next);
@@ -76,7 +76,7 @@ export function RecordForm({ spec, path, submitLabel, busyLabel, onClose, onCrea
       refs.current[first.name]?.focus();
       return;
     }
-    const fields: Record<string, string> = {};
+    const fields: Record<string, string> = { ...spec.hidden };
     for (const f of all) {
       // Поле-подсказка только заполняет соседние: серверу его значение ни к чему.
       if (f.fills) continue;
@@ -131,12 +131,19 @@ export function RecordForm({ spec, path, submitLabel, busyLabel, onClose, onCrea
       const picked = new Set(splitList(value));
       const options = (f.options ?? []).map((o) => o.value);
       return (
-        <fieldset key={f.name} className={`${f.wide ? styles.fieldWide : styles.field} ${styles.multi}`}>
-          <legend>{f.label}</legend>
+        <fieldset
+          key={f.name}
+          className={`${f.wide ? styles.fieldWide : styles.field} ${styles.multi}`}
+          aria-invalid={problem ? true : undefined}
+          aria-describedby={common['aria-describedby']}
+        >
+          <legend className={f.required ? styles.required : undefined}>{f.label}</legend>
           <div className={styles.multiList}>
-            {(f.options ?? []).map((o) => (
+            {(f.options ?? []).map((o, i) => (
               <label key={o.value} className={styles.check}>
                 <input
+                  // На первую галочку уходит фокус, если поле не заполнено.
+                  ref={i === 0 ? setRef : undefined}
                   type="checkbox"
                   checked={picked.has(o.value)}
                   onChange={(e) => change(f.name, toggleInList(value, o.value, e.target.checked, options))}
@@ -145,6 +152,16 @@ export function RecordForm({ spec, path, submitLabel, busyLabel, onClose, onCrea
               </label>
             ))}
           </div>
+          {problem && (
+            <p id={errId} className={styles.fieldError}>
+              {problem}
+            </p>
+          )}
+          {f.hint && (
+            <p id={ownHintId} className={styles.fieldHint}>
+              {f.hint}
+            </p>
+          )}
         </fieldset>
       );
     }

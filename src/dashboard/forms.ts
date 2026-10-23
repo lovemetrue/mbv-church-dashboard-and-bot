@@ -169,6 +169,38 @@ export function parseGroupForm(form: URLSearchParams): Parsed<GroupInput> {
   };
 }
 
+/** Дни для «Удобные дни»: коды — как их пишут люди и как их понимает разбор времени подбора (`parseHumanSchedule`). */
+export const SCHEDULE_DAYS = [
+  { value: 'пн', label: 'Пн' }, { value: 'вт', label: 'Вт' }, { value: 'ср', label: 'Ср' }, { value: 'чт', label: 'Чт' },
+  { value: 'пт', label: 'Пт' }, { value: 'сб', label: 'Сб' }, { value: 'вс', label: 'Вс' },
+] as const;
+/** Время суток — те же три части, на которые подбор делит время групп (утро до 12, день до 17, вечер). */
+export const SCHEDULE_TIMES = [
+  { value: 'утро', label: 'Утро', phrase: 'утром' },
+  { value: 'день', label: 'День', phrase: 'днём' },
+  { value: 'вечер', label: 'Вечер', phrase: 'вечером' },
+] as const;
+
+/**
+ * Удобное время из формы. Новый интерфейс присылает галочки дней (`days`: «пн,ср») и время суток (`time`), из них
+ * собирается та же фраза, что человек пишет боту («пн, ср вечером»): подбор и карточки читают одно поле. Готовый
+ * текст (`schedule`: старый дашборд, правка) берётся как есть.
+ */
+function schedule(form: URLSearchParams): Parsed<string | null> {
+  const written = text(form, 'schedule');
+  if (written) return { ok: true, value: written };
+  const days = (text(form, 'days') ?? '').split(',').map((d) => d.trim()).filter(Boolean);
+  const known = SCHEDULE_DAYS.map((d) => d.value as string);
+  if (days.some((d) => !known.includes(d))) return { ok: false, error: 'Удобные дни выбираются из списка.' };
+  const timeValue = text(form, 'time');
+  const time = SCHEDULE_TIMES.find((t) => t.value === timeValue);
+  if (timeValue && !time) return { ok: false, error: 'Удобное время выбирается из списка.' };
+  // Порядок дней — недельный, как бы их ни отметили.
+  const ordered = known.filter((d) => days.includes(d));
+  const phrase = [ordered.join(', '), time?.phrase ?? ''].filter(Boolean).join(' ');
+  return { ok: true, value: phrase || null };
+}
+
 export function parseRequestForm(form: URLSearchParams): Parsed<RequestInput> {
   const fio = text(form, 'fio');
   if (!fio) return { ok: false, error: 'Укажите ФИО: заявка должна быть о конкретном человеке.' };
@@ -188,6 +220,9 @@ export function parseRequestForm(form: URLSearchParams): Parsed<RequestInput> {
   const groupId = optionalId(form, 'groupId');
   if (groupId === 'invalid') return { ok: false, error: 'Домашняя группа выбирается из списка.' };
 
+  const when = schedule(form);
+  if (!when.ok) return when;
+
   return {
     ok: true,
     value: {
@@ -195,6 +230,11 @@ export function parseRequestForm(form: URLSearchParams): Parsed<RequestInput> {
       type,
       status,
       groupId,
+      street: text(form, 'address'),
+      schedule: when.value,
+      hobby: text(form, 'hobby'),
+      profession: text(form, 'profession'),
+      family: text(form, 'family'),
       ...phone(form),
       age: text(form, 'age'),
       place: text(form, 'place'),
@@ -261,9 +301,16 @@ export function parseRequestUpdate(form: URLSearchParams): Parsed<{ id: number; 
 export function parseCoordinatorForm(form: URLSearchParams): Parsed<CoordinatorInput> {
   const name = text(form, 'name');
   if (!name) return { ok: false, error: 'Укажите ФИО.' };
+  // Новый интерфейс отмечает роли из справочника галочками (roleIds: «1, 3»), старый дашборд пишет одну роль словами (role).
+  const rawIds = text(form, 'roleIds');
+  if (rawIds) {
+    const ids = rawIds.split(',').map((v) => v.trim()).filter(Boolean);
+    if (ids.some((v) => !/^\d{1,15}$/.test(v))) return { ok: false, error: 'Роли выбираются из списка.' };
+    return { ok: true, value: { name, roles: [...new Set(ids.map(Number))].map((id) => ({ id })) } };
+  }
   const role = text(form, 'role');
-  if (!role) return { ok: false, error: 'Укажите роль.' };
-  return { ok: true, value: { name, role } };
+  if (!role) return { ok: false, error: 'Отметьте хотя бы одну роль.' };
+  return { ok: true, value: { name, roles: [{ name: role }] } };
 }
 
 export function parseCoordinatorUpdate(form: URLSearchParams): Parsed<{ id: number; input: CoordinatorInput }> {
@@ -290,6 +337,9 @@ export function parseRegistrationForm(form: URLSearchParams): Parsed<ManualRegis
   const mdgStatus = mdgStatusRaw ? oneOf(form, 'mdgStatus', MDG_STATUSES) : undefined;
   if (mdgStatusRaw && !mdgStatus) return { ok: false, error: 'Малая группа выбирается из списка.' };
 
+  const when = schedule(form);
+  if (!when.ok) return when;
+
   return {
     ok: true,
     value: {
@@ -302,8 +352,11 @@ export function parseRegistrationForm(form: URLSearchParams): Parsed<ManualRegis
       age: text(form, 'age') ?? undefined,
       preferredContact: text(form, 'preferredContact') ?? undefined,
       comment: text(form, 'comment') ?? undefined,
-      schedule: text(form, 'schedule') ?? undefined,
+      schedule: when.value ?? undefined,
       address: text(form, 'address') ?? undefined,
+      hobby: text(form, 'hobby') ?? undefined,
+      profession: text(form, 'profession') ?? undefined,
+      family: text(form, 'family') ?? undefined,
     },
   };
 }

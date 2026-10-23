@@ -108,7 +108,9 @@ async function main() {
 
     for (const c of coordinators) {
       await db.query(
-        `INSERT INTO coordinators (name, role, source) VALUES ($1, $2, 'таблица')`,
+        // Роль в таблице записана словами: team_role_id находит её в справочнике ролей или заводит новую (миграция 049).
+        `WITH c AS (INSERT INTO coordinators (name, source) VALUES ($1, 'таблица') RETURNING id)
+         INSERT INTO coordinator_roles (coordinator_id, role_id) SELECT id, team_role_id($2) FROM c`,
         [c.name, c.role],
       );
     }

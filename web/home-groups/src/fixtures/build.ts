@@ -35,6 +35,7 @@ import type {
 import {
   AGE_COLUMNS,
   COORDINATOR_ROLES,
+  DEMO_TEAM_ROLES,
   DISTRICTS,
   GENERATED_AT,
   NEIGHBORS,
@@ -356,6 +357,7 @@ export function buildRequests(): RequestsView {
       noPlan: held ? STRANGE_NO_PLAN : (entry?.noPlan ?? null),
       ...requestExtras(r),
       finalGroup: fin ? groupBrief(fin) : null,
+      ownGroup: null,
       finalGroupText: r.finalGroupText,
       responsible: entry?.responsible || null,
       note: r.note,
@@ -616,7 +618,8 @@ export function buildCoordinators(): CoordinatorsView {
     return {
       id: i + 1,
       name,
-      role: COORDINATOR_ROLES[name] ?? 'Координатор',
+      role: (COORDINATOR_ROLES[name] ?? ['Координатор малых групп']).join(', '),
+      roleIds: (COORDINATOR_ROLES[name] ?? ['Координатор малых групп']).map((role) => DEMO_TEAM_ROLES.find((r) => r.name === role)!.id),
       groups: gs.length,
       people: gs.reduce((a, g) => a + (g.people ?? 0), 0),
       verified30: gs.filter((g) => g.verifiedDaysAgo != null && g.verifiedDaysAgo <= 30).length,

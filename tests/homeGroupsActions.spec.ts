@@ -11,7 +11,7 @@ import { composeService, engine as realEngine } from '../src/home-groups/composi
 import { createHomeGroupsServer } from '../src/home-groups/server.js';
 import type { RequestsView } from '../src/home-groups/contracts.js';
 import { createFakeEngine } from './helpers/fakePlanEngine.js';
-import { setupTestDb, truncateAll } from './helpers/testDb.js';
+import { seedCoordinator, setupTestDb, truncateAll } from './helpers/testDb.js';
 
 /**
  * Действие координатора от HTTP до базы: утверждение меняет заявку, пишет журнал, а список сразу
@@ -471,7 +471,7 @@ describe('создание и параметры подбора через HTTP 
   });
 
   test('справочники форм берутся с сервера, координаторы — из базы', async () => {
-    await db.query(`INSERT INTO coordinators (name, role, source) VALUES ('Анна Координатор', 'Координатор', 'ui')`);
+    await seedCoordinator(db, 'Анна Координатор', ['Координатор']);
     const app = await startAdmin();
     try {
       const meta = await app.get('form-meta');

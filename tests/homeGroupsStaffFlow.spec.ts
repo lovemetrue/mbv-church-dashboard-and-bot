@@ -13,7 +13,7 @@ import { createActions } from '../src/home-groups/actions.js';
 import { composeService } from '../src/home-groups/composition.js';
 import { createHomeGroupsServer } from '../src/home-groups/server.js';
 import { createFakeEngine } from './helpers/fakePlanEngine.js';
-import { setupTestDb, truncateAll } from './helpers/testDb.js';
+import { seedCoordinator, setupTestDb, truncateAll } from './helpers/testDb.js';
 
 /**
  * Личные входы от начала до конца через HTTP на настоящей базе: заведение, письмо, пароль по ссылке,
@@ -121,7 +121,7 @@ describe('личные входы целиком', () => {
     const app = await start();
     try {
       const boss = (await app.login('super_mbv_admin', SHARED.super)).cookie!;
-      const { rows } = await db.query<{ id: number }>(`INSERT INTO coordinators (name, role, source) VALUES ('Родионов Давид', 'Распределитель', 'ui') RETURNING id::int AS id`);
+      const rows = [{ id: await seedCoordinator(db, 'Родионов Давид', ['Распределитель']) }];
       const r = await app.api(boss, 'settings/staff/generate-password', { coordinatorId: rows[0]!.id });
       expect(r.status).toBe(200);
       const out = await r.json() as { ok: true; login: string; password: string };
@@ -141,7 +141,7 @@ describe('личные входы целиком', () => {
     const app = await start();
     try {
       const boss = (await app.login('super_mbv_admin', SHARED.super)).cookie!;
-      const { rows } = await db.query<{ id: number }>(`INSERT INTO coordinators (name, role, source) VALUES ('Родионов Давид', 'Распределитель', 'ui') RETURNING id::int AS id`);
+      const rows = [{ id: await seedCoordinator(db, 'Родионов Давид', ['Распределитель']) }];
       const out = await (await app.api(boss, 'settings/staff/generate-password', { coordinatorId: rows[0]!.id })).json() as { login: string; password: string };
       const david = await app.login(out.login, out.password);
       expect(david.status).toBe(302);

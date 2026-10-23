@@ -49,7 +49,7 @@ function participant(over: Partial<RegisteredParticipant> & { id: number }): Reg
 }
 
 const coordinator = (over: Partial<CoordinatorRow> & { id: number }): CoordinatorRow =>
-  ({ name: `Координатор ${over.id}`, role: 'Координатор', source: 'ui', ...over });
+  ({ name: `Координатор ${over.id}`, role: 'Координатор', role_ids: [1], role_kinds: ['coordinator'], source: 'ui', ...over });
 
 const empty: ViewsInput = { groups: [], requests: [], participants: [], coordinators: [] };
 
@@ -739,8 +739,8 @@ describe('координаторы', () => {
       ],
     });
     expect(views.coordinators.items).toEqual([
-      { id: 1, name: 'Анна Смирнова', role: 'Координатор', groups: 3, people: 12, verified30: 1 },
-      { id: 2, name: 'Борис', role: 'Координатор', groups: 0, people: 0, verified30: 0 },
+      { id: 1, name: 'Анна Смирнова', role: 'Координатор', roleIds: [1], groups: 3, people: 12, verified30: 1 },
+      { id: 2, name: 'Борис', role: 'Координатор', roleIds: [1], groups: 0, people: 0, verified30: 0 },
     ]);
   });
 });

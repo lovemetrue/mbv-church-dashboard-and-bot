@@ -14,6 +14,8 @@ export interface EditField {
   required?: boolean;
   /** Для select и multi. */
   options?: string[];
+  /** Подписи пунктов select, когда значение — номер записи (роль из справочника), а не сама подпись. */
+  labels?: Record<string, string>;
   /** Пояснение под полем. */
   hint?: string;
   placeholder?: string;
@@ -149,14 +151,26 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
   };
 }
 
-export function coordinatorEditSpec(c: CoordinatorItem): EditSpec {
+/** Роли — из справочника ролей галочками (их бывает несколько): уходят номерами через запятую (`roleIds`). */
+export function coordinatorEditSpec(c: CoordinatorItem, meta: FormMeta): EditSpec {
   const t = m.coordinator.fields;
+  const options = meta.teamRoles.map((r) => String(r.id));
   return {
     fields: [
       { name: 'name', label: t.name, kind: 'text', required: true, wide: true },
-      { name: 'role', label: t.role, kind: 'text', required: true, wide: true },
+      {
+        name: 'roleIds',
+        label: t.role,
+        kind: 'multi',
+        required: true,
+        wide: true,
+        options,
+        labels: Object.fromEntries(meta.teamRoles.map((r) => [String(r.id), r.name])),
+        hint: ru.create.coordinatorRoleHint,
+      },
     ],
-    initial: { name: c.name, role: c.role },
+    // В порядке списка, как их складывает `toggleInList`: иначе форма сочла бы неизменённые роли правкой.
+    initial: { name: c.name, roleIds: options.filter((id) => c.roleIds.includes(Number(id))).join(', ') },
     note: m.coordinator.renameNote,
   };
 }

@@ -1,3 +1,4 @@
+import type { TeamRoleKind } from './coordinators.repo.js';
 import type { Pool, PoolClient } from 'pg';
 
 export interface StaffRow {
@@ -254,27 +255,32 @@ export class StaffRepo {
     );
   }
 
-  /** Как зовут человека в справочнике команды и его роль там (по связи `coordinator_id`), а без связи — ФИО учётной записи. */
-  async displayName(login: string): Promise<{ name: string; teamRole: string | null } | null> {
-    const { rows } = await this.db.query<{ name: string; team_role: string | null }>(
-      `SELECT COALESCE(c.name, s.full_name) AS name, c.role AS team_role
+  /**
+   * Как зовут человека в справочнике команды и его роли там (по связи `coordinator_id`), а без связи — ФИО учётной
+   * записи. Ролей бывает несколько: смыслы приходят списком без повторов.
+   */
+  async displayName(login: string): Promise<{ name: string; teamRole: string | null; teamKinds: TeamRoleKind[] } | null> {
+    const { rows } = await this.db.query<{ name: string; team_role: string | null; team_kinds: TeamRoleKind[] }>(
+      `SELECT COALESCE(c.name, s.full_name) AS name, coordinator_role_names(c.id) AS team_role,
+              ARRAY(SELECT DISTINCT r.kind FROM coordinator_roles cr JOIN team_roles r ON r.id = cr.role_id
+                     WHERE cr.coordinator_id = c.id AND r.kind IS NOT NULL ORDER BY r.kind) AS team_kinds
          FROM staff s LEFT JOIN coordinators c ON c.id = s.coordinator_id AND c.archived_at IS NULL
         WHERE lower(s.login) = lower($1)`,
       [login],
     );
     const row = rows[0];
-    return row ? { name: row.name, teamRole: row.team_role } : null;
+    return row ? { name: row.name, teamRole: row.team_role, teamKinds: row.team_kinds } : null;
   }
 
   /** Команда из справочника (координаторы, распределители) и их учётные записи; без удалённых из справочника. */
   async team(): Promise<TeamAccountRow[]> {
     const { rows } = await this.db.query<TeamAccountRow>(
-      `SELECT c.id::int AS coordinator_id, c.name, c.role AS team_role, a.id::int AS staff_id, a.login, a.active,
-              (a.password_hash IS NOT NULL) AS has_password, a.last_login_at
+      `SELECT c.id::int AS coordinator_id, c.name, coalesce(coordinator_role_names(c.id), '') AS team_role,
+              a.id::int AS staff_id, a.login, a.active, (a.password_hash IS NOT NULL) AS has_password, a.last_login_at
          FROM coordinators c
          LEFT JOIN LATERAL (${TEAM_ACCOUNT}) a ON true
         WHERE c.archived_at IS NULL
-        ORDER BY c.role, c.name, c.id`,
+        ORDER BY team_role, c.name, c.id`,
     );
     return rows.map((r) => ({ ...r, has_password: r.has_password === true }));
   }

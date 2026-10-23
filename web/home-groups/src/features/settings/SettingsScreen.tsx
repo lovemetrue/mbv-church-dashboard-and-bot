@@ -9,10 +9,11 @@ import { MapSection } from './MapSection';
 import { ErrorsSection } from './ErrorsSection';
 import { HealthSection } from './HealthSection';
 import { PromptsSection } from './PromptsSection';
+import { TeamRolesSection } from './TeamRolesSection';
 import { UsersSection } from './UsersSection';
 import styles from './Settings.module.css';
 
-export const SECTION_IDS = ['health', 'errors', 'audit', 'prompts', 'bot', 'assistant', 'geocoder', 'map', 'users'] as const;
+export const SECTION_IDS = ['health', 'errors', 'audit', 'prompts', 'bot', 'assistant', 'geocoder', 'map', 'users', 'teamRoles'] as const;
 export type SectionId = (typeof SECTION_IDS)[number];
 const DEFAULT_SECTION: SectionId = 'health';
 
@@ -33,6 +34,7 @@ const VIEWS: Record<SectionId, () => JSX.Element> = {
   geocoder: GeocoderSection,
   map: MapSection,
   users: UsersSection,
+  teamRoles: TeamRolesSection,
 };
 
 /**

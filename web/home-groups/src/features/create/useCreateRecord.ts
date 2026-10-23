@@ -17,7 +17,8 @@ export type CreateResult = { ok: true; id: number; registrationNo?: number } | {
  */
 export function createErrorMessage(e: unknown): string {
   if (e instanceof ApiError) {
-    if (e.code === 'bad_request' && e.message) return e.message;
+    // Отказы проверки, «уже есть» и «не найдено» сервер пишет по-русски для людей: показываем как есть.
+    if ((e.code === 'bad_request' || e.code === 'conflict' || e.code === 'not_found') && e.message) return e.message;
     if (e.code === 'forbidden' || e.status === 403) return ru.create.errors.forbidden;
     if (e.status === 0) return ru.create.errors.network;
   }

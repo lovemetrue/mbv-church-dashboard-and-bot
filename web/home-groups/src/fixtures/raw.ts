@@ -228,9 +228,19 @@ export const RAW_EXTRA_PEOPLE: RawPerson[] = [
   { key: 'p1', fio: 'Нина Воронцова', phone: '79110005511', ageLabel: '46+', district: 'Приморский', from: 'Внесён вручную', mdgLabel: 'Уже в группе', date: '2026-08-18', userId: null, registrationNo: null, personId: 1 },
 ];
 
-export const COORDINATOR_ROLES: Record<string, string> = {
-  'Трофимова С.': 'Координатор',
-  'Петров Г.': 'Координатор',
-  'Лебедева А.': 'Старший координатор',
-  'Морозов Д.': 'Координатор',
+/** Справочник ролей команды в демо — те же основные роли, что заводит миграция 049, и одна без особого смысла. */
+export const DEMO_TEAM_ROLES: { id: number; name: string; kind: 'distributor' | 'coordinator' | 'senior' | null }[] = [
+  { id: 1, name: 'Координатор малых групп', kind: 'coordinator' },
+  { id: 2, name: 'Старший координатор', kind: 'senior' },
+  { id: 3, name: 'Распределитель', kind: 'distributor' },
+  { id: 4, name: 'Молодёжный координатор', kind: 'coordinator' },
+  { id: 5, name: 'Катализатор', kind: null },
+];
+
+/** Роли людей в демо: у Петрова две — так в демо видно, что ролей бывает несколько. */
+export const COORDINATOR_ROLES: Record<string, string[]> = {
+  'Трофимова С.': ['Координатор малых групп'],
+  'Петров Г.': ['Катализатор', 'Координатор малых групп'],
+  'Лебедева А.': ['Старший координатор'],
+  'Морозов Д.': ['Координатор малых групп'],
 };

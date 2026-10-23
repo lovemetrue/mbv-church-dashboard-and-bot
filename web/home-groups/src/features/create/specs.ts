@@ -48,6 +48,8 @@ export interface FormSpec {
   /** Закрытое поле «Адрес»: рисуется отдельным блоком внизу формы. */
   address?: FieldSpec;
   initial: Record<string, string>;
+  /** Поля, которых в форме не видно, но которые уходят всегда: например, номер заявки, по которой заводят группу. */
+  hidden?: Record<string, string>;
 }
 
 /** Статус заявки, при котором человек уже в группе (как `DONE` на сервере). */
@@ -67,6 +69,31 @@ export function todayIso(now: Date = new Date()): string {
   return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
 }
 
+/**
+ * Улица и дом, удобные дни и время, хобби, профессия, семья — одни и те же в заявке и регистрации, как в форме правки
+ * («Править данные»): по адресу и времени идёт подбор, по остальному ищут группу «своих». Дни — галочками, время —
+ * из трёх частей суток: сервер складывает их во фразу «пн, ср вечером», которую понимает подбор.
+ */
+function personFields(meta: FormMeta, showWhen?: FieldSpec['showWhen']): FieldSpec[] {
+  const c = ru.contact.fields;
+  const when = showWhen ? { showWhen } : {};
+  return [
+    { name: 'address', label: c.address, kind: 'text', wide: true, placeholder: c.addressPlaceholder, autoComplete: 'off', ...when },
+    { name: 'days', label: c.days, kind: 'multi', wide: true, options: meta.scheduleDays, ...when },
+    { name: 'time', label: c.time, kind: 'select', options: meta.scheduleTimes, emptyLabel: c.timeAny, ...when },
+  ];
+}
+
+/** Хобби, профессия и семья: необязательные, без условий — их спрашивают у всех. */
+function profileFields(): FieldSpec[] {
+  const c = ru.contact.fields;
+  return [
+    { name: 'hobby', label: c.hobby, kind: 'text', autoComplete: 'off' },
+    { name: 'profession', label: c.profession, kind: 'text', autoComplete: 'off' },
+    { name: 'family', label: c.family, kind: 'text', wide: true, autoComplete: 'off' },
+  ];
+}
+
 export function requestSpec(meta: FormMeta, now: Date = new Date()): FormSpec {
   const t = ru.create.requestFields;
   const types = meta.requestTypes.map((x) => ({ value: x.value, label: x.label }));
@@ -78,6 +105,8 @@ export function requestSpec(meta: FormMeta, now: Date = new Date()): FormSpec {
       { name: 'phone', label: t.phone, kind: 'text', inputMode: 'tel', autoComplete: 'off' },
       { name: 'age', label: t.age, kind: 'select', options: opts(meta.ageGroups) },
       { name: 'place', label: t.place, kind: 'text', wide: true, autoComplete: 'off' },
+      ...personFields(meta),
+      ...profileFields(),
       { name: 'requestedAt', label: t.requestedAt, kind: 'date' },
       { name: 'responsible', label: t.responsible, kind: 'select', options: opts(meta.coordinators) },
       { name: 'source', label: t.source, kind: 'text', wide: true, autoComplete: 'off' },
@@ -185,13 +214,22 @@ export function groupSpec(meta: FormMeta): FormSpec {
   };
 }
 
-/** Координатор: ФИО и роль, справочники сервера не нужны. */
-export function coordinatorSpec(): FormSpec {
+/** Координатор: ФИО и роли из справочника ролей (уходят номерами ролей, а не словами). */
+export function coordinatorSpec(meta: FormMeta): FormSpec {
   const t = ru.create.coordinatorFields;
   return {
     fields: [
       { name: 'name', label: t.name, kind: 'text', required: true, wide: true, autoComplete: 'off' },
-      { name: 'role', label: t.role, kind: 'text', required: true, wide: true, placeholder: ru.create.coordinatorRolePlaceholder, autoComplete: 'off' },
+      // Ролей у человека бывает несколько (координатор и распределитель сразу): галочки, уходят номерами через запятую.
+      {
+        name: 'roleIds',
+        label: t.role,
+        kind: 'multi',
+        required: true,
+        wide: true,
+        options: meta.teamRoles.map((r) => ({ value: String(r.id), label: r.name })),
+        hint: ru.create.coordinatorRoleHint,
+      },
     ],
     initial: {},
   };
@@ -247,26 +285,10 @@ export function registrationSpec(meta: FormMeta): FormSpec {
         options: opts(meta.ageGroups),
         showWhen: (v) => MDG_ASKS_PLACE.includes(v['mdgStatus'] ?? ''),
       },
-      // Те же два вопроса, что бот задаёт после возраста («Когда удобно?», «Где живёте?»): по ним идёт подбор группы,
+      // Те же вопросы, что бот задаёт после возраста («Когда удобно?», «Где живёте?»): по ним идёт подбор группы,
       // и человек с бумажной анкетой не должен попадать в подбор хуже, чем записавшийся через бот.
-      {
-        name: 'schedule',
-        label: c.schedule,
-        kind: 'text',
-        wide: true,
-        placeholder: c.schedulePlaceholder,
-        autoComplete: 'off',
-        showWhen: (v) => MDG_ASKS_PLACE.includes(v['mdgStatus'] ?? ''),
-      },
-      {
-        name: 'address',
-        label: c.address,
-        kind: 'text',
-        wide: true,
-        placeholder: c.addressPlaceholder,
-        autoComplete: 'off',
-        showWhen: (v) => MDG_ASKS_PLACE.includes(v['mdgStatus'] ?? ''),
-      },
+      ...personFields(meta, (v) => MDG_ASKS_PLACE.includes(v['mdgStatus'] ?? '')),
+      ...profileFields(),
       { name: 'preferredContact', label: t.preferredContact, kind: 'text', wide: true, autoComplete: 'off' },
       { name: 'comment', label: t.comment, kind: 'textarea', wide: true },
     ],

@@ -1,3 +1,4 @@
+import type { TeamRoleKind } from '../../db/repos/coordinators.repo.js';
 import type { StaffRepo, StaffRow } from '../../db/repos/staff.repo.js';
 import { StaffConflict } from '../../db/repos/staff.repo.js';
 import type { SettingsRepo } from '../../db/repos/settings.repo.js';
@@ -174,7 +175,7 @@ export function createStaffService(deps: StaffServiceDeps) {
     },
 
     /** Кто вошёл под личным логином: логин, имя и роль, как в справочнике команды. */
-    async personOf(login: string): Promise<{ login: string; name: string; teamRole: string | null } | null> {
+    async personOf(login: string): Promise<{ login: string; name: string; teamRole: string | null; teamKinds: TeamRoleKind[] } | null> {
       const found = await deps.staff.displayName(login);
       return found ? { login, ...found } : null;
     },

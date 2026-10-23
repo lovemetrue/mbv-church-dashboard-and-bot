@@ -3,6 +3,7 @@ import { formatDateShort, formatPhone } from '../../../entities/format';
 import { ru } from '../../../shared/i18n/ru';
 import { AgeTag, Drawer, DrawerSection, KeyValue, Pill, StrangeBadge, StrangeBanner, type KvRow } from '../../../shared/ui';
 import { DeleteRequestSection } from '../../manage';
+import { GroupFromRequestSection } from '../../create';
 import { tableRows } from '../tableRows';
 import { subjectOfOther } from '../work/subject';
 import { HeaderTools } from '../work/HeaderTools';
@@ -77,6 +78,7 @@ export function OtherCard({ item, onClose, onClosed }: { item: OtherItem; onClos
         <KeyValue rows={contacts} />
       </DrawerSection>
       <WorkPlace key={`work-${item.id}`} subject={subjectOfOther(item)} onClosed={onClosed} />
+      <GroupFromRequestSection key={`own-group-${item.id}`} requestId={item.id} ownGroup={item.ownGroup} />
       <DrawerSection title={o.original}>
         {item.original.length ? (
           <KeyValue rows={item.original.map((f) => ({ label: f.label, value: f.value }))} />

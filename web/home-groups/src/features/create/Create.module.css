@@ -391,3 +391,10 @@ textarea.control {
 .standaloneCard .foot {
   position: static;
 }
+
+/* «Группа по заявке» в карточке заявки. */
+.fromRequestText {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--muted);
+}

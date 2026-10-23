@@ -1,7 +1,6 @@
 import { useMemo, useRef } from 'react';
 import type { FormMeta } from '@contracts';
 import { ru } from '../../shared/i18n/ru';
-import { Modal } from '../../shared/ui';
 import { FormMetaGate } from './FormMetaGate';
 import { RecordForm } from './RecordForm';
 import { RegistrationDialog } from './RegistrationDialog';
@@ -60,23 +59,25 @@ function RecordDialogForm({
   );
 }
 
-/** «Новый координатор»: две строки, поэтому справочники сервера не загружаем и окно открывается сразу. */
+/** «Новый координатор»: роль выбирается из справочника ролей, поэтому окно ждёт списки сервера, как остальные. */
 function CoordinatorDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (id: number) => void }) {
-  const spec = useMemo(() => coordinatorSpec(), []);
   // Пока идёт отправка, окно не закрывается: запись всё равно создастся, а человек не узнал бы, чем кончилось.
   const busy = useRef(false);
+  const close = () => !busy.current && onClose();
   return (
-    <Modal title={ru.create.coordinatorTitle} onClose={() => !busy.current && onClose()}>
-      <RecordForm
-        spec={spec}
-        path="coordinators/create"
-        submitLabel={ru.create.submitCoordinator}
-        onClose={onClose}
-        onCreated={(c) => onCreated(c.id)}
-        onBusyChange={(b) => {
-          busy.current = b;
-        }}
-      />
-    </Modal>
+    <FormMetaGate title={ru.create.coordinatorTitle} onClose={close}>
+      {(meta) => (
+        <RecordForm
+          spec={coordinatorSpec(meta)}
+          path="coordinators/create"
+          submitLabel={ru.create.submitCoordinator}
+          onClose={onClose}
+          onCreated={(c) => onCreated(c.id)}
+          onBusyChange={(b) => {
+            busy.current = b;
+          }}
+        />
+      )}
+    </FormMetaGate>
   );
 }

@@ -96,7 +96,7 @@ export function EditForm({ spec: given, path, onClose, onSaved, onBusyChange, re
       const options = f.options ?? [];
       return (
         <fieldset key={f.name} className={`${f.wide ? styles.fieldWide : styles.field} ${styles.multi}`} aria-describedby={describedBy}>
-          <legend>{f.label}</legend>
+          <legend className={f.required ? styles.required : undefined}>{f.label}</legend>
           <div className={styles.multiList}>
             {options.map((o) => (
               <label key={o} className={styles.check}>
@@ -106,7 +106,7 @@ export function EditForm({ spec: given, path, onClose, onSaved, onBusyChange, re
                   disabled={busy}
                   onChange={(e) => change(f.name, toggleInList(value, o, e.target.checked, options))}
                 />
-                <span>{o}</span>
+                <span>{f.labels?.[o] ?? o}</span>
               </label>
             ))}
           </div>
@@ -134,7 +134,7 @@ export function EditForm({ spec: given, path, onClose, onSaved, onBusyChange, re
             <option value="">{ru.manage.notChosen}</option>
             {(f.options ?? []).map((o) => (
               <option key={o} value={o}>
-                {o}
+                {f.labels?.[o] ?? o}
               </option>
             ))}
           </select>

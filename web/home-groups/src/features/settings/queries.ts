@@ -30,10 +30,13 @@ import type {
   StaffIdBody,
   SuggestLoginBody,
   SuggestLoginOk,
+  TeamRoleKind,
+  TeamRolesView,
   UpdateStaffBody,
 } from '@contracts';
 import { ApiError, apiGet, apiPost } from '../../shared/api/client';
 import { queryKeys } from '../../shared/api/queries';
+import { FORM_META_KEY } from '../create/useFormMeta';
 
 /*
  * Данные раздела «Настройки». Раздел не зависит от внутренностей других экранов: берёт только
@@ -58,6 +61,7 @@ export const settingsKeys = {
   geocoder: ['settings', 'geocoder'],
   addresses: ['settings', 'geocoder', 'addresses'],
   map: ['settings', 'map'],
+  teamRoles: ['settings', 'team-roles'],
 } as const;
 
 const common = {
@@ -316,6 +320,38 @@ export function useMapActions() {
         queryClient.invalidateQueries({ queryKey: settingsKeys.map }),
         queryClient.invalidateQueries({ queryKey: ['map'] }),
       ]);
+    },
+  };
+}
+
+export function useSettingsTeamRoles(): UseQueryResult<TeamRolesView> {
+  return useQuery({ queryKey: settingsKeys.teamRoles, queryFn: ({ signal }) => apiGet<TeamRolesView>('settings/team-roles', signal), ...common });
+}
+
+/**
+ * Справочник ролей команды. После правки перечитываем всё, где видно название или смысл роли: справочник команды,
+ * списки форм (роль выбирают из них), «кто вошёл» (от смысла роли зависят отборы) и пароли для команды.
+ */
+export function useTeamRoleActions() {
+  const queryClient = useQueryClient();
+  const refresh = () =>
+    Promise.all(
+      [settingsKeys.teamRoles, settingsKeys.staff, queryKeys.coordinators, queryKeys.me, FORM_META_KEY].map((queryKey) =>
+        queryClient.invalidateQueries({ queryKey }),
+      ),
+    );
+  return {
+    async create(body: { name: string; kind: TeamRoleKind | null }): Promise<void> {
+      await apiPost('settings/team-roles/create', body);
+      await refresh();
+    },
+    async update(body: { id: number; name: string; kind: TeamRoleKind | null }): Promise<void> {
+      await apiPost('settings/team-roles/update', body);
+      await refresh();
+    },
+    async remove(id: number): Promise<void> {
+      await apiPost('settings/team-roles/delete', { id });
+      await refresh();
     },
   };
 }

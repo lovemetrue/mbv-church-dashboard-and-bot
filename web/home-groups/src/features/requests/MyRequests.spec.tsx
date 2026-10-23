@@ -1,4 +1,5 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import type { TeamRoleKind } from '@contracts';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { App } from '../../app/App';
@@ -10,7 +11,10 @@ import { json } from './requestsTestKit';
 afterEach(() => vi.unstubAllGlobals());
 
 /** Личный вход: интерфейс знает, кто вошёл и какая у него роль в справочнике команды. */
-const personal = (name: string, teamRole: string | null) => () => json({ role: 'admin', person: { login: 'x_login', name, teamRole } });
+/** Личный вход: смысл роли приходит с сервера из справочника ролей, по названию интерфейс его не угадывает. */
+const KIND: Record<string, TeamRoleKind> = { Распределитель: 'distributor', Координатор: 'coordinator', 'Старший координатор': 'senior' };
+const personal = (name: string, teamRole: string | null, teamKinds: TeamRoleKind[] = teamRole && KIND[teamRole] ? [KIND[teamRole]!] : []) => () =>
+  json({ role: 'admin', person: { login: 'x_login', name, teamRole, teamKinds } });
 
 // Открытая карточка тоже содержит поле «В работе у», поэтому ищем в панели отбора списка.
 const respSelect = async () =>
@@ -82,6 +86,43 @@ describe('координатор: сразу свои группы и свои �
 
   test('«Хотят в группу» координатору — без отбора', async () => {
     stubFetchWithFixtures({ me: personal(ME, 'Координатор') });
+    renderAt(<App />, '/?tab=requests');
+    expect(await respSelect()).toHaveValue('');
+    await waitFor(async () => expect(await requestRows()).toHaveLength(buildRequests().items.length));
+  });
+});
+
+describe('несколько ролей у одного человека', () => {
+  test('распределитель и координатор сразу: в «Хотят в группу» — свои и ничьи, в «Хотят открыть группу» — свои', async () => {
+    const leads = buildOthers().filter((o) => o.type === 'lead_group' && o.state === 'open');
+    const name = leads[0]!.responsible!;
+    stubFetchWithFixtures({ me: personal(name, 'Координатор малых групп, Распределитель', ['coordinator', 'distributor']) });
+    renderAt(<App />, '/?tab=requests');
+    await waitFor(async () => expect(await respSelect()).toHaveValue('~'));
+    cleanup();
+    stubFetchWithFixtures({ me: personal(name, 'Координатор малых групп, Распределитель', ['coordinator', 'distributor']) });
+    renderAt(<App />, '/?tab=requests&view=leads');
+    await waitFor(async () => expect(await respSelect()).toHaveValue(name));
+  });
+
+  test('старший координатор с ещё одной ролью видит всё, без отборов', async () => {
+    stubFetchWithFixtures({ me: personal('Лебедева А.', 'Распределитель, Старший координатор', ['distributor', 'senior']) });
+    renderAt(<App />, '/?tab=requests');
+    expect(await respSelect()).toHaveValue('');
+    await waitFor(async () => expect(await requestRows()).toHaveLength(buildRequests().items.length));
+  });
+});
+
+describe('смысл роли — из справочника ролей, а не из её названия', () => {
+  test('роль «Обзвон», отмеченная распределителем, получает отбор распределителя', async () => {
+    stubFetchWithFixtures({ me: personal('Анна Л.', 'Обзвон', ['distributor']) });
+    renderAt(<App />, '/?tab=requests');
+    const select = await respSelect();
+    await waitFor(() => expect(select).toHaveValue('~'));
+  });
+
+  test('«Распределитель» без смысла в справочнике отборов не ставит', async () => {
+    stubFetchWithFixtures({ me: personal('Анна Л.', 'Распределитель', []) });
     renderAt(<App />, '/?tab=requests');
     expect(await respSelect()).toHaveValue('');
     await waitFor(async () => expect(await requestRows()).toHaveLength(buildRequests().items.length));

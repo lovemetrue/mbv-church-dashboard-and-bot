@@ -84,6 +84,10 @@ export interface ManualRegistrationInput {
   schedule?: string;
   /** Улица и дом — тот же ответ анкеты (`address_raw`): по нему идёт подбор и геокодирование. */
   address?: string;
+  /** Хобби, профессия, семейное положение — по ним подбирают группу «своих»; правятся и потом, в карточке. */
+  hobby?: string;
+  profession?: string;
+  family?: string;
 }
 
 /** Кому досылать два вопроса: ищущим группу (и будущим ведущим) или тем, кто уже ведёт группу. */
@@ -288,8 +292,10 @@ export class UsersRepo {
         const { rows } = await this.db.query<UserRow>(
           `INSERT INTO users (platform, platform_user_id, chat_id, full_name, phone, church, mdg_status, leader_name,
                               location, age, preferred_contact, admin_comment, registered_by,
-                              registration_no, registered_at, complete, consent_at, schedule_raw, address_raw)
-           VALUES ($1, 'manual:' || $12::text, '', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $13, now(), true, now(), $14, $15)
+                              registration_no, registered_at, complete, consent_at, schedule_raw, address_raw,
+                              hobby, profession, family_status)
+           VALUES ($1, 'manual:' || $12::text, '', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $13, now(), true, now(), $14, $15,
+                   $16, $17, $18)
            RETURNING *`,
           [
             input.platform,
@@ -307,6 +313,9 @@ export class UsersRepo {
             no,
             input.schedule ?? null,
             input.address ?? null,
+            input.hobby ?? null,
+            input.profession ?? null,
+            input.family ?? null,
           ],
         );
         return rows[0]!;

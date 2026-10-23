@@ -6,7 +6,7 @@
  * считает иначе, правда — на сервере.
  */
 import type {
-  AssistantStatus,
+  AssistantReviewItem, AssistantStatus,
   Bucket,
   Candidate,
   CellLevel,
@@ -376,8 +376,25 @@ export function buildRequests(): RequestsView {
     waiting: items.filter((x) => x.bucket !== 'done' && x.proposal && !x.proposal.saved).length,
     saved: items.filter((x) => x.bucket !== 'done' && x.proposal?.saved).length,
   };
-  // В демо помощник подключён и включён; три заявки ещё ждут его разбора.
-  const assistant: AssistantStatus = { available: true, enabled: true, pending: 3 };
+  // В демо помощник подключён и включён; три заявки ещё ждут его разбора, а по заявке 8 он не всё понял и ждёт служителя.
+  const fioOf = (id: number) => items.find((x) => x.id === id)?.fio ?? 'Без имени';
+  const fresh = (id: number, place: string): AssistantReviewItem => ({
+    requestId: id, fio: fioOf(id), state: 'new', missing: ['район'], filled: [], questions: [], note: null, place, age: null, schedule: null,
+  });
+  const assistant: AssistantStatus = {
+    available: true,
+    enabled: true,
+    pending: 3,
+    review: [
+      {
+        requestId: 8, fio: fioOf(8), state: 'reviewed', missing: ['район', 'время'], filled: [],
+        questions: ['Рядом с какой станцией метро вы живёте?', 'В какие дни недели и в какое время вам удобно приходить?'],
+        note: 'В записи «где-то у Пионерской» станция названа неуверенно, а дней и времени нет совсем.',
+        place: 'где-то у Пионерской', age: '26–35', schedule: null,
+      },
+      fresh(14, 'за рекой'), fresh(17, 'у бабушки'), fresh(19, 'как получится'),
+    ],
+  };
   return { generatedAt: GENERATED_AT, matching, assistant, items, counters, others: buildOthers() };
 }
 

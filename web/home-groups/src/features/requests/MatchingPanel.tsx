@@ -1,19 +1,20 @@
 import { useId, useState } from 'react';
 import type { AssistantStatus, MatchingStatus, RequestItem } from '@contracts';
 import { formatDateTime } from '../../entities/format';
+import { useMe } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
 import { useAppNav } from '../../shared/nav';
 import { Button, Modal } from '../../shared/ui';
+import { useAssistantDock } from '../assistant-chat/AssistantChat';
 import styles from './Requests.module.css';
-import { AssistantRun } from './assistant/AssistantRun';
-import { useAssistantRun } from './assistant/useAssistantRun';
 import { ChangedRequests } from './ChangedRequests';
 import { useMatching } from './useMatching';
 
 const m = ru.requests.matching;
 
 /**
- * «Подбор для новых заявок»: сводка, кнопка закрепления и переключатель автоподбора.
+ * «Подбор для новых заявок»: сводка, кнопка закрепления и значок ✦ помощника. Переключатель автоподбора живёт в
+ * «Настройки → Подбор» (его меняют редко, а шапку он раздувал), здесь — только строка о том, включён ли он.
  * Расчёт показывается и без кнопки; кнопка лишь закрепляет его, чтобы выбранные группы не менялись сами.
  * Предложение остаётся предложением: человек распределён только после «Утвердить»,
  * поэтому здесь ничего не утверждается.
@@ -29,15 +30,18 @@ export function MatchingPanel({
   changed?: readonly RequestItem[];
 }) {
   const nav = useAppNav();
+  const me = useMe();
   const act = useMatching();
-  const helper = useAssistantRun();
+  const dock = useAssistantDock();
   const [confirming, setConfirming] = useState(false);
   const [listing, setListing] = useState(false);
   const titleId = useId();
-  const noteId = useId();
   const { lastRun } = matching;
   // Подбор, пересчёт и помощник трогают одни и те же предложения: пока идёт любой из них, остальные не запускаем.
-  const busy = act.pending !== null || helper.pending;
+  const busy = act.pending !== null || dock?.review.pending === true;
+  // Значок помощника: обычному входу при незаданном ключе он ни к чему — сделать с этим он ничего не может.
+  const showHelper = dock !== null && me.data !== undefined && (assistant.available || me.data.role === 'super');
+  const helperLabel = ru.requests.assistant.icon(assistant.available && assistant.enabled ? assistant.review.length : 0);
 
   return (
     <section className={styles.matching} aria-labelledby={titleId} aria-busy={busy}>
@@ -47,6 +51,17 @@ export function MatchingPanel({
       <div className={styles.matchingStats}>
         <p>{m.saved(matching.saved, matching.waiting)}</p>
         <p>{lastRun ? m.lastRun(formatDateTime(lastRun.at), lastRun.created, lastRun.replaced) : m.neverRun}</p>
+        <p>
+          {matching.auto ? m.autoOn : m.autoOff}
+          {me.data?.role === 'super' && (
+            <>
+              {' · '}
+              <button type="button" className={styles.linkInline} onClick={() => nav.goSettingsSection('matching')}>
+                {m.autoSettings}
+              </button>
+            </>
+          )}
+        </p>
         {/* Заявки, чьи данные поправили после закрепления: их предложения устарели, но молча не меняются. */}
         {changed.length > 0 && (
           <p className={styles.matchingWarn}>
@@ -65,41 +80,24 @@ export function MatchingPanel({
         <Button disabled={busy} onClick={() => setConfirming(true)}>
           {act.pending === 'rerun' ? m.rerunning : m.rerun}
         </Button>
-        <div className={styles.switchBox}>
+        {showHelper && dock && (
           <button
             type="button"
-            role="switch"
-            aria-checked={matching.auto}
-            aria-describedby={act.canToggle ? undefined : noteId}
-            className={styles.switch}
-            disabled={busy || !act.canToggle}
-            onClick={() => void act.setAuto(!matching.auto)}
+            className={styles.helperIcon}
+            title={helperLabel}
+            aria-label={helperLabel}
+            aria-busy={dock.review.pending}
+            onClick={() => dock.open('review')}
           >
-            <span className={styles.switchTrack} aria-hidden="true">
-              <span className={styles.switchThumb} />
-            </span>
-            <span>{m.auto}</span>
+            <span aria-hidden="true">✦</span>
+            {assistant.available && assistant.enabled && assistant.review.length > 0 && (
+              <span aria-hidden="true" className={styles.helperBadge}>
+                {assistant.review.length}
+              </span>
+            )}
           </button>
-          {!act.canToggle && (
-            <span id={noteId} className={styles.note}>
-              {m.superOnly}
-            </span>
-          )}
-        </div>
+        )}
       </div>
-
-      <AssistantRun status={assistant} run={helper} locked={act.pending !== null} />
-
-      {helper.notice &&
-        (helper.notice.kind === 'error' ? (
-          <p className={styles.noticeError} role="alert">
-            {helper.notice.text}
-          </p>
-        ) : (
-          <p className={styles.noticeOk} role="status">
-            {helper.notice.text}
-          </p>
-        ))}
       {act.notice &&
         (act.notice.kind === 'error' ? (
           <p className={styles.noticeError} role="alert">

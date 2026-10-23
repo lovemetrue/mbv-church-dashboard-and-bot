@@ -54,18 +54,20 @@ function Shell() {
       <a className={styles.skip} href="#tabpanel">
         {ru.skipToContent}
       </a>
-      <Header />
-      <Tabs />
-      <main id={PANEL_ID} role="tabpanel" aria-labelledby={tabDomId(nav.tab)} tabIndex={-1} className={styles.main}>
-        {nav.tab === 'today' && <TodayScreen />}
-        {nav.tab === 'requests' && <RequestsScreen />}
-        {nav.tab === 'groups' && <GroupsScreen />}
-        {nav.tab === 'kits' && <KitsScreen />}
-        {nav.tab === 'team' && <TeamScreen />}
-        {nav.tab === 'reference' && <ReferenceScreen />}
-        {nav.tab === 'settings' && <SettingsRoute />}
-      </main>
-      <AssistantChat />
+      {/* Помощник — снаружи вкладок: его окно открывается и плавающей кнопкой, и значком ✦ в блоке подбора. */}
+      <AssistantChat>
+        <Header />
+        <Tabs />
+        <main id={PANEL_ID} role="tabpanel" aria-labelledby={tabDomId(nav.tab)} tabIndex={-1} className={styles.main}>
+          {nav.tab === 'today' && <TodayScreen />}
+          {nav.tab === 'requests' && <RequestsScreen />}
+          {nav.tab === 'groups' && <GroupsScreen />}
+          {nav.tab === 'kits' && <KitsScreen />}
+          {nav.tab === 'team' && <TeamScreen />}
+          {nav.tab === 'reference' && <ReferenceScreen />}
+          {nav.tab === 'settings' && <SettingsRoute />}
+        </main>
+      </AssistantChat>
     </div>
   );
 }

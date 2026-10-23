@@ -20,7 +20,7 @@ import { CONTACT_LABEL } from '../../core/csv.js';
 import type { GroupDraftView } from '../contracts.js';
 import type {
   Bucket, Candidate, Counters, CoordinatorItem, CoordinatorsView, GroupBrief, GroupItem, GroupsView,
-  HealthItem, LogEntry, MatchingStatus, NoPlan, StrangeMark, DataChange, OriginalField, ParamInfo, RequestTableFields, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, GroupMember, OtherItem, Prospects, ProspectItem, RequestsView, TeamView, TodayView,
+  HealthItem, LogEntry, MatchingStatus, NoPlan, StrangeMark, DataChange, OriginalField, ParamInfo, RequestTableFields, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, AssistantReviewItem, GroupMember, OtherItem, Prospects, ProspectItem, RequestsView, TeamView, TodayView,
 } from '../contracts.js';
 import type {
   Day, PlanEngineApi, PlanEntry, PlanEntryProposal, PlanGroup, PlanOutput, PlanRequest, ScoredGroup, Slot,
@@ -651,17 +651,32 @@ export function buildViewsWithPlan(
   /** Разбор помощника для карточки: что он определил (проверьте) и что советует спросить. */
   const assistantNote = (r: DashboardRequest): AssistantNote | null => {
     const { hint, filled } = resolveWithHint(r);
-    if (!hint || (filled.length === 0 && hint.questions.length === 0)) return null;
-    return { filled, questions: [...hint.questions] };
+    if (!hint || (filled.length === 0 && hint.questions.length === 0 && !hint.note)) return null;
+    return { filled, questions: [...hint.questions], note: hint.note ?? null };
   };
 
   // Что помощник может разобрать сейчас: открытые заявки, где в записи есть текст, а скрипт его не понял, и разбора ещё нет.
   const assistantCandidates: AssistantCandidate[] = [];
+  // Окно «ИИ-разбор»: разобранные, где чего-то не хватает (ждут служителя), и ещё не разобранные.
+  const reviewed: AssistantReviewItem[] = [];
+  const unreviewed: AssistantReviewItem[] = [];
   for (const r of openRequests) {
     const resolved = resolveWithHint(r);
+    if (!anyNeed(resolved.needs)) continue;
+    const b = briefOf(r);
+    const missing = (['район', 'возраст', 'время'] as const).filter((f, i) =>
+      [resolved.needs.district, resolved.needs.age, resolved.needs.time][i] && !resolved.filled.includes(f));
+    const item = (state: AssistantReviewItem['state']): AssistantReviewItem => ({
+      requestId: r.id, fio: nonBlank(r.fio) ?? 'Без имени', state, missing, filled: resolved.filled,
+      questions: [...(resolved.hint?.questions ?? [])], note: resolved.hint?.note ?? null,
+      place: b.place, age: b.age, schedule: b.schedule,
+    });
     // Помощнику уходит и то, что скрипт уже понял (район, дни, время суток), чтобы он не разбирал это заново.
-    if (!resolved.hint && anyNeed(resolved.needs)) {
-      assistantCandidates.push({ id: r.id, brief: briefOf(r), needs: resolved.needs, script: scriptFactsOf(resolved.script) });
+    if (!resolved.hint) {
+      assistantCandidates.push({ id: r.id, brief: b, needs: resolved.needs, script: scriptFactsOf(resolved.script) });
+      unreviewed.push(item('new'));
+    } else if (missing.length > 0) {
+      reviewed.push(item('reviewed'));
     }
   }
 
@@ -1041,7 +1056,7 @@ export function buildViewsWithPlan(
       items: requestItems,
       counters,
       others: [...otherOpen, ...otherClosed],
-      assistant: { available: input.assistant?.available ?? false, enabled: input.assistant?.enabled ?? false, pending: assistantCandidates.length },
+      assistant: { available: input.assistant?.available ?? false, enabled: input.assistant?.enabled ?? false, pending: assistantCandidates.length, review: [...reviewed, ...unreviewed] },
     },
     groups: { generatedAt, items: groupItems },
     people: { generatedAt, items: people },

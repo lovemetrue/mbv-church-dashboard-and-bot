@@ -10,9 +10,9 @@ const a = ru.requests.assistant;
 /** Через сколько убрать «Скопировано»: подтверждение нужно на мгновение. */
 const COPIED_MS = 4000;
 
-/** Есть ли что показать в карточке: определённые поля или вопросы. Пустой разбор блока не заслуживает. */
+/** Есть ли что показать в карточке: определённые поля, вопросы или пояснение. Пустой разбор блока не заслуживает. */
 export const hasAssistantNote = (note: AssistantNote | null): note is AssistantNote =>
-  note !== null && (note.filled.length > 0 || note.questions.length > 0);
+  note !== null && (note.filled.length > 0 || note.questions.length > 0 || note.note !== null);
 
 /**
  * Блок «Помощник» в карточке заявки: что он определил вместо скрипта (с обязательным «проверьте» — это догадка модели,
@@ -50,6 +50,8 @@ export function AssistantNoteBlock({ note }: { note: AssistantNote | null }) {
             {note.filled.join(', ')} — <b className={styles.assistantCheck}>{a.check}</b>
           </p>
         )}
+        {/* Пояснение помощника: почему он чего-то не определил. Без него пустой разбор выглядел бы как поломка. */}
+        {note.note && <p className={styles.assistantNoteText}>{note.note}</p>}
         {note.questions.length > 0 && (
           <>
             <h4 id={listId} className={styles.h4}>

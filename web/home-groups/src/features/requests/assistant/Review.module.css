@@ -1,0 +1,122 @@
+/* Вкладка «Разбор заявок» окна помощника: заявки, где помощнику не хватило данных. */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.listTitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.freshNote {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.cardTitle {
+  margin: 0;
+  font-size: 14px;
+}
+.fio {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.missing {
+  margin: 0;
+  font-weight: 600;
+  color: var(--warn);
+}
+.wrote {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+}
+.wrote:empty {
+  display: none;
+}
+.note,
+.noNote {
+  margin: 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--line);
+}
+.noNote {
+  color: var(--muted);
+}
+.filled {
+  margin: 0;
+}
+.filled b {
+  color: var(--warn);
+}
+.label {
+  margin: 0 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.questions ul {
+  margin: 0 0 4px;
+  padding-left: 18px;
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+.hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.answer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line-soft);
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.field select,
+.field input {
+  min-height: var(--tap);
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+}
+.error {
+  margin: 0;
+  color: var(--crit);
+}

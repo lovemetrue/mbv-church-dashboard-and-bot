@@ -14,7 +14,7 @@ export interface RawBrief {
 const MAX_FIELD = 120;
 
 /** Вырезает из текста номера телефонов, почты, ссылки и @ники; длинные цифры тоже (id, документы). */
-export function scrub(text: string | null | undefined): string | null {
+export function scrub(text: string | null | undefined, max = MAX_FIELD): string | null {
   if (!text) return null;
   const cleaned = text
     .replace(/https?:\/\/\S+|www\.\S+/gi, ' ')
@@ -24,7 +24,7 @@ export function scrub(text: string | null | undefined): string | null {
     .replace(/\d{5,}/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  return cleaned === '' ? null : cleaned.slice(0, MAX_FIELD);
+  return cleaned === '' ? null : cleaned.slice(0, max);
 }
 
 /** Отпечаток записи, по которой сделан разбор: изменилась запись — разбор не применяется. */

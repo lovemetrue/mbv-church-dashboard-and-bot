@@ -40,10 +40,11 @@ describe('страница /registration: что на экране', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  test('данные приложения не запрашиваются: уходит только справочник формы', async () => {
+  test('данные приложения не запрашиваются: уходят только справочник формы и уровень входа', async () => {
     const fetchMock = await openPage();
-    expect(getPaths(fetchMock)).toEqual(['form-meta']);
-    for (const path of ['today', 'requests', 'groups', 'people', 'coordinators', 'team', 'me']) {
+    // «me» нужен, чтобы не показать «Группу» входу «Стойка регистрации»; в нём нет данных людей.
+    expect([...new Set(getPaths(fetchMock))].sort()).toEqual(['form-meta', 'me']);
+    for (const path of ['today', 'requests', 'groups', 'people', 'coordinators', 'team']) {
       expect(getsOf(fetchMock, path)).toBe(0);
     }
   });
@@ -64,7 +65,7 @@ describe('страница /registration: что на экране', () => {
 
   test('адрес со слэшем на конце — та же страница', async () => {
     const fetchMock = await openPage({}, '/registration/');
-    expect(getPaths(fetchMock)).toEqual(['form-meta']);
+    expect([...new Set(getPaths(fetchMock))].sort()).toEqual(['form-meta', 'me']);
   });
 
   test('обычные адреса приложения не превращаются в страницу регистрации', async () => {
@@ -126,7 +127,7 @@ describe('страница /registration: регистрация', () => {
     // Страница по-прежнему не просит данных приложения, даже после сохранения: регистрация помечает устаревшими
     // и списки заявок, но их здесь никто не читает; справочник формы перечитаться может.
     await waitFor(() => expect(getsOf(fetchMock, 'form-meta')).toBeGreaterThanOrEqual(1));
-    expect([...new Set(getPaths(fetchMock))]).toEqual(['form-meta']);
+    expect([...new Set(getPaths(fetchMock))].sort()).toEqual(['form-meta', 'me']);
     await user.click(screen.getByRole('button', { name: 'Зарегистрировать ещё' }));
     expect(fio()).toHaveValue('');
     expect(phone()).toHaveValue('');
@@ -149,7 +150,7 @@ describe('стойка: группа и наборы на той же стран
   test('«Группа» открывает форму новой группы; после создания — код группы и «Завести ещё группу»', async () => {
     const fetchMock = await openPage({ 'groups/create': () => json({ ok: true, id: 57 }) });
     const user = userEvent.setup();
-    await user.click(within(screen.getByRole('group', { name: 'Кого регистрируем' })).getByRole('button', { name: 'Группа' }));
+    await user.click(within(await screen.findByRole('group', { name: 'Кого регистрируем' })).getByRole('button', { name: 'Группа' }));
     expect(currentSearch().get('what')).toBe('group');
     await user.type(await screen.findByRole('textbox', { name: 'ФИО ведущего' }), 'Ольга Крылова');
     await user.selectOptions(screen.getByRole('combobox', { name: 'Район' }), 'Приморский');
@@ -158,6 +159,23 @@ describe('стойка: группа и наборы на той же стран
     expect(posts(fetchMock)).toEqual([{ path: 'groups/create', body: { fields: expect.objectContaining({ leader: 'Ольга Крылова', district: 'Приморский', direction: 'Основное служение' }) } }]);
     await user.click(screen.getByRole('button', { name: 'Завести ещё группу' }));
     expect(screen.getByRole('textbox', { name: 'ФИО ведущего' })).toHaveValue('');
+  });
+
+  test('вход «Стойка регистрации» регистрирует только участников: выбора «Группа» нет, и ?what=group его не открывает', async () => {
+    const fetchMock = await openPage({ me: () => json({ role: 'registration' }) }, `${PAGE}?what=group`);
+    await waitFor(() => expect(getsOf(fetchMock, 'me')).toBeGreaterThan(0));
+    expect(fio()).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Кого регистрируем' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'ФИО ведущего' })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Наборы' })).toBeInTheDocument();
+  });
+
+  test('вход «Стойка регистрации» по адресу приложения возвращается на свою страницу', async () => {
+    // Оболочка не ждёт «me» (иначе всем открывалась бы медленнее): пока он идёт, её запросы уходят и получают 403 сервера.
+    stubFetchWithFixtures({ me: () => json({ role: 'registration' }) });
+    renderAt(<App />, '/?tab=reference');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Стойка регистрации' })).toBeInTheDocument();
+    expect(screen.queryByRole('tablist', { name: 'Разделы' })).not.toBeInTheDocument();
   });
 
   test('вкладка «Наборы» — выдача наборов; данные остальных разделов не запрашиваются', async () => {

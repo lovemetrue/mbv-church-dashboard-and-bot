@@ -1,11 +1,11 @@
 import { useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useMe } from '../shared/api/queries';
 import { ru } from '../shared/i18n/ru';
 import { useAppNav } from '../shared/nav';
 import { LoadingState } from '../shared/ui';
 import { AssistantChat } from '../features/assistant-chat';
-import { isRegistrationPath, RegistrationPage } from '../features/create/RegistrationPage';
+import { isRegistrationPath, REGISTRATION_PATH, RegistrationPage } from '../features/create/RegistrationPage';
 import { RequestsScreen } from '../features/requests/RequestsScreen';
 import { GroupsScreen } from '../features/groups/GroupsScreen';
 import { KitsScreen } from '../features/kits/KitsScreen';
@@ -43,7 +43,11 @@ function SettingsRoute() {
  */
 export function App() {
   const { pathname } = useLocation();
+  const me = useMe();
   if (isRegistrationPath(pathname)) return <RegistrationPage />;
+  // Стойке регистрации остальные разделы закрыты (сервер отвечает 403 и сам уводит её на `/registration` при загрузке):
+  // сюда она попадёт разве что переходом внутри приложения — возвращаем на её страницу.
+  if (me.data?.role === 'registration') return <Navigate to={REGISTRATION_PATH} replace />;
   return <Shell />;
 }
 

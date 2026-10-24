@@ -96,13 +96,13 @@ describe('кнопка «Помощник»', () => {
   });
 
   test('не показывается на странице регистрации для волонтёров', async () => {
-    // Страница регистрации самой «me» не читает; если бы кнопка там была, она читала бы её сама. Поэтому ждём ответа и там.
+    // Страница читает «me» (уровень входа решает, показать ли «Группу»): ждём ответа, кнопка не появляется и после него.
     const fetchMock = open({}, CHAT_ME, '/registration');
     await screen.findByRole('heading', { level: 1 });
+    await waitFor(() => expect(fetchMock.mock.calls.some(([u]) => String(u).endsWith('/me'))).toBe(true));
     await act(async () => {
       await new Promise((r) => setTimeout(r, 100));
     });
-    expect(fetchMock.mock.calls.some(([u]) => String(u).endsWith('/me'))).toBe(false);
     expect(screen.queryByRole('button', { name: 'Помощник' })).not.toBeInTheDocument();
   });
 

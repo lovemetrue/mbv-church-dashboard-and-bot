@@ -2,6 +2,7 @@ import { useId, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { FormMeta } from '@contracts';
 import { LOGOUT_URL } from '../../shared/api/base';
+import { useMe } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
 import { Button } from '../../shared/ui';
 import { KitsScreen } from '../kits/KitsScreen';
@@ -24,7 +25,8 @@ type What = 'person' | 'group';
 
 /**
  * «Стойка регистрации» — закрытое пространство для команды на месте, по отдельной ссылке: две вкладки — регистрация
- * (участника или новой группы) и выдача наборов. Ни шапки, ни остальных вкладок, ни поиска: в толпе люди не должны
+ * (участника или новой группы) и выдача наборов. Вход с уровнем «Стойка регистрации» регистрирует только участников:
+ * выбора «Группа» у него нет (и сервер такому входу группу создать не даст), пока уровень не известен — тоже нет. Ни шапки, ни остальных вкладок, ни поиска: в толпе люди не должны
  * путаться в разделах. Данные приложения здесь не запрашиваются — только справочники формы, а на вкладке «Наборы» —
  * её счётчики. Вкладка и что регистрируем запоминаются в адресе: обновили страницу — остались там же.
  * «Выйти» — обычная форма POST, как в шапке.
@@ -32,7 +34,9 @@ type What = 'person' | 'group';
 export function RegistrationPage() {
   const [params, setParams] = useSearchParams();
   const view: View = params.get('view') === 'kits' ? 'kits' : 'register';
-  const what: What = params.get('what') === 'group' ? 'group' : 'person';
+  const role = useMe().data?.role;
+  const canGroup = role === 'admin' || role === 'super';
+  const what: What = canGroup && params.get('what') === 'group' ? 'group' : 'person';
   const go = (next: { view?: View; what?: What }) => {
     const v = next.view ?? view;
     const w = next.what ?? what;
@@ -74,13 +78,15 @@ export function RegistrationPage() {
           <KitsScreen />
         ) : (
           <>
-            <div role="group" aria-label={t.whatLabel} className={styles.stationWhat}>
-              {(['person', 'group'] as const).map((w) => (
-                <button key={w} type="button" aria-pressed={what === w} className={styles.stationWhatBtn} onClick={() => go({ what: w })}>
-                  {w === 'person' ? t.whatPerson : t.whatGroup}
-                </button>
-              ))}
-            </div>
+            {canGroup && (
+              <div role="group" aria-label={t.whatLabel} className={styles.stationWhat}>
+                {(['person', 'group'] as const).map((w) => (
+                  <button key={w} type="button" aria-pressed={what === w} className={styles.stationWhatBtn} onClick={() => go({ what: w })}>
+                    {w === 'person' ? t.whatPerson : t.whatGroup}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className={styles.standaloneCard}>
               <FormMetaContent>
                 {(meta) => (what === 'group' ? <GroupFlow meta={meta} /> : <RegistrationFlow meta={meta} />)}

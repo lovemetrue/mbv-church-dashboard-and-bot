@@ -330,6 +330,33 @@ describe('«Справочник»: экран', () => {
     expect(within(card).getByText('Выдан 08.10.2026')).toBeInTheDocument();
   });
 
+  test('над списком координаторов — «+ Добавить координатора»: форма с ролями, после сохранения открывается его карточка', async () => {
+    const fetchMock = stubFetchWithFixtures({ 'coordinators/create': () => json({ ok: true, id: 1 }) });
+    const user = userEvent.setup();
+    renderAt(<App />, '/?tab=reference&ent=coordinators');
+    await screen.findByRole('table');
+    await user.click(screen.getByRole('button', { name: '+ Добавить координатора' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Новый координатор' });
+    await user.type(within(dialog).getByRole('textbox', { name: 'ФИО' }), 'Иван Сидоров');
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Координатор' }));
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Распределитель' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Добавить координатора' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Новый координатор' })).not.toBeInTheDocument());
+    const sent = (fetchMock.mock.calls as unknown as [string, RequestInit | undefined][]).filter(([, init]) => init?.method === 'POST');
+    expect(sent.map(([url, init]) => [String(url).replace(/^.*\/api\/v1\//, ''), JSON.parse(String(init!.body))])).toEqual([
+      ['coordinators/create', { fields: { name: 'Иван Сидоров', roleIds: '1, 3' } }],
+    ]);
+    expect(currentSearch().get('rec')).toBe('1');
+    expect(await screen.findByRole('dialog', { name: /Карточка координатора/ })).toBeInTheDocument();
+  });
+
+  test('у групп и людей кнопки «Добавить координатора» нет', async () => {
+    stubFetchWithFixtures();
+    renderAt(<App />, '/?tab=reference&ent=people');
+    await screen.findByRole('table');
+    expect(screen.queryByRole('button', { name: '+ Добавить координатора' })).not.toBeInTheDocument();
+  });
+
   test('координатор: карточка показывает его группы', async () => {
     stubFetchWithFixtures();
     renderAt(<App />, '/?tab=reference&ent=coordinators&rec=1');

@@ -1,5 +1,6 @@
 import type { TeamRoleKind } from './coordinators.repo.js';
 import type { Pool, PoolClient } from 'pg';
+import type { Role } from '../../dashboard/sessions.js';
 
 export interface StaffRow {
   id: number;
@@ -7,7 +8,7 @@ export interface StaffRow {
   full_name: string;
   /** null — заведён из справочника команды (миграция 048): почты нет, вход по логину и выданному паролю. */
   email: string | null;
-  role: 'admin' | 'super';
+  role: Role;
   password_hash: string | null;
   active: boolean;
   session_version: number;
@@ -117,7 +118,7 @@ export class StaffRepo {
     return new Set(rows.map((r) => r.login.toLowerCase()));
   }
 
-  async create(input: { login: string; fullName: string; email: string; role: 'admin' | 'super' }, actor: string): Promise<StaffRow> {
+  async create(input: { login: string; fullName: string; email: string; role: Role }, actor: string): Promise<StaffRow> {
     return this.tx(async (c) => {
       let id: number;
       try {
@@ -139,7 +140,7 @@ export class StaffRepo {
 
   /** Правка данных. Отключение и смена роли повышают версию сессий: прежние входы человека закрываются. */
   async update(
-    id: number, patch: { fullName?: string; email?: string; role?: 'admin' | 'super'; active?: boolean }, actor: string,
+    id: number, patch: { fullName?: string; email?: string; role?: Role; active?: boolean }, actor: string,
   ): Promise<StaffRow | null> {
     return this.tx(async (c) => {
       const { rows: before } = await c.query<StaffRow>(`SELECT ${COLUMNS} FROM staff WHERE id = $1 FOR UPDATE`, [id]);

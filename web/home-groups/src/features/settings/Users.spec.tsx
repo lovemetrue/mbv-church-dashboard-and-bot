@@ -248,6 +248,20 @@ describe('«Пользователи и роли»: добавление', () =>
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  test('третий уровень — «Стойка регистрации»: с пояснением, что открыта только страница стойки', async () => {
+    const { fetchMock, user, dialog } = await openAdd({
+      'settings/staff/suggest': () => json({ ok: true, login: 'stoika' }),
+      'settings/staff/create': () => json(sentOk('desk@example.org')),
+    });
+    await fillAdd(user, dialog, 'Стойка Вход', 'desk@example.org');
+    const desk = within(dialog).getByRole('radio', { name: 'Стойка регистрации' });
+    expect(desk).toHaveAccessibleDescription(/регистрация участника и выдача наборов/);
+    await user.click(desk);
+    await user.click(within(dialog).getByRole('button', { name: 'Добавить' }));
+    await screen.findByText('Письмо отправлено на desk@example.org');
+    expect(posts(fetchMock).find((p) => p.path === 'settings/staff/create')?.body).toMatchObject({ role: 'registration' });
+  });
+
   test('роль по умолчанию «Обычный», пустой логин в запрос не попадает', async () => {
     const { fetchMock, user, dialog } = await openAdd({
       'settings/staff/suggest': () => json({ error: 'bad_request', message: 'нет' }, 400),

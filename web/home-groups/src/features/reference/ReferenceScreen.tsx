@@ -18,6 +18,7 @@ import {
 import { downloadCsv, toCsv } from '../../shared/csv';
 import { ru } from '../../shared/i18n/ru';
 import { ENTITY_IDS, useAppNav, type EntityId } from '../../shared/nav';
+import { CoordinatorDialog } from '../create/CreateDialog';
 import { Button, Chip, ErrorState, LoadingState, Popover } from '../../shared/ui';
 import { CoordinatorCard, GroupCard, PersonCard } from './Cards';
 import { coordinatorsConfig, groupsConfig, myGroupsPreset, peopleConfig, type EntityConfig } from './config';
@@ -76,9 +77,35 @@ export function ReferenceScreen() {
           query={coordinators}
           items={coordinators.data?.items}
           renderCard={(c, close) => <CoordinatorCard c={c} onClose={close} />}
+          actions={<AddCoordinator />}
         />
       )}
     </div>
+  );
+}
+
+/**
+ * «+ Добавить координатора» прямо над списком координаторов: нового человека команды заводят там, где его ищут, а не
+ * через меню «+ Создать» в шапке. После сохранения открывается его карточка — сразу видно, что он в списке.
+ */
+function AddCoordinator() {
+  const nav = useAppNav();
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button size="sm" variant="primary" onClick={() => setOpen(true)}>
+        {ru.reference.addCoordinator}
+      </Button>
+      {open && (
+        <CoordinatorDialog
+          onClose={() => setOpen(false)}
+          onCreated={(id) => {
+            setOpen(false);
+            nav.openRecord(String(id));
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -118,9 +145,11 @@ interface EntityViewProps<T> {
   renderCard: (item: T, close: () => void) => React.ReactNode;
   /** Блок под таблицей (у групп — карта). */
   extra?: React.ReactNode;
+  /** Кнопки справа в строке инструментов (у координаторов — «Добавить координатора»). */
+  actions?: React.ReactNode;
 }
 
-function EntityView<T>({ config, query, items, renderCard, extra }: EntityViewProps<T>) {
+function EntityView<T>({ config, query, items, renderCard, extra, actions }: EntityViewProps<T>) {
   const nav = useAppNav();
   const { state, setState, columns } = useTableState(config);
   const [views, setViews] = useState<SavedView[]>(() => loadViews(config.id));
@@ -196,6 +225,7 @@ function EntityView<T>({ config, query, items, renderCard, extra }: EntityViewPr
         <Button size="sm" onClick={exportCsv} disabled={shown === 0}>
           {ru.reference.exportCsv}
         </Button>
+        {actions}
       </div>
 
       {state.filters.length > 0 && (

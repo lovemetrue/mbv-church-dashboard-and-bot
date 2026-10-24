@@ -8,7 +8,7 @@ import u from './Users.module.css';
 
 const t = ru.settings.users;
 
-const ROLES: readonly Role[] = ['admin', 'super'];
+const ROLES: readonly Role[] = ['admin', 'super', 'registration'];
 
 /** То, что вводят в форме «Добавить» и «Изменить». */
 export interface StaffFormValues {

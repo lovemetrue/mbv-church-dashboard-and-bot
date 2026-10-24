@@ -59,8 +59,11 @@ function RecordDialogForm({
   );
 }
 
-/** «Новый координатор»: роль выбирается из справочника ролей, поэтому окно ждёт списки сервера, как остальные. */
-function CoordinatorDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (id: number) => void }) {
+/**
+ * «Новый координатор»: роль выбирается из справочника ролей, поэтому окно ждёт списки сервера, как остальные.
+ * Открывается и из меню «+ Создать», и кнопкой над таблицей «Справочник → Координаторы».
+ */
+export function CoordinatorDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (id: number) => void }) {
   // Пока идёт отправка, окно не закрывается: запись всё равно создастся, а человек не узнал бы, чем кончилось.
   const busy = useRef(false);
   const close = () => !busy.current && onClose();

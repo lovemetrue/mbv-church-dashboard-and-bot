@@ -395,6 +395,24 @@ describe('правка и отключение', () => {
     expect((await c.auth.login(PASSWORD, '8.8.8.9', 'p_ivanova')).ok).toBe(true);
   });
 
+  test('уровень «Стойка регистрации» заводится и назначается, вход отдаёт его как есть; незнакомый уровень — отказ', async () => {
+    const c = setup();
+    const made = await activePerson(c, { role: 'registration' });
+    const enter = (ip: string) => c.auth.login(PASSWORD, ip, made.login);
+    const login = await enter('8.8.8.8');
+    expect(login).toMatchObject({ ok: true, role: 'registration' });
+    expect(await c.auth.roleOf(login.sid)).toBe('registration');
+    expect((await c.service.view()).items.find((i) => i.id === made.id)?.role).toBe('registration');
+
+    await c.service.update({ id: made.id, role: 'admin' }, 'super_mbv_admin');
+    expect(await c.auth.verify(login.sid)).toBe(false);
+    await c.service.update({ id: made.id, role: 'registration' }, 'super_mbv_admin');
+    expect(await c.auth.roleOf((await enter('8.8.8.9')).sid)).toBe('registration');
+
+    expect(await c.service.update({ id: made.id, role: 'boss' }, 'super_mbv_admin')).toMatchObject({ ok: false, error: 'bad_request' });
+    expect(await c.service.create({ ...POLINA, email: 'x@church.example', role: 'boss' }, 'super_mbv_admin')).toMatchObject({ ok: false, error: 'bad_request' });
+  });
+
   test('самого себя отключить или понизить нельзя', async () => {
     const c = setup();
     const made = await activePerson(c, { role: 'super' });

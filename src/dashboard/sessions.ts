@@ -12,7 +12,11 @@ export interface SessionStore {
   incr(key: string, ttlSeconds: number): Promise<number>;
 }
 
-export type Role = 'admin' | 'super';
+/**
+ * Уровень входа. `registration` — «Стойка регистрации»: только личный вход из «Пользователей» нового интерфейса,
+ * пускает лишь на `/registration` (регистрация участника и выдача наборов). Общие логины его не выдают.
+ */
+export type Role = 'admin' | 'super' | 'registration';
 
 export interface SessionOptions {
   /** Пароль обычного входа (логин `login`): всё, кроме удаления. */

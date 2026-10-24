@@ -197,6 +197,20 @@ const GROUP_DRAFT_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/group-draft$/;
 const LOGO_PATH = '/api/v1/assets/church-logo.png';
 const MATCHING_PATH = /^\/api\/v1\/matching\/(run|auto|rerun-all)$/;
 
+/**
+ * Что открыто входу «Стойка регистрации»: ровно то, что нужно странице `/registration` — кто вошёл, справочники формы,
+ * регистрация участника с её карточкой и QR, выдача наборов. Остальное (заявки, группы, справочник, создание группы,
+ * «Настройки», помощник) отвечает 403: интерфейс эти разделы такому входу не показывает, а закрывает их сервер.
+ */
+function deskAllows(method: string, path: string): boolean {
+  if (method === 'POST') return path === '/api/v1/people/create' || KIT_POST_PATH.test(path);
+  if (method !== 'GET') return false;
+  return path === '/api/v1/me' || path === '/api/v1/form-meta' || path === KITS_PATH || path === LOGO_PATH || PERSON_PATH.test(path);
+}
+
+/** Адрес страницы регистрации? Слэш на конце не мешает — так же решает интерфейс (`isRegistrationPath`). */
+const isRegistrationPage = (path: string): boolean => path.replace(/\/+$/, '') === REGISTRATION_PATH;
+
 /** `POST /api/v1/requests/12/approve`: номер заявки — цифры, длиннее пятнадцати не бывает (Number безопасен). */
 const ACTION_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/(approve|reject|need-call|params|rematch|edit|assign|call|delete|close|reopen|reconcile|strange)$/;
 
@@ -397,7 +411,8 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     }
     logger.info({ ip, role: result.role }, 'домашние группы: вход выполнен');
     // Вернуть можно только на страницу регистрации: произвольный адрес в `next` был бы открытым перенаправлением.
-    redirect(res, next ?? '/', { 'set-cookie': cookie(result.sid!, deps.sessionTtlSeconds) });
+    // Стойку регистрации — всегда туда: другие разделы ей закрыты.
+    redirect(res, result.role === 'registration' ? REGISTRATION_PATH : next ?? '/', { 'set-cookie': cookie(result.sid!, deps.sessionTtlSeconds) });
   }
 
   /**
@@ -832,6 +847,12 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
   }
 
   async function handleApi(req: IncomingMessage, res: ServerResponse, path: string, sid: string | undefined): Promise<void> {
+    // Стойка регистрации закрыта одним местом, до разбора маршрутов: новый маршрут ей недоступен, пока его не впишут
+    // в `deskAllows`, — а не открыт, пока о ней не вспомнят.
+    if ((await deps.auth.roleOf(sid)) === 'registration' && !deskAllows(req.method ?? 'GET', path)) {
+      sendJson(res, 403, { error: 'forbidden', message: 'Стойке регистрации доступны только регистрация участника и выдача наборов.' } satisfies ActionError);
+      return;
+    }
     const act = req.method === 'POST' ? ACTION_PATH.exec(path) : null;
     if (act) { await handleAction(req, res, Number(act[1]), act[2]!, sid); return; }
     const settingsPost = req.method === 'POST' ? SETTINGS_POST_PATH.exec(path) : null;
@@ -1049,6 +1070,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
 
       // Адрес страницы интерфейса (маршруты рисует сам интерфейс): отдаём index.html, но только своим.
       if (!(await deps.auth.verify(sid))) { redirect(res, path === REGISTRATION_PATH ? `/login?next=${REGISTRATION_PATH}` : '/login'); return; }
+      if (!isRegistrationPage(path) && (await deps.auth.roleOf(sid)) === 'registration') { redirect(res, REGISTRATION_PATH); return; }
       const index = await readIfFile(resolve(deps.webDir, 'index.html'));
       if (!index) {
         sendText(res, 503, 'Интерфейс не собран.');

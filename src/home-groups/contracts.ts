@@ -98,7 +98,11 @@
  *   POST /api/v1/matching/auto          MatchingAutoBody → ActionOk | ActionError (только super, иначе 403 forbidden)
  */
 
-export type Role = 'admin' | 'super';
+/**
+ * Уровень входа. `registration` — «Стойка регистрации»: сервер пускает такой вход только на страницу `/registration`
+ * и отвечает 403 на всё, кроме регистрации участника, выдачи наборов и справочников формы (`deskAllows` в server.ts).
+ */
+export type Role = 'admin' | 'super' | 'registration';
 
 export interface Me {
   role: Role;

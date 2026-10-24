@@ -2,7 +2,7 @@ import type { TeamRoleKind } from '../../db/repos/coordinators.repo.js';
 import type { StaffRepo, StaffRow } from '../../db/repos/staff.repo.js';
 import { StaffConflict } from '../../db/repos/staff.repo.js';
 import type { SettingsRepo } from '../../db/repos/settings.repo.js';
-import type { SessionStore } from '../../dashboard/sessions.js';
+import type { Role, SessionStore } from '../../dashboard/sessions.js';
 import type {
   ActionError, DeliveryOk, GeneratePasswordOk, PersonalLoginsState, SettingsStaffView, StaffItem, StaffStatus, SuggestLoginOk,
   TeamAccountItem,
@@ -27,6 +27,8 @@ export const RESET_TTL_SECONDS = 2 * 3600;
 /** Сколько раз за час человек (или кто-то от его имени) может запросить сброс. */
 export const RESET_PER_HOUR = 3;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+/** Уровень входа: обычный, полный или «Стойка регистрации» (пускает только на `/registration`). */
+const isRole = (v: unknown): v is Role => v === 'admin' || v === 'super' || v === 'registration';
 
 export type StaffOutcome<T = object> = ({ ok: true } & T) | { ok: false; error: ActionError['error']; message: string };
 const bad = (message: string, error: ActionError['error'] = 'bad_request'): { ok: false; error: ActionError['error']; message: string } => ({ ok: false, error, message });
@@ -193,7 +195,7 @@ export function createStaffService(deps: StaffServiceDeps) {
       const { fullName, email, role, login } = body as Record<string, unknown>;
       if (typeof fullName !== 'string' || fullName.trim().length < 2 || fullName.trim().length > 120) return bad('Укажите ФИО (до 120 знаков).');
       if (typeof email !== 'string' || email.length > 254 || !EMAIL.test(email.trim())) return bad('Укажите корректную почту.');
-      if (role !== 'admin' && role !== 'super') return bad('Роль: «admin» (обычный) или «super» (полный).');
+      if (!isRole(role)) return bad('Роль: «admin» (обычный), «super» (полный) или «registration» (стойка регистрации).');
       if (login !== undefined && login !== null && typeof login !== 'string') return bad('Логин должен быть текстом.');
 
       const chosen = await usedLoginOrNew(fullName.trim(), typeof login === 'string' ? login : undefined);
@@ -215,7 +217,7 @@ export function createStaffService(deps: StaffServiceDeps) {
       if (typeof id !== 'number' || !Number.isInteger(id) || id < 1) return bad('Нужно указать пользователя.');
       if (fullName !== undefined && (typeof fullName !== 'string' || fullName.trim().length < 2 || fullName.trim().length > 120)) return bad('Укажите ФИО (до 120 знаков).');
       if (email !== undefined && (typeof email !== 'string' || email.length > 254 || !EMAIL.test(email.trim()))) return bad('Укажите корректную почту.');
-      if (role !== undefined && role !== 'admin' && role !== 'super') return bad('Неизвестная роль.');
+      if (role !== undefined && !isRole(role)) return bad('Неизвестная роль.');
       if (active !== undefined && typeof active !== 'boolean') return bad('Некорректное значение.');
 
       const current = await deps.staff.byId(id);
@@ -233,7 +235,7 @@ export function createStaffService(deps: StaffServiceDeps) {
         await deps.staff.update(id, {
           ...(typeof fullName === 'string' ? { fullName: fullName.trim() } : {}),
           ...(typeof email === 'string' ? { email: email.trim() } : {}),
-          ...(role === 'admin' || role === 'super' ? { role } : {}),
+          ...(isRole(role) ? { role } : {}),
           ...(typeof active === 'boolean' ? { active } : {}),
         }, actor);
       } catch (err) {

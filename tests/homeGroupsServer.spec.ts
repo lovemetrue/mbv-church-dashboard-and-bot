@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { createHomeGroupsServer } from '../src/home-groups/server.js';
 import { SessionService, type SessionStore } from '../src/dashboard/sessions.js';
+import type { AuthPort } from '../src/platform/auth/personalAuth.js';
 import { buildViews } from '../src/home-groups/api/views.js';
 import { createFakeEngine } from './helpers/fakePlanEngine.js';
 import type { ActionOutcome } from '../src/db/repos/placement.repo.js';
@@ -17,6 +18,8 @@ import type { ActionOutcome } from '../src/db/repos/placement.repo.js';
 
 const REGULAR = { login: 'mbv_admin', password: 'обычный-пароль' };
 const SUPER = { login: 'super_mbv_admin', password: 'супер-пароль-123' };
+/** Личный вход с уровнем «Стойка регистрации»: в бою его выдаёт PersonalAuth по строке staff, здесь — обёртка ниже. */
+const DESK = { login: 'stoika', password: 'пароль-стойки' };
 const INDEX_MARKER = 'ИНТЕРФЕЙС-ДОМАШНИХ-ГРУПП';
 const SECRET = 'СЕКРЕТ-ВНЕ-КАТАЛОГА-ИНТЕРФЕЙСА';
 
@@ -27,6 +30,23 @@ function memoryStore(): SessionStore {
     async get(k) { return data.get(k) ?? null; },
     async del(k) { data.delete(k); },
     async incr(k) { const n = Number(data.get(k) ?? 0) + 1; data.set(k, String(n)); return n; },
+  };
+}
+
+/** Общие входы как есть плюс вход стойки: его сессия обычная, а уровень `registration` помнит обёртка. */
+function withDesk(inner: SessionService): AuthPort {
+  const desk = new Set<string>();
+  return {
+    async login(password, ip, username) {
+      if (username !== DESK.login) return inner.login(password, ip, username);
+      if (password !== DESK.password) return { ok: false };
+      const sid = await inner.startSession('registration');
+      desk.add(sid);
+      return { ok: true, sid, role: 'registration' };
+    },
+    verify: (sid) => inner.verify(sid),
+    roleOf: async (sid) => (sid && desk.has(sid) ? 'registration' : inner.roleOf(sid)),
+    logout: (sid) => inner.logout(sid),
   };
 }
 
@@ -218,10 +238,10 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
     reportError: (source, err, context) => { reported.push({ source, message: err instanceof Error ? err.message : String(err), context }); },
     invalidateViews: () => { invalidations += 1; },
     actorName: (role) => (role === 'super' ? SUPER.login : REGULAR.login),
-    auth: new SessionService(memoryStore(), {
+    auth: withDesk(new SessionService(memoryStore(), {
       password: REGULAR.password, login: REGULAR.login, superPassword: SUPER.password, superLogin: SUPER.login,
       ttlSeconds: 600, maxAttempts: opts.maxAttempts ?? 50,
-    }),
+    })),
     views: () => { calls += 1; return views(); },
     sessionTtlSeconds: 600,
     secureCookie: opts.secureCookie ?? false,
@@ -1806,6 +1826,75 @@ describe('закрытие заявки, возврат в работу, рег�
       body: new URLSearchParams({ login: REGULAR.login, password: REGULAR.password, next: 'https://evil.example/' }),
     });
     expect(login.headers.get('location')).toBe('/');
+  });
+});
+
+describe('вход «Стойка регистрации»', () => {
+  const get = (cookie: string, path: string) => fetch(`${app.base}${path}`, { headers: { cookie }, redirect: 'manual' });
+  const postJson = (cookie: string, path: string, body: unknown) => fetch(`${app.base}/api/v1/${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: JSON.stringify(body),
+  });
+
+  test('после входа — сразу на страницу стойки, даже без next', async () => {
+    const r = await post(app.base, '/login', { login: DESK.login, password: DESK.password });
+    expect(r.status).toBe(302);
+    expect(r.headers.get('location')).toBe('/registration');
+  });
+
+  test('любой другой адрес интерфейса уводит на /registration, сама страница открывается', async () => {
+    const cookie = await signIn(DESK);
+    for (const path of ['/', '/requests', '/?tab=reference']) {
+      const r = await get(cookie, path);
+      expect(r.status).toBe(302);
+      expect(r.headers.get('location')).toBe('/registration');
+    }
+    for (const path of ['/registration', '/registration/']) {
+      const r = await get(cookie, path);
+      expect(r.status).toBe(200);
+      expect(await r.text()).toContain(INDEX_MARKER);
+    }
+  });
+
+  test('открыто то, что нужно стойке: уровень входа, справочники формы, наборы, карточка и QR регистрации', async () => {
+    const cookie = await signIn(DESK);
+    const me = await get(cookie, '/api/v1/me');
+    expect(me.status).toBe(200);
+    expect(await me.json()).toMatchObject({ role: 'registration' });
+    for (const path of ['/api/v1/form-meta', '/api/v1/kits', '/api/v1/people/5/card', '/api/v1/people/5/qr']) {
+      expect((await get(cookie, path)).status, path).toBe(200);
+    }
+    expect((await postJson(cookie, 'kits/find', { code: '1042' })).status).toBe(200);
+    expect((await postJson(cookie, 'kits/issue', { userId: 12 })).status).toBe(200);
+    expect(app.kitCalls.at(-1)).toEqual({ name: 'issue', body: { userId: 12 }, actor: 'mbv_admin' });
+  });
+
+  test('регистрация участника проходит; группу, заявку и координатора создать нельзя', async () => {
+    app.setCreate({ ok: true, id: 77 });
+    const cookie = await signIn(DESK);
+    const before = app.createCalls.length;
+    const ok = await postJson(cookie, 'people/create', { fields: { fio: 'Анна Петрова', phone: '+79110001122' } });
+    expect(ok.status).toBe(200);
+    expect(app.createCalls.length).toBe(before + 1);
+    for (const path of ['groups/create', 'requests/create', 'coordinators/create']) {
+      const r = await postJson(cookie, path, { fields: { leader: 'Ольга' } });
+      expect(r.status, path).toBe(403);
+      expect(await r.json()).toMatchObject({ error: 'forbidden' });
+    }
+    expect(app.createCalls.length).toBe(before + 1);
+  });
+
+  test('заявки, группы, справочник, «Настройки», выгрузка и помощник закрыты (403), и ничего не вызывается', async () => {
+    const cookie = await signIn(DESK);
+    const views = app.viewsCalls();
+    for (const path of [...API_ROUTES.filter((r) => r !== 'me').map((r) => `/api/v1/${r}`), '/api/v1/settings/staff', '/api/v1/export/people.csv', '/api/v1/campaign', '/api/v1/assistant/chat/history', '/api/v1/requests/1/group-draft']) {
+      expect((await get(cookie, path)).status, path).toBe(403);
+    }
+    const actions = app.actionCalls.length;
+    for (const path of ['requests/1/approve', 'groups/1/update', 'people/12/update', 'settings/staff/create', 'matching/run', 'assistant/chat', 'requests/bulk']) {
+      expect((await postJson(cookie, path, {})).status, path).toBe(403);
+    }
+    expect(app.viewsCalls()).toBe(views);
+    expect(app.actionCalls.length).toBe(actions);
   });
 });
 

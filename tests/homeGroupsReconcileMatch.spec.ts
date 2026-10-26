@@ -72,13 +72,25 @@ describe('поиск группы по ведущему', () => {
   });
 
   test('телефон точнее имени: совпал номер в любом формате и среди нескольких номеров в одной ячейке', () => {
-    expect(findGroups({ name: 'Раиса Иванова', phones: ['+7 981 803-47-05'] }, GROUPS)).toEqual([{ groupId: 1, tier: 'exact', by: 'phone', role: 'leader' }]);
+    expect(findGroups({ name: 'Раиса Воротникова', phones: ['+7 981 803-47-05'] }, GROUPS)).toEqual([{ groupId: 1, tier: 'exact', by: 'phone', role: 'leader' }]);
+    // Имя совпало, а фамилию назвали другую: это может быть кто угодно с тем же именем — решает человек.
+    expect(findGroups({ name: 'Раиса Иванова', phones: ['+7 981 803-47-05'] }, GROUPS)).toEqual([{ groupId: 1, tier: 'likely', by: 'phone', role: 'leader' }]);
     expect(findGroups({ name: null, phones: ['89112398191'] }, GROUPS).map((c) => c.groupId)).toEqual([20, 21]);
   });
 
   test('номер совпал, а имя с ведущим не имеет ничего общего (общий телефон семьи) — только «похоже»', () => {
     expect(findGroups({ name: 'Совсем Другое', phones: ['+7 981 803-47-05'] }, GROUPS)).toEqual([{ groupId: 1, tier: 'likely', by: 'phone', role: 'leader' }]);
     expect(planReconcile({ name: 'Совсем Другое', phones: ['+7 981 803-47-05'] }, GROUPS).status).toBe('choose');
+  });
+
+  test('номер совпал, но с ведущим общее только имя, а фамилия другая — только «похоже»: одно имя родства не доказывает', () => {
+    const novikovy = g(50, 'Новиковы Тамара и Владимир', ['+7 921 575-49-70']);
+    expect(findGroups({ name: 'Бутарев Владимир Иванович', phones: ['89215754970'] }, [novikovy]))
+      .toEqual([{ groupId: 50, tier: 'likely', by: 'phone', role: 'leader' }]);
+    expect(planReconcile({ name: 'Бутарев Владимир Иванович', phones: ['89215754970'] }, [novikovy]).status).toBe('choose');
+    // Фамилия совпала (жена, сын) — по-прежнему точно; назвали только имя без фамилии — тоже, как раньше.
+    expect(findGroups({ name: 'Новикова Тамара', phones: ['89215754970'] }, [novikovy])[0]!.tier).toBe('exact');
+    expect(findGroups({ name: 'Владимир', phones: ['89215754970'] }, [novikovy])[0]!.tier).toBe('exact');
   });
 
   test('номер совпал, а в имени есть слово ведущего (жена с телефоном мужа): точно', () => {

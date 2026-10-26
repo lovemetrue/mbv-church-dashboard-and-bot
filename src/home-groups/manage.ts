@@ -1,6 +1,6 @@
 import { parseCoordinatorForm, parseGroupForm } from '../dashboard/forms.js';
 import type { AuditRepo } from '../db/repos/audit.repo.js';
-import type { CoordinatorsRepo, RoleRef } from '../db/repos/coordinators.repo.js';
+import { CoordinatorTakenError, type CoordinatorPersonRef, type CoordinatorsRepo, type RoleRef } from '../db/repos/coordinators.repo.js';
 import type { TeamRolesRepo } from '../db/repos/teamRoles.repo.js';
 import type { GroupDirectionsRepo } from '../db/repos/groupDirections.repo.js';
 import type { GroupRow, GroupsRepo, PersonRef } from '../db/repos/groups.repo.js';
@@ -19,8 +19,14 @@ import { UNKNOWN_DIRECTION, fieldsToForm, knownDirection } from './create.js';
  */
 const fail = (error: 'bad_request' | 'not_found', message: string): ActionOutcome => ({ ok: false, error, message });
 
-/** Что в строке справочника команды правится: ФИО и роли (галочками из справочника или, в старом дашборде, одной ролью словами). */
-const COORDINATOR_EDITABLE: readonly string[] = ['name', 'roleIds', 'role'];
+/**
+ * Что в строке справочника команды правится: человек из «Людей» (`personKey`, его ФИО и становится именем) и роли
+ * (галочками из справочника или, в старом дашборде, одной ролью словами). `name` словами пишет только старый дашборд.
+ */
+const COORDINATOR_EDITABLE: readonly string[] = ['personKey', 'name', 'roleIds', 'role'];
+
+const TAKEN = 'Этот человек уже есть в команде: откройте его строку в «Координаторах».';
+const PERSON_GONE = 'Этого человека уже нет в справочнике «Люди»: обновите страницу и выберите снова.';
 
 /**
  * ФИО ведущего и соведущего текстом здесь не правится: ведущий — человек из «Людей» (`leaderKey`, `coLeaderKey`), и его
@@ -96,6 +102,28 @@ export function createManager(deps: {
       ? null
       : (fail('bad_request', 'Такой роли нет в справочнике: обновите страницу и выберите роли снова.') as Extract<ActionOutcome, { ok: false }>);
   };
+
+  /**
+   * Человек для участника команды по ключу «Людей». Человеку из заявки без регистрации заводится карточка (как ведущему):
+   * ссылаться можно только на запись о человеке. `check` — только проверить, ничего не заводя.
+   */
+  async function teamPerson(key: string, actor: string, check: boolean): Promise<{ person: CoordinatorPersonRef; name: string } | 'checked' | Extract<ActionOutcome, { ok: false }>> {
+    const ref = personRefOf(key);
+    if (ref === null || ref === 'bad') return fail('bad_request', 'Участника команды выбирают из справочника «Люди».') as Extract<ActionOutcome, { ok: false }>;
+    if (ref.kind !== 'request' && (await deps.groups.personName(ref)) === null) return fail('bad_request', PERSON_GONE) as Extract<ActionOutcome, { ok: false }>;
+    if (check) return 'checked';
+    let own: PersonRef = ref as PersonRef;
+    if (ref.kind === 'request') {
+      const personId = await deps.groups.personFromRequest(ref.id, actor);
+      if (personId === null) return fail('bad_request', PERSON_GONE) as Extract<ActionOutcome, { ok: false }>;
+      own = { kind: 'person', id: personId };
+    }
+    const name = await deps.groups.personName(own);
+    if (!name) return fail('bad_request', PERSON_GONE) as Extract<ActionOutcome, { ok: false }>;
+    return { person: own.kind === 'user' ? { userId: own.id } : { personId: own.id }, name };
+  }
+
+  const taken = (): Extract<ActionOutcome, { ok: false }> => ({ ok: false, error: 'conflict', message: TAKEN });
 
   return {
     async updateGroup(id: number, body: unknown, actor: string): Promise<ActionOutcome> {
@@ -189,11 +217,30 @@ export function createManager(deps: {
     async createCoordinator(body: unknown, actor: string): Promise<{ ok: true; id: number } | Extract<ActionOutcome, { ok: false }>> {
       const form = fieldsToForm(body);
       if (typeof form === 'string') return fail('bad_request', form) as Extract<ActionOutcome, { ok: false }>;
+      const key = form.get('personKey');
+      // Имя — ФИО выбранного человека: форма проверяется с ним, а карточка человеку из заявки заводится только после проверок.
+      if (key !== null) {
+        const checked = await teamPerson(key, actor, true);
+        if (checked !== 'checked' && !('person' in checked)) return checked;
+        form.set('name', '—'); // заглушка для проверки формы: настоящее имя — ФИО человека ниже
+      }
       const parsed = parseCoordinatorForm(form);
       if (!parsed.ok) return fail('bad_request', parsed.error) as Extract<ActionOutcome, { ok: false }>;
       const roleError = await checkRoles(parsed.value.roles);
       if (roleError) return roleError;
-      const created = await deps.coordinators.create(parsed.value, 'ui');
+      let input = parsed.value;
+      if (key !== null) {
+        const person = await teamPerson(key, actor, false);
+        if (person === 'checked' || !('person' in person)) return person === 'checked' ? fail('bad_request', PERSON_GONE) as Extract<ActionOutcome, { ok: false }> : person;
+        input = { ...input, name: person.name, person: person.person };
+      }
+      let created;
+      try {
+        created = await deps.coordinators.create(input, 'ui');
+      } catch (err) {
+        if (err instanceof CoordinatorTakenError) return taken();
+        throw err;
+      }
       await deps.audit.write(actor, 'coordinator.create', 'coordinator', created.id, { role: created.role });
       return { ok: true, id: created.id };
     },
@@ -205,14 +252,32 @@ export function createManager(deps: {
       const current = await deps.coordinators.findActive(id);
       if (!current) return fail('not_found', 'Участник команды не найден.');
       const merged = new URLSearchParams({ name: current.name, roleIds: current.role_ids.join(', ') });
-      for (const [k, v] of given) if (COORDINATOR_EDITABLE.includes(k)) merged.set(k, v);
+      for (const [k, v] of given) if (COORDINATOR_EDITABLE.includes(k) && k !== 'personKey') merged.set(k, v);
       // Роль словами (так пишет только старый дашборд) заменяет роли целиком: иначе остались бы прежние.
       if (given.has('role') && !given.has('roleIds')) merged.delete('roleIds');
+      const key = given.get('personKey');
+      if (key !== null && key !== undefined) {
+        const checked = await teamPerson(key, actor, true);
+        if (checked !== 'checked' && !('person' in checked)) return checked;
+      }
       const parsed = parseCoordinatorForm(merged);
       if (!parsed.ok) return fail('bad_request', parsed.error);
       const roleError = await checkRoles(parsed.value.roles);
       if (roleError) return roleError;
-      const updated = await deps.coordinators.rename(id, parsed.value);
+      let input = parsed.value;
+      // Сменили человека — имя становится его ФИО и вместе с ним переписывается в заявках и группах (rename).
+      if (key !== null && key !== undefined) {
+        const person = await teamPerson(key, actor, false);
+        if (person === 'checked' || !('person' in person)) return person === 'checked' ? fail('bad_request', PERSON_GONE) : person;
+        input = { ...input, name: person.name, person: person.person };
+      }
+      let updated;
+      try {
+        updated = await deps.coordinators.rename(id, input);
+      } catch (err) {
+        if (err instanceof CoordinatorTakenError) return taken();
+        throw err;
+      }
       if (!updated) return fail('not_found', 'Участник команды не найден.');
       await deps.audit.write(actor, 'coordinator.update', 'coordinator', id, { fields: [...given.keys()].filter((k) => COORDINATOR_EDITABLE.includes(k)) });
       return { ok: true };

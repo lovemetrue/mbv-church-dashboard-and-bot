@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } fr
 import { ru } from '../../shared/i18n/ru';
 import { splitList, toggleInList } from '../../shared/multiValue';
 import { Button } from '../../shared/ui';
+import { PersonField } from '../manage/PersonField';
 import styles from './Create.module.css';
 import type { FieldSpec, FormSpec } from './specs';
 import { useCreateRecord, type CreatePath } from './useCreateRecord';
@@ -67,7 +68,7 @@ export function RecordForm({ spec, path, submitLabel, busyLabel, onClose, onCrea
     const next: Record<string, string> = {};
     for (const f of all) {
       if (f.required && !(values[f.name] ?? '').trim()) {
-        next[f.name] = f.kind === 'select' ? ru.create.requiredChoose(f.label) : f.kind === 'multi' ? ru.create.requiredPick(f.label) : ru.create.required(f.label);
+        next[f.name] = f.kind === 'select' || f.kind === 'person' ? ru.create.requiredChoose(f.label) : f.kind === 'multi' ? ru.create.requiredPick(f.label) : ru.create.required(f.label);
       }
     }
     setProblems(next);
@@ -122,6 +123,36 @@ export function RecordForm({ spec, path, submitLabel, busyLabel, onClose, onCrea
             />
             <span>{f.label}</span>
           </label>
+        </div>
+      );
+    }
+
+    if (f.kind === 'person') {
+      return (
+        <div key={f.name} className={f.wide ? styles.fieldWide : styles.field}>
+          <label htmlFor={id} className={f.required ? styles.required : undefined}>
+            {f.label}
+          </label>
+          <PersonField
+            id={id}
+            label={f.label}
+            value={values[f.name] ?? ''}
+            taken=""
+            disabled={busy}
+            describedBy={common['aria-describedby']}
+            allowUnlink={false}
+            onPick={(p) => change(f.name, p?.key ?? '')}
+          />
+          {problem && (
+            <p id={errId} className={styles.fieldError}>
+              {problem}
+            </p>
+          )}
+          {f.hint && (
+            <p id={ownHintId} className={styles.fieldHint}>
+              {f.hint}
+            </p>
+          )}
         </div>
       );
     }

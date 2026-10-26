@@ -341,6 +341,37 @@ describe('координаторы', () => {
     expect((await g(gid)).coordinator).toBe('Анна Иванова');
   });
 
+  test('участника команды выбирают из «Людей»: имя — ФИО человека, второй раз того же не завести', async () => {
+    const m = manager();
+    const u = await seedUser(db, { id: '1', fio: 'Анна Лебедева', phone: '+79110001122' });
+    const created = await m.createCoordinator({ fields: { personKey: `u${u}`, role: 'Распределитель' } }, 'a');
+    if (!created.ok) throw new Error('нет id');
+    expect(await new CoordinatorsRepo(db).findActive(created.id)).toMatchObject({ name: 'Анна Лебедева', person_key: `u${u}`, phone: '+79110001122' });
+    expect(await m.createCoordinator({ fields: { personKey: `u${u}`, role: 'Координатор' } }, 'a')).toMatchObject({ ok: false, error: 'conflict' });
+    expect(await m.createCoordinator({ fields: { personKey: 'плохо', role: 'Координатор' } }, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
+    expect(await m.createCoordinator({ fields: { personKey: 'u999', role: 'Координатор' } }, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
+  });
+
+  test('человеку из заявки без регистрации заводится карточка; смена человека переписывает имя в заявках', async () => {
+    const m = manager();
+    const r = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, fio, phone, origin) VALUES ('join_group','Новая','Галина Мартынова','+79114772942','ui') RETURNING id::int AS id`)).rows[0]!.id;
+    const c = await m.createCoordinator({ fields: { name: 'Галя', role: 'Координатор' } }, 'a');
+    if (!c.ok) throw new Error('нет id');
+    await db.query(`INSERT INTO requests (type, status, fio, responsible, origin) VALUES ('join_group','Новая','М','Галя','ui')`);
+    expect(await m.updateCoordinator(c.id, { fields: { personKey: `r${r}` } }, 'a')).toEqual({ ok: true });
+    const row = await new CoordinatorsRepo(db).findActive(c.id);
+    expect(row).toMatchObject({ name: 'Галина Мартынова', person_key: expect.stringMatching(/^p\d+$/), phone: '+79114772942' });
+    expect((await db.query(`SELECT responsible FROM requests WHERE fio = 'М'`)).rows[0].responsible).toBe('Галина Мартынова');
+  });
+
+  test('отказ в правке (роли нет) не заводит лишнюю карточку человеку из заявки', async () => {
+    const m = manager();
+    const r = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, fio, origin) VALUES ('join_group','Новая','Пётр','ui') RETURNING id::int AS id`)).rows[0]!.id;
+    const before = (await db.query('SELECT count(*)::int AS n FROM persons')).rows[0].n;
+    expect(await m.createCoordinator({ fields: { personKey: `r${r}`, roleIds: '999' } }, 'a')).toMatchObject({ ok: false });
+    expect((await db.query('SELECT count(*)::int AS n FROM persons')).rows[0].n).toBe(before);
+  });
+
   test('удаление скрывает, повторное — not_found', async () => {
     const m = manager();
     const c = await m.createCoordinator({ fields: { name: 'Анна Смирнова', role: 'Координатор' } }, 'a');

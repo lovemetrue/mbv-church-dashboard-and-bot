@@ -49,7 +49,8 @@ describe('фикстуры: составы групп', () => {
   });
 
   test('карточка, внесённая вручную, одна: у неё есть personId и источник «Внесён вручную»', () => {
-    const manual = people.filter((p) => p.personId !== null);
+    // Карточки участников команды («Команда») — отдельные: у каждого координатора своя (миграция 056).
+    const manual = people.filter((p) => p.personId !== null && p.team === null);
     expect(manual).toHaveLength(1);
     expect(manual[0]).toMatchObject({ key: 'p1', from: 'Внесён вручную', userId: null });
     expect(people.filter((p) => p.personId === null).every((p) => !p.key.startsWith('p'))).toBe(true);

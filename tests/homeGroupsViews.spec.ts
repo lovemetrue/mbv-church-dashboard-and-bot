@@ -49,7 +49,7 @@ function participant(over: Partial<RegisteredParticipant> & { id: number }): Reg
 }
 
 const coordinator = (over: Partial<CoordinatorRow> & { id: number }): CoordinatorRow =>
-  ({ name: `Координатор ${over.id}`, role: 'Координатор', role_ids: [1], role_kinds: ['coordinator'], source: 'ui', ...over });
+  ({ name: `Координатор ${over.id}`, role: 'Координатор', role_ids: [1], role_kinds: ['coordinator'], source: 'ui', person_key: null, phone: null, ...over });
 
 const empty: ViewsInput = { groups: [], requests: [], participants: [], coordinators: [] };
 
@@ -645,7 +645,7 @@ describe('люди', () => {
       requests: [request({ id: 40, user_id: 12, place: 'Ломоносовская' })],
     });
     expect(views.people.items).toEqual([{
-      key: 'u12', strange: null, contactsHidden: false, personId: null, groups: [], leads: [], requests: expect.any(Array), gender: { value: 'ж', by: 'fio' }, fio: 'Дарья Ефимова', phone: '+7 911 123-45-67', ageLabel: '26-35', district: 'Невский',
+      key: 'u12', strange: null, contactsHidden: false, personId: null, groups: [], leads: [], requests: expect.any(Array), gender: { value: 'ж', by: 'fio' }, team: null, fio: 'Дарья Ефимова', phone: '+7 911 123-45-67', ageLabel: '26-35', district: 'Невский',
       place: 'Ломоносовская', address: null, schedule: null, hobby: null, profession: null, family: null, note: null, church: null, leaderName: null, preferredContact: null, addressGeo: null, from: 'Бот · MAX', mdgLabel: 'Хочет в группу', date: '2026-09-12', requestId: 40, userId: 12, registrationNo: 12, kitIssuedOn: null,
     }]);
   });
@@ -685,7 +685,7 @@ describe('люди', () => {
     });
     const person = (key: string) => views.people.items.find((p) => p.key === key)!;
     expect(person('r7')).toEqual({
-      key: 'r7', strange: null, contactsHidden: false, personId: null, groups: [], leads: [], requests: expect.any(Array), gender: { value: 'м', by: 'fio' }, fio: 'Станислав Ким', phone: '+7 904 123-45-67', ageLabel: '26-35', district: 'Приморский',
+      key: 'r7', strange: null, contactsHidden: false, personId: null, groups: [], leads: [], requests: expect.any(Array), gender: { value: 'м', by: 'fio' }, team: null, fio: 'Станислав Ким', phone: '+7 904 123-45-67', ageLabel: '26-35', district: 'Приморский',
       place: 'Приморский', address: null, schedule: null, hobby: null, profession: null, family: null, note: null, church: null, leaderName: null, preferredContact: null, addressGeo: null, from: 'Таблица', mdgLabel: 'Заявка: готово к утверждению', date: '2026-10-02', requestId: 7, userId: null, registrationNo: null, kitIssuedOn: null,
     });
     expect(person('r8')).toMatchObject({ from: 'Дашборд · Звонок', mdgLabel: 'Заявка: нужна помощь в сопоставлении', district: null });
@@ -739,8 +739,8 @@ describe('координаторы', () => {
       ],
     });
     expect(views.coordinators.items).toEqual([
-      { id: 1, name: 'Анна Смирнова', role: 'Координатор', roleIds: [1], groups: 3, people: 12, verified30: 1 },
-      { id: 2, name: 'Борис', role: 'Координатор', roleIds: [1], groups: 0, people: 0, verified30: 0 },
+      { id: 1, name: 'Анна Смирнова', personKey: null, phone: null, role: 'Координатор', roleIds: [1], groups: 3, people: 12, verified30: 1 },
+      { id: 2, name: 'Борис', personKey: null, phone: null, role: 'Координатор', roleIds: [1], groups: 0, people: 0, verified30: 0 },
     ]);
   });
 });
@@ -1739,5 +1739,20 @@ describe('пол человека', () => {
       requests: [request({ id: 1, type: 'join_group' })],
     });
     expect(calls.plan[0]!.groups.map((g) => g.gender)).toEqual(['м', 'ж', null, null]);
+  });
+});
+
+describe('участник команды — человек из «Людей»', () => {
+  test('у координатора — ключ человека и его телефон; у человека в «Людях» — что он в команде и роли', () => {
+    const { views } = build({
+      participants: [participant({ id: 12, full_name: 'Анна Лебедева' })],
+      coordinators: [
+        coordinator({ id: 3, name: 'Анна Лебедева', role: 'Распределитель', person_key: 'u12', phone: '+79110001122' }),
+        coordinator({ id: 4, name: 'Пётр', role: 'Координатор', person_key: null, phone: null }),
+      ],
+    });
+    expect(views.coordinators.items.find((c) => c.id === 3)).toMatchObject({ personKey: 'u12', phone: '+79110001122' });
+    expect(views.coordinators.items.find((c) => c.id === 4)).toMatchObject({ personKey: null, phone: null });
+    expect(views.people.items.find((p) => p.key === 'u12')!.team).toEqual({ coordinatorId: 3, role: 'Распределитель' });
   });
 });

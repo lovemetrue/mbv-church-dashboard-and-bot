@@ -10,8 +10,11 @@ export interface Option {
 export interface FieldSpec {
   name: string;
   label: string;
-  /** checkbox — уходит «1», когда отмечен; multi — несколько галочек, одной строкой через запятую (см. `toggleInList`). */
-  kind: 'text' | 'date' | 'textarea' | 'select' | 'checkbox' | 'multi';
+  /**
+   * checkbox — уходит «1», когда отмечен; multi — несколько галочек, одной строкой через запятую (см. `toggleInList`);
+   * person — человек из «Людей» (поиск и «+ Новый человек», как у ведущего в правке группы), уходит ключом «u12»/«p7».
+   */
+  kind: 'text' | 'date' | 'textarea' | 'select' | 'checkbox' | 'multi' | 'person';
   required?: boolean;
   /** Для select и multi. */
   options?: Option[];
@@ -222,7 +225,9 @@ export function coordinatorSpec(meta: FormMeta): FormSpec {
   const t = ru.create.coordinatorFields;
   return {
     fields: [
-      { name: 'name', label: t.name, kind: 'text', required: true, wide: true, autoComplete: 'off' },
+      // Участник команды — человек из «Людей» (сквозной справочник всех, кто связан с церковью): его выбирают, а не
+      // вписывают имя. Нужного нет — «+ Новый человек» заводит карточку тут же.
+      { name: 'personKey', label: t.name, kind: 'person', required: true, wide: true },
       // Ролей у человека бывает несколько (координатор и распределитель сразу): галочки, уходят номерами через запятую.
       {
         name: 'roleIds',

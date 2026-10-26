@@ -608,6 +608,7 @@ export function buildPeople(): PeopleView {
     return {
       strange: demoStrangeOf(raw.phone, `r${raw.id}`),
       gender: demoGenderOf(`r${raw.id}`, raw.fio),
+      team: null,
       contactsHidden: false,
       key: `r${raw.id}`,
       personId: null,
@@ -639,8 +640,16 @@ export function buildPeople(): PeopleView {
       kitIssuedOn: null,
     };
   });
-  const extras: PersonItem[] = RAW_EXTRA_PEOPLE.map((p) => ({ ...p, place: p.place ?? p.district, address: p.address ?? null, schedule: p.schedule ?? null, hobby: p.hobby ?? null, profession: p.profession ?? null, family: p.family ?? null, note: p.note ?? null, church: p.church ?? null, leaderName: p.leaderName ?? null, preferredContact: p.preferredContact ?? null, addressGeo: p.address ? ('found' as const) : null, personId: p.personId ?? null, groups: groupsOf(p.key), leads: leadsOf(p.key), requests: [], requestId: null, kitIssuedOn: p.kitIssuedOn ?? null, strange: demoStrangeOf(p.phone, p.key), gender: demoGenderOf(p.key, p.fio), contactsHidden: false }));
-  return { generatedAt: GENERATED_AT, items: [...fromRequests, ...extras] };
+  const extras: PersonItem[] = RAW_EXTRA_PEOPLE.map((p) => ({ ...p, place: p.place ?? p.district, address: p.address ?? null, schedule: p.schedule ?? null, hobby: p.hobby ?? null, profession: p.profession ?? null, family: p.family ?? null, note: p.note ?? null, church: p.church ?? null, leaderName: p.leaderName ?? null, preferredContact: p.preferredContact ?? null, addressGeo: p.address ? ('found' as const) : null, personId: p.personId ?? null, groups: groupsOf(p.key), leads: leadsOf(p.key), requests: [], requestId: null, kitIssuedOn: p.kitIssuedOn ?? null, strange: demoStrangeOf(p.phone, p.key), gender: demoGenderOf(p.key, p.fio), team: null, contactsHidden: false }));
+  const coordinators = buildCoordinators().items;
+  const team: PersonItem[] = demoTeam().map((t) => ({
+    key: t.key, personId: t.personId, fio: t.name, phone: t.phone, ageLabel: null, district: null, place: null, address: null,
+    schedule: null, hobby: null, profession: null, family: null, note: null, church: null, leaderName: null, preferredContact: null,
+    addressGeo: null, from: 'Команда', userId: null, registrationNo: null, mdgLabel: '—', date: null, requestId: null, kitIssuedOn: null,
+    groups: groupsOf(t.key), leads: leadsOf(t.key), requests: [], strange: null, gender: demoGenderOf(t.key, t.name), contactsHidden: false,
+    team: { coordinatorId: t.id, role: coordinators.find((c) => c.id === t.id)!.role },
+  }));
+  return { generatedAt: GENERATED_AT, items: [...fromRequests, ...extras, ...team] };
 }
 
 function dateMinus(days: number | null): string | null {
@@ -648,13 +657,23 @@ function dateMinus(days: number | null): string | null {
   return new Date(Date.UTC(2026, 9, 9 - days)).toISOString().slice(0, 10);
 }
 
-export function buildCoordinators(): CoordinatorsView {
+/**
+ * Команда демо: координаторы групп. Как на сервере (миграция 056), каждый — человек из «Людей»: своя карточка
+ * («p101», «p102»…) с телефоном, по которой его открывают из «Координаторов».
+ */
+function demoTeam(): { id: number; name: string; key: string; personId: number; phone: string }[] {
   const names = [...new Set(RAW_GROUPS.map((g) => g.coordinator).filter((n): n is string => !!n))];
-  const items: CoordinatorItem[] = names.map((name, i) => {
+  return names.map((name, i) => ({ id: i + 1, name, key: `p${101 + i}`, personId: 101 + i, phone: `7999555${String(101 + i).padStart(4, '0')}` }));
+}
+
+export function buildCoordinators(): CoordinatorsView {
+  const items: CoordinatorItem[] = demoTeam().map(({ id, name, key, phone }) => {
     const gs = RAW_GROUPS.filter((g) => g.coordinator === name);
     return {
-      id: i + 1,
+      id,
       name,
+      personKey: key,
+      phone,
       role: (COORDINATOR_ROLES[name] ?? ['Координатор']).join(', '),
       roleIds: (COORDINATOR_ROLES[name] ?? ['Координатор']).map((role) => DEMO_TEAM_ROLES.find((r) => r.name === role)!.id),
       groups: gs.length,

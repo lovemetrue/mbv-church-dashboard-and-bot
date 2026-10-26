@@ -1296,6 +1296,8 @@ export interface PersonItem {
    * «other» — «Другие обращения».
    */
   requests: { id: number; kind: 'join' | 'lead' | 'other'; label: string; state: 'open' | 'done' | 'cancelled' }[];
+  /** Человек в команде служения («Координаторы»): строка справочника команды и его роли; null — не в команде. */
+  team: { coordinatorId: number; role: string } | null;
   /** Группы, где человек ведущий или соведущий (ссылка из группы на него, миграции 030 и 054). */
   leads: { groupId: number; code: string; role: 'leader' | 'coLeader' }[];
   /**
@@ -1404,6 +1406,13 @@ export interface KitIssueOk {
 export interface CoordinatorItem {
   id: number;
   name: string;
+  /**
+   * Человек из «Людей» (миграция 056): «u12» или «p7». Имя участника команды — его ФИО и следует за ним; null бывает
+   * только у строки, заведённой до привязки.
+   */
+  personKey: string | null;
+  /** Телефон из карточки человека — у участника команды своего нет. */
+  phone: string | null;
   /** Название роли из справочника ролей — для показа и отборов. */
   role: string;
   /** Ссылки на роли (их бывает несколько): их отмечает форма правки. */

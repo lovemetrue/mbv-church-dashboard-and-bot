@@ -1001,12 +1001,17 @@ export function buildViewsWithPlan(
     if (r.user_id !== null && r.id > (joinRequestByUser.get(r.user_id) ?? 0)) joinRequestByUser.set(r.user_id, r.id);
   }
 
+  // Участники команды — люди из «Людей» (миграция 056): в карточке человека видно, что он в команде и с какими ролями.
+  const teamByKey = new Map(input.coordinators.filter((c) => c.person_key).map((c) => [c.person_key!, { coordinatorId: c.id, role: c.role }]));
+  const teamOf = (key: string) => teamByKey.get(key) ?? null;
+
   const people: PersonItem[] = [];
   for (const u of input.participants) {
     people.push({
       key: `u${u.id}`,
       strange: strangeOf(`u${u.id}`, [u.phone]),
       gender: genderOf(`u${u.id}`, u.full_name),
+      team: teamOf(`u${u.id}`),
       contactsHidden: false,
       personId: null,
       groups: groupCodesOf(`u${u.id}`),
@@ -1041,6 +1046,7 @@ export function buildViewsWithPlan(
       key: `r${r.id}`,
       strange: strangeOfRequest(r),
       gender: genderOf(`r${r.id}`, r.fio),
+      team: null,
       contactsHidden: false,
       personId: null,
       groups: groupCodesOf(`r${r.id}`),
@@ -1071,6 +1077,7 @@ export function buildViewsWithPlan(
       key: `p${p.id}`,
       strange: strangeOf(`p${p.id}`, [p.phone]),
       gender: genderOf(`p${p.id}`, p.full_name),
+      team: teamOf(`p${p.id}`),
       contactsHidden: false,
       personId: p.id,
       groups: groupCodesOf(`p${p.id}`),
@@ -1104,6 +1111,8 @@ export function buildViewsWithPlan(
     return {
       id: c.id,
       name: c.name,
+      personKey: c.person_key ?? null,
+      phone: c.phone ?? null,
       role: c.role,
       roleIds: c.role_ids,
       groups: own.length,

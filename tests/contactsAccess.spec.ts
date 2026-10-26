@@ -154,6 +154,12 @@ describe('люди', () => {
     // Камерная группа скрывает телефоны ведущих — и в «Людях» тоже.
     expect(out[1]!.phone).toBe('… 45-67');
   });
+
+  test('у участника команды номер виден целиком — как в «Координаторах»; адреса нет', () => {
+    const member = p({ key: 'p3', team: { coordinatorId: 1, role: 'Распределитель' } });
+    const out = peopleFor(people(member), person('Анна Л.', 'coordinator'), groupsView(), requestsView([])).items;
+    expect(out[0]).toMatchObject({ phone: '+7 999 123-45-67', address: null, contactsHidden: true });
+  });
 });
 
 describe('черновик группы, списки форм, наборы', () => {

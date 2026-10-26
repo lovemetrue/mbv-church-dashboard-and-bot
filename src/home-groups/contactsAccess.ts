@@ -168,7 +168,8 @@ export function peopleFor(view: PeopleView, viewer: Viewer, groups: GroupsView, 
     items: view.items.map((p) =>
       (p.requestId !== null && ownRequests.has(p.requestId)) || p.groups.some((c) => ownGroupCodes.has(c))
         ? p
-        : maskPerson(p, (p.leads ?? []).some((l) => openLeaderGroups.has(l.groupId)))),
+        // Участник команды — тоже: его номер виден в «Координаторах» всем, кто вошёл, это один и тот же номер.
+        : maskPerson(p, p.team != null || (p.leads ?? []).some((l) => openLeaderGroups.has(l.groupId)))),
   };
 }
 

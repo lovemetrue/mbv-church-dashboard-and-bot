@@ -9,9 +9,10 @@ import type {
  * • Полный вход, лидеры (катализатор, старший координатор) и старший распределитель видят всё. Общий обычный вход
  *   без человека (`mbv_admin`) пока тоже — его отключат, оставив только личные входы.
  * • Остальные личные входы (координатор, распределитель): у заявки, которая «в работе у» них, — всё; у ничьей или
- *   чужой — ФИО, район и последние цифры телефона (улицы, хобби, профессии нет). Телефоны группы — координатору этой
- *   группы и распределителю, который утвердил в неё человека; адрес группы виден всем (по нему идёт подбор).
- *   Человек из «Людей» — открыт, если он из своей заявки или из состава своей группы.
+ *   чужой — ФИО, район и последние цифры телефона (улицы, хобби, профессии нет). Адрес группы и телефоны ведущего и
+ *   соведущего видны всем (по адресу подбор, по номеру ведущего договариваются); телефоны состава — координатору этой
+ *   группы и распределителю, который утвердил в неё человека. Человек из «Людей» — открыт, если он из своей заявки или
+ *   из состава своей группы; у ведущего некамерной группы телефон виден всем, как в справочнике групп.
  * • Камерная группа: адрес и телефоны — только лидерам, её координатору и полному входу (отдельное правило выше всех).
  *
  * Снимок представлений один на всех и кэшируется, поэтому скрытие — здесь, на выходе, по вошедшему: иначе первый
@@ -124,9 +125,12 @@ function withoutChamberContacts(g: GroupItem): GroupItem {
   };
 }
 
-/** Обычная чужая группа: адрес виден (по нему подбор), телефоны ведущих и состава — последние цифры. */
+/**
+ * Обычная чужая группа: адрес и телефоны ведущего и соведущего видны (по адресу подбор, по номеру ведущего договариваются
+ * о человеке — так решили), телефоны состава — последние цифры.
+ */
 function withMaskedPhones(g: GroupItem): GroupItem {
-  return { ...g, phone: maskPhone(g.phone), coLeaderPhone: maskPhone(g.coLeaderPhone), members: g.members.map(maskMember), contactsHidden: true };
+  return { ...g, members: g.members.map(maskMember), contactsHidden: true };
 }
 
 /** Список групп для вошедшего. */
@@ -146,8 +150,8 @@ export function groupsFor(view: GroupsView, viewer: Viewer, requests: RequestsVi
 
 // ── люди ───────────────────────────────────────────────────────────────────
 
-function maskPerson(p: PersonItem): PersonItem {
-  return { ...p, phone: maskPhone(p.phone), address: null, addressGeo: null, hobby: null, profession: null, family: null, contactsHidden: true };
+function maskPerson(p: PersonItem, keepPhone = false): PersonItem {
+  return { ...p, phone: keepPhone ? p.phone : maskPhone(p.phone), address: null, addressGeo: null, hobby: null, profession: null, family: null, contactsHidden: true };
 }
 
 /** Справочник людей: открыты люди из своих заявок и из состава своих групп (как координатора). */
@@ -156,10 +160,15 @@ export function peopleFor(view: PeopleView, viewer: Viewer, groups: GroupsView, 
   if (name === null) return view;
   const ownRequests = new Set([...requests.items, ...requests.others].filter((r) => sameName(r.responsible, name)).map((r) => r.id));
   const ownGroupCodes = new Set(groups.items.filter((g) => sameName(g.coordinator, name)).map((g) => g.code));
+  // Номер ведущего виден всем, как в справочнике групп (`withMaskedPhones`): это тот же номер из той же карточки. Кроме
+  // камерных групп — там телефоны ведущих скрыты и в «Людях».
+  const openLeaderGroups = new Set(groups.items.filter((g) => !g.chamber || seesChamberContacts(viewer, g.coordinator)).map((g) => g.id));
   return {
     ...view,
     items: view.items.map((p) =>
-      (p.requestId !== null && ownRequests.has(p.requestId)) || p.groups.some((c) => ownGroupCodes.has(c)) ? p : maskPerson(p)),
+      (p.requestId !== null && ownRequests.has(p.requestId)) || p.groups.some((c) => ownGroupCodes.has(c))
+        ? p
+        : maskPerson(p, (p.leads ?? []).some((l) => openLeaderGroups.has(l.groupId)))),
   };
 }
 

@@ -533,6 +533,17 @@ describe('план: выбор группы', () => {
     expect(entry.alternatives.map((a) => a.groupId)).toEqual([81, 82]);
   });
 
+  test('у запасных та же шкала уверенности, что у главной: по ней видно, что новая не дотянула до порога', () => {
+    const r = request();
+    const old = [1, 2, 3].map((n) => group({ id: 80 + n, people: n }));
+    const fresh = group({ id: 90, district: 'Выборгский', people: 1, isNew: true });
+    const entry = proposal(planFor([r], [...old, fresh]).entries.get(r.id));
+    const factor = SETTINGS.confidenceFloor + (SETTINGS.confidenceSpan * entry.knownParams) / 4;
+    for (const a of entry.alternatives) expect(a.confidence).toBe(Math.round(a.score * factor));
+    expect(entry.alternatives[0]!.confidence!).toBeLessThan(SETTINGS.humanThreshold);
+    expect(entry.confidence).toBe(Math.round(entry.main.score * factor));
+  });
+
   test('новая группа, которая подходит слабее порога, идёт первым запасным, а сверху — лучшая из всех', () => {
     const r = request();
     const old = [1, 2, 3].map((n) => group({ id: 80 + n, people: n }));

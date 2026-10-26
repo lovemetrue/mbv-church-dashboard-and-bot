@@ -271,7 +271,9 @@ export function buildPlan(requests: RawRequest[] = RAW_REQUESTS, groups: RawGrou
       };
     }
     const kn = knownCount(knownOf(r));
-    const confidence = Math.round(pick.score * (0.55 + 0.45 * (kn / 4)));
+    // Уверенность — у главной и у запасных, одной формулой (как отдаёт сервер).
+    const confidenceOf = (c: Scored) => Math.round(c.score * (0.55 + 0.45 * (kn / 4)));
+    const confidence = confidenceOf(pick);
     byRequest.set(r.id, {
       proposal: {
         // Закреплены предложения для заявок, которые ждут давно: их подбор уже запускали.
@@ -285,7 +287,7 @@ export function buildPlan(requests: RawRequest[] = RAW_REQUESTS, groups: RawGrou
         source: 'script',
         main: toCandidate(pick, confidence),
         knownParams: kn,
-        alternatives: sorted.slice(1, 3).map((c) => toCandidate(c, null)),
+        alternatives: sorted.slice(1, 3).map((c) => toCandidate(c, confidenceOf(c))),
         displaced,
       },
       noPlan: null,

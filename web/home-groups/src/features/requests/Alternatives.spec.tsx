@@ -47,6 +47,16 @@ describe('«Заявки»: запасные варианты можно утв�
     await waitFor(() => expect(getsOf(fetchMock, 'requests')).toBe(2));
   });
 
+  test('у запасного варианта — уверенность в той же шкале, что у главной группы, а не «совпадение»', async () => {
+    stubFetchWithFixtures({ requests: () => json(withAlternative({})) });
+    const card = await openCard(1);
+    const alt = within(card).getByRole('button', { name: `Утвердить эту группу ${ALT.code}` }).closest('article')!;
+    const { confidence } = fixtureItem(1).proposal!.alternatives[0]!;
+    expect(confidence).not.toBeNull();
+    expect(alt).toHaveTextContent(`${confidence}уверенность`);
+    expect(alt).not.toHaveTextContent('совпадение');
+  });
+
   test('отказ в подтверждении ничего не отправляет', async () => {
     const fetchMock = stubFetchWithFixtures();
     const user = userEvent.setup();

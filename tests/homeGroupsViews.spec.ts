@@ -334,13 +334,13 @@ describe('предложение плана', () => {
     group({ id: 3, district: 'Приморский' }),
   ];
 
-  test('основная группа несёт уверенность, запасные — нет, вытесненная объясняется', () => {
+  test('уверенность есть и у основной группы, и у запасных — в одной шкале; вытесненная объясняется', () => {
     const entry: PlanEntry = {
       kind: 'proposal',
       main: { groupId: 1, score: 88, reasons: [{ tone: 'good', text: 'тот же район' }] },
       confidence: 71,
       knownParams: 3,
-      alternatives: [{ groupId: 2, score: 60, reasons: [{ tone: 'neutral', text: 'возраст рядом' }] }],
+      alternatives: [{ groupId: 2, score: 60, confidence: 49, reasons: [{ tone: 'neutral', text: 'возраст рядом' }] }],
       displaced: { groupId: 3, takenBy: ['Иван Петров'] },
     };
     const { views } = build({ groups, requests: [request({ id: 5, place: 'Приморский' })] }, { entries: { 5: entry } });
@@ -351,7 +351,7 @@ describe('предложение плана', () => {
     expect(proposal.main).toMatchObject({ score: 88, confidence: 71, reasons: [{ tone: 'good', text: 'тот же район' }] });
     expect(proposal.main.group).toMatchObject({ id: 1, code: 'ДГ-0001' });
     expect(proposal.alternatives).toHaveLength(1);
-    expect(proposal.alternatives[0]).toMatchObject({ score: 60, confidence: null });
+    expect(proposal.alternatives[0]).toMatchObject({ score: 60, confidence: 49 });
     expect(proposal.alternatives[0]!.group.id).toBe(2);
     expect(proposal.displaced).toMatchObject({ takenBy: ['Иван Петров'] });
     expect(proposal.displaced!.group.id).toBe(3);

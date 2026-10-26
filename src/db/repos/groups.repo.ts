@@ -4,6 +4,9 @@ import type { GroupStatus } from '../../core/groups.js';
 /** Откуда взялась запись о группе. Видно в дашборде и определяет, что можно удалить. */
 export type GroupSource = 'таблица' | 'бот' | 'ui';
 
+/** Человек из справочника «Люди», на которого ссылается позиция ведущего или соведущего (миграция 054). */
+export type PersonRef = { kind: 'user' | 'person'; id: number };
+
 /** Что заводит бот: короткий набор из диалога служителя. */
 export interface HomeGroupInput {
   leader: string;
@@ -55,6 +58,9 @@ export interface GroupInput extends HomeGroupInput {
   campaignOnly?: boolean | null;
   /** Мест в группе; null — общее значение по умолчанию. undefined при правке — не менять (старый дашборд поля не знает). */
   capacity?: number | null;
+  /** Человек на позиции ведущего и соведущего; null — отвязать, undefined при правке — не менять. */
+  leaderRef?: PersonRef | null;
+  coLeaderRef?: PersonRef | null;
 }
 
 export interface GroupRow {
@@ -95,6 +101,10 @@ export interface GroupRow {
   capacity: number | null;
   /** Регистрация ведущего (users.id), если обращение «уже веду группу» сверено со справочником. */
   leader_user_id: number | null;
+  /** Ведущий и соведущий как люди из справочника (миграция 054): регистрация или карточка, внесённая вручную. */
+  leader_person_id?: number | null;
+  co_leader_user_id?: number | null;
+  co_leader_person_id?: number | null;
   /** Обращение «хочу открыть группу», из которого заведена эта потенциальная группа (миграция 032). */
   source_request_id?: number | null;
   source: GroupSource;
@@ -145,8 +155,12 @@ export interface DashboardGroup {
   chamber: boolean;
   /** Мест в группе; null — общее значение по умолчанию. */
   capacity: number | null;
-  /** Регистрация ведущего (users.id): связь появляется при разборе обращения «уже веду группу». */
+  /** Регистрация ведущего (users.id): связь появляется при разборе обращения «уже веду группу» или выбором в форме правки. */
   leader_user_id: number | null;
+  /** Ведущий — карточка, внесённая вручную (persons.id); соведущий — регистрация или карточка (миграция 054). */
+  leader_person_id: number | null;
+  co_leader_user_id: number | null;
+  co_leader_person_id: number | null;
   /** Обращение «хочу открыть группу», из которого заведена эта потенциальная группа (миграция 032). */
   source_request_id: number | null;
 }
@@ -159,6 +173,12 @@ const COLUMNS = `no, leader, open_to_new, phone, phones, age, district, metro, a
 /** Строка группы с названием направления: `RETURNING *` его не знает, поэтому запросы оборачиваются в этот выбор. */
 const withDirection = (from: string): string =>
   `SELECT g.*, g.direction_id::int AS direction_id, d.name AS direction FROM ${from} g JOIN group_directions d ON d.id = g.direction_id`;
+
+/** Параметры «менять ли, users.id, persons.id» для одной позиции: undefined — не менять, null — отвязать. */
+const refParams = (ref: PersonRef | null | undefined): [boolean, number | null, number | null] =>
+  ref === undefined ? [false, null, null] : [true, ref?.kind === 'user' ? ref.id : null, ref?.kind === 'person' ? ref.id : null];
+
+const idOrNull = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
 
 // Колонки типа date приходят строкой «2026-08-20» — так настроен пул (src/db/pool.ts).
 
@@ -245,6 +265,10 @@ export class GroupsRepo {
            campaign_only = COALESCE($29, campaign_only),
            opened_on = $26,
            capacity = CASE WHEN $27::boolean THEN $28::integer ELSE capacity END,
+           leader_user_id      = CASE WHEN $31::boolean THEN $32::bigint ELSE leader_user_id END,
+           leader_person_id    = CASE WHEN $31::boolean THEN $33::bigint ELSE leader_person_id END,
+           co_leader_user_id   = CASE WHEN $34::boolean THEN $35::bigint ELSE co_leader_user_id END,
+           co_leader_person_id = CASE WHEN $34::boolean THEN $36::bigint ELSE co_leader_person_id END,
            source = CASE WHEN source = 'таблица' THEN 'ui' ELSE source END
          WHERE id = $1 AND archived_at IS NULL
          RETURNING *
@@ -280,6 +304,8 @@ export class GroupsRepo {
         input.capacity ?? null,
         input.campaignOnly ?? null,
         input.chamber ?? null,
+        ...refParams(input.leaderRef),
+        ...refParams(input.coLeaderRef),
       ],
     );
     const row = rows[0];
@@ -329,6 +355,17 @@ export class GroupsRepo {
     } finally {
       client.release();
     }
+  }
+
+  /**
+   * Есть ли такой человек в «Людях»: завершённая регистрация или не удалённая карточка. Незавершённой регистрации в
+   * «Людях» нет, а удалённую карточку база приняла бы ссылкой молча.
+   */
+  async personRefExists(ref: PersonRef): Promise<boolean> {
+    const { rowCount } = ref.kind === 'user'
+      ? await this.db.query('SELECT 1 FROM users WHERE id = $1 AND registration_no IS NOT NULL', [ref.id])
+      : await this.db.query('SELECT 1 FROM persons WHERE id = $1 AND archived_at IS NULL', [ref.id]);
+    return (rowCount ?? 0) > 0;
   }
 
   async findActive(id: number): Promise<GroupRow | null> {
@@ -460,7 +497,10 @@ export class GroupsRepo {
       do_not_refer: r.do_not_refer,
       chamber: r.chamber,
       capacity: r.capacity ?? null,
-      leader_user_id: r.leader_user_id === null || r.leader_user_id === undefined ? null : Number(r.leader_user_id),
+      leader_user_id: idOrNull(r.leader_user_id),
+      leader_person_id: idOrNull(r.leader_person_id),
+      co_leader_user_id: idOrNull(r.co_leader_user_id),
+      co_leader_person_id: idOrNull(r.co_leader_person_id),
       source_request_id: r.source_request_id === null || r.source_request_id === undefined ? null : Number(r.source_request_id),
     }));
   }

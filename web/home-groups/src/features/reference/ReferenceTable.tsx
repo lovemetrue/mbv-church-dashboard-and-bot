@@ -43,12 +43,21 @@ function Cell({ column, value, row }: { column: string; value: Row[string]; row:
   // в одной строке читались бы как две пометки.
   if (column === 'Ведущий') {
     const marks = { isNew: Number(row['_isNew'] ?? 0) > 0, empty: Number(row['_isEmpty'] ?? 0) > 0 };
+    const co = typeof row['_coLeader'] === 'string' && row['_coLeader'] !== '' ? row['_coLeader'] : null;
     // Ширина ограничена, чтобы длинное ФИО не раздвигало таблицу; полное имя доступно в подсказке.
+    // Двое ведущих — двумя строками, одна под другой: через запятую это читалось как одно длинное имя.
     return (
       <span className={styles.leaderCell}>
         <GroupMarks g={marks} size={14} />
-        <span className={styles.leaderName} title={text.length > LEADER_TITLE_FROM ? text : undefined}>
-          {text}
+        <span className={styles.leaderNames}>
+          <span className={styles.leaderName} title={text.length > LEADER_TITLE_FROM ? text : undefined}>
+            {text}
+          </span>
+          {co && (
+            <span className={styles.leaderName} title={co.length > LEADER_TITLE_FROM ? co : undefined}>
+              {co}
+            </span>
+          )}
         </span>
       </span>
     );

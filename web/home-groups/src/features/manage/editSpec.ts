@@ -1,4 +1,5 @@
 import type { CoordinatorItem, FormMeta, GroupItem } from '@contracts';
+import { formatPhone } from '../../entities/format';
 import { ru } from '../../shared/i18n/ru';
 import { optionsWithPicked } from '../../shared/multiValue';
 
@@ -8,8 +9,11 @@ const m = ru.manage;
 export interface EditField {
   name: string;
   label: string;
-  /** multi — несколько галочек, значение одной строкой через запятую (см. `toggleInList`). */
-  kind: 'text' | 'select' | 'textarea' | 'date' | 'checkbox' | 'multi';
+  /**
+   * multi — несколько галочек, значение одной строкой через запятую (см. `toggleInList`).
+   * person — человек из «Людей» поиском по ФИО или телефону; значение — его ключ («u12», «p7»), пустое — не выбран.
+   */
+  kind: 'text' | 'select' | 'textarea' | 'date' | 'checkbox' | 'multi' | 'person';
   /** Пустое значение недопустимо: сервер всё равно отказал бы, поэтому «Сохранить» не включается. */
   required?: boolean;
   /** Для select и multi. */
@@ -24,6 +28,10 @@ export interface EditField {
   max?: string;
   /** На всю ширину окна, а не в половину. */
   wide?: boolean;
+  /** Для person: текстовое поле, куда при выборе человека вписывается его ФИО (имя в группе — то, по чему её ищут). */
+  fillsName?: string;
+  /** Для person: поле второй позиции — человека оттуда здесь не выбрать (сервер всё равно отказал бы). */
+  other?: string;
 }
 
 export interface EditSpec {
@@ -73,28 +81,35 @@ function feedbackNow(days: number | null): string {
  * (только собранное «Вт, вечер» и «дней назад»), поэтому эти поля пустые и отправляются, только если
  * их вписали; под ними подсказка с текущим значением.
  *
- * Телефоны ведущего и соведущего открываются с текущим значением: по ним координаторы обзванивают ведущих, и
- * правка вслепую («впишите новый, текущий не показывается») только путала. Как и у остальных полей, уходит лишь
- * изменённое; очищенное поле стирает номер.
+ * Отдельных полей «телефон ведущего» и «телефон соведущего» нет: ведущего и соведущего выбирают из «Людей», и номер
+ * берётся из карточки человека — правят его там, в одном месте, а не в каждой группе. Записанный в группе номер
+ * (из таблицы церкви) остаётся запасным, пока человек не выбран.
  */
 export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
   const spec = groupEditFields(g, meta);
-  // Контактов сервер этому входу не прислал (чужая группа — телефоны, камерная — ещё и адрес): пустые поля или маска
-  // выглядели бы как настоящие, а сохранённые затёрли бы их. Поэтому их в форме нет, а под полями сказано почему.
+  // Контактов сервер этому входу не прислал (чужая группа — телефоны, камерная — ещё и адрес): пустое поле адреса
+  // выглядело бы как настоящее, а сохранённое затёрло бы его. Поэтому его в форме нет, а под полями сказано почему.
   if (!g.contactsHidden) return spec;
-  const hidden = g.chamber ? CHAMBER_FIELDS : PHONE_FIELDS;
-  return { ...spec, fields: spec.fields.filter((f) => !hidden.has(f.name)), note: g.chamber ? m.group.contactsHidden : m.group.phonesHiddenNote };
+  if (!g.chamber) return { ...spec, note: m.group.phonesHiddenNote };
+  return { ...spec, fields: spec.fields.filter((f) => !CHAMBER_FIELDS.has(f.name)), note: m.group.contactsHidden };
 }
 
-const PHONE_FIELDS: ReadonlySet<string> = new Set(['phone', 'coLeaderPhone']);
-const CHAMBER_FIELDS: ReadonlySet<string> = new Set(['address', 'phone', 'coLeaderPhone']);
+const CHAMBER_FIELDS: ReadonlySet<string> = new Set(['address']);
+
+/** Подсказка под выбором человека: откуда телефон, а без выбора — какой номер показывается сейчас. */
+function personHint(key: string | null, phone: string | null): string {
+  return key || !phone ? m.group.personHint : `${m.group.personHint} ${m.group.personHintUnlinked(formatPhone(phone))}`;
+}
 
 function groupEditFields(g: GroupItem, meta: FormMeta): EditSpec {
   const t = m.group.fields;
   const keep = m.group.keepHint;
   return {
     fields: [
-      { name: 'leader', label: t.leader, kind: 'text', required: true, wide: true },
+      { name: 'leader', label: t.leader, kind: 'text', required: true },
+      { name: 'leaderKey', label: t.leaderKey, kind: 'person', fillsName: 'leader', other: 'coLeaderKey', hint: personHint(g.leaderKey, g.phone) },
+      { name: 'coLeader', label: t.coLeader, kind: 'text' },
+      { name: 'coLeaderKey', label: t.coLeaderKey, kind: 'person', fillsName: 'coLeader', other: 'leaderKey', hint: personHint(g.coLeaderKey, g.coLeaderPhone) },
       { name: 'district', label: t.district, kind: 'select', required: true, options: withCurrent(meta.districts, g.district) },
       // Подбор сопоставляет сначала по адресу, а если он пуст — по метро или ориентиру: оба поля видны и правятся здесь.
       { name: 'address', label: t.address, kind: 'text', wide: true, hint: m.group.addressHint },
@@ -121,10 +136,6 @@ function groupEditFields(g: GroupItem, meta: FormMeta): EditSpec {
       { name: 'composition', label: t.composition, kind: 'multi', wide: true, options: optionsWithPicked(meta.compositions, g.composition ?? '') },
       { name: 'age', label: t.age, kind: 'select', options: withCurrent(meta.ageGroups, g.ageText) },
       { name: 'coordinator', label: t.coordinator, kind: 'select', options: withCurrent(meta.coordinators, g.coordinator) },
-      { name: 'coLeader', label: t.coLeader, kind: 'text' },
-      { name: 'phone', label: t.phone, kind: 'text', inputMode: 'tel' },
-      { name: 'coLeaderPhone', label: t.coLeaderPhone, kind: 'text', inputMode: 'tel' },
-      
       { name: 'feedbackAt', label: t.feedbackAt, kind: 'date', hint: `${feedbackNow(g.verifiedDaysAgo)} ${keep}` },
       { name: 'openedOn', label: t.openedOn, kind: 'date', hint: m.group.openedOnHint },
       { name: 'training', label: t.training, kind: 'text' },
@@ -153,8 +164,8 @@ function groupEditFields(g: GroupItem, meta: FormMeta): EditSpec {
       campaignOnly: g.campaignOnly ? '1' : '',
       coordinator: g.coordinator ?? '',
       coLeader: g.coLeader ?? '',
-      phone: g.phone ?? '',
-      coLeaderPhone: g.coLeaderPhone ?? '',
+      leaderKey: g.leaderKey ?? '',
+      coLeaderKey: g.coLeaderKey ?? '',
       address: g.address ?? '',
       feedbackAt: '',
       openedOn: g.openedOn ?? '',

@@ -8,7 +8,7 @@ import { GroupsRepo } from '../src/db/repos/groups.repo.js';
 import { RequestsRepo } from '../src/db/repos/requests.repo.js';
 import { UsersRepo } from '../src/db/repos/users.repo.js';
 import { createManager } from '../src/home-groups/manage.js';
-import { setupTestDb, truncateAll } from './helpers/testDb.js';
+import { seedUser, setupTestDb, truncateAll } from './helpers/testDb.js';
 
 let db: Pool;
 beforeAll(async () => { db = await setupTestDb(); });
@@ -140,6 +140,72 @@ describe('правка группы из нового интерфейса', () 
 
   test('чужой номер — not_found', async () => {
     expect(await manager().updateGroup(99999, { fields: { people: '3' } }, 'a')).toMatchObject({ ok: false, error: 'not_found' });
+  });
+});
+
+describe('ведущий и соведущий — люди из «Людей»', () => {
+  const card = async (name: string, archived = false) =>
+    (await db.query<{ id: number }>(`INSERT INTO persons (full_name, phone, archived_at) VALUES ($1, '+79215550099', $2) RETURNING id`, [name, archived ? new Date() : null])).rows[0]!.id;
+  const links = async (id: number) =>
+    (await db.query(
+      `SELECT leader_user_id::int AS lu, leader_person_id::int AS lp, co_leader_user_id::int AS cu, co_leader_person_id::int AS cp FROM groups WHERE id = $1`, [id],
+    )).rows[0];
+
+  test('ведущий — регистрация, соведущий — карточка, внесённая вручную; записанные телефоны группы не трогаются', async () => {
+    const id = await group();
+    const u = await seedUser(db, { id: '501', fio: 'Петров Иван' });
+    const p = await card('Петрова Мария');
+    expect(await manager().updateGroup(id, { fields: { leaderKey: `u${u}`, coLeaderKey: `p${p}`, coLeader: 'Петрова Мария' } }, 'a')).toEqual({ ok: true });
+    expect(await links(id)).toEqual({ lu: u, lp: null, cu: null, cp: p });
+    expect(await g(id)).toMatchObject({ co_leader: 'Петрова Мария', phone: '+79110001122', co_leader_phone: '+79213334455', source: 'ui' });
+    // Журнал — только названия полей, без ключей людей.
+    expect(JSON.parse((await audits()).at(-1)!.after)).toEqual({ fields: ['leaderKey', 'coLeaderKey', 'coLeader'] });
+  });
+
+  test('смена ведущего с регистрации на карточку снимает прежнюю ссылку; пустой ключ отвязывает', async () => {
+    const id = await group();
+    const u = await seedUser(db, { id: '502' });
+    const p = await card('Сидоров');
+    await manager().updateGroup(id, { fields: { leaderKey: `u${u}` } }, 'a');
+    await manager().updateGroup(id, { fields: { leaderKey: `p${p}` } }, 'a');
+    expect(await links(id)).toMatchObject({ lu: null, lp: p });
+    await manager().updateGroup(id, { fields: { leaderKey: '' } }, 'a');
+    expect(await links(id)).toMatchObject({ lu: null, lp: null });
+    expect((await g(id)).leader).toBe('Иван Петров');
+  });
+
+  test('правка других полей ссылки не трогает', async () => {
+    const id = await group();
+    const u = await seedUser(db, { id: '503' });
+    await manager().updateGroup(id, { fields: { coLeaderKey: `u${u}` } }, 'a');
+    await manager().updateGroup(id, { fields: { comment: 'x' } }, 'a');
+    expect(await links(id)).toMatchObject({ cu: u, cp: null });
+  });
+
+  test.each([
+    ['человек из заявки без регистрации', 'r5'],
+    ['не ключ вовсе', 'Иванов'],
+  ])('%s — отказ', async (_, key) => {
+    const id = await group();
+    expect(await manager().updateGroup(id, { fields: { leaderKey: key } }, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
+  });
+
+  test('удалённую карточку и незавершённую регистрацию не выбрать', async () => {
+    const id = await group();
+    const gone = await card('Удалённый', true);
+    const half = await seedUser(db, { id: '504', registered: false });
+    expect(await manager().updateGroup(id, { fields: { leaderKey: `p${gone}` } }, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
+    expect(await manager().updateGroup(id, { fields: { coLeaderKey: `u${half}` } }, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
+    expect(await links(id)).toEqual({ lu: null, lp: null, cu: null, cp: null });
+  });
+
+  test('один человек ведущим и соведущим сразу — отказ, и в одной правке, и против уже записанного', async () => {
+    const id = await group();
+    const u = await seedUser(db, { id: '505' });
+    expect(await manager().updateGroup(id, { fields: { leaderKey: `u${u}`, coLeaderKey: `u${u}` } }, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
+    await manager().updateGroup(id, { fields: { leaderKey: `u${u}` } }, 'a');
+    expect(await manager().updateGroup(id, { fields: { coLeaderKey: `u${u}` } }, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
+    expect(await links(id)).toEqual({ lu: u, lp: null, cu: null, cp: null });
   });
 });
 

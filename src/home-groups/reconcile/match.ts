@@ -12,8 +12,10 @@ export interface LeaderGroup {
   id: number;
   leader: string;
   coLeader: string | null;
-  /** Телефоны ведущих как записаны: в одной ячейке бывает несколько номеров и приписки. */
+  /** Телефоны ведущего как записаны: в одной ячейке бывает несколько номеров и приписки. */
   phones: readonly string[];
+  /** Телефоны соведущего: совпадение по ним делает человека соведущим, а не ведущим группы. */
+  coLeaderPhones?: readonly string[];
 }
 
 export type Tier = 'exact' | 'likely';
@@ -156,16 +158,16 @@ export function findGroups(subject: Subject, groups: readonly LeaderGroup[]): Ca
     // Имя ведущего и «второго ведущего» сверяем отдельно: в скобках у ведущего тоже бывает супруг(а).
     const leaderTokens = nameTokens(g.leader);
     if (myPhones.size > 0) {
-      for (const k of phoneKeys(g.phones)) {
-        if (myPhones.has(k)) {
-          // Номер один у всей семьи: жена с телефоном мужа делит с ним фамилию, а чужой человек с этим номером —
-          // нет. Если имя назвали и ни одного слова ведущего в нём нет, номер сам по себе не доказывает: решает человек.
-          const theirs = [...leaderTokens, ...nameTokens(g.coLeader)];
-          // Инициалы («П. М.») тоже имя: годится, если хоть одна буква открывает слово ведущего.
-          const sameFamily = mine.length === 0 || mine.some((t) => (t.length > 1 ? theirs.some((l) => sameToken(t, l)) : theirs.some((l) => l.startsWith(t))));
-          offer({ groupId: g.id, tier: sameFamily ? 'exact' : 'likely', by: 'phone', role: 'leader' });
-          break;
-        }
+      // Номер ведущего проверяем раньше номера соведущего: у супругов он бывает записан в обеих ячейках.
+      const role = [...phoneKeys(g.phones)].some((k) => myPhones.has(k)) ? 'leader'
+        : [...phoneKeys(g.coLeaderPhones ?? [])].some((k) => myPhones.has(k)) ? 'coLeader' : null;
+      if (role) {
+        // Номер один у всей семьи: жена с телефоном мужа делит с ним фамилию, а чужой человек с этим номером —
+        // нет. Если имя назвали и ни одного слова ведущего в нём нет, номер сам по себе не доказывает: решает человек.
+        const theirs = [...leaderTokens, ...nameTokens(g.coLeader)];
+        // Инициалы («П. М.») тоже имя: годится, если хоть одна буква открывает слово ведущего.
+        const sameFamily = mine.length === 0 || mine.some((t) => (t.length > 1 ? theirs.some((l) => sameToken(t, l)) : theirs.some((l) => l.startsWith(t))));
+        offer({ groupId: g.id, tier: sameFamily ? 'exact' : 'likely', by: 'phone', role });
       }
     }
     const byLeader = matchName(mine, leaderTokens);

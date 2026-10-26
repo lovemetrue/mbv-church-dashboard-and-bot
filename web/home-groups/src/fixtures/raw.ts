@@ -38,6 +38,8 @@ export interface RawGroup {
   isNew: boolean;
   /** Ключ регистрации ведущего («u2»), если группа связана с ним; в контракте — `GroupItem.leaderKey`. */
   leaderKey: string | null;
+  /** Ключ соведущего в «Людях»; в контракте — `GroupItem.coLeaderKey`. */
+  coLeaderKey: string | null;
   /** «40 дней» — ведущий зарегистрирован в кампании. */
   campaignRegistered: boolean;
   /** «Работает только в кампанию» (бывший статус «Кампания»). */
@@ -114,6 +116,7 @@ const g = (x: Partial<RawGroup> & Pick<RawGroup, 'id' | 'leader' | 'district' | 
   comment: null,
   isNew: false,
   leaderKey: null,
+  coLeaderKey: null,
   campaignRegistered: false,
   campaignOnly: false,
   ...x,

@@ -237,6 +237,11 @@
   max-width: 15em;
   vertical-align: bottom;
 }
+.leaderNames {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
 .leaderName {
   min-width: 0;
   overflow: hidden;
@@ -386,6 +391,12 @@
 }
 
 /* Ведущий, связанный с регистрацией: имя, пояснение и переход к человеку в одну строку, на телефоне переносятся. */
+.leaderLines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
 .leaderLinked {
   display: flex;
   flex-wrap: wrap;

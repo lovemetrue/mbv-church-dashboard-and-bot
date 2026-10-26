@@ -139,6 +139,35 @@ describe('несколько групп сразу', () => {
     expect(rows).toEqual([{ id: a, leader_user_id: p.userId }, { id: b, leader_user_id: p.userId }]);
   });
 
+  test('«уже веду»: совпавший с соведущим встаёт соведущим, ведущий группы остаётся как был', async () => {
+    const g = await group('Артёмкин Константин');
+    await db.query(`UPDATE groups SET co_leader = 'Артёмкина Людмила' WHERE id = $1`, [g]);
+    const p = await person('4', 'already_leader', { fio: 'Артёмкина Людмила' });
+    const s = service();
+    expect((await s.views()).requests.others.find((o) => o.id === p.requestId)!.reconcile).toMatchObject({ status: 'ready' });
+    expect(await s.reconciler.applyReady({ ids: [p.requestId] }, 'boss')).toEqual({ ok: true, applied: 1, skipped: 0 });
+    const row = (await db.query('SELECT leader_user_id::int AS lu, co_leader_user_id::int AS cu FROM groups WHERE id = $1', [g])).rows[0];
+    expect(row).toEqual({ lu: null, cu: p.userId });
+    expect((await s.views()).groups.items.find((x) => x.id === g)).toMatchObject({ leaderKey: null, coLeaderKey: `u${p.userId}` });
+  });
+
+  test('«уже веду»: совпавший по телефону соведущего встаёт соведущим', async () => {
+    const g = await group('Артёмкин Константин', '+79110000001');
+    await db.query(`UPDATE groups SET co_leader = 'Людмила', co_leader_phone = '+79215550044' WHERE id = $1`, [g]);
+    const p = await person('5', 'already_leader', { fio: 'Артёмкина Людмила', phone: '+79215550044' });
+    expect(await service().reconciler.apply(p.requestId, { groupIds: [g] }, 'boss')).toEqual({ ok: true, already: false });
+    expect((await db.query('SELECT leader_user_id::int AS lu, co_leader_user_id::int AS cu FROM groups WHERE id = $1', [g])).rows[0]).toEqual({ lu: null, cu: p.userId });
+  });
+
+  test('«уже веду»: место соведущего занято другим человеком из «Людей» — не записывается ничего', async () => {
+    const g = await group('Артёмкин Константин');
+    const card = (await db.query<{ id: number }>(`INSERT INTO persons (full_name) VALUES ('Другая') RETURNING id`)).rows[0]!.id;
+    await db.query(`UPDATE groups SET co_leader = 'Артёмкина Людмила', co_leader_person_id = $2 WHERE id = $1`, [g, card]);
+    const p = await person('6', 'already_leader', { fio: 'Артёмкина Людмила' });
+    expect(await service().reconciler.apply(p.requestId, { groupIds: [g] }, 'boss')).toMatchObject({ ok: false, error: 'conflict' });
+    expect(await statusOf(p.requestId)).toBe('Новая');
+  });
+
   test('«уже веду»: если у одной из групп уже другой ведущий, не записывается ничего и обращение остаётся открытым', async () => {
     const a = await group('Артёмкин Константин');
     const b = await group('Артёмкин Константин');

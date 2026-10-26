@@ -30,27 +30,30 @@ function verifiedSentence(days: number | null): string {
  * значит, окно только для просмотра, и перехода к ведущему в «Люди» не будет.
  */
 export function groupDataRows(g: GroupItem, openPerson?: (key: string) => void): KvRow[] {
+  // Ведущий и соведущий связаны с «Людьми» (обращением «уже веду группу» или выбором в форме правки) — рядом с именем
+  // переход к карточке. Ключ («u12», «p7») человеку ничего не говорит, поэтому показываем только переход.
+  const person = (name: string, key: string | null, aria: string) => (
+    <span className={styles.leaderLinked}>
+      <span>{name}</span>
+      {key && <span className={styles.note}>{ru.reference.leaderLinked}</span>}
+      {key && openPerson && (
+        <Button size="sm" onClick={() => openPerson(key)} aria-label={aria}>
+          {ru.reference.openLeader}
+        </Button>
+      )}
+    </span>
+  );
   return [
-    // Строка только у связанного ведущего: связь появляется, когда обращение «уже веду группу» сверено со справочником.
-    // Ключ регистрации («u12») человеку ничего не говорит, поэтому показываем только переход к карточке.
-    ...(g.leaderKey
-      ? [
-          {
-            label: ru.reference.leader,
-            value: (
-              <span className={styles.leaderLinked}>
-                <span>{g.leader}</span>
-                <span className={styles.note}>{ru.reference.leaderLinked}</span>
-                {openPerson && (
-                  <Button size="sm" onClick={() => openPerson(g.leaderKey as string)} aria-label={ru.reference.openLeaderAria}>
-                    {ru.reference.openLeader}
-                  </Button>
-                )}
-              </span>
-            ),
-          },
-        ]
-      : []),
+    // Двое ведущих — двумя строками, одна под другой: так видно, что это два человека, а не одно длинное имя.
+    {
+      label: g.coLeader ? ru.reference.leaders : ru.reference.leader,
+      value: (
+        <span className={styles.leaderLines}>
+          {person(g.leader, g.leaderKey, ru.reference.openLeaderAria)}
+          {g.coLeader && person(g.coLeader, g.coLeaderKey, ru.reference.openCoLeaderAria)}
+        </span>
+      ),
+    },
     { label: 'Возраст', value: orNone(g.ageText) },
     { label: 'Когда', value: g.whenText ?? <Pill tone="human">{ru.reference.notSpecified}</Pill> },
     // Ответ ведущего на досылку сам в группу не переносится: координатор сверяет его с «Когда» и адресом и правит группу.
@@ -86,7 +89,6 @@ export function groupDataRows(g: GroupItem, openPerson?: (key: string) => void):
     { label: 'Координатор', value: orNone(g.coordinator) },
     { label: 'Направление', value: g.direction },
     { label: 'Состав', value: orNone(g.composition) },
-    { label: 'Со-ведущий', value: orNone(g.coLeader) },
     { label: 'Телефон', value: g.phone ? <span className="num">{formatPhone(g.phone)}</span> : noValue },
     ...(g.coLeaderPhone ? [{ label: 'Телефон соведущего', value: <span className="num">{formatPhone(g.coLeaderPhone)}</span> }] : []),
     { label: 'Адрес', value: g.address ? (g.addressGeo === 'found' ? `${g.address} · ${ru.reference.geoFound}` : g.addressGeo === 'missing' ? `${g.address} · ${ru.reference.geoMissing}` : g.address) : noValue },

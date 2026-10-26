@@ -17,13 +17,16 @@ export function reconcileKindOf(type: string): 'member' | 'leader' | null {
   return Object.hasOwn(RECONCILE_TYPES, type) ? RECONCILE_TYPES[type as keyof typeof RECONCILE_TYPES] : null;
 }
 
+const filled = (p: string | null | undefined): p is string => typeof p === 'string' && p.trim() !== '';
+
 const leadersOf = (groups: readonly DashboardGroup[]): LeaderGroup[] =>
   groups.map((g) => ({
     id: g.id,
     leader: g.leader,
     coLeader: g.co_leader,
-    // Телефоны ведущего и второго ведущего: человек мог назвать любого из них.
-    phones: [g.phone, ...g.phones, g.co_leader_phone].filter((p): p is string => typeof p === 'string' && p.trim() !== ''),
+    // Телефоны ведущего и второго ведущего порознь: человек мог назвать любого из них, а от этого зависит, кем он станет.
+    phones: [g.phone, ...g.phones].filter(filled),
+    coLeaderPhones: [g.co_leader_phone].filter(filled),
   }));
 
 function planOf(r: DashboardRequest, kind: 'member' | 'leader', groups: readonly DashboardGroup[]): ReconcilePlan {
@@ -32,6 +35,15 @@ function planOf(r: DashboardRequest, kind: 'member' | 'leader', groups: readonly
     ? { name: r.leader_name, phones: [] as string[] }
     : { name: r.fio, phones: [...r.phones, ...(r.phone ? [r.phone] : [])] };
   return planReconcile(subject, leadersOf(groups));
+}
+
+/**
+ * Кем человек из обращения «уже веду группу» записывается в каждую найденную группу: ведущим или соведущим (совпал с
+ * соведущим по имени или телефону). Группа, которой нет среди найденных (человек выбрал её сам), — ведущим, как раньше.
+ */
+export function leaderRolesOf(r: DashboardRequest, groups: readonly DashboardGroup[]): Map<number, 'leader' | 'coLeader'> {
+  if (reconcileKindOf(r.type) !== 'leader') return new Map();
+  return new Map(planOf(r, 'leader', groups).candidates.map((c) => [c.groupId, c.role]));
 }
 
 /**

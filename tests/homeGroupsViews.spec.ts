@@ -23,7 +23,7 @@ function group(over: Partial<DashboardGroup> & { id: number }): DashboardGroup {
     district: 'Приморский', metro: null, address: null, composition: null, day: null, time: null, people: null,
     coordinator: null, co_leader: null, co_leader_phone: null, feedback_at: null, opened_on: null, comment: null, training: null,
     direction: 'Молодёжное служение', status: 'Функционирует', checked: null, source: 'таблица', campaign_registered: false,
-    do_not_refer: false, leader_user_id: null,
+    do_not_refer: false, leader_user_id: null, leader_person_id: null, co_leader_user_id: null, co_leader_person_id: null,
     ...over,
   };
 }
@@ -1254,6 +1254,30 @@ describe('остальные обращения: суть и разбор по �
     const { views } = build({ groups: [group({ id: 5, leader_user_id: 12 }), group({ id: 6 })] });
     expect(views.groups.items.find((g) => g.id === 5)!.leaderKey).toBe('u12');
     expect(views.groups.items.find((g) => g.id === 6)!.leaderKey).toBeNull();
+  });
+
+  test('соведущий — тоже ссылка на человека; карточка, внесённая вручную, — ключ «p»', () => {
+    const { views } = build({ groups: [group({ id: 5, leader_person_id: 3, co_leader_user_id: 12 }), group({ id: 6, co_leader_person_id: 4 })] });
+    const item = (id: number) => views.groups.items.find((g) => g.id === id)!;
+    expect(item(5)).toMatchObject({ leaderKey: 'p3', coLeaderKey: 'u12' });
+    expect(item(6)).toMatchObject({ leaderKey: null, coLeaderKey: 'p4' });
+  });
+
+  test('телефоны ведущего и соведущего берутся из карточек связанных людей, без связи — записанные в группе', () => {
+    const { views } = build({
+      groups: [
+        group({ id: 5, phone: '+79110000001', phones: ['+79110000001'], co_leader_phone: '+79110000002', leader_user_id: 12, co_leader_person_id: 3 }),
+        group({ id: 6, phone: '+79110000001', phones: ['+79110000001'], co_leader_phone: '+79110000002' }),
+        // Карточку удалили (её нет среди людей) или в ней нет номера — показываем записанный в группе.
+        group({ id: 7, phone: '+79110000001', phones: ['+79110000001'], co_leader_phone: '+79110000002', leader_person_id: 99, co_leader_user_id: 13 }),
+      ],
+      participants: [participant({ id: 12, phone: '+79215550012' }), participant({ id: 13, phone: null })],
+      persons: [{ id: 3, full_name: 'Анна', phone: '+79215550033', age: null, place: null, note: null, address: null, schedule: null, hobby: null, profession: null, family: null, created_at: new Date('2026-10-01T10:00:00Z') }],
+    });
+    const item = (id: number) => views.groups.items.find((g) => g.id === id)!;
+    expect(item(5)).toMatchObject({ phone: '+7 921 555-00-12', coLeaderPhone: '+7 921 555-00-33' });
+    expect(item(6)).toMatchObject({ phone: '+7 911 000-00-01', coLeaderPhone: '+7 911 000-00-02' });
+    expect(item(7)).toMatchObject({ phone: '+7 911 000-00-01', coLeaderPhone: '+7 911 000-00-02' });
   });
 
   test('ответ ведущего боту (время и адрес) виден в карточке группы: по связи с регистрацией или по телефону', () => {

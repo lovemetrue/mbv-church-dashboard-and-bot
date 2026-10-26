@@ -134,7 +134,18 @@ function GroupCardBody({ id, onBack }: { id: number; onBack: () => void }) {
 
   const none = <span className={styles.muted}>{ru.today.notSpecified}</span>;
   const rows: KvRow[] = [
-    { label: ru.today.groupLeader, value: [g.leader, g.coLeader].filter(Boolean).join(', ') || none },
+    // Двое ведущих — двумя строками, одна под другой.
+    {
+      label: ru.today.groupLeader,
+      value: g.coLeader ? (
+        <>
+          <div>{g.leader}</div>
+          <div>{g.coLeader}</div>
+        </>
+      ) : (
+        g.leader || none
+      ),
+    },
     { label: ru.today.groupPlace, value: [g.district, g.metro].filter(Boolean).join(' · ') || none },
     { label: ru.today.groupWhen, value: g.whenText ?? none },
     { label: ru.today.groupSeats, value: <span className="num">{ru.today.seatsOf(g.free, g.capacity)}</span> },

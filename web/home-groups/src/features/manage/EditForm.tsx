@@ -5,6 +5,7 @@ import { splitList, toggleInList } from '../../shared/multiValue';
 import { Button } from '../../shared/ui';
 import { blankRequired, changedFields, type EditField, type EditSpec } from './editSpec';
 import styles from './Manage.module.css';
+import { PersonField } from './PersonField';
 import { useManageAction } from './useManage';
 
 interface EditFormProps {
@@ -112,6 +113,28 @@ export function EditForm({ spec: given, path, onClose, onSaved, onBusyChange, re
           </div>
           {hint}
         </fieldset>
+      );
+    }
+
+    if (f.kind === 'person') {
+      return (
+        <div key={f.name} className={f.wide ? styles.fieldWide : styles.field}>
+          <label htmlFor={id}>{f.label}</label>
+          <PersonField
+            id={id}
+            label={f.label}
+            value={values[f.name] ?? ''}
+            taken={f.other ? (values[f.other] ?? '') : ''}
+            disabled={busy}
+            describedBy={describedBy}
+            onPick={(p) => {
+              // Выбранный человек — и имя в группе: по нему группу ищут и узнают в списках.
+              setValues((v) => ({ ...v, [f.name]: p?.key ?? '', ...(p && f.fillsName ? { [f.fillsName]: p.fio } : {}) }));
+              setError(null);
+            }}
+          />
+          {hint}
+        </div>
       );
     }
 

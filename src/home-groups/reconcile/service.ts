@@ -1,7 +1,7 @@
 import type { ActionOutcome, PlacementRepo } from '../../db/repos/placement.repo.js';
 import type { ViewsInput } from '../api/views.js';
 import { BULK_LIMIT } from '../actions.js';
-import { readyGroupOf, reconcileKindOf } from './plan.js';
+import { leaderRolesOf, readyGroupOf, reconcileKindOf } from './plan.js';
 
 type Failure = Extract<ActionOutcome, { ok: false }>;
 export type ReconcileOutcome = { ok: true; already: boolean } | Failure;
@@ -31,6 +31,10 @@ function parseGroupIds(body: unknown): number[] | string {
   return unique;
 }
 
+/** Группы, где человек из «уже веду группу» совпал с соведущим: туда он встаёт соведущим (расчёт — на сервере). */
+const coLeaderGroups = (request: ViewsInput['requests'][number], input: ViewsInput): Set<number> =>
+  new Set([...leaderRolesOf(request, input.groups)].filter(([, role]) => role === 'coLeader').map(([id]) => id));
+
 /**
  * Разбор «других обращений» по справочникам. Вид (в состав или ведущим) выводится из типа обращения на сервере, а не
  * берётся из запроса: клиент называет только группу. «Разобрать всё готовое» пересчитывает группу для каждого
@@ -49,7 +53,7 @@ export function createReconciler(deps: {
       if (!request) return { ok: false, error: 'not_found', message: 'Обращение не найдено.' };
       const kind = reconcileKindOf(request.type);
       if (!kind) return bad('Это обращение не разбирается по справочникам.');
-      const out = await deps.placement.reconcile(requestId, kind, groupIds, actor);
+      const out = await deps.placement.reconcile(requestId, kind, groupIds, actor, coLeaderGroups(request, input));
       return out.ok ? { ok: true, already: out.already === true } : out;
     },
 
@@ -68,7 +72,7 @@ export function createReconciler(deps: {
         const kind = request ? reconcileKindOf(request.type) : null;
         if (!request || groupId === null || !kind) continue;
         // По одному, каждое в своей транзакции: закрытое или изменившееся обращение пропускается и не срывает остальные.
-        const out = await deps.placement.reconcile(id, kind, [groupId], actor);
+        const out = await deps.placement.reconcile(id, kind, [groupId], actor, coLeaderGroups(request, input));
         if (out.ok) applied += 1;
       }
       return { ok: true, applied, skipped: unique.length - applied };

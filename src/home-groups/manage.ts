@@ -3,7 +3,7 @@ import type { AuditRepo } from '../db/repos/audit.repo.js';
 import type { CoordinatorsRepo, RoleRef } from '../db/repos/coordinators.repo.js';
 import type { TeamRolesRepo } from '../db/repos/teamRoles.repo.js';
 import type { GroupDirectionsRepo } from '../db/repos/groupDirections.repo.js';
-import type { GroupRow, GroupsRepo } from '../db/repos/groups.repo.js';
+import type { GroupRow, GroupsRepo, PersonRef } from '../db/repos/groups.repo.js';
 import type { RequestsRepo } from '../db/repos/requests.repo.js';
 import type { UsersRepo } from '../db/repos/users.repo.js';
 import type { ActionOutcome } from '../db/repos/placement.repo.js';
@@ -19,7 +19,6 @@ import { UNKNOWN_DIRECTION, fieldsToForm, knownDirection } from './create.js';
  */
 const fail = (error: 'bad_request' | 'not_found', message: string): ActionOutcome => ({ ok: false, error, message });
 
-/** Поля группы, которые можно менять отсюда. Телефоны и адрес видны в форме и правятся как обычные поля. */
 /** Что в строке справочника команды правится: ФИО и роли (галочками из справочника или, в старом дашборде, одной ролью словами). */
 const COORDINATOR_EDITABLE: readonly string[] = ['name', 'roleIds', 'role'];
 
@@ -27,7 +26,28 @@ const GROUP_EDITABLE = [
   'leader', 'district', 'direction', 'status', 'people', 'day', 'time', 'composition', 'coordinator', 'coLeader',
   'feedbackAt', 'openedOn', 'comment', 'age', 'metro', 'openToNew', 'training', 'no', 'checked', 'doNotRefer', 'chamber',
   'phone', 'address', 'coLeaderPhone', 'campaignRegistered', 'capacity', 'campaignOnly',
+  // Человек из «Людей» на позиции ведущего и соведущего: ключ справочника («u12» или «p7»), пустая строка — отвязать.
+  'leaderKey', 'coLeaderKey',
 ] as const;
+
+const refOfRow = (userId: number | null | undefined, personId: number | null | undefined): PersonRef | null =>
+  userId ? { kind: 'user', id: Number(userId) } : personId ? { kind: 'person', id: Number(personId) } : null;
+
+/** Ссылки на людей в форму группы не входят: проверяются отдельно (`personRefOf`), а пишутся вместе с правкой. */
+const GROUP_LINKS = ['leaderKey', 'coLeaderKey'] as const;
+
+/**
+ * Ключ справочника «Люди» → ссылка. Связать можно регистрацию («u») и карточку, внесённую вручную («p»); человек из
+ * заявки без регистрации («r») — нет: такой записи как человека нет, есть только заявка. null — отвязать.
+ */
+function personRefOf(key: string): PersonRef | null | 'bad' {
+  const v = key.trim();
+  if (v === '') return null;
+  const m = /^([up])([1-9]\d{0,15})$/.exec(v);
+  if (!m) return 'bad';
+  return { kind: m[1] === 'u' ? 'user' : 'person', id: Number(m[2]) };
+}
+
 const GROUP_FLAGS = ['checked', 'doNotRefer', 'chamber', 'campaignRegistered', 'campaignOnly'] as const;
 
 /** Состав хранится строкой «Смешанная, Семейная», а форма ждёт отдельные значения: иначе правка любого поля обнулила бы состав. */
@@ -51,7 +71,7 @@ function groupToFields(g: GroupRow): URLSearchParams {
 }
 
 export function createManager(deps: {
-  groups: Pick<GroupsRepo, 'findActive' | 'update' | 'archive'>;
+  groups: Pick<GroupsRepo, 'findActive' | 'update' | 'archive' | 'personRefExists'>;
   coordinators: Pick<CoordinatorsRepo, 'create' | 'findActive' | 'rename' | 'archive'>;
   teamRoles: Pick<TeamRolesRepo, 'existing'>;
   directions: Pick<GroupDirectionsRepo, 'list'>;
@@ -77,11 +97,29 @@ export function createManager(deps: {
       if (unknown.length > 0) return fail('bad_request', `Поле «${unknown[0]!.slice(0, 40)}» здесь менять нельзя.`);
       if (given.size === 0) return fail('bad_request', 'Нечего менять.');
 
+      const refs: { leaderRef?: PersonRef | null; coLeaderRef?: PersonRef | null } = {};
+      for (const k of GROUP_LINKS) {
+        if (!given.has(k)) continue;
+        const ref = personRefOf(given.get(k)!);
+        if (ref === 'bad') return fail('bad_request', 'Ведущего и соведущего выбирают из справочника «Люди»: зарегистрированного или внесённого вручную.');
+        if (ref !== null && !(await deps.groups.personRefExists(ref))) {
+          return fail('bad_request', 'Этого человека уже нет в справочнике «Люди»: обновите страницу и выберите снова.');
+        }
+        refs[k === 'leaderKey' ? 'leaderRef' : 'coLeaderRef'] = ref;
+      }
+
       const current = await deps.groups.findActive(id);
       if (!current) return fail('not_found', 'Группа не найдена.');
+      // Один человек на обеих позициях — опечатка выбора: телефон и карточка у «двух ведущих» были бы одни.
+      const leader = refs.leaderRef !== undefined ? refs.leaderRef : refOfRow(current.leader_user_id, current.leader_person_id);
+      const coLeader = refs.coLeaderRef !== undefined ? refs.coLeaderRef : refOfRow(current.co_leader_user_id, current.co_leader_person_id);
+      if (leader && coLeader && leader.kind === coLeader.kind && leader.id === coLeader.id) {
+        return fail('bad_request', 'Ведущий и соведущий — один и тот же человек: выберите разных.');
+      }
 
       const merged = groupToFields(current);
       for (const [k, v] of given) {
+        if ((GROUP_LINKS as readonly string[]).includes(k)) continue;
         if (k === 'composition') { merged.delete(k); for (const c of splitComposition(v)) merged.append(k, c); continue; }
         if ((GROUP_FLAGS as readonly string[]).includes(k)) { if (v === '1' || v === 'true') merged.set(k, '1'); else merged.delete(k); continue; }
         // У вместимости пустое значение — «вернуть общее», а не «нет поля» (нет поля значит «не менять», см. parseGroupForm).
@@ -103,6 +141,7 @@ export function createManager(deps: {
         ...(given.has('coLeaderPhone') ? {} : { coLeaderPhone: current.co_leader_phone }),
         doNotRefer: given.has('doNotRefer') ? merged.has('doNotRefer') : current.do_not_refer,
         chamber: given.has('chamber') ? merged.has('chamber') : current.chamber,
+        ...refs,
       };
       const updated = await deps.groups.update(id, input);
       if (!updated) return fail('not_found', 'Группа не найдена.');

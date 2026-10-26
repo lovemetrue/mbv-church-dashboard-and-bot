@@ -62,6 +62,17 @@ export const ALL_GROUP_STATUSES = [
  */
 export const COMPOSITIONS = ['Смешанная', 'Мужская', 'Женская', 'Ментальная'] as const;
 
+/**
+ * Для кого группа по составу: «Мужская» — «м», «Женская» — «ж». Отмечены обе или ни одной (смешанная) — null, такая
+ * группа принимает всех. Мужчине женскую группу подбор не предлагает и наоборот (`exclusionReason`).
+ */
+export function groupGender(composition: string | null | undefined): 'м' | 'ж' | null {
+  const parts = new Set((composition ?? '').split(',').map((s) => s.trim().toLowerCase()));
+  const male = parts.has('мужская');
+  const female = parts.has('женская');
+  return male === female ? null : male ? 'м' : 'ж';
+}
+
 /** Районы для проверки данных: в выгрузке встречается и «Не указан». */
 export const ALL_DISTRICTS = [...DISTRICTS, 'Не указан'] as const;
 

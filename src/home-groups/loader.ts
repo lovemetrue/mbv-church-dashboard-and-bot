@@ -8,6 +8,7 @@ import type { PlacementRepo } from '../db/repos/placement.repo.js';
 import type { SettingsRepo } from '../db/repos/settings.repo.js';
 import type { RequestsRepo } from '../db/repos/requests.repo.js';
 import type { StrangeRepo } from '../db/repos/strange.repo.js';
+import type { GendersRepo } from '../db/repos/genders.repo.js';
 import type { UsersRepo } from '../db/repos/users.repo.js';
 import type { ViewsInput } from './api/views.js';
 
@@ -23,6 +24,8 @@ export interface LoaderRepos {
   members: Pick<MembersRepo, 'all' | 'allPersons'>;
   /** Метки «Странный человек»; без репозитория (в тестах) меток нет. */
   strange?: Pick<StrangeRepo, 'all'>;
+  /** Пол, поставленный вручную или моделью; без репозитория (в тестах) пол только из ФИО. */
+  genders?: Pick<GendersRepo, 'all'>;
   /** Кэш координат адресов; без него (в тестах) подбор сравнивает улицы по названию. */
   geocode?: Pick<GeocodeRepo, 'all'>;
 }
@@ -52,8 +55,9 @@ export function createLoader(repos: LoaderRepos, opts: { timeZone?: string; assi
     ]);
     const strange = repos.strange ? await repos.strange.all() : undefined;
     const geo = repos.geocode ? await repos.geocode.all() : undefined;
+    const genders = repos.genders ? await repos.genders.all() : undefined;
     return {
-      strange, geo,
+      strange, geo, genders,
       groups, requests, participants, coordinators, rejectedGroups, audit, activity, activeProposals, placedNew,
       matching: { auto: auto === true, lastRun: lastRun ?? null },
       hints,

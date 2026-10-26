@@ -52,6 +52,8 @@ export class MaintenanceRepo {
     await this.db.query('DELETE FROM users');
     // Метки «странный человек» регистраций (ключ u<номер>) без самих регистраций бессмысленны.
     await this.db.query("DELETE FROM strange_marks WHERE person_key LIKE 'u%'");
+    // И пол, поставленный регистрациям вручную: номера регистраций начнутся заново и достались бы чужим людям.
+    await this.db.query("DELETE FROM person_genders WHERE person_key LIKE 'u%'");
     await this.db.query('ALTER SEQUENCE registration_no_seq RESTART WITH 1');
   }
 }

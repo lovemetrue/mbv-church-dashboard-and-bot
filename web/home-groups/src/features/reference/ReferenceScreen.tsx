@@ -1,3 +1,4 @@
+import { GenderAiButton } from '../gender/GenderAiButton';
 import { useMemo, useState } from 'react';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { useCoordinators, useGroups, useMe, usePeople } from '../../shared/api/queries';
@@ -68,6 +69,7 @@ export function ReferenceScreen() {
           query={people}
           items={people.data?.items}
           renderCard={(p, close) => <PersonCard p={p} onClose={close} />}
+          actions={<GenderAiButton items={people.data?.items} />}
         />
       )}
       {nav.entity === 'coordinators' && (

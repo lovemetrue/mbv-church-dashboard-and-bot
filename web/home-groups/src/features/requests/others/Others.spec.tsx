@@ -44,9 +44,9 @@ describe('«Заявки»: переключатель «Хотят в груп�
   test('число не зависит от поиска и отбора: оно про все открытые обращения', async () => {
     stubFetchWithFixtures();
     renderAt(<App />, '/?tab=requests&q=Седов');
-    // по такому поиску среди заявок никого нет, но число обращений всё равно полное
+    // по такому поиску среди заявок никого нет, но число открытых обращений всё равно полное; найденное — отдельно
     await screen.findByRole('group', { name: 'Режим списка заявок' });
-    expect(within(switchEl()).getByRole('button', { name: `Другие обращения (${openCount})` })).toBeInTheDocument();
+    expect(within(switchEl()).getByRole('button', { name: new RegExp(`^Другие обращения \\(${openCount}\\) · найдено \\d+$`) })).toBeInTheDocument();
   });
 
   test('«Другие обращения» записывает view=others в адрес и сбрасывает открытую карточку и чип прежнего списка', async () => {

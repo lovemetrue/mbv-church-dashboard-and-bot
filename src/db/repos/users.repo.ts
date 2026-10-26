@@ -413,6 +413,7 @@ export class UsersRepo {
     const { rowCount } = await this.db.query('DELETE FROM users WHERE id = $1', [id]);
     // Метка «странный человек» привязана к ключу регистрации: вместе с регистрацией уходит и она.
     await this.db.query('DELETE FROM strange_marks WHERE person_key = $1', [`u${id}`]);
+    await this.db.query('DELETE FROM person_genders WHERE person_key = $1', [`u${id}`]);
     return (rowCount ?? 0) > 0;
   }
 

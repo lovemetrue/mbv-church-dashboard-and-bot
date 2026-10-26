@@ -19,7 +19,10 @@ export function useResponsible(view: RequestsView): { value: string; myName: str
     : kinds.includes('distributor') && view !== 'leads' ? RESP_MINE
     : kinds.includes('coordinator') && view === 'leads' ? myName
     : '';
-  const value = nav.responsible || byDefault;
-  const set = (who: string) => nav.setResponsible(who === byDefault ? '' : who === '' && byDefault ? RESP_ALL : who);
+  // Поиск ищет по всем: распределитель набирает фамилию человека, которого взял другой, и умолчание «мои» прятало
+  // его без следа. Выбранное в «В работе у» явно поиск по-прежнему уважает.
+  const fallback = nav.search.trim() ? '' : byDefault;
+  const value = nav.responsible || fallback;
+  const set = (who: string) => nav.setResponsible(who === fallback ? '' : who === '' && fallback ? RESP_ALL : who);
   return { value, myName, set };
 }

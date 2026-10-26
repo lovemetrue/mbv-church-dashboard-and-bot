@@ -49,6 +49,19 @@ describe('«Заявки»: поиск и счётчики (чистые фун�
     expect(matchesSearch(r, 'null')).toBe(false);
   });
 
+  test('слова запроса ищутся в любом порядке: «Соколова Мария» находит «Мария Соколова»', () => {
+    expect(searchRequests(items, 'Соколова Мария').map((r) => r.fio)).toEqual(['Мария Соколова']);
+    expect(searchRequests(items, '  соколова   мар ').map((r) => r.fio)).toEqual(['Мария Соколова']);
+    // слова из разных полей вместе не находят: ФИО одного и ответственный — это не «стык»
+    expect(searchRequests(items, 'Соколова Пётр')).toEqual([]);
+  });
+
+  test('«ё» и «е» в поиске не различаются', () => {
+    const r = { ...items.find((i) => i.fio === 'Мария Соколова')!, fio: 'Мария Семёнова' };
+    expect(matchesSearch(r, 'семенова')).toBe(true);
+    expect(matchesSearch({ ...r, fio: 'Мария Семенова' }, 'Семёнова')).toBe(true);
+  });
+
   test('счётчики чипов считаются по найденному и без отказов', () => {
     const all = countBuckets(items);
     expect(all.all).toBe(items.length);
@@ -204,6 +217,27 @@ describe('«Заявки»: экран', () => {
     stubFetchWithFixtures();
     renderAt(<App />, '/?tab=requests&req=999');
     expect(await screen.findByText(/Заявка не найдена/)).toBeInTheDocument();
+  });
+});
+
+describe('«Заявки»: поиск подсказывает, в каком режиме нашлось', () => {
+  test('у каждого режима дописано число найденного, и человек из «Хотят открыть группу» виден до перехода', async () => {
+    const { buildOthers } = await import('../../fixtures/others');
+    const lead = buildOthers().find((o) => o.type === 'lead_group')!;
+    const surname = lead.fio.split(' ').at(-1)!;
+    stubFetchWithFixtures();
+    renderAt(<App />, `/?tab=requests&q=${encodeURIComponent(surname)}`);
+    const views = await screen.findByRole('group', { name: 'Режим списка заявок' });
+    const leadsChip = within(views).getByRole('button', { name: /Хотят открыть группу/ });
+    expect(leadsChip.textContent).toMatch(/найдено [1-9]/);
+    expect(within(views).getByRole('button', { name: /Хотят в группу/ }).textContent).toMatch(/найдено \d+/);
+  });
+
+  test('без поиска чисел найденного нет', async () => {
+    stubFetchWithFixtures();
+    renderAt(<App />, '/?tab=requests');
+    const views = await screen.findByRole('group', { name: 'Режим списка заявок' });
+    expect(views.textContent).not.toMatch(/найдено/);
   });
 });
 

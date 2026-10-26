@@ -1,4 +1,5 @@
 import type { TeamRoleKind } from '@contracts';
+import { fillDemoGenderWithAi, setDemoGender } from './gender';
 import { DEMO_TEAM_ROLES } from './raw';
 import {
   buildLlmTestResult,
@@ -148,6 +149,17 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
     const other = request ? undefined : buildOthers().find((o) => o.id === id);
     setDemoStrange(request ? strangeKey(request.phone, `r${id}`) : strangeKey(other?.phone, `o${id}`), input.value === true, input.note);
     return { ok: true };
+  }
+  // Пол человека: в демо ставится и снимается (fixtures/gender.ts); «прогон моделью» заполняет пустые.
+  if (clean === 'people/gender') {
+    const input = (body ?? {}) as { key?: string; gender?: 'м' | 'ж' | null };
+    setDemoGender(input.key ?? '', input.gender ?? null);
+    return { ok: true };
+  }
+  if (clean === 'people/gender-ai') {
+    const unknown = buildPeople().items.filter((p) => p.gender.value === null).map((p) => p.key);
+    const filled = fillDemoGenderWithAi(unknown);
+    return { ok: true, unknownBefore: unknown.length, filled, left: unknown.length - filled };
   }
   if (clean === 'people/strange') {
     const input = (body ?? {}) as { key?: string; value?: boolean; note?: string | null };

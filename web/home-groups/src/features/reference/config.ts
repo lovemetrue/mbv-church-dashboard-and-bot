@@ -164,6 +164,8 @@ export const peopleConfig: EntityConfig<PersonItem> = {
   label: ru.reference.people,
   fields: [
     f('ФИО'),
+    // «М» или «Ж»; пусто — пол не понять из ФИО (быстрый отбор «Пол не указан»): таким не подбираются мужские и женские группы.
+    f(ru.gender.label, { groupable: true }),
     f('Телефон'),
     f('Возраст', { groupable: true }),
     f('Район', { groupable: true }),
@@ -183,7 +185,7 @@ export const peopleConfig: EntityConfig<PersonItem> = {
     // «Да» у людей с меткой «Странный человек»: по нему работает быстрый отбор «Странные».
     f(STRANGE_FIELD, { groupable: true }),
   ],
-  columns: ['ФИО', 'Телефон', 'Возраст', 'Район', 'Район, метро, ориентир', 'Адрес', 'Откуда', 'Малая группа', 'Дата', 'Заявка', '№', 'Набор', 'Набор выдан', 'Группы', STRANGE_FIELD],
+  columns: ['ФИО', ru.gender.label, 'Телефон', 'Возраст', 'Район', 'Район, метро, ориентир', 'Адрес', 'Откуда', 'Малая группа', 'Дата', 'Заявка', '№', 'Набор', 'Набор выдан', 'Группы', STRANGE_FIELD],
   // «№» не первым: первый столбец служит кнопкой открытия карточки, там должно быть имя.
   defaultColumns: ['ФИО', 'Телефон', 'Возраст', 'Район', 'Откуда', 'Малая группа', '№', 'Набор'],
   presets: [
@@ -193,11 +195,13 @@ export const peopleConfig: EntityConfig<PersonItem> = {
     { name: 'Район не указан', filters: [{ field: 'Район', op: 'empty', value: '' }] },
     { name: 'Нет телефона', filters: [{ field: 'Телефон', op: 'empty', value: '' }] },
     { name: ru.strange.preset, filters: [{ field: STRANGE_FIELD, op: 'eq', value: ru.reference.yes }] },
+    { name: ru.gender.filterMissing, filters: [{ field: ru.gender.label, op: 'empty', value: '' }] },
     { name: ru.reference.kitNotIssuedPreset, filters: [{ field: 'Набор', op: 'eq', value: ru.reference.kitNotIssued }] },
   ],
   toRow: (p) => ({
     _key: p.key,
     ФИО: p.fio,
+    [ru.gender.label]: p.gender.value ? ru.gender.option[p.gender.value] : null,
     Телефон: p.phone ? formatPhone(p.phone) : null,
     Возраст: p.ageLabel,
     Район: p.district,

@@ -925,3 +925,32 @@ describe('кого можно направить в будущую группу 
     expect(fits).toBeGreaterThan(misses);
   });
 });
+
+describe('пол: мужчине — не женская группа, женщине — не мужская', () => {
+  test('женская группа мужчине не предлагается, даже если подходит идеально; смешанная — предлагается', () => {
+    const r = request({ gender: 'м' });
+    expect(exclusionReason(r, group({ id: 1, gender: 'ж' }), SETTINGS)).toBe('женская группа');
+    expect(exclusionReason(r, group({ id: 2, gender: 'м' }), SETTINGS)).toBeNull();
+    expect(exclusionReason(r, group({ id: 3, gender: null }), SETTINGS)).toBeNull();
+    const plan = planFor([r], [group({ id: 1, gender: 'ж' }), group({ id: 3, gender: null, day: 'Пн', people: 9 })]);
+    const p = proposal(plan.entries.get(r.id));
+    expect(p.main.groupId).toBe(3);
+    expect(p.alternatives.map((a) => a.groupId)).not.toContain(1);
+  });
+
+  test('мужская группа женщине не предлагается', () => {
+    expect(exclusionReason(request({ gender: 'ж' }), group({ gender: 'м' }), SETTINGS)).toBe('мужская группа');
+  });
+
+  test('пол не понять — мужские и женские группы не предлагаются, пока его не укажут; смешанные — да', () => {
+    const r = request({ gender: null });
+    expect(exclusionReason(r, group({ gender: 'ж' }), SETTINGS)).toBe('женская группа, а пол человека не указан');
+    expect(exclusionReason(r, group({ gender: 'м' }), SETTINGS)).toBe('мужская группа, а пол человека не указан');
+    expect(exclusionReason(r, group({ gender: null }), SETTINGS)).toBeNull();
+  });
+
+  test('будущая группа из «хочу открыть» тоже не набирается из людей другого пола', () => {
+    expect(scoreProspect(request({ gender: 'м' }), group({ gender: 'ж' }), SETTINGS)).toBeNull();
+    expect(scoreProspect(request({ gender: 'ж' }), group({ gender: 'ж' }), SETTINGS)).not.toBeNull();
+  });
+});

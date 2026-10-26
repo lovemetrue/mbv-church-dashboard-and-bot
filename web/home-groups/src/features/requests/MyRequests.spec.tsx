@@ -105,6 +105,24 @@ describe('несколько ролей у одного человека', () =>
     await waitFor(async () => expect(await respSelect()).toHaveValue(name));
   });
 
+  test('поиск по фамилии находит и заявку, которую взял другой: умолчание «свои и ничьи» на поиск не действует', async () => {
+    const other = buildRequests().items.find((r) => r.responsible && r.responsible !== 'Анна Л.')!;
+    const surname = other.fio.split(' ').at(-1)!;
+    stubFetchWithFixtures({ me: personal('Анна Л.', 'Распределитель') });
+    renderAt(<App />, `/?tab=requests&q=${encodeURIComponent(surname)}`);
+    await waitFor(async () => expect((await requestRows()).some((r) => r.textContent?.includes(other.fio))).toBe(true));
+    expect(currentSearch().has('resp')).toBe(false);
+  });
+
+  test('явно выбранное «В работе у» поиск уважает', async () => {
+    const other = buildRequests().items.find((r) => r.responsible && r.responsible !== 'Анна Л.')!;
+    const surname = other.fio.split(' ').at(-1)!;
+    stubFetchWithFixtures({ me: personal('Анна Л.', 'Распределитель') });
+    renderAt(<App />, `/?tab=requests&resp=~&q=${encodeURIComponent(surname)}`);
+    await screen.findByRole('group', { name: /Отбор списка/ });
+    await waitFor(() => expect(screen.queryByText(other.fio)).not.toBeInTheDocument());
+  });
+
   test.each([
     ['катализатор', ['catalyst', 'distributor', 'coordinator']],
     ['старший распределитель', ['senior_distributor', 'distributor']],

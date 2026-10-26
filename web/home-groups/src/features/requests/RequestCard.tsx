@@ -1,3 +1,4 @@
+import { GenderField } from '../gender/GenderField';
 import { useId, useState, type FormEvent } from 'react';
 import type { GroupBrief, GroupItem, LogEntry, RequestItem } from '@contracts';
 import { BUCKET_LABEL } from '../../entities/buckets';
@@ -506,6 +507,8 @@ export function RequestCard({
   // Группа, о которой речь: куда человека утвердили, а пока не утвердили — какую предлагает подбор.
   const group = r.bucket === 'done' ? r.finalGroup : (proposalOf(r)?.main.group ?? null);
   const contacts: KvRow[] = [
+    // Пол — первым: пустой подсвечен, и без него мужские и женские группы этой заявке не подбираются.
+    { label: ru.gender.label, value: <GenderField key={r.personKey} personKey={r.personKey} gender={r.gender} /> },
     { label: ru.requests.phone, value: r.phone ? <span className="num">{formatPhone(r.phone)}</span> : noValue },
     { label: ru.requests.place, value: r.place ?? noValue },
     ...(r.hobby ? [{ label: ru.contact.fields.hobby, value: r.hobby }] : []),

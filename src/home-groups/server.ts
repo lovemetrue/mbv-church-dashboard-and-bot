@@ -20,6 +20,7 @@ import type { AddressTableView } from './contracts.js';
 import type { Members } from './members.js';
 import type { Contacts } from './contacts.js';
 import type { Strange } from './strange.js';
+import type { Genders } from './genders.js';
 import type { Kits } from './kits.js';
 import type { TeamRoles } from './teamRoles.js';
 import type { GroupDirections } from './groupDirections.js';
@@ -92,6 +93,8 @@ export interface HomeGroupsDeps {
   contacts: Contacts;
   /** Метка «Странный человек». */
   strange: Strange;
+  /** Пол человека: ручная установка и прогон моделью. Нет (в части тестов) — маршруты отвечают 404. */
+  genders?: Genders;
   /** Справочник ролей команды («Настройки → Роли команды», только полный вход). */
   teamRoles: TeamRoles;
   /** Справочник направлений групп («Настройки → Направления», только полный вход). */
@@ -186,6 +189,8 @@ const BULK_PATH = '/api/v1/requests/bulk';
 const KITS_PATH = '/api/v1/kits';
 const KIT_POST_PATH = /^\/api\/v1\/kits\/(find|search|issue|undo)$/;
 const PERSON_STRANGE_PATH = '/api/v1/people/strange';
+const PERSON_GENDER_PATH = '/api/v1/people/gender';
+const PERSON_GENDER_AI_PATH = '/api/v1/people/gender-ai';
 const RECONCILE_READY_PATH = '/api/v1/requests/reconcile-ready';
 const ASSISTANT_RUN_PATH = '/api/v1/assistant/run';
 const ASSISTANT_CHAT_PATH = '/api/v1/assistant/chat';
@@ -698,6 +703,37 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
   }
 
   /** Метка «Странный человек» по ключу человека из справочника. Доступна любому входу: ставит координатор или распределитель. */
+  async function handlePersonGender(req: IncomingMessage, res: ServerResponse, sid: string | undefined, genders: Genders): Promise<void> {
+    const call = await readAuthedJson(req, res, sid);
+    if (!call) return;
+    const done = await genders.set(call.body, call.actor);
+    if (!done.ok) {
+      sendJson(res, ACTION_STATUS[done.error], { error: done.error, message: done.message } satisfies ActionError);
+      return;
+    }
+    deps.invalidateViews();
+    logger.info({ actor: call.actor }, 'домашние группы: пол человека');
+    sendJson(res, 200, { ok: true } satisfies ActionOk);
+  }
+
+  /** Прогон моделью: наружу уходят отдельные слова из ФИО, поэтому только полный вход, как и подключение помощника. */
+  async function handleGenderAi(req: IncomingMessage, res: ServerResponse, sid: string | undefined, genders: Genders): Promise<void> {
+    const call = await readAuthedJson(req, res, sid);
+    if (!call) return;
+    if ((await deps.auth.roleOf(sid)) !== 'super') {
+      sendJson(res, 403, { error: 'forbidden', message: 'Разбор пола моделью доступен полному входу.' } satisfies ActionError);
+      return;
+    }
+    const outcome = await genders.fillWithAi();
+    if (!outcome.ok) {
+      sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
+      return;
+    }
+    deps.invalidateViews();
+    logger.info({ actor: call.actor, filled: outcome.filled, left: outcome.left }, 'домашние группы: пол подсказан моделью');
+    sendJson(res, 200, outcome);
+  }
+
   async function handlePersonStrange(req: IncomingMessage, res: ServerResponse, sid: string | undefined): Promise<void> {
     const call = await readAuthedJson(req, res, sid);
     if (!call) return;
@@ -893,6 +929,8 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     if (kit) { await handleKit(req, res, kit[1]!, sid); return; }
     if (req.method === 'POST' && path === BULK_PATH) { await handleBulk(req, res, sid); return; }
     if (req.method === 'POST' && path === PERSON_STRANGE_PATH) { await handlePersonStrange(req, res, sid); return; }
+    if (req.method === 'POST' && path === PERSON_GENDER_PATH && deps.genders) { await handlePersonGender(req, res, sid, deps.genders); return; }
+    if (req.method === 'POST' && path === PERSON_GENDER_AI_PATH && deps.genders) { await handleGenderAi(req, res, sid, deps.genders); return; }
     if (req.method === 'POST' && path === RECONCILE_READY_PATH) { await handleReconcileReady(req, res, sid); return; }
     if (req.method === 'POST' && path === ASSISTANT_CHAT_PATH) { await handleAssistantChat(req, res, sid); return; }
     if (req.method === 'POST' && path === ASSISTANT_CHAT_CLEAR_PATH) { await handleAssistantChatClear(req, res, sid); return; }

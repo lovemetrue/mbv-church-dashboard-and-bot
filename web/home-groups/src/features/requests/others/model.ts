@@ -1,15 +1,14 @@
 import type { OtherItem } from '@contracts';
 import type { OtherFilter, ReconcileFilter } from '../../../entities/others';
-import { matchesSearch } from '../model';
+import { hasAllWords, matchesSearch } from '../model';
 
 /**
  * Поиск по обращениям: те же поля, что у заявок (ФИО, место, ответственный, заметка, телефон по цифрам),
  * плюс тип обращения («вопрос» находит вопросы служителю) и суть: человека часто ищут по тому, что он написал.
  */
 export function matchesOtherSearch(o: OtherItem, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  return matchesSearch(o, query) || o.typeLabel.toLowerCase().includes(q) || (o.gist ?? '').toLowerCase().includes(q);
+  if (!query.trim()) return true;
+  return matchesSearch(o, query) || hasAllWords(o.typeLabel, query) || hasAllWords(o.gist, query);
 }
 
 export interface OtherCounts {

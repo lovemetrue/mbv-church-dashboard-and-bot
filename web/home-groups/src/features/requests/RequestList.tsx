@@ -102,6 +102,8 @@ export function RequestList({ items, selectedId, onSelect, selection }: RequestL
                   {r.fio}
                 </button>
                 <StrangeBadge mark={r.strange} />
+                {/* Закрытым незачем: пол нужен для подбора. */}
+                {r.gender.value === null && r.bucket !== 'done' && r.bucket !== 'cancelled' && <Pill tone="warn">{ru.gender.filterMissing}</Pill>}
                 {r.ageLabel && <AgeTag>{r.ageLabel}</AgeTag>}
                 <span className={styles.place}>{r.place ?? ru.common.placeUnknown}</span>
                 <AssistantTag note={r.assistant} />

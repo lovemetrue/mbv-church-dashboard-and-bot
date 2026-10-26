@@ -1,3 +1,4 @@
+import { GenderField } from '../gender/GenderField';
 import type { CoordinatorItem, GroupItem, PersonItem } from '@contracts';
 import { formatDateFull, formatPhone, groupLabel, healthTone } from '../../entities/format';
 import { registrationCardUrl, registrationQrUrl } from '../../shared/api/base';
@@ -225,6 +226,7 @@ export function PersonCard({ p, onClose }: { p: PersonItem; onClose: () => void 
   const nav = useAppNav();
   const rows: KvRow[] = [
     { label: 'ФИО', value: p.fio },
+    { label: ru.gender.label, value: <GenderField key={p.key} personKey={p.key} gender={p.gender} /> },
     { label: 'Телефон', value: p.phone ? <span className="num">{formatPhone(p.phone)}</span> : noValue },
     { label: 'Возраст', value: orNone(p.ageLabel) },
     { label: 'Район', value: orNone(p.district) },

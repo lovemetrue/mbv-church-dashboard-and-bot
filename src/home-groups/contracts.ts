@@ -31,6 +31,8 @@
  *   POST /api/v1/requests/bulk          BulkBody → BulkOk | ActionError (передать или отметить «нужен звонок» сразу нескольким)
  *   POST /api/v1/requests/:id/strange   StrangeBody → ActionOk | ActionError (метка «Странный человек» на человеке заявки; любой вход)
  *   POST /api/v1/people/strange         PersonStrangeBody → ActionOk | ActionError (то же по ключу человека: u12, r345, p7)
+ *   POST /api/v1/people/gender          PersonGenderBody → ActionOk | ActionError (пол человека по ключу; null — снова из ФИО)
+ *   POST /api/v1/people/gender-ai       (тело {})         → GenderAiOk | ActionError (модель подсказывает пол тем, у кого он не понятен из ФИО)
  *   POST /api/v1/requests/:id/reconcile ReconcileBody → ReconcileOk | ActionError (разобрать «другое обращение»: в состав групп или ведущим групп)
  *   POST /api/v1/requests/reconcile-ready ReconcileReadyBody → ReconcileReadyOk | ActionError (разобрать сразу все с одной точно найденной группой)
  *   POST /api/v1/people/(u|r)<id>/update {fields} → ActionOk | ActionError (контакты регистрации или человека из заявки; доходят и до заявок)
@@ -228,6 +230,30 @@ export interface Proposal {
  * Метка «Странный человек»: ставит координатор или распределитель после обзвона, когда у человека оказываются особенности и
  * для него нужна отдельная группа. Видна везде, где виден человек; такие заявки не попадают в автоматический подбор.
  */
+/**
+ * Пол человека. value: «м», «ж» или null — не понять (тогда интерфейс подсвечивает «Пол не указан», а мужские и женские
+ * группы человеку не подбираются). by: откуда — «fio» (выведен из ФИО), «ai» (подсказка модели, стоит проверить),
+ * «manual» (поставил служитель); у пустого null.
+ */
+export interface GenderInfo {
+  value: 'м' | 'ж' | null;
+  by: 'fio' | 'ai' | 'manual' | null;
+}
+
+/** Поставить пол человеку по ключу (u12, r345, p7); null — снять поставленное и вернуться к выводу из ФИО. */
+export interface PersonGenderBody {
+  key: string;
+  gender: 'м' | 'ж' | null;
+}
+
+/** Разобрать пол с помощью модели: сколько людей было без пола, сколько заполнено и сколько осталось. */
+export interface GenderAiOk {
+  ok: true;
+  unknownBefore: number;
+  filled: number;
+  left: number;
+}
+
 export interface StrangeMark {
   /** Кто поставил (логин). */
   by: string;
@@ -359,6 +385,8 @@ export interface RequestTableFields {
 export interface RequestItem {
   /** Метка «Странный человек» (на человеке заявки); null — нет. */
   strange: StrangeMark | null;
+  /** Пол человека заявки: без него мужские и женские группы не подбираются. */
+  gender: GenderInfo;
   id: number;
   /** Человек в «Людях»: регистрация («u12») или сама заявка без регистрации («r345») — переход в его карточку. */
   personKey: string;
@@ -1254,6 +1282,8 @@ export interface GroupsView {
 export interface PersonItem {
   /** Метка «Странный человек»; null — нет. */
   strange: StrangeMark | null;
+  /** Пол: из ФИО, от модели или поставленный служителем; пустой подсвечивается. */
+  gender: GenderInfo;
   /** Устойчивый ключ строки: «u12» (участник), «r345» (заявка без участника) или «p7» (карточка, внесённая вручную). */
   key: string;
   /** Номер карточки для ключа p<id> (правка и удаление через `/persons/:id/…`); у остальных null. */

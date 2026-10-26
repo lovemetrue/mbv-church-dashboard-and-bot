@@ -5,20 +5,31 @@ import { isStrangeHold } from '../../entities/strange';
 import { RESP_ALL, RESP_MINE, RESP_NOBODY } from '../../shared/nav/params';
 
 /**
- * Поиск по заявкам: ФИО, место, ответственного и комментарий ищем как подстроку без учёта
- * регистра; телефон — по цифрам, чтобы «9114» находил «+7 (911) 4…» в любой записи номера.
- * Цифры сравниваем, только если в запросе их хотя бы три: иначе «1» нашёл бы половину очереди.
- * ФИО с местом склеены (как было: «Орлов Беговая» находит), а ответственный и комментарий
- * проверяются отдельно: запрос из нескольких слов не должен находить заявку «на стыке» чужих полей.
+ * Поиск по заявкам: ФИО, место, ответственного и комментарий ищем без учёта регистра; телефон — по цифрам, чтобы
+ * «9114» находил «+7 (911) 4…» в любой записи номера. Цифры сравниваем, только если в запросе их хотя бы три: иначе
+ * «1» нашёл бы половину очереди.
+ * Запрос делим на слова, и каждое должно найтись в поле, но в любом порядке: ФИО в базе записаны то «Имя Фамилия»,
+ * то «Фамилия Имя Отчество», и «Иванова Мария» не находила «Мария Иванова». «ё» равна «е» — пишут по-разному.
+ * ФИО с местом склеены (как было: «Орлов Беговая» находит), а ответственный и комментарий проверяются отдельно:
+ * запрос из нескольких слов не должен находить заявку «на стыке» чужих полей.
  */
 export type Searchable = Pick<RequestItem, 'fio' | 'place' | 'responsible' | 'note' | 'phone'>;
 
+/** Текст для сравнения: нижний регистр, «ё» как «е». */
+export const foldText = (s: string | null | undefined): string => (s ?? '').toLowerCase().replace(/ё/g, 'е');
+
+/** Все слова запроса есть в тексте (каждое — подстрокой, порядок не важен). */
+export function hasAllWords(text: string | null | undefined, query: string): boolean {
+  const words = foldText(query).split(/\s+/).filter(Boolean);
+  const hay = foldText(text);
+  return words.length > 0 && words.every((w) => hay.includes(w));
+}
+
 export function matchesSearch(r: Searchable, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  if (`${r.fio} ${r.place ?? ''}`.toLowerCase().includes(q)) return true;
-  if ((r.responsible ?? '').toLowerCase().includes(q) || (r.note ?? '').toLowerCase().includes(q)) return true;
-  const digits = phoneDigits(q);
+  if (!query.trim()) return true;
+  if (hasAllWords(`${r.fio} ${r.place ?? ''}`, query)) return true;
+  if (hasAllWords(r.responsible, query) || hasAllWords(r.note, query)) return true;
+  const digits = phoneDigits(query);
   return digits.length >= 3 && phoneDigits(r.phone).includes(digits);
 }
 

@@ -645,7 +645,7 @@ describe('люди', () => {
       requests: [request({ id: 40, user_id: 12, place: 'Ломоносовская' })],
     });
     expect(views.people.items).toEqual([{
-      key: 'u12', strange: null, contactsHidden: false, personId: null, groups: [], leads: [], requests: expect.any(Array), fio: 'Дарья Ефимова', phone: '+7 911 123-45-67', ageLabel: '26-35', district: 'Невский',
+      key: 'u12', strange: null, contactsHidden: false, personId: null, groups: [], leads: [], requests: expect.any(Array), gender: { value: 'ж', by: 'fio' }, fio: 'Дарья Ефимова', phone: '+7 911 123-45-67', ageLabel: '26-35', district: 'Невский',
       place: 'Ломоносовская', address: null, schedule: null, hobby: null, profession: null, family: null, note: null, church: null, leaderName: null, preferredContact: null, addressGeo: null, from: 'Бот · MAX', mdgLabel: 'Хочет в группу', date: '2026-09-12', requestId: 40, userId: 12, registrationNo: 12, kitIssuedOn: null,
     }]);
   });
@@ -685,7 +685,7 @@ describe('люди', () => {
     });
     const person = (key: string) => views.people.items.find((p) => p.key === key)!;
     expect(person('r7')).toEqual({
-      key: 'r7', strange: null, contactsHidden: false, personId: null, groups: [], leads: [], requests: expect.any(Array), fio: 'Станислав Ким', phone: '+7 904 123-45-67', ageLabel: '26-35', district: 'Приморский',
+      key: 'r7', strange: null, contactsHidden: false, personId: null, groups: [], leads: [], requests: expect.any(Array), gender: { value: 'м', by: 'fio' }, fio: 'Станислав Ким', phone: '+7 904 123-45-67', ageLabel: '26-35', district: 'Приморский',
       place: 'Приморский', address: null, schedule: null, hobby: null, profession: null, family: null, note: null, church: null, leaderName: null, preferredContact: null, addressGeo: null, from: 'Таблица', mdgLabel: 'Заявка: готово к утверждению', date: '2026-10-02', requestId: 7, userId: null, registrationNo: null, kitIssuedOn: null,
     });
     expect(person('r8')).toMatchObject({ from: 'Дашборд · Звонок', mdgLabel: 'Заявка: нужна помощь в сопоставлении', district: null });
@@ -1704,5 +1704,40 @@ describe('«Хотят открыть группу»: кого можно нап
     expect(other(views, 1).prospects).toEqual({ futureGroup: null, unknownPlace: true, total: 0, items: [] });
     expect(other(views, 3).prospects).toBeNull();
     expect(other(views, 8).prospects).toBeNull();
+  });
+});
+
+describe('пол человека', () => {
+  test('пол из ФИО, поставленный вручную важнее ФИО, неясный — пустой; в движок уходит тот же пол', () => {
+    const { views, calls } = build({
+      requests: [
+        request({ id: 1, fio: 'Мария Соколова', type: 'join_group' }),
+        request({ id: 2, fio: 'Саша Ким', type: 'join_group' }),
+        request({ id: 3, fio: 'Иванов Иван', type: 'join_group' }),
+        request({ id: 4, fio: 'Женя Ким', type: 'join_group' }),
+      ],
+      genders: new Map([['r3', { gender: 'ж', by: 'anna' }], ['r4', { gender: 'м', by: 'ии' }]]),
+    });
+    const g = (id: number) => views.requests.items.find((r) => r.id === id)!.gender;
+    expect(g(1)).toEqual({ value: 'ж', by: 'fio' });
+    expect(g(2)).toEqual({ value: null, by: null });
+    expect(g(3)).toEqual({ value: 'ж', by: 'manual' });
+    expect(g(4)).toEqual({ value: 'м', by: 'ai' });
+    const sent = new Map(calls.plan[0]!.requests.map((r) => [r.id, r.gender]));
+    expect(sent).toEqual(new Map([[1, 'ж'], [2, null], [3, 'ж'], [4, 'м']]));
+    expect(views.people.items.find((p) => p.key === 'r2')!.gender.value).toBeNull();
+  });
+
+  test('мужская или женская группа — по составу; обе отметки или ни одной — смешанная', () => {
+    const { calls } = build({
+      groups: [
+        group({ id: 1, composition: 'Мужская, Ментальная' }),
+        group({ id: 2, composition: 'Женская' }),
+        group({ id: 3, composition: 'Мужская, Женская' }),
+        group({ id: 4, composition: null }),
+      ],
+      requests: [request({ id: 1, type: 'join_group' })],
+    });
+    expect(calls.plan[0]!.groups.map((g) => g.gender)).toEqual(['м', 'ж', null, null]);
   });
 });

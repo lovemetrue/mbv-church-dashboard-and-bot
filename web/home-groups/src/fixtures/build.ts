@@ -52,6 +52,7 @@ import { RAW_MANUAL_MEMBERS } from './members';
 import { buildOthers, emptyTable } from './others';
 import { requestExtras } from './requestExtras';
 import { demoStrangeOf, STRANGE_NO_PLAN } from './strange';
+import { demoGenderOf } from './gender';
 
 const DEFAULT_CAPACITY = 10;
 const WEIGHTS = { district: 40, age: 25, time: 20, street: 15 };
@@ -330,12 +331,14 @@ export function buildRequests(): RequestsView {
     const entry = plan.byRequest.get(r.id);
     const fin = r.finalGroupId != null ? RAW_GROUPS.find((x) => x.id === r.finalGroupId) : undefined;
     const strange = demoStrangeOf(r.phone, `r${r.id}`);
+    const gender = demoGenderOf(`r${r.id}`, r.fio);
     const bucket = bucketOf(r, entry);
     // Как у сервера: открытую заявку с меткой в автоматический подбор не берут, ей нужна ручная группа.
     const held = strange !== null && bucket !== 'done' && bucket !== 'cancelled';
     return {
       contactsHidden: false,
       strange,
+      gender,
       id: r.id,
       personKey: `r${r.id}`,
       fio: r.fio,
@@ -604,6 +607,7 @@ export function buildPeople(): PeopleView {
     const item = requests.items.find((x) => x.id === raw.id);
     return {
       strange: demoStrangeOf(raw.phone, `r${raw.id}`),
+      gender: demoGenderOf(`r${raw.id}`, raw.fio),
       contactsHidden: false,
       key: `r${raw.id}`,
       personId: null,
@@ -635,7 +639,7 @@ export function buildPeople(): PeopleView {
       kitIssuedOn: null,
     };
   });
-  const extras: PersonItem[] = RAW_EXTRA_PEOPLE.map((p) => ({ ...p, place: p.place ?? p.district, address: p.address ?? null, schedule: p.schedule ?? null, hobby: p.hobby ?? null, profession: p.profession ?? null, family: p.family ?? null, note: p.note ?? null, church: p.church ?? null, leaderName: p.leaderName ?? null, preferredContact: p.preferredContact ?? null, addressGeo: p.address ? ('found' as const) : null, personId: p.personId ?? null, groups: groupsOf(p.key), leads: leadsOf(p.key), requests: [], requestId: null, kitIssuedOn: p.kitIssuedOn ?? null, strange: demoStrangeOf(p.phone, p.key), contactsHidden: false }));
+  const extras: PersonItem[] = RAW_EXTRA_PEOPLE.map((p) => ({ ...p, place: p.place ?? p.district, address: p.address ?? null, schedule: p.schedule ?? null, hobby: p.hobby ?? null, profession: p.profession ?? null, family: p.family ?? null, note: p.note ?? null, church: p.church ?? null, leaderName: p.leaderName ?? null, preferredContact: p.preferredContact ?? null, addressGeo: p.address ? ('found' as const) : null, personId: p.personId ?? null, groups: groupsOf(p.key), leads: leadsOf(p.key), requests: [], requestId: null, kitIssuedOn: p.kitIssuedOn ?? null, strange: demoStrangeOf(p.phone, p.key), gender: demoGenderOf(p.key, p.fio), contactsHidden: false }));
   return { generatedAt: GENERATED_AT, items: [...fromRequests, ...extras] };
 }
 

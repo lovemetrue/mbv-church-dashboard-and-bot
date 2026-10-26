@@ -89,7 +89,7 @@ function WaitingContent({
   return (
     <div className={styles.work}>
       <div className={styles.main}>
-        <ViewSwitch view="wait" others={data.others} onChange={nav.setView} />
+        <ViewSwitch view="wait" others={data.others} items={data.items} onChange={nav.setView} />
         <ClosedNote note={note} onHide={onHideNote} />
         <MatchingPanel matching={data.matching} assistant={data.assistant} changed={changed} />
         {/* Область живая и есть всегда: скринридер читает только то, что в неё добавили. */}

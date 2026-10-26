@@ -42,13 +42,14 @@ describe('скрытые контакты заявки', () => {
 });
 
 describe('скрытые телефоны чужой группы', () => {
-  test('в карточке — последние цифры с пояснением; в форме правки нет телефонов, а адрес есть', async () => {
-    stubFetchWithFixtures({ groups: () => json(groupsWith(1, { contactsHidden: true, phone: '… 31-45', coLeaderPhone: null })) });
+  test('номер ведущего чужой группы виден целиком и по нему можно позвонить; скрыт только состав; в форме правки нет телефонов, а адрес есть', async () => {
+    stubFetchWithFixtures({ groups: () => json(groupsWith(1, { contactsHidden: true, phone: '+79110003145', coLeaderPhone: null })) });
     const user = userEvent.setup();
     renderAt(<App />, '/?tab=reference&rec=1');
     const card = await screen.findByRole('dialog', { name: /Карточка группы/ });
-    expect(card).toHaveTextContent('… 31-45 · телефоны видны координатору группы и тому, кто утвердил в неё человека');
-    expect(card).toHaveTextContent('Телефоны ведущих и состава этой группы скрыты');
+    expect(within(card).getAllByRole('link', { name: /^Позвонить/ })[0]).toHaveAttribute('href', 'tel:+79110003145');
+    expect(card).toHaveTextContent('Телефоны состава этой группы скрыты');
+    expect(card).toHaveTextContent('Телефоны ведущих видны всем');
     await user.click(within(card).getByRole('button', { name: /^Править группу/ }));
     const dialog = await screen.findByRole('dialog', { name: /^Правка группы/ });
     await within(dialog).findByRole('combobox', { name: 'Район' });

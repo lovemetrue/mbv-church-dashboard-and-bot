@@ -77,10 +77,11 @@ describe('группы', () => {
   const OWN = group({ id: 1, coordinator: 'Анна Л.' });
   const ALIEN = group({ id: 2, coordinator: 'Пётр Г.' });
 
-  test('своя группа (координатор) — с телефонами; чужая — адрес виден, телефоны и состав — последние цифры', () => {
+  test('своя группа (координатор) — с телефонами; чужая — адрес и телефоны ведущих видны целиком, состав — последние цифры', () => {
     const [own, alien] = groupsFor(groupsView(OWN, ALIEN), person('Анна Л.', 'coordinator'), requestsView([])).items;
     expect(own).toEqual(OWN);
-    expect(alien).toMatchObject({ address: 'ул. Тайная, 2', phone: '… 11-22', coLeaderPhone: '… 33-44', contactsHidden: true });
+    // Номер ведущего нужен всем: по нему договариваются о человеке. Скрыт только состав.
+    expect(alien).toMatchObject({ address: 'ул. Тайная, 2', phone: ALIEN.phone, coLeaderPhone: ALIEN.coLeaderPhone, contactsHidden: true });
     expect(alien!.members[0]!.phone).toBe('… 45-67');
   });
 
@@ -139,6 +140,19 @@ describe('люди', () => {
     expect(out[0]).toEqual(fromMyRequest);
     expect(out[1]).toEqual(inMyGroup);
     expect(out[2]).toMatchObject({ fio: 'Мария', phone: '… 45-67', address: null, addressGeo: null, hobby: null, profession: null, contactsHidden: true });
+  });
+
+  test('у ведущего чужой группы номер виден целиком — тот же, что в справочнике групп; адреса и остального нет', () => {
+    const leader = p({ key: 'u5', leads: [{ groupId: 2, code: 'ДГ-0002', role: 'coLeader' }] });
+    const chamberLeader = p({ key: 'u6', leads: [{ groupId: 7, code: 'ДГ-0007', role: 'leader' }] });
+    const out = peopleFor(
+      people(leader, chamberLeader), person('Анна Л.', 'coordinator'),
+      groupsView(group({ id: 2, code: 'ДГ-0002', coordinator: 'Пётр Г.' }), group({ id: 7, code: 'ДГ-0007', coordinator: 'Пётр Г.', chamber: true })),
+      requestsView([]),
+    ).items;
+    expect(out[0]).toMatchObject({ phone: '+7 999 123-45-67', address: null, hobby: null, contactsHidden: true });
+    // Камерная группа скрывает телефоны ведущих — и в «Людях» тоже.
+    expect(out[1]!.phone).toBe('… 45-67');
   });
 });
 

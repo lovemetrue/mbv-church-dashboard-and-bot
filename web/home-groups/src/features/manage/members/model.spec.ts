@@ -6,6 +6,7 @@ const NO_PERSON = { fio: '', phone: '', age: '', place: '', address: '', schedul
 
 const person = (over: Partial<PersonItem>): PersonItem => ({
   strange: null,
+  gender: { value: null, by: null },
   contactsHidden: false,
   key: 'u1',
   personId: null,

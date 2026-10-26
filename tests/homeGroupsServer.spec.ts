@@ -159,6 +159,10 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
       forRequest: async (id: number, body: unknown, actor: string) => { strangeCalls.push({ name: 'request', id, body, actor }); return { ok: true }; },
       forPerson: async (body: unknown, actor: string) => { strangeCalls.push({ name: 'person', body, actor }); return { ok: true }; },
     } as never,
+    genders: {
+      set: async (body: unknown, actor: string) => { strangeCalls.push({ name: 'gender', body, actor }); return { ok: true }; },
+      fillWithAi: async () => { strangeCalls.push({ name: 'gender-ai' }); return { ok: true, unknownBefore: 3, filled: 2, left: 1 }; },
+    } as never,
     teamRoles: {
       view: async () => ({ items: [{ id: 1, name: 'Распределитель', kind: 'distributor', members: 2 }] }),
       create: async (body: unknown, actor: string) => { kitCalls.push({ name: 'role.create', body, actor }); return { ok: true, id: 7 }; },
@@ -1667,6 +1671,30 @@ describe('метка «Странный человек»', () => {
     const cookie = await signIn(REGULAR);
     expect((await fetch(`${app.base}/api/v1/requests/9/strange`, { headers: { cookie } })).status).toBe(404);
     expect((await fetch(`${app.base}/api/v1/people/strange`, { headers: { cookie } })).status).toBe(404);
+  });
+});
+
+describe('пол человека', () => {
+  const post = (cookie: string | null, path: string, body: unknown) => fetch(`${app.base}/api/v1/${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body),
+  });
+
+  test('поставить пол: без входа 401, любой вход ставит, тело и автор доходят, снимок сбрасывается', async () => {
+    expect((await post(null, 'people/gender', { key: 'u1', gender: 'м' })).status).toBe(401);
+    const inv = app.invalidations();
+    const r = await post(await signIn(REGULAR), 'people/gender', { key: 'r5', gender: 'ж' });
+    expect(r.status).toBe(200);
+    expect(app.strangeCalls.at(-1)).toEqual({ name: 'gender', body: { key: 'r5', gender: 'ж' }, actor: REGULAR.login });
+    expect(app.invalidations()).toBe(inv + 1);
+  });
+
+  test('прогон моделью — только полный вход: наружу уходят слова из ФИО', async () => {
+    const denied = await post(await signIn(REGULAR), 'people/gender-ai', {});
+    expect(denied.status).toBe(403);
+    expect(app.strangeCalls.at(-1)?.name).not.toBe('gender-ai');
+    const r = await post(await signIn(SUPER), 'people/gender-ai', {});
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, unknownBefore: 3, filled: 2, left: 1 });
   });
 });
 

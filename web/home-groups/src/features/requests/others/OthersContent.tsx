@@ -87,7 +87,7 @@ export function OthersContent({
   return (
     <div className={styles.work}>
       <div className={styles.main}>
-        <ViewSwitch view={kind} others={data.others} onChange={nav.setView} />
+        <ViewSwitch view={kind} others={data.others} items={data.items} onChange={nav.setView} />
         <ClosedNote note={note} onHide={onHideNote} />
         <div className={styles.bar} role="group" aria-label={t.chipsLabel}>
           {OTHER_FILTERS.map((f) => (

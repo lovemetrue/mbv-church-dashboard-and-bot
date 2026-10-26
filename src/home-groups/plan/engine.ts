@@ -61,6 +61,11 @@ export function exclusionReason(r: PlanRequest, g: PlanGroup, settings: PlanSett
   if (!g.acceptsNew) return 'не принимает новых';
   if (g.doNotRefer) return 'отмечена «Не направлять»';
   if (g.chamber) return 'камерная группа';
+  // Пол — жёсткое условие: мужчине женскую группу не предлагаем, даже если она подходит идеально, и наоборот.
+  if (g.gender && r.gender !== g.gender) {
+    const kind = g.gender === 'м' ? 'мужская' : 'женская';
+    return r.gender ? `${kind} группа` : `${kind} группа, а пол человека не указан`;
+  }
   if (freePlaces(g) <= 0) return 'группа заполнена';
   if (r.ageRange && g.ageRange && !overlaps(r.ageRange, g.ageRange)) return 'возраст группы не подходит';
   if (r.district !== null && !districtReachable(r.district, g.district, settings)) return `другой район (${g.district})`;

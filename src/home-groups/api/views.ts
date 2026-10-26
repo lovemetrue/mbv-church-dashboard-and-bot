@@ -12,7 +12,9 @@ import type { ActivityRow, AuditRow } from '../../db/repos/audit.repo.js';
 import type { DashboardRequest } from '../../db/repos/requests.repo.js';
 import type { RegisteredParticipant } from '../../db/repos/users.repo.js';
 import type { CoordinatorRow } from '../../db/repos/coordinators.repo.js';
-import { ALL_DISTRICTS, groupCode } from '../../core/groups.js';
+import { ALL_DISTRICTS, groupCode, groupGender } from '../../core/groups.js';
+import { genderFromFio } from '../../core/gender.js';
+import { GENDER_BY_AI, type GenderRow } from '../../db/repos/genders.repo.js';
 import { AGE_GROUPS } from '../../core/texts.js';
 import { inputSignature } from '../plan/signature.js';
 import { formatPhone } from '../../core/phone.js';
@@ -20,7 +22,7 @@ import { CONTACT_LABEL } from '../../core/csv.js';
 import type { GroupDraftView } from '../contracts.js';
 import type {
   Bucket, Candidate, Counters, CoordinatorItem, CoordinatorsView, GroupBrief, GroupItem, GroupsView,
-  HealthItem, LogEntry, MatchingStatus, NoPlan, StrangeMark, DataChange, OriginalField, ParamInfo, RequestTableFields, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, AssistantReviewItem, GroupMember, OtherItem, Prospects, ProspectItem, RequestsView, TeamView, TodayView,
+  GenderInfo, HealthItem, LogEntry, MatchingStatus, NoPlan, StrangeMark, DataChange, OriginalField, ParamInfo, RequestTableFields, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, AssistantReviewItem, GroupMember, OtherItem, Prospects, ProspectItem, RequestsView, TeamView, TodayView,
 } from '../contracts.js';
 import type {
   Day, PlanEngineApi, PlanEntry, PlanEntryProposal, PlanGroup, PlanOutput, PlanRequest, ScoredGroup, Slot,
@@ -44,6 +46,8 @@ export interface ViewsInput {
   hints?: ReadonlyMap<number, StoredHint>;
   /** Метки «Странный человек»: ключ человека (u12, r345, p7) → кто и когда поставил. */
   strange?: ReadonlyMap<string, StrangeMarkRow>;
+  /** Пол, поставленный вручную или по подсказке модели (миграция 055): ключ человека → пол. Остальным пол — из ФИО. */
+  genders?: ReadonlyMap<string, GenderRow>;
   /** Состав групп, внесённый вручную. */
   members?: readonly MemberRow[];
   /** Карточки людей, внесённые вручную. */
@@ -370,6 +374,7 @@ export function buildViewsWithPlan(
       acceptsNew: g.open_to_new?.trim().toUpperCase() !== 'НЕТ',
       doNotRefer: g.do_not_refer,
       chamber: g.chamber,
+      gender: groupGender(g.composition),
       verifiedDaysAgo: daysSince(validIsoDate(g.feedback_at), today),
       isNew: isNewGroup(g),
     };
@@ -402,6 +407,17 @@ export function buildViewsWithPlan(
 
   // ── заявки ────────────────────────────────────────────────────────────────
   const joinRequests = input.requests.filter((r) => r.type === 'join_group');
+
+  // ── пол ───────────────────────────────────────────────────────────────────
+  // Поставленный вручную или моделью (по ключу человека) важнее вывода из ФИО: ФИО бывает неоднозначным.
+  const genders = input.genders ?? new Map<string, GenderRow>();
+  const genderOf = (key: string, fio: string | null | undefined): GenderInfo => {
+    const own = genders.get(key);
+    if (own) return { value: own.gender, by: own.by === GENDER_BY_AI ? 'ai' : 'manual' };
+    const guessed = genderFromFio(fio);
+    return { value: guessed, by: guessed ? 'fio' : null };
+  };
+  const requestKey = (r: DashboardRequest): string => (r.user_id !== null ? `u${r.user_id}` : `r${r.id}`);
 
   /** Удобное время человека: подходящие дни и время суток и то, что он назвал неподходящим («кроме воскресенья»). */
   const humanWhen = (text: string | null): HumanWhen => {
@@ -456,6 +472,7 @@ export function buildViewsWithPlan(
     return {
       id: r.id,
       fio: nonBlank(r.fio) ?? 'Без имени',
+      gender: genderOf(requestKey(r), r.fio).value,
       ageRange: resolved.ageRange,
       district: resolved.district,
       place: nonBlank(r.place),
@@ -691,6 +708,7 @@ export function buildViewsWithPlan(
       id: r.id,
       personKey: r.user_id !== null ? `u${r.user_id}` : `r${r.id}`,
       strange: strangeOfRequest(r),
+      gender: genderOf(requestKey(r), r.fio),
       contactsHidden: false,
       fio: pr.fio,
       phone: displayPhone(r.phones, r.phone),
@@ -988,6 +1006,7 @@ export function buildViewsWithPlan(
     people.push({
       key: `u${u.id}`,
       strange: strangeOf(`u${u.id}`, [u.phone]),
+      gender: genderOf(`u${u.id}`, u.full_name),
       contactsHidden: false,
       personId: null,
       groups: groupCodesOf(`u${u.id}`),
@@ -1021,6 +1040,7 @@ export function buildViewsWithPlan(
     people.push({
       key: `r${r.id}`,
       strange: strangeOfRequest(r),
+      gender: genderOf(`r${r.id}`, r.fio),
       contactsHidden: false,
       personId: null,
       groups: groupCodesOf(`r${r.id}`),
@@ -1050,6 +1070,7 @@ export function buildViewsWithPlan(
     people.push({
       key: `p${p.id}`,
       strange: strangeOf(`p${p.id}`, [p.phone]),
+      gender: genderOf(`p${p.id}`, p.full_name),
       contactsHidden: false,
       personId: p.id,
       groups: groupCodesOf(`p${p.id}`),

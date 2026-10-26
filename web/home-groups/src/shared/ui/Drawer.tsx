@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { ru } from '../i18n/ru';
 import { Button } from './Button';
 import styles from './Drawer.module.css';
+import { useFitVisualViewport } from './useFitVisualViewport';
 
 interface DrawerProps {
   /** Доступное имя панели («Карточка заявки»). */
@@ -31,6 +32,8 @@ export function Drawer({ label, title, subtitle, tools, toolsBelow = false, onCl
   const ref = useRef<HTMLElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  // Ширина выезжающей карточки — как в стилях (.overlay); прикреплённая на узком экране идёт на весь экран.
+  useFitVisualViewport(ref, docked ? undefined : 440);
 
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;

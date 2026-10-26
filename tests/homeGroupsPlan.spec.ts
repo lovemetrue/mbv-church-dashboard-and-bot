@@ -521,26 +521,55 @@ describe('план: выбор группы', () => {
     expect(proposal(planFor([r], [opened]).entries.get(r.id)).main.groupId).toBe(85);
   });
 
-  test('первым запасным идёт лучшая из новых групп, даже если старые оценены выше', () => {
+  test('новая группа идёт главной, если подходит хотя бы на порог «Нужна помощь», даже когда старые оценены выше', () => {
     const r = request();
-    // Три старые группы в том же районе лучше новой (она в соседнем), но новую человек должен увидеть вторым вариантом.
     const old = [1, 2, 3].map((n) => group({ id: 80 + n, people: n }));
+    // Та же группа, но давно не проверялась: оценка ниже старых, а уверенность всё равно выше 60.
+    const fresh = group({ id: 90, people: 1, verifiedDaysAgo: 40, isNew: true });
+    const entry = proposal(planFor([r], [...old, fresh]).entries.get(r.id));
+    expect(entry.main.groupId).toBe(90);
+    expect(entry.main.score).toBeLessThan(100);
+    expect(entry.confidence).toBeGreaterThanOrEqual(SETTINGS.humanThreshold);
+    expect(entry.alternatives.map((a) => a.groupId)).toEqual([81, 82]);
+  });
+
+  test('новая группа, которая подходит слабее порога, идёт первым запасным, а сверху — лучшая из всех', () => {
+    const r = request();
+    const old = [1, 2, 3].map((n) => group({ id: 80 + n, people: n }));
+    // Соседний район: у новой уверенность ниже 60, главной она заявку увела бы в «Нужна помощь».
     const fresh = group({ id: 90, district: 'Выборгский', people: 1, isNew: true });
     const entry = proposal(planFor([r], [...old, fresh]).entries.get(r.id));
     expect(entry.main.groupId).not.toBe(90);
+    expect(entry.confidence).toBeGreaterThanOrEqual(SETTINGS.humanThreshold);
     expect(entry.alternatives[0]!.groupId).toBe(90);
     expect(entry.alternatives).toHaveLength(2);
   });
 
-  test('если главная — новая группа, первым запасным идёт лучшая из остальных новых, а не она сама', () => {
+  test('из нескольких новых главной идёт самая подходящая, запасные — самые подходящие из всех остальных, старые тоже', () => {
     const r = request();
-    const newA = group({ id: 91, people: 1, isNew: true });
-    const newB = group({ id: 92, district: 'Выборгский', people: 1, isNew: true });
-    const old = group({ id: 93, district: 'Невский', people: 3 });
+    const newA = group({ id: 91, district: 'Выборгский', people: 1, isNew: true });
+    const newB = group({ id: 92, people: 1, isNew: true });
+    const old = group({ id: 93, people: 1 });
     const entry = proposal(planFor([r], [newA, newB, old]).entries.get(r.id));
-    expect(entry.main.groupId).toBe(91);
-    expect(entry.alternatives.map((a) => a.groupId)[0]).toBe(92);
-    expect(entry.alternatives.map((a) => a.groupId)).not.toContain(91);
+    expect(entry.main.groupId).toBe(92);
+    // Старая в том же районе подходит лучше второй новой из соседнего: она и идёт первым запасным.
+    expect(entry.alternatives.map((a) => a.groupId)).toEqual([93, 91]);
+  });
+
+  test('новая группа, которая не проходит отсев (нет мест, не тот возраст), первой не становится', () => {
+    const r = request();
+    const full = group({ id: 94, people: 10, capacity: 10, isNew: true });
+    const old = group({ id: 95, people: 1 });
+    expect(proposal(planFor([r], [full, old]).entries.get(r.id)).main.groupId).toBe(95);
+  });
+
+  test('закреплённое предложение в старой группе остаётся: место человеку уже обещано', () => {
+    const r = request({ pinnedGroupId: 97 });
+    const fresh = group({ id: 96, people: 1, isNew: true });
+    const old = group({ id: 97, people: 1 });
+    const entry = proposal(planFor([r], [fresh, old]).entries.get(r.id));
+    expect(entry.main.groupId).toBe(97);
+    expect(entry.alternatives[0]!.groupId).toBe(96);
   });
 
   test('новых групп нет — запасные как прежде', () => {

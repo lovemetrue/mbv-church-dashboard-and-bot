@@ -31,6 +31,7 @@ export function PersonField({
   disabled,
   describedBy,
   onPick,
+  onOpen,
 }: {
   id: string;
   label: string;
@@ -40,6 +41,8 @@ export function PersonField({
   disabled: boolean;
   describedBy?: string;
   onPick: (person: PersonItem | null) => void;
+  /** Открыть карточку выбранного человека в «Людях»: форма решает, что делать с несохранённым. */
+  onOpen?: (key: string) => void;
 }) {
   const people = usePeople();
   const [searching, setSearching] = useState(value === '');
@@ -68,6 +71,11 @@ export function PersonField({
           <span className={list.optionMeta}>{t.unknown}</span>
         )}
         <span className={styles.personTools}>
+          {onOpen && chosen && (
+            <Button size="sm" disabled={disabled} aria-label={t.openAria(label)} onClick={() => onOpen(chosen.key)}>
+              {t.open}
+            </Button>
+          )}
           <Button size="sm" disabled={disabled} aria-label={t.changeAria(label)} onClick={() => setSearching(true)}>
             {t.change}
           </Button>

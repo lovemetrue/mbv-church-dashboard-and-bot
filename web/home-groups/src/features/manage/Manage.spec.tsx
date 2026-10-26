@@ -321,6 +321,58 @@ describe('правка группы', () => {
     expect(posts(fetchMock)[0]!.body).toEqual({ fields: { leaderKey: '' } });
   });
 
+  test('«Открыть в «Людях»» без правок сразу ведёт в карточку человека и закрывает форму', async () => {
+    const fetchMock = stubFetchWithFixtures();
+    const user = userEvent.setup();
+    const { dialog } = await openGroupEdit(user, 2);
+    await user.click(await within(dialog).findByRole('button', { name: 'Открыть в «Людях»: Ведущий в «Людях»' }));
+    await waitFor(() => expect(currentSearch().get('rec')).toBe('u2'));
+    expect(currentSearch().get('ent')).toBe('people');
+    expect(screen.queryByRole('dialog', { name: /^Правка группы/ })).not.toBeInTheDocument();
+    expect(posts(fetchMock)).toHaveLength(0);
+  });
+
+  test('«Открыть в «Людях»» с несохранёнными правками сначала спрашивает; «Сохранить и перейти» сохраняет и ведёт в карточку', async () => {
+    const fetchMock = stubFetchWithFixtures({ 'groups/2/update': () => json({ ok: true }) });
+    const user = userEvent.setup();
+    const { dialog } = await openGroupEdit(user, 2);
+    await user.type(within(dialog).getByRole('textbox', { name: 'Комментарий' }), 'звонили');
+    await user.click(await within(dialog).findByRole('button', { name: 'Открыть в «Людях»: Ведущий в «Людях»' }));
+    const ask = within(dialog).getByRole('group', { name: 'В группе есть несохранённые изменения' });
+    expect(currentSearch().get('ent')).not.toBe('people');
+    await user.click(within(ask).getByRole('button', { name: 'Сохранить и перейти' }));
+    await waitFor(() => expect(currentSearch().get('rec')).toBe('u2'));
+    expect(posts(fetchMock)).toEqual([{ path: 'groups/2/update', body: { fields: { comment: 'звонили' } } }]);
+  });
+
+  test('«Перейти без сохранения» ничего не отправляет, «Остаться» возвращает к форме с набранным', async () => {
+    const fetchMock = stubFetchWithFixtures();
+    const user = userEvent.setup();
+    const { dialog } = await openGroupEdit(user, 2);
+    const comment = within(dialog).getByRole('textbox', { name: 'Комментарий' });
+    await user.type(comment, 'звонили');
+    const open = await within(dialog).findByRole('button', { name: 'Открыть в «Людях»: Ведущий в «Людях»' });
+    await user.click(open);
+    await user.click(within(dialog).getByRole('button', { name: 'Остаться' }));
+    expect(within(dialog).queryByRole('group', { name: 'В группе есть несохранённые изменения' })).not.toBeInTheDocument();
+    expect((comment as HTMLTextAreaElement).value).toContain('звонили');
+    await user.click(open);
+    await user.click(within(dialog).getByRole('button', { name: 'Перейти без сохранения' }));
+    await waitFor(() => expect(currentSearch().get('rec')).toBe('u2'));
+    expect(posts(fetchMock)).toHaveLength(0);
+  });
+
+  test('при опустошённом обязательном поле сохранить нельзя: предлагается только перейти без сохранения', async () => {
+    stubFetchWithFixtures();
+    const user = userEvent.setup();
+    const { dialog } = await openGroupEdit(user, 2);
+    await user.clear(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' }));
+    await user.click(await within(dialog).findByRole('button', { name: 'Открыть в «Людях»: Ведущий в «Людях»' }));
+    const ask = within(dialog).getByRole('group', { name: 'В группе есть несохранённые изменения' });
+    expect(within(ask).queryByRole('button', { name: 'Сохранить и перейти' })).not.toBeInTheDocument();
+    expect(within(ask).getByRole('button', { name: 'Перейти без сохранения' })).toBeInTheDocument();
+  });
+
   test('соведущий выбирается поиском из «Людей»: уходит его ключ, а ФИО вписывается в имя соведущего', async () => {
     const fetchMock = stubFetchWithFixtures({ 'groups/1/update': () => json({ ok: true }) });
     const user = userEvent.setup();

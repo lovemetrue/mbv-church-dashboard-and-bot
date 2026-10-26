@@ -243,3 +243,16 @@ textarea.control {
 .personChosen .personTools {
   margin-top: 0;
 }
+
+/* Вопрос «что делать с несохранённым» перед переходом в карточку человека. */
+.leave {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: 13px;
+}
+.leave p {
+  margin: 0;
+}

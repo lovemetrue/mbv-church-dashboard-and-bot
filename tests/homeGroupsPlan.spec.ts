@@ -521,14 +521,28 @@ describe('план: выбор группы', () => {
     expect(proposal(planFor([r], [opened]).entries.get(r.id)).main.groupId).toBe(85);
   });
 
-  test('главным предложением идёт лучшая из новых групп, даже если старые оценены выше; запасные — лучшие из остальных', () => {
+  test('новая группа идёт главной, если подходит хотя бы на порог «Нужна помощь», даже когда старые оценены выше', () => {
     const r = request();
-    // Три старые группы в том же районе лучше новой (она в соседнем), но новые надо наполнять людьми: она идёт первой.
     const old = [1, 2, 3].map((n) => group({ id: 80 + n, people: n }));
-    const fresh = group({ id: 90, district: 'Выборгский', people: 1, isNew: true });
+    // Та же группа, но давно не проверялась: оценка ниже старых, а уверенность всё равно выше 60.
+    const fresh = group({ id: 90, people: 1, verifiedDaysAgo: 40, isNew: true });
     const entry = proposal(planFor([r], [...old, fresh]).entries.get(r.id));
     expect(entry.main.groupId).toBe(90);
+    expect(entry.main.score).toBeLessThan(100);
+    expect(entry.confidence).toBeGreaterThanOrEqual(SETTINGS.humanThreshold);
     expect(entry.alternatives.map((a) => a.groupId)).toEqual([81, 82]);
+  });
+
+  test('новая группа, которая подходит слабее порога, идёт первым запасным, а сверху — лучшая из всех', () => {
+    const r = request();
+    const old = [1, 2, 3].map((n) => group({ id: 80 + n, people: n }));
+    // Соседний район: у новой уверенность ниже 60, главной она заявку увела бы в «Нужна помощь».
+    const fresh = group({ id: 90, district: 'Выборгский', people: 1, isNew: true });
+    const entry = proposal(planFor([r], [...old, fresh]).entries.get(r.id));
+    expect(entry.main.groupId).not.toBe(90);
+    expect(entry.confidence).toBeGreaterThanOrEqual(SETTINGS.humanThreshold);
+    expect(entry.alternatives[0]!.groupId).toBe(90);
+    expect(entry.alternatives).toHaveLength(2);
   });
 
   test('из нескольких новых главной идёт самая подходящая, запасные — самые подходящие из всех остальных, старые тоже', () => {

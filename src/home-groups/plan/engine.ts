@@ -236,8 +236,9 @@ export function match(r: PlanRequest, groups: readonly PlanGroup[], settings: Pl
 }
 
 /**
- * Запасные варианты. Главная — новая группа (так подбор выбирает, когда новая есть): запасные — самые подходящие из всех
- * остальных. Главная старая (закреплённое предложение) — первым запасным идёт лучшая из новых, чтобы координатор её видел.
+ * Запасные варианты. Главная — новая группа: запасные — самые подходящие из всех остальных. Главная старая (новой нет, она
+ * подходит слабее порога «Нужна помощь» или предложение закреплено) — первым запасным идёт лучшая из новых, чтобы
+ * координатор её видел.
  */
 function pickAlternatives(ordered: readonly ScoredGroup[], main: ScoredGroup, groupById: ReadonlyMap<number, PlanGroup>): ScoredGroup[] {
   const rest = ordered.filter((c) => c !== main);
@@ -321,11 +322,17 @@ export function buildPlan(input: PlanInput): PlanOutput {
       (a, b) => adjusted(b) - adjusted(a) || b.score - a.score || a.groupId - b.groupId,
     );
     const pinned = request.pinnedGroupId === null ? undefined : ordered.find((c) => c.groupId === request.pinnedGroupId);
+    const knownParams = countKnown(known);
+    const confidenceOf = (c: ScoredGroup): number =>
+      Math.round(c.score * (settings.confidenceFloor + (settings.confidenceSpan * knownParams) / 4));
     // Новые группы идут первыми: их надо наполнять людьми, а старые и так заполнены. Главным предложением становится самая
-    // подходящая из новых, прошедших отсев (статус, места, возраст, район), даже если старая оценена выше; без новых — лучшая
-    // из всех. Закреплённое предложение сильнее: место человеку уже обещано.
+    // подходящая из новых, прошедших отсев (статус, места, возраст, район), даже если старая оценена выше, — но только если
+    // она подходит хотя бы на порог «Нужна помощь». Слабая новая главной увела бы заявку с хорошей старой группой в «Нужна
+    // помощь»; тогда сверху лучшая из всех, а новая — первым запасным (`pickAlternatives`). Закреплённое предложение сильнее:
+    // место человеку уже обещано.
     const bestNew = ordered.find((c) => groupById.get(c.groupId)?.isNew === true);
-    const main = pinned ?? bestNew ?? ordered[0]!;
+    const strongNew = bestNew && confidenceOf(bestNew) >= settings.humanThreshold ? bestNew : undefined;
+    const main = pinned ?? strongNew ?? ordered[0]!;
 
     remaining.set(main.groupId, remaining.get(main.groupId)! - 1);
     takenBy.set(main.groupId, [...(takenBy.get(main.groupId) ?? []), request.id]);
@@ -340,11 +347,10 @@ export function buildPlan(input: PlanInput): PlanOutput {
           }
         : null;
 
-    const knownParams = countKnown(known);
     const proposal: PlanEntryProposal = {
       kind: 'proposal',
       main,
-      confidence: Math.round(main.score * (settings.confidenceFloor + (settings.confidenceSpan * knownParams) / 4)),
+      confidence: confidenceOf(main),
       knownParams,
       alternatives: pickAlternatives(ordered, main, groupById),
       displaced,

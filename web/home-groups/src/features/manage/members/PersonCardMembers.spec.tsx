@@ -4,6 +4,8 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { App } from '../../../app/App';
 import { getsOf, json, posts } from '../../../test/calls';
 import { currentSearch, renderAt, stubFetchWithFixtures } from '../../../test/render';
+import { buildPeople } from '../../../fixtures/build';
+import { groupsWith } from '../../requests/requestsTestKit';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -15,11 +17,12 @@ async function personCard(key: string) {
 }
 
 describe('карточка человека: группы', () => {
-  test('«Состоит в группах»: каждый код — кнопка, которая открывает группу', async () => {
+  test('«Группы»: где участник, каждый код — кнопка, которая открывает группу', async () => {
     stubFetchWithFixtures();
     const user = userEvent.setup();
     const card = await personCard('u1');
-    expect(within(card).getByRole('heading', { name: 'Состоит в группах' })).toBeInTheDocument();
+    expect(within(card).getByRole('heading', { name: 'Группы' })).toBeInTheDocument();
+    expect(within(card).getByText('Участник')).toBeInTheDocument();
     expect(within(card).getByRole('button', { name: 'Открыть группу ДГ-0008' })).toBeInTheDocument();
     await user.click(await within(card).findByRole('button', { name: 'Открыть группу ДГ-0012' }));
     expect(currentSearch().get('rec')).toBe('1');
@@ -27,11 +30,147 @@ describe('карточка человека: группы', () => {
     expect(await screen.findByRole('dialog', { name: /Карточка группы ДГ-0012/ })).toBeInTheDocument();
   });
 
-  test('если человек нигде не состоит, так и сказано', async () => {
+  test('видно, где человек ведущий: группа ссылается на него', async () => {
+    stubFetchWithFixtures();
+    // Михаил Громов (u2) — ведущий ДГ-0027 в демо-данных.
+    const card = await personCard('u2');
+    const row = within(card).getByText('Ведущий').parentElement!;
+    expect(within(row).getByRole('button', { name: 'Открыть группу ДГ-0027' })).toBeInTheDocument();
+  });
+
+  test('если человек нигде не состоит и ничего не ведёт, так и сказано', async () => {
     stubFetchWithFixtures();
     const card = await personCard('u3');
-    expect(within(card).getByText('Пока не состоит ни в одной группе.')).toBeInTheDocument();
+    expect(within(card).getByText('Пока ни в одной группе.')).toBeInTheDocument();
     expect(within(card).queryByRole('button', { name: /Открыть группу/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('карточка человека: «Добавить в группу»', () => {
+  async function openAdd(key: string) {
+    const user = userEvent.setup();
+    const card = await personCard(key);
+    await user.click(within(card).getByRole('button', { name: /^Добавить в группу:/ }));
+    const dialog = await screen.findByRole('dialog', { name: /^Добавить в группу:/ });
+    return { user, dialog };
+  }
+
+  test('участником: уходит в состав группы по ключу человека', async () => {
+    const fetchMock = stubFetchWithFixtures({ 'groups/3/members/create': () => json({ ok: true, id: 9, personKey: 'u3' }) });
+    const { user, dialog } = await openAdd('u3');
+    await user.type(within(dialog).getByRole('searchbox'), 'ДГ-0031');
+    await user.click(within(within(dialog).getByRole('list', { name: 'Подходящие группы' })).getByRole('button', { name: /ДГ-0031/ }));
+    await user.click(within(dialog).getByRole('button', { name: 'Добавить' }));
+    await waitFor(() => expect(posts(fetchMock)).toEqual([{ path: 'groups/3/members/create', body: { personKey: 'u3' } }]));
+    expect(await screen.findByText('Готово: участником в ДГ-0031.')).toBeInTheDocument();
+  });
+
+  test('ведущим: правка группы с leaderKey; если позиция занята — сказано, кто сейчас, и кнопка «Заменить и добавить»', async () => {
+    const fetchMock = stubFetchWithFixtures({ 'groups/3/update': () => json({ ok: true }) });
+    const { user, dialog } = await openAdd('u3');
+    await user.click(within(dialog).getByRole('radio', { name: 'Ведущим' }));
+    await user.type(within(dialog).getByRole('searchbox'), 'ДГ-0031');
+    await user.click(within(within(dialog).getByRole('list', { name: 'Подходящие группы' })).getByRole('button', { name: /ДГ-0031/ }));
+    // У ДГ-0031 ведущая Марина Л. записана только текстом — её место займёт выбранный человек.
+    expect(dialog).toHaveTextContent('Сейчас ведущий этой группы — Марина Л.');
+    await user.click(within(dialog).getByRole('button', { name: 'Заменить и добавить' }));
+    await waitFor(() => expect(posts(fetchMock)).toEqual([{ path: 'groups/3/update', body: { fields: { leaderKey: 'u3' } } }]));
+  });
+
+  test('туда, где человек уже есть, добавить нельзя: отметка «уже здесь», кнопка выключена', async () => {
+    const fetchMock = stubFetchWithFixtures();
+    const { user, dialog } = await openAdd('u2');
+    await user.click(within(dialog).getByRole('radio', { name: 'Ведущим' }));
+    await user.type(within(dialog).getByRole('searchbox'), 'ДГ-0027');
+    const option = within(within(dialog).getByRole('list', { name: 'Подходящие группы' })).getByRole('button', { name: /ДГ-0027/ });
+    expect(option).toHaveTextContent('уже здесь');
+    await user.click(option);
+    expect(within(dialog).getByRole('button', { name: 'Добавить' })).toBeDisabled();
+    expect(posts(fetchMock)).toHaveLength(0);
+  });
+});
+
+describe('карточка человека: «Сменить» группу', () => {
+  const pick = async (user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement, q: string, code: RegExp) => {
+    await user.type(within(dialog).getByRole('searchbox'), q);
+    await user.click(within(within(dialog).getByRole('list', { name: 'Подходящие группы' })).getByRole('button', { name: code }));
+  };
+
+  test('участник, внесённый вручную: встаёт в новую группу (поиск по номеру), из прежней строка состава убирается', async () => {
+    const fetchMock = stubFetchWithFixtures({
+      'groups/3/members/create': () => json({ ok: true, id: 99, personKey: 'u1' }),
+      'members/1/delete': () => json({ ok: true }),
+    });
+    const user = userEvent.setup();
+    // Дарья Ефимова (u1) внесена вручную в ДГ-0012 (строка состава 1).
+    const card = await personCard('u1');
+    await user.click(within(card).getByRole('button', { name: 'Сменить группу ДГ-0012' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Сменить группу: Дарья Ефимова' });
+    expect(dialog).toHaveTextContent('Сейчас: участник в ДГ-0012');
+    expect(within(dialog).queryByRole('radio')).not.toBeInTheDocument();
+    await pick(user, dialog, '31', /ДГ-0031/);
+    await user.click(within(dialog).getByRole('button', { name: 'Перевести' }));
+    await waitFor(() =>
+      expect(posts(fetchMock)).toEqual([
+        { path: 'groups/3/members/create', body: { personKey: 'u1' } },
+        { path: 'members/1/delete', body: {} },
+      ]),
+    );
+    expect(await screen.findByText('Готово: перевели из ДГ-0012 в ДГ-0031 (участник).')).toBeInTheDocument();
+  });
+
+  test('соведущий: ставится соведущим в новую группу и отвязывается от прежней', async () => {
+    const fetchMock = stubFetchWithFixtures({
+      groups: () => json(groupsWith(1, { coLeader: 'Нина Воронцова', coLeaderKey: 'p1' })),
+      // Сервер отдаёт и обратную сторону ссылки: в «Людях» у Нины Воронцовой соведущая ДГ-0012.
+      people: () => {
+        const view = buildPeople();
+        return json({ ...view, items: view.items.map((x) => (x.key === 'p1' ? { ...x, leads: [{ groupId: 1, code: 'ДГ-0012', role: 'coLeader' as const }] } : x)) });
+      },
+      'groups/3/update': () => json({ ok: true }),
+      'groups/1/update': () => json({ ok: true }),
+    });
+    const user = userEvent.setup();
+    const card = await personCard('p1');
+    const row = within(card).getByText('Соведущий').parentElement!;
+    await user.click(within(row).getByRole('button', { name: 'Сменить группу ДГ-0012' }));
+    const dialog = await screen.findByRole('dialog', { name: /^Сменить группу:/ });
+    await pick(user, dialog, 'ДГ-0031', /ДГ-0031/);
+    await user.click(within(dialog).getByRole('button', { name: 'Перевести' }));
+    await waitFor(() =>
+      expect(posts(fetchMock)).toEqual([
+        { path: 'groups/3/update', body: { fields: { coLeaderKey: 'p1' } } },
+        { path: 'groups/1/update', body: { fields: { coLeaderKey: '' } } },
+      ]),
+    );
+  });
+
+  test('направленного через сервис меняют в заявке: кнопка ведёт в неё', async () => {
+    stubFetchWithFixtures();
+    const user = userEvent.setup();
+    // Артём Лебедев (r10) утверждён в ДГ-0012 заявкой №10.
+    const card = await personCard('r10');
+    await user.click(within(card).getByRole('button', { name: 'Сменить группу ДГ-0012 через заявку' }));
+    await waitFor(() => expect(currentSearch().get('req')).toBe('10'));
+  });
+
+  test('ведущего не переводят: у группы должен остаться ведущий — так и сказано', async () => {
+    stubFetchWithFixtures();
+    const card = await personCard('u2');
+    const row = within(card).getByText('Ведущий').parentElement!;
+    expect(within(row).queryByRole('button', { name: /^Сменить группу/ })).not.toBeInTheDocument();
+    expect(row).toHaveTextContent('Ведущего группы не переводят');
+  });
+});
+
+describe('карточка человека: значки в шапке', () => {
+  test('карандаш, звонок, письмо и копирование номера — в шапке, отдельной кнопки «Править» внизу нет', async () => {
+    stubFetchWithFixtures();
+    const card = await personCard('u1');
+    const header = within(card).getByRole('banner');
+    expect(within(header).getByRole('button', { name: 'Править карточку: Дарья Ефимова' })).toBeInTheDocument();
+    expect(within(header).getByRole('link', { name: /^Позвонить/ })).toBeInTheDocument();
+    expect(within(card).getAllByRole('button', { name: /Править карточку/ })).toHaveLength(1);
   });
 });
 

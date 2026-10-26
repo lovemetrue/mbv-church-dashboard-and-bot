@@ -165,8 +165,13 @@ export function findGroups(subject: Subject, groups: readonly LeaderGroup[]): Ca
         // Номер один у всей семьи: жена с телефоном мужа делит с ним фамилию, а чужой человек с этим номером —
         // нет. Если имя назвали и ни одного слова ведущего в нём нет, номер сам по себе не доказывает: решает человек.
         const theirs = [...leaderTokens, ...nameTokens(g.coLeader)];
+        // Назвал фамилию — сверяем по фамилии: совпавшее имя родства не доказывает. «Бутарев Владимир» с номером группы
+        // «Новиковы Тамара и Владимир» шёл «точно» только из-за «Владимира», и группу связывали с чужим человеком.
+        const mySurnames = mine.filter(looksLikeSurname);
         // Инициалы («П. М.») тоже имя: годится, если хоть одна буква открывает слово ведущего.
-        const sameFamily = mine.length === 0 || mine.some((t) => (t.length > 1 ? theirs.some((l) => sameToken(t, l)) : theirs.some((l) => l.startsWith(t))));
+        const sameFamily = mine.length === 0 || (mySurnames.length > 0
+          ? mySurnames.some((t) => theirs.some((l) => sameToken(t, l) || closeToken(t, l)))
+          : mine.some((t) => (t.length > 1 ? theirs.some((l) => sameToken(t, l)) : theirs.some((l) => l.startsWith(t)))));
         offer({ groupId: g.id, tier: sameFamily ? 'exact' : 'likely', by: 'phone', role });
       }
     }

@@ -100,13 +100,11 @@ describe('правка группы', () => {
     stubFetchWithFixtures();
     const user = userEvent.setup();
     const { dialog } = await openGroupEdit(user, 1);
-    expect(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' })).toHaveValue('Ольга К.');
     expect(within(dialog).getByRole('combobox', { name: 'Район' })).toHaveValue('Приморский');
     expect(within(dialog).getByRole('combobox', { name: 'Статус' })).toHaveValue('Функционирует');
     expect(within(dialog).getByRole('textbox', { name: 'Сколько человек' })).toHaveValue('8');
     expect(within(dialog).getByRole('combobox', { name: 'День' })).toHaveValue('Вт');
     expect(within(dialog).getByRole('combobox', { name: 'Координатор' })).toHaveValue('Трофимова С.');
-    expect(within(dialog).getByRole('textbox', { name: 'ФИО соведущего' })).toHaveValue('');
     expect(within(dialog).getByRole('checkbox', { name: 'Не направлять в эту группу' })).not.toBeChecked();
   });
 
@@ -159,9 +157,8 @@ describe('правка группы', () => {
     const fetchMock = stubFetchWithFixtures({ 'groups/1/update': () => json({ ok: true }) });
     const user = userEvent.setup();
     const { dialog } = await openGroupEdit(user);
-    const leader = within(dialog).getByRole('textbox', { name: 'ФИО ведущего' });
-    await user.clear(leader);
-    await user.type(leader, '  Ольга Крылова ');
+    const time = within(dialog).getByRole('textbox', { name: 'Время' });
+    await user.type(time, '  19:30 ');
     await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Район' }), 'Выборгский');
     const people = within(dialog).getByRole('textbox', { name: 'Сколько человек' });
     await user.clear(people);
@@ -170,7 +167,7 @@ describe('правка группы', () => {
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
     expect(posts(fetchMock)[0]).toEqual({
       path: 'groups/1/update',
-      body: { fields: { leader: 'Ольга Крылова', district: 'Выборгский', people: '10' } },
+      body: { fields: { district: 'Выборгский', people: '10', time: '19:30' } },
     });
   });
 
@@ -241,12 +238,12 @@ describe('правка группы', () => {
     const fetchMock = stubFetchWithFixtures({ 'groups/2/update': () => json({ ok: true }) });
     const user = userEvent.setup();
     const { dialog } = await openGroupEdit(user, 2);
-    const coLeader = within(dialog).getByRole('textbox', { name: 'ФИО соведущего' });
-    expect(coLeader).toHaveValue('Наталья М.');
-    await user.clear(coLeader);
+    const metro = within(dialog).getByRole('textbox', { name: 'Метро или ориентир' });
+    expect(metro).toHaveValue('Беговая');
+    await user.clear(metro);
     await user.click(saveButton(dialog));
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
-    expect(posts(fetchMock)[0]!.body).toEqual({ fields: { coLeader: '' } });
+    expect(posts(fetchMock)[0]!.body).toEqual({ fields: { metro: '' } });
   });
 
   test('время и дата обратной связи отправляются, только если их вписали', async () => {
@@ -286,16 +283,23 @@ describe('правка группы', () => {
     expect(posts(fetchMock)[0]).toEqual({ path: 'groups/12/update', body: { fields: { doNotRefer: '0' } } });
   });
 
-  test('пустое ФИО ведущего не отправляется и объясняется на месте', async () => {
-    const fetchMock = stubFetchWithFixtures();
+  test('ФИО ведущего и соведущего текстом не правится: только выбор человека из «Людей»', async () => {
+    stubFetchWithFixtures();
     const user = userEvent.setup();
-    const { dialog } = await openGroupEdit(user);
-    const leader = within(dialog).getByRole('textbox', { name: 'ФИО ведущего' });
-    await user.clear(leader);
-    expect(within(dialog).getByText('Заполните поле «ФИО ведущего».')).toBeInTheDocument();
-    expect(leader).toHaveAttribute('aria-invalid', 'true');
-    expect(saveButton(dialog)).toBeDisabled();
-    expect(posts(fetchMock)).toHaveLength(0);
+    const { dialog } = await openGroupEdit(user, 2);
+    expect(within(dialog).queryByRole('textbox', { name: /ФИО/ })).not.toBeInTheDocument();
+    // Группа 2 связана с Михаилом Громовым (u2): ведущего можно сменить, но не отвязать.
+    expect(await within(dialog).findByRole('button', { name: 'Сменить: Ведущий' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Отвязать: Ведущий' })).not.toBeInTheDocument();
+  });
+
+  test('ведущий группы из таблицы, записанный только текстом, показан с просьбой выбрать человека', async () => {
+    stubFetchWithFixtures();
+    const user = userEvent.setup();
+    const { dialog } = await openGroupEdit(user, 1);
+    expect(dialog).toHaveTextContent('Сейчас записан текстом: «Ольга К.». Выберите человека из «Людей» или заведите нового');
+    // Соведущего у группы нет — и текста про него нет.
+    expect(dialog).not.toHaveTextContent('Сейчас записан текстом: «»');
   });
 
   test('отдельных полей телефонов нет: номер берётся из карточки человека в «Людях», а без связи под выбором виден записанный', async () => {
@@ -303,29 +307,32 @@ describe('правка группы', () => {
     const user = userEvent.setup();
     const { dialog } = await openGroupEdit(user, 1);
     expect(within(dialog).queryByRole('textbox', { name: /Телефон/ })).not.toBeInTheDocument();
-    const search = within(dialog).getByRole('searchbox', { name: 'Найти: Ведущий в «Людях»' });
-    expect(search).toHaveAccessibleDescription(/Телефон берётся из карточки человека в «Людях».*записанный в группе: \+7 911 200 31 45/);
+    const search = within(dialog).getByRole('searchbox', { name: 'Найти: Ведущий' });
+    expect(search).toHaveAccessibleDescription(/ФИО и телефон берутся из карточки человека в «Людях».*записанный в группе: \+7 911 200 31 45/);
     expect(saveButton(dialog)).toBeDisabled();
   });
 
-  test('связанный ведущий показан именем и телефоном из «Людей»; «Отвязать» уходит пустым leaderKey', async () => {
-    const fetchMock = stubFetchWithFixtures({ 'groups/2/update': () => json({ ok: true }) });
+  test('связанный ведущий показан именем и телефоном из «Людей»; соведущего можно отвязать — уходит пустой coLeaderKey', async () => {
+    const fetchMock = stubFetchWithFixtures({
+      groups: () => json(groupsWith(2, { coLeader: 'Нина Воронцова', coLeaderKey: 'p1' })),
+      'groups/2/update': () => json({ ok: true }),
+    });
     const user = userEvent.setup();
     const { dialog } = await openGroupEdit(user, 2);
     // Группа 2 связана с Михаилом Громовым (u2).
     expect(await within(dialog).findByText('Михаил Громов')).toBeInTheDocument();
     expect(dialog).toHaveTextContent('+7 921 000 17 55');
-    await user.click(within(dialog).getByRole('button', { name: 'Отвязать: Ведущий в «Людях»' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Отвязать: Соведущий' }));
     await user.click(saveButton(dialog));
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
-    expect(posts(fetchMock)[0]!.body).toEqual({ fields: { leaderKey: '' } });
+    expect(posts(fetchMock)[0]!.body).toEqual({ fields: { coLeaderKey: '' } });
   });
 
   test('«Открыть в «Людях»» без правок сразу ведёт в карточку человека и закрывает форму', async () => {
     const fetchMock = stubFetchWithFixtures();
     const user = userEvent.setup();
     const { dialog } = await openGroupEdit(user, 2);
-    await user.click(await within(dialog).findByRole('button', { name: 'Открыть в «Людях»: Ведущий в «Людях»' }));
+    await user.click(await within(dialog).findByRole('button', { name: 'Открыть в «Людях»: Ведущий' }));
     await waitFor(() => expect(currentSearch().get('rec')).toBe('u2'));
     expect(currentSearch().get('ent')).toBe('people');
     expect(screen.queryByRole('dialog', { name: /^Правка группы/ })).not.toBeInTheDocument();
@@ -337,7 +344,7 @@ describe('правка группы', () => {
     const user = userEvent.setup();
     const { dialog } = await openGroupEdit(user, 2);
     await user.type(within(dialog).getByRole('textbox', { name: 'Комментарий' }), 'звонили');
-    await user.click(await within(dialog).findByRole('button', { name: 'Открыть в «Людях»: Ведущий в «Людях»' }));
+    await user.click(await within(dialog).findByRole('button', { name: 'Открыть в «Людях»: Ведущий' }));
     const ask = within(dialog).getByRole('group', { name: 'В группе есть несохранённые изменения' });
     expect(currentSearch().get('ent')).not.toBe('people');
     await user.click(within(ask).getByRole('button', { name: 'Сохранить и перейти' }));
@@ -351,7 +358,7 @@ describe('правка группы', () => {
     const { dialog } = await openGroupEdit(user, 2);
     const comment = within(dialog).getByRole('textbox', { name: 'Комментарий' });
     await user.type(comment, 'звонили');
-    const open = await within(dialog).findByRole('button', { name: 'Открыть в «Людях»: Ведущий в «Людях»' });
+    const open = await within(dialog).findByRole('button', { name: 'Открыть в «Людях»: Ведущий' });
     await user.click(open);
     await user.click(within(dialog).getByRole('button', { name: 'Остаться' }));
     expect(within(dialog).queryByRole('group', { name: 'В группе есть несохранённые изменения' })).not.toBeInTheDocument();
@@ -366,35 +373,57 @@ describe('правка группы', () => {
     stubFetchWithFixtures();
     const user = userEvent.setup();
     const { dialog } = await openGroupEdit(user, 2);
-    await user.clear(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' }));
-    await user.click(await within(dialog).findByRole('button', { name: 'Открыть в «Людях»: Ведущий в «Людях»' }));
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Район' }), '');
+    await user.click(await within(dialog).findByRole('button', { name: 'Открыть в «Людях»: Ведущий' }));
     const ask = within(dialog).getByRole('group', { name: 'В группе есть несохранённые изменения' });
     expect(within(ask).queryByRole('button', { name: 'Сохранить и перейти' })).not.toBeInTheDocument();
     expect(within(ask).getByRole('button', { name: 'Перейти без сохранения' })).toBeInTheDocument();
   });
 
-  test('соведущий выбирается поиском из «Людей»: уходит его ключ, а ФИО вписывается в имя соведущего', async () => {
+  test('соведущий выбирается поиском из «Людей»: уходит только его ключ, имя в группе возьмётся из карточки', async () => {
     const fetchMock = stubFetchWithFixtures({ 'groups/1/update': () => json({ ok: true }) });
     const user = userEvent.setup();
     const { dialog } = await openGroupEdit(user, 1);
-    await user.type(within(dialog).getByRole('searchbox', { name: 'Найти: Соведущий в «Людях»' }), 'Ворон');
-    const list = await within(dialog).findByRole('list', { name: 'Подходящие люди: Соведущий в «Людях»' });
+    await user.type(within(dialog).getByRole('searchbox', { name: 'Найти: Соведущий' }), 'Ворон');
+    const list = await within(dialog).findByRole('list', { name: 'Подходящие люди: Соведущий' });
     await user.click(within(list).getByRole('button', { name: /Нина Воронцова/ }));
-    expect(within(dialog).getByRole('textbox', { name: 'ФИО соведущего' })).toHaveValue('Нина Воронцова');
     await user.click(saveButton(dialog));
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
-    expect(posts(fetchMock)[0]!.body).toEqual({ fields: { coLeader: 'Нина Воронцова', coLeaderKey: 'p1' } });
+    expect(posts(fetchMock)[0]!.body).toEqual({ fields: { coLeaderKey: 'p1' } });
   });
 
-  test('человека из заявки без регистрации не выбрать, а ведущего этой группы — соведущим', async () => {
-    stubFetchWithFixtures();
+  test('человека из заявки тоже можно выбрать (сервер заведёт ему карточку), а ведущего этой группы соведущим — нет', async () => {
+    const fetchMock = stubFetchWithFixtures({ 'groups/2/update': () => json({ ok: true }) });
     const user = userEvent.setup();
     const { dialog } = await openGroupEdit(user, 2);
-    await user.type(within(dialog).getByRole('searchbox', { name: 'Найти: Соведущий в «Людях»' }), 'Громов');
-    const list = await within(dialog).findByRole('list', { name: 'Подходящие люди: Соведущий в «Людях»' });
-    // «Денис Громов» — только заявка (r4): связать не с кем. Михаил Громов уже ведущий этой группы.
-    expect(within(list).queryByRole('button', { name: /Денис Громов/ })).not.toBeInTheDocument();
+    await user.type(within(dialog).getByRole('searchbox', { name: 'Найти: Соведущий' }), 'Громов');
+    const list = await within(dialog).findByRole('list', { name: 'Подходящие люди: Соведущий' });
     expect(within(list).getByRole('button', { name: /Михаил Громов/ })).toBeDisabled();
+    // «Денис Громов» — только заявка (r4).
+    await user.click(within(list).getByRole('button', { name: /Денис Громов/ }));
+    await user.click(saveButton(dialog));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect(posts(fetchMock)[0]!.body).toEqual({ fields: { coLeaderKey: 'r4' } });
+  });
+
+  test('«+ Новый человек»: карточка заводится с ФИО и телефоном и сразу встаёт на позицию; Enter не отправляет форму группы', async () => {
+    const fetchMock = stubFetchWithFixtures({
+      'persons/create': () => json({ ok: true, personKey: 'p55' }),
+      'groups/1/update': () => json({ ok: true }),
+    });
+    const user = userEvent.setup();
+    const { dialog } = await openGroupEdit(user, 1);
+    await user.type(within(dialog).getByRole('searchbox', { name: 'Найти: Соведущий' }), 'Новикова Тамара');
+    await user.click(within(dialog).getByRole('button', { name: 'Новый человек: Соведущий' }));
+    const fresh = within(dialog).getByRole('group', { name: 'Новый человек — Соведущий' });
+    expect(within(fresh).getByRole('textbox', { name: 'ФИО' })).toHaveValue('Новикова Тамара');
+    await user.type(within(fresh).getByRole('textbox', { name: 'Телефон' }), '+7 921 000 11 22{Enter}');
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect(posts(fetchMock)[0]).toEqual({ path: 'persons/create', body: { fields: { fio: 'Новикова Тамара', phone: '+7 921 000 11 22' } } });
+    expect(await within(dialog).findByText('Новикова Тамара')).toBeInTheDocument();
+    await user.click(saveButton(dialog));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(2));
+    expect(posts(fetchMock)[1]).toEqual({ path: 'groups/1/update', body: { fields: { coLeaderKey: 'p55' } } });
   });
 
   test('адрес и метро показаны как есть, с подсказками про автоподбор', async () => {

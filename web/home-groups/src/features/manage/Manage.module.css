@@ -256,3 +256,29 @@ textarea.control {
 .leave p {
   margin: 0;
 }
+
+/* Ведущий группы из таблицы церкви, записанный только текстом: просьба выбрать человека. */
+.legacyName {
+  margin: 0 0 6px;
+  padding: 6px 10px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+/* «+ Новый человек»: ФИО и телефон прямо под поиском. */
+.newPerson {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.newPerson label {
+  font-size: 13px;
+  font-weight: 600;
+}

@@ -6,7 +6,8 @@ import type { AuditRepo } from '../db/repos/audit.repo.js';
 import type { CoordinatorsRepo } from '../db/repos/coordinators.repo.js';
 import type { TeamRolesRepo } from '../db/repos/teamRoles.repo.js';
 import type { GroupDirectionsRepo } from '../db/repos/groupDirections.repo.js';
-import type { GroupsRepo } from '../db/repos/groups.repo.js';
+import type { GroupInput, GroupsRepo, PersonRef } from '../db/repos/groups.repo.js';
+import type { MembersRepo, PersonInput } from '../db/repos/members.repo.js';
 import { REQUEST_STATUSES, type RequestsRepo, type RequestWithUser } from '../db/repos/requests.repo.js';
 import type { LeaderCandidate, UsersRepo } from '../db/repos/users.repo.js';
 import type { ActionError, FormMeta } from './contracts.js';
@@ -50,14 +51,40 @@ export function fieldsToForm(body: unknown): URLSearchParams | string {
   return form;
 }
 
+/** Карточка человека из ФИО и телефона, вписанных в форму группы. */
+const cardOf = (fio: string, phone: string | null | undefined): PersonInput => ({ fio, phone: phone ?? null, age: null, place: null, note: null });
+
 export function createRecordCreator(deps: {
   requests: Pick<RequestsRepo, 'createFromDashboard' | 'findById'>;
-  groups: Pick<GroupsRepo, 'create' | 'requestLinkState' | 'linkToRequest' | 'archive'>;
+  groups: Pick<GroupsRepo, 'create' | 'requestLinkState' | 'linkToRequest' | 'archive' | 'personName' | 'setLinksIfEmpty' | 'hasLeaderLink'>;
+  /** Карточки в «Людях» для ведущего и соведущего, вписанных в форму от руки. */
+  persons: Pick<MembersRepo, 'createPerson'>;
   directions: Pick<GroupDirectionsRepo, 'list'>;
   audit: Pick<AuditRepo, 'write'>;
   /** Уведомление служителю о новой заявке; не должно бросать (см. `notifierFromEnv`). */
   notify?: (request: RequestWithUser) => Promise<void>;
 }) {
+  /**
+   * Ведущий и соведущий новой группы — люди из «Людей», как и при правке. Выбранный «из зарегистрированных»
+   * (`leaderCandidate`) — ссылка на его регистрацию; вписанный от руки — новая карточка с этим ФИО и телефоном. Ведущий
+   * из заявки («Создать группу по заявке») уже связан `linkToRequest`, его не трогаем.
+   */
+  async function linkLeaders(groupId: number, value: GroupInput, form: URLSearchParams, actor: string): Promise<void> {
+    let leader: PersonRef | undefined;
+    if (!(await deps.groups.hasLeaderLink(groupId))) {
+      const candidate = form.get('leaderCandidate')?.trim() ?? '';
+      const user: PersonRef | null = /^\d{1,15}$/.test(candidate) ? { kind: 'user', id: Number(candidate) } : null;
+      leader = user && (await deps.groups.personName(user)) !== null
+        ? user
+        : { kind: 'person', id: await deps.persons.createPerson(cardOf(value.leader, value.phone), actor) };
+    }
+    const coName = value.coLeader?.trim();
+    const coLeader: PersonRef | undefined = coName
+      ? { kind: 'person', id: await deps.persons.createPerson(cardOf(coName, value.coLeaderPhone), actor) }
+      : undefined;
+    await deps.groups.setLinksIfEmpty(groupId, leader, coLeader);
+  }
+
   return {
     async request(body: unknown, actor: string): Promise<CreateOutcome> {
       const form = fieldsToForm(body);
@@ -100,6 +127,7 @@ export function createRecordCreator(deps: {
         await deps.groups.archive(created.id);
         return { ok: false, error: 'conflict', message: 'По этой заявке только что завели другую группу: обновите страницу.' };
       }
+      await linkLeaders(created.id, parsed.value, form, actor);
       await deps.audit.write(actor, 'group.create', 'group', created.id, {
         status: parsed.value.status, district: parsed.value.district, ...(requestId !== null ? { fromRequest: requestId } : {}),
       });

@@ -337,6 +337,7 @@ export function buildRequests(): RequestsView {
       contactsHidden: false,
       strange,
       id: r.id,
+      personKey: `r${r.id}`,
       fio: r.fio,
       phone: r.phone,
       ageLabel: r.ageLabel || null,
@@ -593,6 +594,12 @@ export function buildPeople(): PeopleView {
   const byGroup = membersByGroup();
   const groupsOf = (key: string): string[] =>
     RAW_GROUPS.filter((g) => (byGroup.get(g.id) ?? []).some((m) => m.personKey === key)).map((g) => groupBrief(g).code);
+  // Где человек ведущий или соведущий — как отдаёт сервер (`PersonItem.leads`).
+  const leadsOf = (key: string): PersonItem['leads'] =>
+    RAW_GROUPS.flatMap((g) => [
+      ...(g.leaderKey === key ? [{ groupId: g.id, code: groupBrief(g).code, role: 'leader' as const }] : []),
+      ...(g.coLeaderKey === key ? [{ groupId: g.id, code: groupBrief(g).code, role: 'coLeader' as const }] : []),
+    ]);
   const fromRequests: PersonItem[] = RAW_REQUESTS.map((raw) => {
     const item = requests.items.find((x) => x.id === raw.id);
     return {
@@ -601,6 +608,8 @@ export function buildPeople(): PeopleView {
       key: `r${raw.id}`,
       personId: null,
       groups: groupsOf(`r${raw.id}`),
+      leads: leadsOf(`r${raw.id}`),
+      requests: [{ id: raw.id, kind: 'join' as const, label: 'Заявка в группу', state: raw.cancelled ? ('cancelled' as const) : item?.bucket === 'done' ? ('done' as const) : ('open' as const) }],
       fio: raw.fio,
       phone: raw.phone,
       ageLabel: raw.ageLabel || null,
@@ -626,7 +635,7 @@ export function buildPeople(): PeopleView {
       kitIssuedOn: null,
     };
   });
-  const extras: PersonItem[] = RAW_EXTRA_PEOPLE.map((p) => ({ ...p, place: p.place ?? p.district, address: p.address ?? null, schedule: p.schedule ?? null, hobby: p.hobby ?? null, profession: p.profession ?? null, family: p.family ?? null, note: p.note ?? null, church: p.church ?? null, leaderName: p.leaderName ?? null, preferredContact: p.preferredContact ?? null, addressGeo: p.address ? ('found' as const) : null, personId: p.personId ?? null, groups: groupsOf(p.key), requestId: null, kitIssuedOn: p.kitIssuedOn ?? null, strange: demoStrangeOf(p.phone, p.key), contactsHidden: false }));
+  const extras: PersonItem[] = RAW_EXTRA_PEOPLE.map((p) => ({ ...p, place: p.place ?? p.district, address: p.address ?? null, schedule: p.schedule ?? null, hobby: p.hobby ?? null, profession: p.profession ?? null, family: p.family ?? null, note: p.note ?? null, church: p.church ?? null, leaderName: p.leaderName ?? null, preferredContact: p.preferredContact ?? null, addressGeo: p.address ? ('found' as const) : null, personId: p.personId ?? null, groups: groupsOf(p.key), leads: leadsOf(p.key), requests: [], requestId: null, kitIssuedOn: p.kitIssuedOn ?? null, strange: demoStrangeOf(p.phone, p.key), contactsHidden: false }));
   return { generatedAt: GENERATED_AT, items: [...fromRequests, ...extras] };
 }
 

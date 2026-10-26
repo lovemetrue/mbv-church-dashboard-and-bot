@@ -1,2 +1,2 @@
 export { MembersSection } from './MembersSection';
-export { PersonActions, PersonGroups } from './PersonSections';
+export { PersonActions, PersonGroups, PersonHeaderTools } from './PersonSections';

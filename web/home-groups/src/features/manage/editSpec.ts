@@ -28,10 +28,12 @@ export interface EditField {
   max?: string;
   /** На всю ширину окна, а не в половину. */
   wide?: boolean;
-  /** Для person: текстовое поле, куда при выборе человека вписывается его ФИО (имя в группе — то, по чему её ищут). */
-  fillsName?: string;
   /** Для person: поле второй позиции — человека оттуда здесь не выбрать (сервер всё равно отказал бы). */
   other?: string;
+  /** Для person: можно ли отвязать (соведущего — да; ведущего только меняют, без него группы не бывает). */
+  allowUnlink?: boolean;
+  /** Для person: имя, записанное в группе текстом, пока человек не выбран (группа из таблицы церкви). */
+  legacyName?: string | null;
 }
 
 export interface EditSpec {
@@ -106,10 +108,24 @@ function groupEditFields(g: GroupItem, meta: FormMeta): EditSpec {
   const keep = m.group.keepHint;
   return {
     fields: [
-      { name: 'leader', label: t.leader, kind: 'text', required: true },
-      { name: 'leaderKey', label: t.leaderKey, kind: 'person', fillsName: 'leader', other: 'coLeaderKey', hint: personHint(g.leaderKey, g.phone) },
-      { name: 'coLeader', label: t.coLeader, kind: 'text' },
-      { name: 'coLeaderKey', label: t.coLeaderKey, kind: 'person', fillsName: 'coLeader', other: 'leaderKey', hint: personHint(g.coLeaderKey, g.coLeaderPhone) },
+      // ФИО ведущего и соведущего текстом не правится: это люди из «Людей», имя и телефон — из их карточек.
+      {
+        name: 'leaderKey',
+        label: t.leaderKey,
+        kind: 'person',
+        other: 'coLeaderKey',
+        allowUnlink: false,
+        legacyName: g.leaderKey ? null : g.leader,
+        hint: personHint(g.leaderKey, g.phone),
+      },
+      {
+        name: 'coLeaderKey',
+        label: t.coLeaderKey,
+        kind: 'person',
+        other: 'leaderKey',
+        legacyName: g.coLeaderKey ? null : g.coLeader,
+        hint: personHint(g.coLeaderKey, g.coLeaderPhone),
+      },
       { name: 'district', label: t.district, kind: 'select', required: true, options: withCurrent(meta.districts, g.district) },
       // Подбор сопоставляет сначала по адресу, а если он пуст — по метро или ориентиру: оба поля видны и правятся здесь.
       { name: 'address', label: t.address, kind: 'text', wide: true, hint: m.group.addressHint },
@@ -147,7 +163,6 @@ function groupEditFields(g: GroupItem, meta: FormMeta): EditSpec {
       { name: 'chamber', label: m.group.chamber, kind: 'checkbox', wide: true, hint: m.group.chamberHint },
     ],
     initial: {
-      leader: g.leader,
       district: g.district,
       metro: g.metro ?? '',
       direction: g.direction,
@@ -163,7 +178,6 @@ function groupEditFields(g: GroupItem, meta: FormMeta): EditSpec {
       campaignRegistered: g.campaignRegistered ? '1' : '',
       campaignOnly: g.campaignOnly ? '1' : '',
       coordinator: g.coordinator ?? '',
-      coLeader: g.coLeader ?? '',
       leaderKey: g.leaderKey ?? '',
       coLeaderKey: g.coLeaderKey ?? '',
       address: g.address ?? '',

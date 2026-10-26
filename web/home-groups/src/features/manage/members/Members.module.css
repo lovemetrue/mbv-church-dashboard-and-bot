@@ -249,3 +249,24 @@ button.name:focus-visible {
     max-height: 40vh;
   }
 }
+
+/* «Группы» в карточке человека: роль слева, коды групп справа. */
+.roleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-bottom: 6px;
+}
+.roleLabel {
+  min-width: 6.5em;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.roleGroups {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}

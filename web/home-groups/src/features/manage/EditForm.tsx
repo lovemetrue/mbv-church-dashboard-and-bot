@@ -193,12 +193,10 @@ export function EditForm({ spec: given, path, onClose, onSaved, onBusyChange, re
             taken={f.other ? (values[f.other] ?? '') : ''}
             disabled={busy}
             describedBy={describedBy}
+            allowUnlink={f.allowUnlink}
+            legacyName={f.legacyName}
             onOpen={(key) => openPerson(f.name, key)}
-            onPick={(p) => {
-              // Выбранный человек — и имя в группе: по нему группу ищут и узнают в списках.
-              setValues((v) => ({ ...v, [f.name]: p?.key ?? '', ...(p && f.fillsName ? { [f.fillsName]: p.fio } : {}) }));
-              setError(null);
-            }}
+            onPick={(p) => change(f.name, p?.key ?? '')}
           />
           {leaving?.field === f.name && leaveBlock(leaving.key)}
           {hint}

@@ -164,6 +164,21 @@ describe('состав группы: ссылки на справочник лю
   });
 });
 
+describe('новая карточка без группы («+ Новый человек» при выборе ведущего)', () => {
+  test('заводится с ФИО и телефоном, возвращает ключ «p…»; в журнале — названия полей, без имени', async () => {
+    const out = await svc().createPerson({ fields: { fio: 'Новикова Тамара', phone: '8 921 000-11-22' } }, 'a');
+    expect(out).toEqual({ ok: true, personKey: expect.stringMatching(/^p\d+$/) });
+    const id = Number((out as { personKey: string }).personKey.slice(1));
+    expect((await db.query('SELECT full_name, phone FROM persons WHERE id = $1', [id])).rows[0]).toEqual({ full_name: 'Новикова Тамара', phone: '+79210001122' });
+    expect(JSON.stringify((await db.query('SELECT after FROM audit_log')).rows)).not.toContain('Новикова');
+  });
+
+  test('без ФИО — отказ, карточки нет', async () => {
+    expect(await svc().createPerson({ fields: { fio: '  ', phone: '+79210001122' } }, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
+    expect((await db.query('SELECT 1 FROM persons')).rowCount).toBe(0);
+  });
+});
+
 describe('справочник людей и составы в представлениях', () => {
   test('внесённая вручную карточка появляется в «Людях» и показывает группы, где состоит; участник из бота — тоже', async () => {
     const g = await seedGroup();

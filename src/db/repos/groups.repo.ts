@@ -358,14 +358,57 @@ export class GroupsRepo {
   }
 
   /**
-   * Есть ли такой человек в «Людях»: завершённая регистрация или не удалённая карточка. Незавершённой регистрации в
-   * «Людях» нет, а удалённую карточку база приняла бы ссылкой молча.
+   * ФИО человека из «Людей» по ссылке; null — такого нет: незавершённой регистрации в «Людях» нет, а удалённую карточку
+   * база приняла бы ссылкой молча. ФИО нужно, чтобы имя в группе совпадало с карточкой.
    */
-  async personRefExists(ref: PersonRef): Promise<boolean> {
-    const { rowCount } = ref.kind === 'user'
-      ? await this.db.query('SELECT 1 FROM users WHERE id = $1 AND registration_no IS NOT NULL', [ref.id])
-      : await this.db.query('SELECT 1 FROM persons WHERE id = $1 AND archived_at IS NULL', [ref.id]);
-    return (rowCount ?? 0) > 0;
+  async personName(ref: PersonRef): Promise<string | null> {
+    const { rows } = ref.kind === 'user'
+      ? await this.db.query<{ name: string | null }>('SELECT full_name AS name FROM users WHERE id = $1 AND registration_no IS NOT NULL', [ref.id])
+      : await this.db.query<{ name: string | null }>('SELECT full_name AS name FROM persons WHERE id = $1 AND archived_at IS NULL', [ref.id]);
+    if (!rows[0]) return null;
+    return rows[0].name?.trim() || 'Без имени';
+  }
+
+  /**
+   * Поставить людей на позиции ведущего и соведущего у только что заведённой группы. Позицию, где уже есть ссылка
+   * (ведущий из заявки — `linkToRequest`), не трогаем: undefined — не менять.
+   */
+  async setLinksIfEmpty(id: number, leader: PersonRef | undefined, coLeader: PersonRef | undefined): Promise<void> {
+    const [lc, lu, lp] = refParams(leader);
+    const [cc, cu, cp] = refParams(coLeader);
+    await this.db.query(
+      `UPDATE groups SET
+         leader_user_id      = CASE WHEN $2::boolean AND leader_user_id IS NULL AND leader_person_id IS NULL THEN $3::bigint ELSE leader_user_id END,
+         leader_person_id    = CASE WHEN $2::boolean AND leader_user_id IS NULL AND leader_person_id IS NULL THEN $4::bigint ELSE leader_person_id END,
+         co_leader_user_id   = CASE WHEN $5::boolean AND co_leader_user_id IS NULL AND co_leader_person_id IS NULL THEN $6::bigint ELSE co_leader_user_id END,
+         co_leader_person_id = CASE WHEN $5::boolean AND co_leader_user_id IS NULL AND co_leader_person_id IS NULL THEN $7::bigint ELSE co_leader_person_id END
+       WHERE id = $1`,
+      [id, lc, lu, lp, cc, cu, cp],
+    );
+  }
+
+  /** Есть ли у группы человек на позиции ведущего (регистрация или карточка). */
+  async hasLeaderLink(id: number): Promise<boolean> {
+    const { rows } = await this.db.query<{ linked: boolean }>(
+      'SELECT (leader_user_id IS NOT NULL OR leader_person_id IS NOT NULL) AS linked FROM groups WHERE id = $1', [id],
+    );
+    return rows[0]?.linked === true;
+  }
+
+  /**
+   * Карточка в «Людях» для человека из заявки без регистрации («r»): ссылаться можно только на регистрацию или
+   * карточку, а у такого человека есть лишь заявка. Данные переносятся из заявки. null — заявки нет или у неё есть
+   * регистрация (тогда ссылаются на регистрацию).
+   */
+  async personFromRequest(requestId: number, by: string): Promise<number | null> {
+    const { rows } = await this.db.query<{ id: number }>(
+      `INSERT INTO persons (full_name, phone, age, place, address, schedule, hobby, profession, family_status, created_by)
+       SELECT fio, COALESCE(phones[1], phone), age, place, manual_street, manual_schedule, hobby, profession, family_status, $2
+         FROM requests WHERE id = $1 AND user_id IS NULL AND archived_at IS NULL AND btrim(coalesce(fio, '')) <> ''
+       RETURNING id::int AS id`,
+      [requestId, by],
+    );
+    return rows[0]?.id ?? null;
   }
 
   async findActive(id: number): Promise<GroupRow | null> {
@@ -461,14 +504,23 @@ export class GroupsRepo {
    * с таблицей церкви, а заведённые позже (без номера) идут в конце.
    */
   async forDashboard(): Promise<DashboardGroup[]> {
-    const { rows } = await this.db.query<GroupRow>(
-      `${withDirection('groups')} WHERE g.archived_at IS NULL
-        ORDER BY g.no NULLS LAST, g.created_at, g.id`,
+    // Имя ведущего и соведущего — из карточки связанного человека: ФИО правят в «Людях», и группа показывает его сразу.
+    // Текст в самой группе — запасной: пока человек не выбран (группа из таблицы) или его карточку удалили.
+    const { rows } = await this.db.query<GroupRow & { linked_leader: string | null; linked_co_leader: string | null }>(
+      `SELECT x.*,
+              COALESCE(NULLIF(btrim(lu.full_name), ''), NULLIF(btrim(lp.full_name), '')) AS linked_leader,
+              COALESCE(NULLIF(btrim(cu.full_name), ''), NULLIF(btrim(cp.full_name), '')) AS linked_co_leader
+         FROM (${withDirection('groups')} WHERE g.archived_at IS NULL) x
+         LEFT JOIN users lu ON lu.id = x.leader_user_id AND lu.registration_no IS NOT NULL
+         LEFT JOIN persons lp ON lp.id = x.leader_person_id AND lp.archived_at IS NULL
+         LEFT JOIN users cu ON cu.id = x.co_leader_user_id AND cu.registration_no IS NOT NULL
+         LEFT JOIN persons cp ON cp.id = x.co_leader_person_id AND cp.archived_at IS NULL
+        ORDER BY x.no NULLS LAST, x.created_at, x.id`,
     );
     return rows.map((r) => ({
       id: r.id,
       no: r.no,
-      leader: r.leader,
+      leader: r.linked_leader ?? r.leader,
       phone: r.phone,
       phones: r.phones ?? [],
       open_to_new: r.open_to_new,
@@ -481,7 +533,7 @@ export class GroupsRepo {
       time: r.time,
       people: r.people,
       coordinator: r.coordinator,
-      co_leader: r.co_leader,
+      co_leader: r.linked_co_leader ?? r.co_leader,
       co_leader_phone: r.co_leader_phone,
       feedback_at: r.feedback_at,
       opened_on: r.opened_on,

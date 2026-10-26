@@ -58,6 +58,12 @@ export function OtherList({
               {it.ageLabel && <AgeTag>{it.ageLabel}</AgeTag>}
               <span className={styles.place}>{it.place ?? ru.common.placeUnknown}</span>
               {it.responsible && <span className={styles.inWork}>{ru.requests.inWorkBy(it.responsible)}</span>}
+              {/* У закрытого — чем закончилось: так «обработано» без ответственного не выглядит пустым. */}
+              {it.outcome && (
+                <span className={styles.inWork}>
+                  {[it.outcome.text, it.outcome.groups.map((g) => g.code).join(', '), it.outcome.by].filter(Boolean).join(' · ')}
+                </span>
+              )}
             </div>
             <div className={styles.kind}>
               <span className={styles.type}>{it.typeLabel}</span>

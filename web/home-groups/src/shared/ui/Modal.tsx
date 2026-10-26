@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { ru } from '../i18n/ru';
 import { Button } from './Button';
 import styles from './Modal.module.css';
+import { useFitVisualViewport } from './useFitVisualViewport';
 
 interface ModalProps {
   title: string;
@@ -33,6 +34,9 @@ const FOCUSABLE = 'a[href], button:not(:disabled), input:not(:disabled), textare
  */
 export function Modal({ title, onClose, children, wide = false }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  // Затемнение с окном — по видимой части экрана: на увеличенной странице телефона окно иначе уезжало за край.
+  const scrimRef = useRef<HTMLDivElement>(null);
+  useFitVisualViewport(scrimRef);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   const titleId = useId();
@@ -81,7 +85,7 @@ export function Modal({ title, onClose, children, wide = false }: ModalProps) {
   }, []);
 
   return createPortal(
-    <div className={styles.scrim} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div ref={scrimRef} className={styles.scrim} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div ref={panelRef} className={`${styles.panel} ${wide ? styles.wide : ''}`} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <header className={styles.head}>
           <h2 id={titleId} className={styles.title}>

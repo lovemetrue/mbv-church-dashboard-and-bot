@@ -352,7 +352,9 @@ export function buildPlan(input: PlanInput): PlanOutput {
       main,
       confidence: confidenceOf(main),
       knownParams,
-      alternatives: pickAlternatives(ordered, main, groupById),
+      // У запасных та же уверенность, что у главной: «совпадение» без поправки на известные параметры с ней не сравнить —
+      // запасная с «69 совпадения» выглядела бы почти равной главной с «74 уверенности», хотя не дотягивает до порога.
+      alternatives: pickAlternatives(ordered, main, groupById).map((a) => ({ ...a, confidence: confidenceOf(a) })),
       displaced,
     };
     decided.set(request.id, proposal);

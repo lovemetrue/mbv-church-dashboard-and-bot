@@ -610,7 +610,7 @@ export function buildViewsWithPlan(
       source: sourceOfProposal(input.activeProposals?.get(requestId), main.group.id),
       main,
       knownParams: e.knownParams,
-      alternatives: e.alternatives.map((a) => candidate(a, null)).filter((c): c is Candidate => c !== null),
+      alternatives: e.alternatives.map((a) => candidate(a, a.confidence ?? null)).filter((c): c is Candidate => c !== null),
       displaced: e.displaced && displacedGroup ? { group: displacedGroup, takenBy: e.displaced.takenBy } : null,
     };
   };

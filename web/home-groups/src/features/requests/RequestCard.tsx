@@ -17,6 +17,7 @@ import { tableRows } from './tableRows';
 import { subjectOfRequest } from './work/subject';
 import { HeaderTools } from './work/HeaderTools';
 import { WorkPlace } from './work/WorkPlace';
+import { PersonLink } from './work/PersonLink';
 import { DeleteRequestSection } from '../manage';
 import { GroupFromRequestSection } from '../create';
 import { AssistantNoteBlock } from './assistant/AssistantNoteBlock';
@@ -546,6 +547,7 @@ export function RequestCard({
       <ActionDialogs r={r} act={act} />
       <DrawerSection title={ru.requests.contacts}>
         <KeyValue rows={contacts} />
+        <PersonLink personKey={r.personKey} fio={r.fio} />
       </DrawerSection>
       <AssistantNoteBlock key={`assistant-${r.id}`} note={r.assistant} />
       <WorkPlace key={`work-${r.id}`} subject={subjectOfRequest(r)} onClosed={onClosed} />

@@ -98,6 +98,12 @@ export function useAppNav() {
       next.set('req', String(id));
       return next;
     }),
+    /**
+     * Карточка «другого обращения» из любого места (карточка человека). «Хочу открыть группу» живут в своём списке
+     * (`leads`). Отбор «Все»: обращение может быть и закрытым, а под чипом «Открытые» его бы не было.
+     */
+    openOther: (id: number, view: 'others' | 'leads' = 'others') =>
+      setParams(() => new URLSearchParams({ tab: 'requests', view, ostate: 'all', req: String(id) })),
     closeRequest: () => update({ req: null }),
     /**
      * «Заявки» с отбором «В работе у» (из «Команды»): who === null — заявки, которые никто не взял.

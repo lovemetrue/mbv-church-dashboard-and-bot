@@ -188,6 +188,39 @@ export function GroupCard({ g, onClose }: { g: GroupItem; onClose: () => void })
   );
 }
 
+/**
+ * «Заявки и обращения» в конце карточки человека: каждая — кнопкой, которая открывает её в «Заявках» (заявку в группу —
+ * в «Хотят в группу», остальное — в «Других обращениях»). Так из человека можно дойти до всего, что он оставлял.
+ */
+function PersonRequests({ p }: { p: PersonItem }) {
+  const nav = useAppNav();
+  if (p.requests.length === 0) return null;
+  const t = ru.members.person;
+  return (
+    <DrawerSection title={t.requestsTitle}>
+      <ul className={styles.planned}>
+        {p.requests.map((r) => (
+          <li key={r.id} className={styles.plannedRow}>
+            <div className={styles.plannedMain}>
+              <b>
+                {r.label} №{r.id}
+              </b>
+              <span>{t.requestState[r.state]}</span>
+            </div>
+            <Button
+              size="sm"
+              aria-label={t.openRequestAria(r.label, r.id)}
+              onClick={() => (r.kind === 'join' ? nav.openRequest(r.id) : nav.openOther(r.id, r.kind === 'lead' ? 'leads' : 'others'))}
+            >
+              {ru.reference.openPlanned}
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </DrawerSection>
+  );
+}
+
 export function PersonCard({ p, onClose }: { p: PersonItem; onClose: () => void }) {
   const nav = useAppNav();
   const rows: KvRow[] = [
@@ -248,13 +281,7 @@ export function PersonCard({ p, onClose }: { p: PersonItem; onClose: () => void 
           </div>
         </DrawerSection>
       )}
-      {p.requestId !== null && (
-        <DrawerSection>
-          <Button variant="primary" onClick={() => nav.openRequest(p.requestId as number)}>
-            {ru.reference.openRequest}
-          </Button>
-        </DrawerSection>
-      )}
+      <PersonRequests p={p} />
       <DeletePersonSection userId={p.userId} fio={p.fio} onDeleted={onClose} />
     </Drawer>
   );

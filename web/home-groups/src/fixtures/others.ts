@@ -8,7 +8,7 @@ import { demoStrangeOf } from './strange';
 
 /** Обращение без метки: метка накладывается при сборке (`buildOthers`), потому что её можно поставить в демо. */
 type BaseOther = Omit<OtherItem, 'strange'>;
-type RawOther = Omit<BaseOther, 'address' | 'schedule' | 'hobby' | 'profession' | 'family' | 'table' | 'ownGroup' | 'contactsHidden'>;
+type RawOther = Omit<BaseOther, 'address' | 'schedule' | 'hobby' | 'profession' | 'family' | 'table' | 'ownGroup' | 'contactsHidden' | 'personKey' | 'outcome'>;
 
 /** Поля из таблицы церкви у демо-заявок пусты: их заполняют вручную. */
 export function emptyTable(note: string | null): RequestTableFields {
@@ -18,7 +18,13 @@ export function emptyTable(note: string | null): RequestTableFields {
 /** Анкетные поля у большинства демо-обращений пусты: подставляем их здесь, чтобы не повторять в каждой записи. */
 function baseOthers(): BaseOther[] {
   // Группа по обращению в демо — та же, что «будущая группа» у «хочу открыть» (на сервере это одна связь, source_request_id).
-  return rawOthers().map((o) => ({ address: null, schedule: null, hobby: null, profession: null, family: null, table: emptyTable(o.note), ownGroup: o.prospects?.futureGroup ?? null, contactsHidden: false, ...o }));
+  // Регистраций у демо-обращений нет (переход в «Люди» не из чего). Итог закрытых — как без записи в журнале.
+  return rawOthers().map((o) => ({
+    address: null, schedule: null, hobby: null, profession: null, family: null, table: emptyTable(o.note), ownGroup: o.prospects?.futureGroup ?? null, contactsHidden: false,
+    personKey: null,
+    outcome: o.state === 'open' ? null : { text: 'Закрыто без записи в журнале', by: o.responsible, at: null, groups: [] },
+    ...o,
+  }));
 }
 
 function rawOthers(): RawOther[] {
@@ -478,6 +484,12 @@ export function buildOthers(): OtherItem[] {
           state: 'done',
           status: 'Исполнена',
           reconcile: null,
+          outcome: {
+            text: o.reconcile?.kind === 'leader' ? 'Разобрано: связан с группой как ведущий' : 'Разобрано: внесён в состав группы',
+            by: 'mbv_admin',
+            at: '2026-10-12',
+            groups: (o.reconcile?.candidates ?? []).filter((c) => c.tier === 'exact').map((c) => ({ id: c.groupId, code: c.code })),
+          },
           log: [...o.log, { at: '2026-10-12', text: 'Закрыта: обработана (разобрано по справочникам).' }],
         }
       : o;

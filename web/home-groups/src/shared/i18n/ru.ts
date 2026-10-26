@@ -260,6 +260,13 @@ export const ru = {
     respFilterNobody: 'Никто не взял',
     /** Метка в строке списка: у кого заявка. Без имени метки нет. */
     inWorkBy: (name: string) => `В работе: ${name}`,
+    /** Переход из заявки или обращения в карточку человека в «Людях». */
+    openPerson: 'Карточка человека',
+    openPersonAria: (fio: string) => `Открыть в «Людях»: ${fio}`,
+    /** Итог закрытого обращения — в строке списка и в карточке. */
+    outcomeTitle: 'Итог',
+    outcomeBy: (who: string) => `закрыл(а): ${who}`,
+    outcomeGroup: (code: string) => `Открыть группу ${code}`,
     listLabel: 'Список заявок',
     colPerson: 'Человек',
     colProposal: 'Предложение системы',
@@ -1962,6 +1969,9 @@ export const ru = {
     person: {
       groupsTitle: 'Группы',
       groupsNone: 'Пока ни в одной группе.',
+      requestsTitle: 'Заявки и обращения',
+      requestState: { open: 'открыта', done: 'закрыта', cancelled: 'аннулирована' },
+      openRequestAria: (label: string, id: number) => `Открыть: ${label} №${id}`,
       memberOf: 'Участник',
       leaderOf: 'Ведущий',
       coLeaderOf: 'Соведущий',

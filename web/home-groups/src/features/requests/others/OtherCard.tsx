@@ -8,6 +8,9 @@ import { tableRows } from '../tableRows';
 import { subjectOfOther } from '../work/subject';
 import { HeaderTools } from '../work/HeaderTools';
 import { WorkPlace } from '../work/WorkPlace';
+import { PersonLink } from '../work/PersonLink';
+import { useAppNav } from '../../../shared/nav';
+import { Button } from '../../../shared/ui';
 import { STATE_LABEL, STATE_TONE } from './OtherList';
 import styles from './Others.module.css';
 import { ProspectsBlock } from './ProspectsBlock';
@@ -16,6 +19,30 @@ import { ReconcileBlock } from './ReconcileBlock';
 const o = ru.requests.others;
 
 const noValue = <span className={styles.note}>{ru.reference.notSpecified}</span>;
+
+/**
+ * Итог закрытого обращения: что сделано (разбор по справочникам, «Закрыть»), кем и когда, и группы ссылками. Без
+ * этого «обработанное» выглядело пустым: «Разобрать все готовые» ответственного не ставит, а группа была только в ленте.
+ */
+function OutcomeBlock({ outcome }: { outcome: NonNullable<OtherItem['outcome']> }) {
+  const nav = useAppNav();
+  const meta = [outcome.at ? formatDateShort(outcome.at) : null, outcome.by ? ru.requests.outcomeBy(outcome.by) : null].filter(Boolean).join(' · ');
+  return (
+    <DrawerSection title={ru.requests.outcomeTitle}>
+      <p className={styles.outcome}>{outcome.text}</p>
+      {meta && <p className={styles.note}>{meta}</p>}
+      {outcome.groups.length > 0 && (
+        <div className={styles.outcomeGroups}>
+          {outcome.groups.map((g) => (
+            <Button key={g.id} size="sm" aria-label={ru.requests.outcomeGroup(g.code)} onClick={() => nav.openGroup(g.id)}>
+              {g.code}
+            </Button>
+          ))}
+        </div>
+      )}
+    </DrawerSection>
+  );
+}
 
 /**
  * Карточка обращения: заголовок с типом, суть обращения, «Разбор» (если сервер сверил человека со справочником
@@ -73,9 +100,11 @@ export function OtherCard({ item, onClose, onClosed }: { item: OtherItem; onClos
           <ProspectsBlock p={item.prospects} />
         </DrawerSection>
       )}
+      {item.outcome && <OutcomeBlock outcome={item.outcome} />}
       {item.reconcile && <ReconcileBlock key={`reconcile-${item.id}`} item={item} rec={item.reconcile} onClosed={onClosed} />}
       <DrawerSection title={ru.requests.contacts}>
         <KeyValue rows={contacts} />
+        <PersonLink personKey={item.personKey} fio={item.fio} />
       </DrawerSection>
       <WorkPlace key={`work-${item.id}`} subject={subjectOfOther(item)} onClosed={onClosed} />
       <GroupFromRequestSection key={`own-group-${item.id}`} requestId={item.id} ownGroup={item.ownGroup} />

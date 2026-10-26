@@ -689,6 +689,7 @@ export function buildViewsWithPlan(
     const finalBrief = bucket === 'done' && r.group_id !== null ? brief(r.group_id) : null;
     requestItems.push({
       id: r.id,
+      personKey: r.user_id !== null ? `u${r.user_id}` : `r${r.id}`,
       strange: strangeOfRequest(r),
       contactsHidden: false,
       fio: pr.fio,
@@ -757,6 +758,31 @@ export function buildViewsWithPlan(
   const otherAll = input.requests.filter((r) => r.type !== 'join_group' || bucketById.get(r.id) === 'cancelled');
   const nonJoin = input.requests.filter((r) => r.type !== 'join_group');
   const otherState = (r: DashboardRequest): OtherItem['state'] => (r.status === DONE ? 'done' : r.status === CANCELLED ? 'cancelled' : 'open');
+  /**
+   * Чем закончилось закрытое обращение. Берём последнюю закрывающую запись журнала: разбор по справочникам
+   * («Разобрать все готовые» закрывает пачкой и ответственного не ставит — отсюда «обработано» без «в работе у»)
+   * или «Закрыть». Записи нет — обращение закрыли в таблице церкви или до журнала: говорим, что знаем.
+   */
+  const outcomeOf = (r: DashboardRequest): OtherItem['outcome'] => {
+    if (otherState(r) === 'open') return null;
+    const closing = (auditByRequest.get(r.id) ?? []).filter((a) => a.action === 'request.reconcile' || a.action === 'request.close').at(-1);
+    const at = closing ? localIsoDate(closing.at, timeZone) : null;
+    if (closing?.action === 'request.reconcile') {
+      const after = closing.after ?? {};
+      const raw = Array.isArray(after['group_ids']) ? after['group_ids'] : [after['group_id']];
+      const groups = raw.map(Number).filter((n) => Number.isFinite(n)).map((id) => ({ id, code: groupCode(id) }));
+      const text = after['kind'] === 'leader' ? 'Разобрано: связан с группой как ведущий' : 'Разобрано: внесён в состав группы';
+      return { text, by: closing.actor, at, groups };
+    }
+    if (closing?.action === 'request.close') {
+      const after = closing.after ?? {};
+      const text = after['outcome'] === 'cancel' ? `Аннулировано: ${CANCEL_TEXT[String(after['reason'])] ?? 'причина не указана'}` : 'Закрыто: отмечено обработанным';
+      return { text, by: closing.actor, at, groups: [] };
+    }
+    const groups = r.group_id !== null ? [{ id: r.group_id, code: groupCode(r.group_id) }] : [];
+    const text = r.origin === 'таблица' ? 'Закрыто в таблице церкви' : 'Закрыто без записи в журнале';
+    return { text, by: nonBlank(r.responsible), at: null, groups };
+  };
   const otherItem = (r: DashboardRequest): OtherItem => ({
     id: r.id,
     strange: strangeOfRequest(r),
@@ -786,6 +812,9 @@ export function buildViewsWithPlan(
     log: logOf(r, null),
     prospects: r.type === 'lead_group' && otherState(r) === 'open' ? prospectsOf(r) : null,
     ownGroup: ownGroupOf(r),
+    // Аннулированная заявка «хочу в группу» без регистрации — тоже человек в «Людях» (ключ «r»).
+    personKey: r.user_id !== null ? `u${r.user_id}` : r.type === 'join_group' ? `r${r.id}` : null,
+    outcome: outcomeOf(r),
   });
   const otherOpen = otherAll.filter((r) => otherState(r) === 'open').map(otherItem)
     .sort((a, b) => Number(b.callback) - Number(a.callback) || (b.waitingDays ?? -1) - (a.waitingDays ?? -1) || a.id - b.id);
@@ -866,6 +895,17 @@ export function buildViewsWithPlan(
     put(g.co_leader_user_id ? `u${g.co_leader_user_id}` : g.co_leader_person_id ? `p${g.co_leader_person_id}` : null, 'coLeader');
   }
   const leadsOf = (key: string): PersonItem['leads'] => leadsByKey.get(key) ?? [];
+  // Заявки человека — для переходов из его карточки. Типы подписываем так же, как в списках.
+  const requestRef = (r: DashboardRequest): PersonItem['requests'][number] => ({
+    id: r.id,
+    kind: r.type === 'join_group' ? 'join' : r.type === 'lead_group' ? 'lead' : 'other',
+    label: r.type === 'join_group' ? 'Заявка в группу' : (TYPE_LABEL[r.type as OtherItem['type']] ?? 'Обращение'),
+    state: otherState(r),
+  });
+  const requestsByUser = new Map<number, PersonItem['requests']>();
+  for (const r of [...input.requests].sort((a, b) => b.id - a.id)) {
+    if (r.user_id !== null) requestsByUser.set(r.user_id, [...(requestsByUser.get(r.user_id) ?? []), requestRef(r)]);
+  }
 
   // ── ответ ведущего боту ───────────────────────────────────────────────────
   // Ведущему досылаем вопросы «когда собирается группа» и «где встречи». Ответ в карточку группы сам не переносится:
@@ -952,6 +992,7 @@ export function buildViewsWithPlan(
       personId: null,
       groups: groupCodesOf(`u${u.id}`),
       leads: leadsOf(`u${u.id}`),
+      requests: requestsByUser.get(u.id) ?? [],
       fio: nonBlank(u.full_name) ?? 'Без имени',
       phone: nonBlank(formatPhone(nonBlank(u.phone))),
       ageLabel: nonBlank(u.age),
@@ -984,6 +1025,7 @@ export function buildViewsWithPlan(
       personId: null,
       groups: groupCodesOf(`r${r.id}`),
       leads: leadsOf(`r${r.id}`),
+      requests: [requestRef(r)],
       fio: pr.fio,
       phone: displayPhone(r.phones, r.phone),
       ageLabel: nonBlank(r.age),
@@ -1012,6 +1054,7 @@ export function buildViewsWithPlan(
       personId: p.id,
       groups: groupCodesOf(`p${p.id}`),
       leads: leadsOf(`p${p.id}`),
+      requests: [],
       fio: nonBlank(p.full_name) ?? 'Без имени',
       phone: nonBlank(formatPhone(nonBlank(p.phone))),
       ageLabel: nonBlank(p.age),

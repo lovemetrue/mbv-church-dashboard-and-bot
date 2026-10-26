@@ -645,7 +645,7 @@ describe('люди', () => {
       requests: [request({ id: 40, user_id: 12, place: 'Ломоносовская' })],
     });
     expect(views.people.items).toEqual([{
-      key: 'u12', strange: null, contactsHidden: false, personId: null, groups: [], leads: [], fio: 'Дарья Ефимова', phone: '+7 911 123-45-67', ageLabel: '26-35', district: 'Невский',
+      key: 'u12', strange: null, contactsHidden: false, personId: null, groups: [], leads: [], requests: expect.any(Array), fio: 'Дарья Ефимова', phone: '+7 911 123-45-67', ageLabel: '26-35', district: 'Невский',
       place: 'Ломоносовская', address: null, schedule: null, hobby: null, profession: null, family: null, note: null, church: null, leaderName: null, preferredContact: null, addressGeo: null, from: 'Бот · MAX', mdgLabel: 'Хочет в группу', date: '2026-09-12', requestId: 40, userId: 12, registrationNo: 12, kitIssuedOn: null,
     }]);
   });
@@ -685,7 +685,7 @@ describe('люди', () => {
     });
     const person = (key: string) => views.people.items.find((p) => p.key === key)!;
     expect(person('r7')).toEqual({
-      key: 'r7', strange: null, contactsHidden: false, personId: null, groups: [], leads: [], fio: 'Станислав Ким', phone: '+7 904 123-45-67', ageLabel: '26-35', district: 'Приморский',
+      key: 'r7', strange: null, contactsHidden: false, personId: null, groups: [], leads: [], requests: expect.any(Array), fio: 'Станислав Ким', phone: '+7 904 123-45-67', ageLabel: '26-35', district: 'Приморский',
       place: 'Приморский', address: null, schedule: null, hobby: null, profession: null, family: null, note: null, church: null, leaderName: null, preferredContact: null, addressGeo: null, from: 'Таблица', mdgLabel: 'Заявка: готово к утверждению', date: '2026-10-02', requestId: 7, userId: null, registrationNo: null, kitIssuedOn: null,
     });
     expect(person('r8')).toMatchObject({ from: 'Дашборд · Звонок', mdgLabel: 'Заявка: нужна помощь в сопоставлении', district: null });
@@ -1261,6 +1261,53 @@ describe('остальные обращения: суть и разбор по �
     const item = (id: number) => views.groups.items.find((g) => g.id === id)!;
     expect(item(5)).toMatchObject({ leaderKey: 'p3', coLeaderKey: 'u12' });
     expect(item(6)).toMatchObject({ leaderKey: null, coLeaderKey: 'p4' });
+  });
+
+  test('у закрытого обращения виден итог из журнала: что сделано, кем и с какими группами', () => {
+    const at = new Date('2026-10-20T09:00:00Z');
+    const { views } = build({
+      requests: [
+        request({ id: 1, type: 'already_member', status: 'Исполнена', user_id: 12 }),
+        request({ id: 2, type: 'already_leader', status: 'Исполнена', user_id: 13 }),
+        request({ id: 3, type: 'question', status: 'Аннулирована' }),
+        request({ id: 4, type: 'already_member', status: 'Исполнена', origin: 'таблица' }),
+        request({ id: 5, type: 'already_member', status: 'Новая' }),
+      ],
+      participants: [participant({ id: 12 }), participant({ id: 13 })],
+      audit: [
+        { entity_id: 1, at, actor: 'p_ivanova', action: 'request.reconcile', after: { kind: 'member', group_id: 7, group_ids: [7, 8] }, note: null },
+        { entity_id: 2, at, actor: 'p_ivanova', action: 'request.reconcile', after: { kind: 'leader', group_id: 9 }, note: null },
+        { entity_id: 3, at, actor: 'mbv_admin', action: 'request.close', after: { outcome: 'cancel', reason: 'other' }, note: null },
+      ],
+    });
+    const other = (id: number) => [...views.requests.others].find((o) => o.id === id)!;
+    expect(other(1).outcome).toEqual({ text: 'Разобрано: внесён в состав группы', by: 'p_ivanova', at: '2026-10-20', groups: [{ id: 7, code: 'ДГ-0007' }, { id: 8, code: 'ДГ-0008' }] });
+    expect(other(2).outcome).toMatchObject({ text: 'Разобрано: связан с группой как ведущий', groups: [{ id: 9, code: 'ДГ-0009' }] });
+    expect(other(3).outcome).toMatchObject({ text: expect.stringMatching(/^Аннулировано: /), by: 'mbv_admin', groups: [] });
+    expect(other(4).outcome).toEqual({ text: 'Закрыто в таблице церкви', by: null, at: null, groups: [] });
+    expect(other(5).outcome).toBeNull();
+    // Переход в карточку человека: у обращения с регистрацией есть, без неё — нет.
+    expect(other(1).personKey).toBe('u12');
+    expect(other(4).personKey).toBeNull();
+  });
+
+  test('перекрёстные ссылки: у заявки — ключ человека, у человека — все его заявки и обращения, свежие первыми', () => {
+    const { views } = build({
+      requests: [
+        request({ id: 1, user_id: 12, type: 'join_group' }),
+        request({ id: 2, user_id: 12, type: 'already_member', status: 'Исполнена' }),
+        request({ id: 3, type: 'join_group' }),
+      ],
+      participants: [participant({ id: 12 })],
+    });
+    expect(views.requests.items.find((r) => r.id === 1)!.personKey).toBe('u12');
+    expect(views.requests.items.find((r) => r.id === 3)!.personKey).toBe('r3');
+    const person = (key: string) => views.people.items.find((p) => p.key === key)!;
+    expect(person('u12').requests).toEqual([
+      { id: 2, kind: 'other', label: expect.any(String), state: 'done' },
+      { id: 1, kind: 'join', label: 'Заявка в группу', state: 'open' },
+    ]);
+    expect(person('r3').requests).toEqual([{ id: 3, kind: 'join', label: 'Заявка в группу', state: 'open' }]);
   });
 
   test('в «Людях» у человека видно, где он ведущий и где соведущий', () => {

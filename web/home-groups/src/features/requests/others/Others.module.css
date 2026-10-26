@@ -334,3 +334,15 @@
   justify-content: space-between;
   gap: 6px;
 }
+
+/* Итог закрытого обращения. */
+.outcome {
+  margin: 0;
+  font-weight: 600;
+}
+.outcomeGroups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}

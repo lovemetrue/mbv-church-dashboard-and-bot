@@ -1026,3 +1026,8 @@
   font-size: 13px;
   overflow-wrap: anywhere;
 }
+
+/* «Карточка человека» под контактами заявки и обращения. */
+.personLink {
+  margin-top: 8px;
+}

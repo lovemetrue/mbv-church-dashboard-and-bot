@@ -243,7 +243,7 @@ describe('«Справочник»: экран', () => {
     expect(currentSearch().get('req')).toBe('1');
   });
 
-  test('люди: карточка с полями и кнопкой «Открыть заявку», если заявка есть', async () => {
+  test('люди: карточка с полями и разделом «Заявки и обращения» со ссылкой на заявку', async () => {
     stubFetchWithFixtures();
     const user = userEvent.setup();
     renderAt(<App />, '/?tab=reference&ent=people');
@@ -251,15 +251,15 @@ describe('«Справочник»: экран', () => {
     await user.click(screen.getByRole('button', { name: 'Открыть карточку: Мария Соколова' }));
     const card = await screen.findByRole('dialog', { name: /Карточка человека/ });
     expect(within(card).getByText('Малая группа')).toBeInTheDocument();
-    await user.click(within(card).getByRole('button', { name: 'Открыть заявку' }));
+    await user.click(within(card).getByRole('button', { name: /^Открыть: Заявка в группу №1$/ }));
     expect(currentSearch().get('req')).toBe('1');
   });
 
-  test('человек без заявки: кнопки «Открыть заявку» нет', async () => {
+  test('человек без заявки: ссылок на заявки нет', async () => {
     stubFetchWithFixtures();
     renderAt(<App />, '/?tab=reference&ent=people&rec=u1');
     const card = await screen.findByRole('dialog', { name: /Дарья Ефимова/ });
-    expect(within(card).queryByRole('button', { name: 'Открыть заявку' })).not.toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: /^Открыть: / })).not.toBeInTheDocument();
   });
 
   test('у человека с номером регистрации в карточке есть ссылки на печатную карточку и QR в новой вкладке', async () => {

@@ -10,6 +10,7 @@ const person = (over: Partial<PersonItem>): PersonItem => ({
   key: 'u1',
   personId: null,
   leads: [],
+  requests: [],
   place: null,
   address: null,
   schedule: null,

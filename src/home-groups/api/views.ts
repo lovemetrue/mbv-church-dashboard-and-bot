@@ -856,6 +856,16 @@ export function buildViewsWithPlan(
   }
   const memberOrder = (m: GroupMember): number => (m.kind === 'placed' ? 0 : 1);
   const groupCodesOf = (key: string): string[] => [...(groupsOfPerson.get(key) ?? [])].sort((x, y) => x - y).map(groupCode);
+  // Где человек ведущий или соведущий: обратная сторона ссылок группы на людей. Ключ — как в «Людях» («u12», «p7»).
+  const leadsByKey = new Map<string, PersonItem['leads']>();
+  for (const g of input.groups) {
+    const put = (key: string | null, role: 'leader' | 'coLeader') => {
+      if (key) leadsByKey.set(key, [...(leadsByKey.get(key) ?? []), { groupId: g.id, code: groupCode(g.id), role }]);
+    };
+    put(g.leader_user_id ? `u${g.leader_user_id}` : g.leader_person_id ? `p${g.leader_person_id}` : null, 'leader');
+    put(g.co_leader_user_id ? `u${g.co_leader_user_id}` : g.co_leader_person_id ? `p${g.co_leader_person_id}` : null, 'coLeader');
+  }
+  const leadsOf = (key: string): PersonItem['leads'] => leadsByKey.get(key) ?? [];
 
   // ── ответ ведущего боту ───────────────────────────────────────────────────
   // Ведущему досылаем вопросы «когда собирается группа» и «где встречи». Ответ в карточку группы сам не переносится:
@@ -941,6 +951,7 @@ export function buildViewsWithPlan(
       contactsHidden: false,
       personId: null,
       groups: groupCodesOf(`u${u.id}`),
+      leads: leadsOf(`u${u.id}`),
       fio: nonBlank(u.full_name) ?? 'Без имени',
       phone: nonBlank(formatPhone(nonBlank(u.phone))),
       ageLabel: nonBlank(u.age),
@@ -972,6 +983,7 @@ export function buildViewsWithPlan(
       contactsHidden: false,
       personId: null,
       groups: groupCodesOf(`r${r.id}`),
+      leads: leadsOf(`r${r.id}`),
       fio: pr.fio,
       phone: displayPhone(r.phones, r.phone),
       ageLabel: nonBlank(r.age),
@@ -999,6 +1011,7 @@ export function buildViewsWithPlan(
       contactsHidden: false,
       personId: p.id,
       groups: groupCodesOf(`p${p.id}`),
+      leads: leadsOf(`p${p.id}`),
       fio: nonBlank(p.full_name) ?? 'Без имени',
       phone: nonBlank(formatPhone(nonBlank(p.phone))),
       ageLabel: nonBlank(p.age),

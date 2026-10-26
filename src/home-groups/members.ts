@@ -129,6 +129,20 @@ export function createMembers(deps: {
       return { ok: true };
     },
 
+    /**
+     * Новая карточка без группы: «+ Новый человек» при выборе ведущего или соведущего в правке группы. Сам человек
+     * встаёт на позицию следующей правкой группы (по ключу, который вернулся).
+     */
+    async createPerson(body: unknown, actor: string): Promise<{ ok: true; personKey: string } | Fail> {
+      const fields = isRecord(body) && isRecord(body['fields']) ? body['fields'] : null;
+      if (!fields) return bad('Укажите ФИО.');
+      const person = parsePerson(fields, null);
+      if (typeof person === 'string') return bad(person);
+      const id = await deps.members.createPerson(person, actor);
+      await deps.audit.write(actor, 'person.create', 'person', id, { fields: Object.keys(fields) });
+      return { ok: true, personKey: `p${id}` };
+    },
+
     /** Правка карточки, внесённой вручную (участников из бота и людей из заявок правят там, откуда они пришли). */
     async updatePerson(id: number, body: unknown, actor: string): Promise<Outcome> {
       const fields = isRecord(body) && isRecord(body['fields']) ? body['fields'] : null;

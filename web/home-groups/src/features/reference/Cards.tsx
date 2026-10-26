@@ -7,7 +7,7 @@ import { useAppNav } from '../../shared/nav';
 import { Button, Drawer, DrawerSection, KeyValue, LoadingState, GroupMarks, Meter, Pill, StrangeBadge, StrangeBanner, type KvRow } from '../../shared/ui';
 import { LinkButton } from '../create';
 import { StrangeSection } from '../strange';
-import { CoordinatorActions, DeletePersonSection, GroupActions, GroupHeaderTools, MembersSection, PersonActions, PersonGroups } from '../manage';
+import { CoordinatorActions, DeletePersonSection, GroupActions, GroupHeaderTools, MembersSection, PersonActions, PersonGroups, PersonHeaderTools } from '../manage';
 import styles from './Reference.module.css';
 
 const noValue = <span className={styles.note}>{ru.reference.notSpecified}</span>;
@@ -227,6 +227,8 @@ export function PersonCard({ p, onClose }: { p: PersonItem; onClose: () => void 
           <StrangeBadge mark={p.strange} size={18} />
         </>
       }
+      tools={<PersonHeaderTools key={p.key} p={p} />}
+      toolsBelow
       onClose={onClose}
     >
       <StrangeBanner mark={p.strange} />

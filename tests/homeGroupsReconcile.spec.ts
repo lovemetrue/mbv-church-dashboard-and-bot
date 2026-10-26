@@ -161,7 +161,8 @@ describe('несколько групп сразу', () => {
 
   test('«уже веду»: место соведущего занято другим человеком из «Людей» — не записывается ничего', async () => {
     const g = await group('Артёмкин Константин');
-    const card = (await db.query<{ id: number }>(`INSERT INTO persons (full_name) VALUES ('Другая') RETURNING id`)).rows[0]!.id;
+    // На месте соведущего — другая карточка с тем же именем (однофамилица или дубль): записывать поверх нельзя.
+    const card = (await db.query<{ id: number }>(`INSERT INTO persons (full_name) VALUES ('Артёмкина Людмила') RETURNING id`)).rows[0]!.id;
     await db.query(`UPDATE groups SET co_leader = 'Артёмкина Людмила', co_leader_person_id = $2 WHERE id = $1`, [g, card]);
     const p = await person('6', 'already_leader', { fio: 'Артёмкина Людмила' });
     expect(await service().reconciler.apply(p.requestId, { groupIds: [g] }, 'boss')).toMatchObject({ ok: false, error: 'conflict' });

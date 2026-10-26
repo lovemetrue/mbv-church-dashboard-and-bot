@@ -175,6 +175,8 @@ const REGISTRATION_PATH = '/registration';
 /** Состав группы: добавить человека (`POST /groups/5/members/create`) и править или убрать строку (`POST /members/9/update`). */
 const MEMBER_ADD_PATH = /^\/api\/v1\/groups\/(\d{1,15})\/members\/create$/;
 const MEMBER_PATH = /^\/api\/v1\/members\/(\d{1,15})\/(update|delete)$/;
+/** Новая карточка человека без группы («+ Новый человек» при выборе ведущего). Любой вход, кроме стойки регистрации. */
+const PERSON_CREATE_PATH = '/api/v1/persons/create';
 /** Карточка человека, внесённая вручную: правка любым входом, удаление только полным. */
 const PERSON_EDIT_PATH = /^\/api\/v1\/persons\/(\d{1,15})\/(update|delete)$/;
 /** Контакты человека из справочника: регистрация (u12) или человек из заявки (r345). Любой вход. */
@@ -620,6 +622,19 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     sendJson(res, 200, outcome);
   }
 
+  async function handlePersonCreate(req: IncomingMessage, res: ServerResponse, sid: string | undefined): Promise<void> {
+    const call = await readAuthedJson(req, res, sid);
+    if (!call) return;
+    const outcome = await deps.members.createPerson(call.body, call.actor);
+    if (!outcome.ok) {
+      sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
+      return;
+    }
+    deps.invalidateViews();
+    logger.info({ actor: call.actor, key: outcome.personKey }, 'домашние группы: новая карточка человека');
+    sendJson(res, 200, outcome);
+  }
+
   async function handleContact(req: IncomingMessage, res: ServerResponse, key: string, sid: string | undefined): Promise<void> {
     const call = await readAuthedJson(req, res, sid);
     if (!call) return;
@@ -863,6 +878,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     if (memberAdd) { await handleMember(req, res, 'add', Number(memberAdd[1]), sid); return; }
     const memberEdit = req.method === 'POST' ? MEMBER_PATH.exec(path) : null;
     if (memberEdit) { await handleMember(req, res, memberEdit[2] === 'update' ? 'update' : 'remove', Number(memberEdit[1]), sid); return; }
+    if (req.method === 'POST' && path === PERSON_CREATE_PATH) { await handlePersonCreate(req, res, sid); return; }
     const personEdit = req.method === 'POST' ? PERSON_EDIT_PATH.exec(path) : null;
     if (personEdit) { await handlePersonCard(req, res, Number(personEdit[1]), personEdit[2]!, sid); return; }
     const contact = req.method === 'POST' ? CONTACT_PATH.exec(path) : null;

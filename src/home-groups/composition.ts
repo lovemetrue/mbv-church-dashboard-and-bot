@@ -173,7 +173,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   });
   const requestsRepo = new RequestsRepo(db);
   const notify = opts.notify ?? (async () => undefined);
-  const creator = createRecordCreator({ requests: requestsRepo, groups: new GroupsRepo(db), directions: new GroupDirectionsRepo(db), audit: new AuditRepo(db), notify });
+  const creator = createRecordCreator({ requests: requestsRepo, groups: new GroupsRepo(db), persons: new MembersRepo(db), directions: new GroupDirectionsRepo(db), audit: new AuditRepo(db), notify });
   const registrar = createRegistrar({ users: new UsersRepo(db), requests: requestsRepo, audit: new AuditRepo(db), notify });
   const reconciler = createReconciler({ load, placement });
   const strange = createStrange({ repo: new StrangeRepo(db) });

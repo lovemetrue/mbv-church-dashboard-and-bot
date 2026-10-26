@@ -4,6 +4,7 @@ import { AuditRepo } from '../src/db/repos/audit.repo.js';
 import { CoordinatorsRepo } from '../src/db/repos/coordinators.repo.js';
 import { GroupDirectionsRepo } from '../src/db/repos/groupDirections.repo.js';
 import { GroupsRepo } from '../src/db/repos/groups.repo.js';
+import { MembersRepo } from '../src/db/repos/members.repo.js';
 import { PlacementRepo } from '../src/db/repos/placement.repo.js';
 import { RequestsRepo } from '../src/db/repos/requests.repo.js';
 import { TeamRolesRepo } from '../src/db/repos/teamRoles.repo.js';
@@ -22,7 +23,7 @@ beforeAll(async () => { db = await setupTestDb(); });
 afterAll(async () => { await db.end(); });
 beforeEach(async () => { await truncateAll(db); });
 
-const creator = () => createRecordCreator({ requests: new RequestsRepo(db), groups: new GroupsRepo(db), directions: new GroupDirectionsRepo(db), audit: new AuditRepo(db) });
+const creator = () => createRecordCreator({ requests: new RequestsRepo(db), groups: new GroupsRepo(db), persons: new MembersRepo(db), directions: new GroupDirectionsRepo(db), audit: new AuditRepo(db) });
 const manager = () => createManager({
   groups: new GroupsRepo(db), coordinators: new CoordinatorsRepo(db), teamRoles: new TeamRolesRepo(db), directions: new GroupDirectionsRepo(db),
   requests: new RequestsRepo(db), users: new UsersRepo(db), audit: new AuditRepo(db),

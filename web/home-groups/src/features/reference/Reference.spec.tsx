@@ -281,7 +281,9 @@ describe('«Справочник»: экран', () => {
     // Софья Титова — участник бота без номера; Мария Соколова — заявка из таблицы без участника.
     renderAt(<App />, '/?tab=reference&ent=people&rec=u3');
     const card = await screen.findByRole('dialog', { name: /Софья Титова/ });
-    expect(within(card).queryByRole('link')).not.toBeInTheDocument();
+    // Ссылки «Позвонить» и «Написать» в шапке есть у всех с телефоном; печатной карточки и QR без номера нет.
+    expect(within(card).queryByRole('link', { name: /Карточка регистрации/ })).not.toBeInTheDocument();
+    expect(within(card).queryByRole('link', { name: 'QR' })).not.toBeInTheDocument();
     expect(within(card).queryByText('Номер регистрации')).not.toBeInTheDocument();
   });
 

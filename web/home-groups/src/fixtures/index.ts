@@ -126,6 +126,8 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
     return { ok: true, created: 0, replaced: 0, unchanged: buildRequests().matching.waiting };
   }
   // Чат «Помощник»: ответ зависит от последнего вопроса (fixtures/chat.ts), сами данные не меняются.
+  // «+ Новый человек» при выборе ведущего: в демо карточка не появляется в «Людях», но выбрать её можно.
+  if (clean === 'persons/create') return { ok: true, personKey: 'p900' };
   if (clean === 'assistant/chat') return fixtureChatReply(body);
   if (clean === 'assistant/chat/clear') return fixtureChatClear();
   // Помощник: в демо он «разобрал» все три заявки, которые ждали разбора; данные при этом не меняются.

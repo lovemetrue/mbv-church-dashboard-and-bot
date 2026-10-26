@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { AuditRepo } from '../src/db/repos/audit.repo.js';
 import { GroupDirectionsRepo } from '../src/db/repos/groupDirections.repo.js';
 import { GroupsRepo } from '../src/db/repos/groups.repo.js';
+import { MembersRepo } from '../src/db/repos/members.repo.js';
 import { RequestsRepo } from '../src/db/repos/requests.repo.js';
 import { composeViews, engine as realEngine } from '../src/home-groups/composition.js';
 import { createRecordCreator } from '../src/home-groups/create.js';
@@ -18,7 +19,7 @@ afterAll(async () => { await db.end(); });
 beforeEach(async () => { await truncateAll(db); });
 
 const views = () => composeViews(db, realEngine, { defaultCapacity: 10, ttlMs: 0, timeZone: 'Europe/Moscow' })();
-const creator = () => createRecordCreator({ requests: new RequestsRepo(db), groups: new GroupsRepo(db), directions: new GroupDirectionsRepo(db), audit: new AuditRepo(db) });
+const creator = () => createRecordCreator({ requests: new RequestsRepo(db), groups: new GroupsRepo(db), persons: new MembersRepo(db), directions: new GroupDirectionsRepo(db), audit: new AuditRepo(db) });
 
 async function leaderRequest(): Promise<{ requestId: number; userId: number }> {
   const userId = await seedUser(db, { id: '501', fio: 'Пётр Ведущий', phone: '+79215550011' });
@@ -71,6 +72,8 @@ describe('создание группы по заявке', () => {
     if (!out.ok) throw new Error(out.message);
     const { rows } = await db.query('SELECT leader, status, district, source_request_id::int AS req, leader_user_id::int AS leader_user FROM groups WHERE id = $1', [out.id]);
     expect(rows[0]).toEqual({ leader: 'Пётр Ведущий', status: 'Потенциальная', district: 'Приморский', req: requestId, leader_user: userId });
+    // Ведущий уже связан с регистрацией из заявки: отдельной карточки в «Людях» ему не заводится.
+    expect((await db.query('SELECT 1 FROM persons')).rowCount).toBe(0);
 
     const after = await views();
     expect(after.groupDrafts.get(requestId)!.ownGroup).toEqual({ id: out.id, code: expect.stringMatching(/^ДГ-/) });

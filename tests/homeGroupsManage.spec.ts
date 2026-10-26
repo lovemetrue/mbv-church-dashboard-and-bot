@@ -150,28 +150,77 @@ describe('ведущий и соведущий — люди из «Людей»'
     (await db.query(
       `SELECT leader_user_id::int AS lu, leader_person_id::int AS lp, co_leader_user_id::int AS cu, co_leader_person_id::int AS cp FROM groups WHERE id = $1`, [id],
     )).rows[0];
+  const shown = async (id: number) => (await new GroupsRepo(db).forDashboard()).find((x) => x.id === id)!;
 
-  test('ведущий — регистрация, соведущий — карточка, внесённая вручную; записанные телефоны группы не трогаются', async () => {
+  test('ведущий — регистрация, соведущий — карточка; имя в группе — ФИО из карточки, записанные телефоны не трогаются', async () => {
     const id = await group();
     const u = await seedUser(db, { id: '501', fio: 'Петров Иван' });
     const p = await card('Петрова Мария');
-    expect(await manager().updateGroup(id, { fields: { leaderKey: `u${u}`, coLeaderKey: `p${p}`, coLeader: 'Петрова Мария' } }, 'a')).toEqual({ ok: true });
+    expect(await manager().updateGroup(id, { fields: { leaderKey: `u${u}`, coLeaderKey: `p${p}` } }, 'a')).toEqual({ ok: true });
     expect(await links(id)).toEqual({ lu: u, lp: null, cu: null, cp: p });
-    expect(await g(id)).toMatchObject({ co_leader: 'Петрова Мария', phone: '+79110001122', co_leader_phone: '+79213334455', source: 'ui' });
+    expect(await g(id)).toMatchObject({ leader: 'Петров Иван', co_leader: 'Петрова Мария', phone: '+79110001122', co_leader_phone: '+79213334455', source: 'ui' });
     // Журнал — только названия полей, без ключей людей.
-    expect(JSON.parse((await audits()).at(-1)!.after)).toEqual({ fields: ['leaderKey', 'coLeaderKey', 'coLeader'] });
+    expect(JSON.parse((await audits()).at(-1)!.after)).toEqual({ fields: ['leaderKey', 'coLeaderKey'] });
   });
 
-  test('смена ведущего с регистрации на карточку снимает прежнюю ссылку; пустой ключ отвязывает', async () => {
+  test('ФИО ведущего и соведущего текстом здесь не правится: только выбором человека', async () => {
+    const id = await group();
+    expect(await manager().updateGroup(id, { fields: { leader: 'Кто-то Другой' } }, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
+    expect(await manager().updateGroup(id, { fields: { coLeader: 'Кто-то Другой' } }, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
+    expect((await g(id)).leader).toBe('Иван Петров');
+  });
+
+  test('ведущего можно сменить, но не отвязать: без ведущего группы не бывает', async () => {
     const id = await group();
     const u = await seedUser(db, { id: '502' });
-    const p = await card('Сидоров');
+    const p = await card('Сидоров Пётр');
     await manager().updateGroup(id, { fields: { leaderKey: `u${u}` } }, 'a');
     await manager().updateGroup(id, { fields: { leaderKey: `p${p}` } }, 'a');
     expect(await links(id)).toMatchObject({ lu: null, lp: p });
-    await manager().updateGroup(id, { fields: { leaderKey: '' } }, 'a');
-    expect(await links(id)).toMatchObject({ lu: null, lp: null });
-    expect((await g(id)).leader).toBe('Иван Петров');
+    expect((await g(id)).leader).toBe('Сидоров Пётр');
+    expect(await manager().updateGroup(id, { fields: { leaderKey: '' } }, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
+    expect(await links(id)).toMatchObject({ lu: null, lp: p });
+  });
+
+  test('отвязанный соведущий уходит целиком: ссылка, имя и телефон, записанные в группе', async () => {
+    const id = await group();
+    await db.query(`UPDATE groups SET co_leader = 'Мария' WHERE id = $1`, [id]);
+    const p = await card('Петрова Мария');
+    await manager().updateGroup(id, { fields: { coLeaderKey: `p${p}` } }, 'a');
+    expect(await manager().updateGroup(id, { fields: { coLeaderKey: '' } }, 'a')).toEqual({ ok: true });
+    expect(await links(id)).toMatchObject({ cu: null, cp: null });
+    expect(await g(id)).toMatchObject({ co_leader: null, co_leader_phone: null });
+  });
+
+  test('человек из заявки без регистрации: при привязке ему заводится карточка с данными из заявки', async () => {
+    const id = await group();
+    const r = (await db.query<{ id: number }>(
+      `INSERT INTO requests (type, fio, phone, phones, age, place, hobby, status, origin) VALUES ('join_group', 'Заявкин Олег', '+79215550077', ARRAY['+79215550077'], '35', 'Беговая', 'гитара', 'Новая', 'таблица') RETURNING id`,
+    )).rows[0]!.id;
+    expect(await manager().updateGroup(id, { fields: { coLeaderKey: `r${r}` } }, 'a')).toEqual({ ok: true });
+    const l = await links(id);
+    expect(l.cp).not.toBeNull();
+    expect((await db.query('SELECT full_name, phone, age, place, hobby FROM persons WHERE id = $1', [l.cp])).rows[0])
+      .toEqual({ full_name: 'Заявкин Олег', phone: '+79215550077', age: '35', place: 'Беговая', hobby: 'гитара' });
+    expect((await g(id)).co_leader).toBe('Заявкин Олег');
+  });
+
+  test('правка, которая не прошла проверку, карточку человеку из заявки не заводит', async () => {
+    const id = await group();
+    const r = (await db.query<{ id: number }>(`INSERT INTO requests (type, fio, status, origin) VALUES ('join_group', 'Заявкин Олег', 'Новая', 'таблица') RETURNING id`)).rows[0]!.id;
+    expect(await manager().updateGroup(id, { fields: { coLeaderKey: `r${r}`, people: 'много' } }, 'a')).toMatchObject({ ok: false });
+    expect((await db.query('SELECT 1 FROM persons')).rowCount).toBe(0);
+  });
+
+  test('ФИО, поправленное в «Людях», сразу видно в группе: имя берётся из карточки, а не из текста группы', async () => {
+    const id = await group();
+    const p = await card('Петрова Мария');
+    await manager().updateGroup(id, { fields: { leaderKey: `p${p}` } }, 'a');
+    await db.query(`UPDATE persons SET full_name = 'Петрова-Сидорова Мария' WHERE id = $1`, [p]);
+    expect(await shown(id)).toMatchObject({ leader: 'Петрова-Сидорова Мария' });
+    // Карточку удалили — показываем то, что записано в группе.
+    await db.query('UPDATE persons SET archived_at = now() WHERE id = $1', [p]);
+    expect((await shown(id)).leader).toBe('Петрова Мария');
   });
 
   test('правка других полей ссылки не трогает', async () => {
@@ -183,8 +232,8 @@ describe('ведущий и соведущий — люди из «Людей»'
   });
 
   test.each([
-    ['человек из заявки без регистрации', 'r5'],
     ['не ключ вовсе', 'Иванов'],
+    ['ключ без номера', 'u'],
   ])('%s — отказ', async (_, key) => {
     const id = await group();
     expect(await manager().updateGroup(id, { fields: { leaderKey: key } }, 'a')).toMatchObject({ ok: false, error: 'bad_request' });

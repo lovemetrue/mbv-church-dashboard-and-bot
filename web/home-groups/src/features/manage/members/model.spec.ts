@@ -9,6 +9,7 @@ const person = (over: Partial<PersonItem>): PersonItem => ({
   contactsHidden: false,
   key: 'u1',
   personId: null,
+  leads: [],
   place: null,
   address: null,
   schedule: null,

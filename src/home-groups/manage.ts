@@ -22,11 +22,16 @@ const fail = (error: 'bad_request' | 'not_found', message: string): ActionOutcom
 /** Что в строке справочника команды правится: ФИО и роли (галочками из справочника или, в старом дашборде, одной ролью словами). */
 const COORDINATOR_EDITABLE: readonly string[] = ['name', 'roleIds', 'role'];
 
+/**
+ * ФИО ведущего и соведущего текстом здесь не правится: ведущий — человек из «Людей» (`leaderKey`, `coLeaderKey`), и его
+ * ФИО правят в карточке человека. Свободный ввод имени — только при создании группы (там же заводится карточка).
+ */
 const GROUP_EDITABLE = [
-  'leader', 'district', 'direction', 'status', 'people', 'day', 'time', 'composition', 'coordinator', 'coLeader',
+  'district', 'direction', 'status', 'people', 'day', 'time', 'composition', 'coordinator',
   'feedbackAt', 'openedOn', 'comment', 'age', 'metro', 'openToNew', 'training', 'no', 'checked', 'doNotRefer', 'chamber',
   'phone', 'address', 'coLeaderPhone', 'campaignRegistered', 'capacity', 'campaignOnly',
-  // Человек из «Людей» на позиции ведущего и соведущего: ключ справочника («u12» или «p7»), пустая строка — отвязать.
+  // Человек из «Людей» на позиции ведущего и соведущего: ключ справочника («u12», «p7», «r345»); у соведущего пустая
+  // строка — отвязать. Ведущего только меняют на другого человека: без ведущего группы не бывает.
   'leaderKey', 'coLeaderKey',
 ] as const;
 
@@ -36,16 +41,19 @@ const refOfRow = (userId: number | null | undefined, personId: number | null | u
 /** Ссылки на людей в форму группы не входят: проверяются отдельно (`personRefOf`), а пишутся вместе с правкой. */
 const GROUP_LINKS = ['leaderKey', 'coLeaderKey'] as const;
 
+/** Человек из заявки без регистрации: ссылаться на него можно, только заведя ему карточку (`personFromRequest`). */
+type LinkRef = PersonRef | { kind: 'request'; id: number };
+
 /**
- * Ключ справочника «Люди» → ссылка. Связать можно регистрацию («u») и карточку, внесённую вручную («p»); человек из
- * заявки без регистрации («r») — нет: такой записи как человека нет, есть только заявка. null — отвязать.
+ * Ключ справочника «Люди» → ссылка: регистрация («u»), карточка, внесённая вручную («p»), или человек из заявки без
+ * регистрации («r») — ему при привязке заводится карточка. null — отвязать.
  */
-function personRefOf(key: string): PersonRef | null | 'bad' {
+function personRefOf(key: string): LinkRef | null | 'bad' {
   const v = key.trim();
   if (v === '') return null;
-  const m = /^([up])([1-9]\d{0,15})$/.exec(v);
+  const m = /^([upr])([1-9]\d{0,15})$/.exec(v);
   if (!m) return 'bad';
-  return { kind: m[1] === 'u' ? 'user' : 'person', id: Number(m[2]) };
+  return { kind: m[1] === 'u' ? 'user' : m[1] === 'p' ? 'person' : 'request', id: Number(m[2]) };
 }
 
 const GROUP_FLAGS = ['checked', 'doNotRefer', 'chamber', 'campaignRegistered', 'campaignOnly'] as const;
@@ -71,7 +79,7 @@ function groupToFields(g: GroupRow): URLSearchParams {
 }
 
 export function createManager(deps: {
-  groups: Pick<GroupsRepo, 'findActive' | 'update' | 'archive' | 'personRefExists'>;
+  groups: Pick<GroupsRepo, 'findActive' | 'update' | 'archive' | 'personName' | 'personFromRequest'>;
   coordinators: Pick<CoordinatorsRepo, 'create' | 'findActive' | 'rename' | 'archive'>;
   teamRoles: Pick<TeamRolesRepo, 'existing'>;
   directions: Pick<GroupDirectionsRepo, 'list'>;
@@ -97,25 +105,25 @@ export function createManager(deps: {
       if (unknown.length > 0) return fail('bad_request', `Поле «${unknown[0]!.slice(0, 40)}» здесь менять нельзя.`);
       if (given.size === 0) return fail('bad_request', 'Нечего менять.');
 
-      const refs: { leaderRef?: PersonRef | null; coLeaderRef?: PersonRef | null } = {};
+      const links: { leader?: LinkRef | null; coLeader?: LinkRef | null } = {};
       for (const k of GROUP_LINKS) {
         if (!given.has(k)) continue;
         const ref = personRefOf(given.get(k)!);
-        if (ref === 'bad') return fail('bad_request', 'Ведущего и соведущего выбирают из справочника «Люди»: зарегистрированного или внесённого вручную.');
-        if (ref !== null && !(await deps.groups.personRefExists(ref))) {
+        if (ref === 'bad') return fail('bad_request', 'Ведущего и соведущего выбирают из справочника «Люди».');
+        if (ref === null && k === 'leaderKey') return fail('bad_request', 'Без ведущего группы не бывает: ведущего можно только сменить на другого человека.');
+        if (ref !== null && ref.kind !== 'request' && (await deps.groups.personName(ref)) === null) {
           return fail('bad_request', 'Этого человека уже нет в справочнике «Люди»: обновите страницу и выберите снова.');
         }
-        refs[k === 'leaderKey' ? 'leaderRef' : 'coLeaderRef'] = ref;
+        links[k === 'leaderKey' ? 'leader' : 'coLeader'] = ref;
       }
 
       const current = await deps.groups.findActive(id);
       if (!current) return fail('not_found', 'Группа не найдена.');
       // Один человек на обеих позициях — опечатка выбора: телефон и карточка у «двух ведущих» были бы одни.
-      const leader = refs.leaderRef !== undefined ? refs.leaderRef : refOfRow(current.leader_user_id, current.leader_person_id);
-      const coLeader = refs.coLeaderRef !== undefined ? refs.coLeaderRef : refOfRow(current.co_leader_user_id, current.co_leader_person_id);
-      if (leader && coLeader && leader.kind === coLeader.kind && leader.id === coLeader.id) {
-        return fail('bad_request', 'Ведущий и соведущий — один и тот же человек: выберите разных.');
-      }
+      const same = (a: LinkRef | null, b: LinkRef | null) => !!a && !!b && a.kind === b.kind && a.id === b.id;
+      const leaderNow = links.leader !== undefined ? links.leader : refOfRow(current.leader_user_id, current.leader_person_id);
+      const coLeaderNow = links.coLeader !== undefined ? links.coLeader : refOfRow(current.co_leader_user_id, current.co_leader_person_id);
+      if (same(leaderNow, coLeaderNow)) return fail('bad_request', 'Ведущий и соведущий — один и тот же человек: выберите разных.');
 
       const merged = groupToFields(current);
       for (const [k, v] of given) {
@@ -128,6 +136,25 @@ export function createManager(deps: {
       }
       const parsed = parseGroupForm(merged);
       if (!parsed.ok) return fail('bad_request', parsed.error);
+      // Человеку из заявки заводим карточку только теперь, когда правка прошла проверки: иначе отказ оставил бы лишнюю карточку.
+      const resolved: { leaderRef?: PersonRef | null; coLeaderRef?: PersonRef | null } = {};
+      const names: { leader?: string | null; coLeader?: string | null } = {};
+      for (const pos of ['leader', 'coLeader'] as const) {
+        const link = links[pos];
+        if (link === undefined) continue;
+        let ref: PersonRef | null = null;
+        if (link?.kind === 'request') {
+          const personId = await deps.groups.personFromRequest(link.id, actor);
+          if (personId === null) return fail('bad_request', 'Этого человека уже нет в справочнике «Люди»: обновите страницу и выберите снова.');
+          ref = { kind: 'person', id: personId };
+        } else {
+          ref = link;
+        }
+        resolved[pos === 'leader' ? 'leaderRef' : 'coLeaderRef'] = ref;
+        // Имя в группе — ФИО из карточки: по нему группу ищут и сверяют обращения «уже веду группу».
+        if (ref) names[pos] = (await deps.groups.personName(ref)) ?? undefined;
+        else names[pos] = null;
+      }
       // Направление проверяем, только если его меняли: прежнее уже в справочнике, а переименованное — под новым названием.
       const direction = given.has('direction') ? await knownDirection(deps.directions, parsed.value.direction) : current.direction;
       if (!direction) return fail('bad_request', UNKNOWN_DIRECTION);
@@ -141,7 +168,10 @@ export function createManager(deps: {
         ...(given.has('coLeaderPhone') ? {} : { coLeaderPhone: current.co_leader_phone }),
         doNotRefer: given.has('doNotRefer') ? merged.has('doNotRefer') : current.do_not_refer,
         chamber: given.has('chamber') ? merged.has('chamber') : current.chamber,
-        ...refs,
+        ...resolved,
+        ...(names.leader ? { leader: names.leader } : {}),
+        // Отвязанный соведущий уходит целиком — с именем и телефоном, записанными в группе.
+        ...(names.coLeader === null ? { coLeader: null, coLeaderPhone: null } : names.coLeader ? { coLeader: names.coLeader } : {}),
       };
       const updated = await deps.groups.update(id, input);
       if (!updated) return fail('not_found', 'Группа не найдена.');

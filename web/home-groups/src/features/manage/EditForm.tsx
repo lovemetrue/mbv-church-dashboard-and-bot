@@ -1,10 +1,12 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import type { QueryClient } from '@tanstack/react-query';
 import { ru } from '../../shared/i18n/ru';
+import { useAppNav } from '../../shared/nav';
 import { splitList, toggleInList } from '../../shared/multiValue';
 import { Button } from '../../shared/ui';
 import { blankRequired, changedFields, type EditField, type EditSpec } from './editSpec';
 import styles from './Manage.module.css';
+import { PersonField } from './PersonField';
 import { useManageAction } from './useManage';
 
 interface EditFormProps {
@@ -34,6 +36,16 @@ export function EditForm({ spec: given, path, onClose, onSaved, onBusyChange, re
   const { run, busy } = useManageAction(refresh);
   const [values, setValues] = useState<Record<string, string>>(spec.initial);
   const [error, setError] = useState<string | null>(null);
+  // Ключ человека, к которому просятся перейти, пока в форме есть несохранённое: сначала спросить, что с ним делать.
+  const [leaving, setLeaving] = useState<{ field: string; key: string } | null>(null);
+  const nav = useAppNav();
+  // Вопрос появляется под нажатой кнопкой; фокус переводим на него, чтобы с клавиатуры не искать его по форме.
+  const leaveRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!leaving) return;
+    leaveRef.current?.scrollIntoView?.({ block: 'nearest' });
+    leaveRef.current?.querySelector('button')?.focus();
+  }, [leaving]);
 
   const busyChange = useRef(onBusyChange);
   busyChange.current = onBusyChange;
@@ -49,6 +61,61 @@ export function EditForm({ spec: given, path, onClose, onSaved, onBusyChange, re
     setValues((v) => ({ ...v, [name]: value }));
     setError(null);
   };
+
+  /**
+   * Переход к карточке человека из формы. Форма — окно поверх карточки группы: переход его закрывает, поэтому
+   * несохранённое молча пропало бы. Без правок идём сразу, с правками — спрашиваем прямо под кнопкой (`leaveBlock`).
+   */
+  const openPerson = (field: string, key: string) => {
+    if (Object.keys(changes).length === 0) {
+      onClose();
+      nav.openPerson(key);
+    } else {
+      setLeaving({ field, key });
+    }
+  };
+
+  const leaveBlock = (key: string) => (
+    <div ref={leaveRef} role="group" aria-label={ru.manage.personPicker.leaveTitle} className={styles.leave}>
+      <p>
+        <b>{ru.manage.personPicker.leaveTitle}.</b> {canSave ? ru.manage.personPicker.leaveText : ru.manage.personPicker.leaveCantSave}
+      </p>
+      <div className={styles.personTools}>
+        {canSave && (
+          <Button variant="primary" size="sm" disabled={busy} onClick={() => void saveAndLeave(key)}>
+            {ru.manage.personPicker.leaveSave}
+          </Button>
+        )}
+        <Button
+          size="sm"
+          disabled={busy}
+          onClick={() => {
+            onClose();
+            nav.openPerson(key);
+          }}
+        >
+          {ru.manage.personPicker.leaveDiscard}
+        </Button>
+        <Button size="sm" disabled={busy} onClick={() => setLeaving(null)}>
+          {ru.manage.personPicker.leaveStay}
+        </Button>
+      </div>
+    </div>
+  );
+
+  async function saveAndLeave(key: string) {
+    setError(null);
+    const result = await run(path, { fields: changes });
+    if (result === null) return;
+    if (!result.ok) {
+      // Отказ сервера показываем над кнопками, как при обычном «Сохранить»; набранное остаётся.
+      setLeaving(null);
+      setError(result.message);
+      return;
+    }
+    onSaved();
+    nav.openPerson(key);
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -112,6 +179,30 @@ export function EditForm({ spec: given, path, onClose, onSaved, onBusyChange, re
           </div>
           {hint}
         </fieldset>
+      );
+    }
+
+    if (f.kind === 'person') {
+      return (
+        <div key={f.name} className={f.wide ? styles.fieldWide : styles.field}>
+          <label htmlFor={id}>{f.label}</label>
+          <PersonField
+            id={id}
+            label={f.label}
+            value={values[f.name] ?? ''}
+            taken={f.other ? (values[f.other] ?? '') : ''}
+            disabled={busy}
+            describedBy={describedBy}
+            onOpen={(key) => openPerson(f.name, key)}
+            onPick={(p) => {
+              // Выбранный человек — и имя в группе: по нему группу ищут и узнают в списках.
+              setValues((v) => ({ ...v, [f.name]: p?.key ?? '', ...(p && f.fillsName ? { [f.fillsName]: p.fio } : {}) }));
+              setError(null);
+            }}
+          />
+          {leaving?.field === f.name && leaveBlock(leaving.key)}
+          {hint}
+        </div>
       );
     }
 

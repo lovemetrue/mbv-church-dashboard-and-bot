@@ -875,14 +875,25 @@ export function buildViewsWithPlan(
     return schedule || address ? { schedule, address } : null;
   };
 
+  // ── ведущие как люди из «Людей» ──────────────────────────────────────────
+  // Телефон связанного ведущего или соведущего берётся из его карточки: номер правят там, а не в группе. Записанный в
+  // группе номер остаётся запасным — пока человек не выбран, его карточку удалили или номера в ней нет.
+  const personById = new Map((input.persons ?? []).map((p) => [p.id, p]));
+  const keyOf = (userId: number | null, personId: number | null): string | null =>
+    userId ? `u${userId}` : personId ? `p${personId}` : null;
+  const linkedPhone = (userId: number | null, personId: number | null): string | null => {
+    const found = userId ? participantById.get(userId) : personId ? personById.get(personId) : undefined;
+    return nonBlank(formatPhone(nonBlank(found?.phone)));
+  };
+
   const groupItems: GroupItem[] = input.groups.map((g) => {
     const p = planGroupById.get(g.id)!;
     const b = brief(g.id)!;
     return {
       ...b,
       coLeader: nonBlank(g.co_leader),
-      phone: displayPhone(g.phones, g.phone),
-      coLeaderPhone: nonBlank(formatPhone(nonBlank(g.co_leader_phone))),
+      phone: linkedPhone(g.leader_user_id, g.leader_person_id) ?? displayPhone(g.phones, g.phone),
+      coLeaderPhone: linkedPhone(g.co_leader_user_id, g.co_leader_person_id) ?? nonBlank(formatPhone(nonBlank(g.co_leader_phone))),
       address: nonBlank(g.address),
       ageText: nonBlank(g.age),
       day: p.day,
@@ -907,7 +918,8 @@ export function buildViewsWithPlan(
       addressGeo: geoStateOf(g.address),
       coords: coordsOf(g.address),
       placedNew: input.placedNew?.get(g.id) ?? 0,
-      leaderKey: g.leader_user_id ? `u${g.leader_user_id}` : null,
+      leaderKey: keyOf(g.leader_user_id, g.leader_person_id),
+      coLeaderKey: keyOf(g.co_leader_user_id, g.co_leader_person_id),
       leaderAnswer: leaderAnswerOf(g),
       plannedRequests: plannedByGroup.get(g.id) ?? [],
       members: [...(membersByGroup.get(g.id) ?? [])].sort((a, b) => memberOrder(a) - memberOrder(b)),

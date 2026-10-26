@@ -13,20 +13,34 @@ async function groupCard(rec: number, overrides: Record<string, () => Response |
   return screen.findByRole('dialog', { name: /Карточка группы/ });
 }
 
-describe('«Справочник → Группы»: ведущий, связанный с регистрацией', () => {
-  test('у группы с leaderKey под ведущим стоит строка «Ведущий связан с регистрацией»', async () => {
+const row = (card: HTMLElement, label: string) => within(card).getByText(label, { selector: 'dt' }).nextElementSibling as HTMLElement;
+
+describe('«Справочник → Группы»: ведущий и соведущий, связанные с «Людьми»', () => {
+  test('у группы с leaderKey рядом с ведущим пометка «есть в «Людях»» и переход к карточке', async () => {
     // Группа 2 связана с ведущим в фикстурах (leaderKey «u2»).
     const card = await groupCard(2);
-    const row = within(card).getByText('Ведущий связан с регистрацией');
-    expect(row).toBeInTheDocument();
+    expect(within(card).getByText('есть в «Людях»')).toBeInTheDocument();
     expect(within(card).getByRole('button', { name: 'Открыть ведущего в «Людях»' })).toBeInTheDocument();
   });
 
-  test('у группы без leaderKey такой строки нет', async () => {
+  test('у группы без связи пометки и перехода нет, а ведущий всё равно виден', async () => {
     const card = await groupCard(1);
     await within(card).findByText('Подтверждена');
-    expect(within(card).queryByText('Ведущий связан с регистрацией')).not.toBeInTheDocument();
+    expect(row(card, 'Ведущий')).toHaveTextContent('Ольга К.');
+    expect(within(card).queryByText('есть в «Людях»')).not.toBeInTheDocument();
     expect(within(card).queryByRole('button', { name: /Открыть ведущего/ })).not.toBeInTheDocument();
+  });
+
+  test('двое ведущих — строка «Ведущие», ФИО одно под другим; связанный соведущий открывается в «Людях»', async () => {
+    const user = userEvent.setup();
+    const card = await groupCard(1, { groups: () => json(groupsWith(1, { coLeader: 'Нина Воронцова', coLeaderKey: 'p1' })) });
+    const value = row(card, 'Ведущие');
+    const lines = [...value.firstElementChild!.children].map((l) => l.firstElementChild!.textContent);
+    expect(lines).toEqual(['Ольга К.', 'Нина Воронцова']);
+    expect(within(card).queryByText('Со-ведущий', { selector: 'dt' })).not.toBeInTheDocument();
+    await user.click(within(value).getByRole('button', { name: 'Открыть соведущего в «Людях»' }));
+    await waitFor(() => expect(currentSearch().get('rec')).toBe('p1'));
+    expect(currentSearch().get('ent')).toBe('people');
   });
 
   test('«Открыть ведущего» ведёт в «Люди» на карточку по ключу', async () => {
@@ -40,7 +54,7 @@ describe('«Справочник → Группы»: ведущий, связа�
 
   test('ключ регистрации в тексте не показывается: человеку он ничего не говорит', async () => {
     const card = await groupCard(2);
-    await within(card).findByText('Ведущий связан с регистрацией');
+    await within(card).findByText('есть в «Людях»');
     expect(card).not.toHaveTextContent('u2');
   });
 

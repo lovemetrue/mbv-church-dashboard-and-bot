@@ -379,8 +379,17 @@ export class PlacementRepo {
    *
    * Группы выбирает вызывающий (предложение расчёта по имени ведущего или выбор человека): здесь проверяется только,
    * что они есть. Чужую связь «ведущий» не перезаписываем — это решает человек.
+   *
+   * `coLeaderIn` — группы, где человек совпал с соведущим: там он записывается соведущим (миграция 054), с той же
+   * проверкой на чужую связь. Остальные группы — ведущим.
    */
-  async reconcile(requestId: number, kind: 'member' | 'leader', groupIds: readonly number[], actor: string): Promise<ActionOutcome & { already?: boolean }> {
+  async reconcile(
+    requestId: number,
+    kind: 'member' | 'leader',
+    groupIds: readonly number[],
+    actor: string,
+    coLeaderIn: ReadonlySet<number> = new Set(),
+  ): Promise<ActionOutcome & { already?: boolean }> {
     // Порядок блокировок один у всех (по возрастанию), иначе два разбора с пересекающимися группами повисли бы друг на друге.
     const ids = [...new Set(groupIds)].sort((a, b) => a - b);
     if (ids.length === 0) return fail('bad_request', 'Нужно указать группу.');
@@ -396,15 +405,25 @@ export class PlacementRepo {
       if (req.user_id === null) return fail('bad_request', 'У обращения нет регистрации человека: внесите его в справочник вручную.');
       const registered = await c.query('SELECT 1 FROM users WHERE id = $1 AND registration_no IS NOT NULL', [req.user_id]);
       if ((registered.rowCount ?? 0) === 0) return fail('bad_request', 'Человек не завершил регистрацию.');
-      const g = await c.query<{ id: number; leader_user_id: number | null }>(
-        'SELECT id::int AS id, leader_user_id::int AS leader_user_id FROM groups WHERE id = ANY($1::bigint[]) AND archived_at IS NULL ORDER BY id FOR UPDATE', [ids],
+      const g = await c.query<{ id: number; user_id: number | null; person_id: number | null; co_user_id: number | null; co_person_id: number | null }>(
+        `SELECT id::int AS id, leader_user_id::int AS user_id, leader_person_id::int AS person_id,
+                co_leader_user_id::int AS co_user_id, co_leader_person_id::int AS co_person_id
+           FROM groups WHERE id = ANY($1::bigint[]) AND archived_at IS NULL ORDER BY id FOR UPDATE`, [ids],
       );
+      const co = (row: (typeof g.rows)[number]) => kind === 'leader' && coLeaderIn.has(row.id);
+      // Кто сейчас на позиции, куда человек встанет: регистрация (число), карточка (другой человек наверняка) или никто.
+      const holder = (row: (typeof g.rows)[number]) =>
+        co(row) ? (row.co_person_id !== null ? -1 : row.co_user_id) : (row.person_id !== null ? -1 : row.user_id);
       // Все или ничего: одна недоступная группа в списке отменяет весь разбор, человек увидит ошибку и поправит выбор.
       if (g.rows.length !== ids.length) return fail('group_unavailable', 'Одна из групп не найдена или в архиве.');
 
       // Сначала проверки, потом записи: проваленная проверка на середине оставила бы часть групп записанной.
-      if (kind === 'leader' && g.rows.some((r) => r.leader_user_id !== null && r.leader_user_id !== req.user_id)) {
+      if (kind === 'leader' && g.rows.some((r) => holder(r) !== null && holder(r) !== req.user_id)) {
         return fail('conflict', 'У одной из этих групп уже связан другой ведущий.');
+      }
+      // Ведущий и соведущий одной группы — разные люди: второй раз того же на соседнюю позицию не ставим.
+      if (kind === 'leader' && g.rows.some((r) => (co(r) ? r.user_id : r.co_user_id) === req.user_id)) {
+        return fail('conflict', 'В одной из этих групп человек уже связан на другой позиции: ведущим или соведущим.');
       }
 
       let changed = 0;
@@ -421,9 +440,10 @@ export class PlacementRepo {
             [row.id, req.user_id, actor],
           );
           if (inserted !== null && (inserted.rowCount ?? 0) > 0) changed += 1;
-        } else if (row.leader_user_id !== req.user_id) {
+        } else if (holder(row) !== req.user_id) {
           // Запись из таблицы после правки в интерфейсе — «ui»: повторный перенос таблицы её не затрёт (см. CLAUDE.md).
-          await c.query(`UPDATE groups SET leader_user_id = $2, source = CASE WHEN source = 'таблица' THEN 'ui' ELSE source END WHERE id = $1`, [row.id, req.user_id]);
+          const column = co(row) ? 'co_leader_user_id' : 'leader_user_id';
+          await c.query(`UPDATE groups SET ${column} = $2, source = CASE WHEN source = 'таблица' THEN 'ui' ELSE source END WHERE id = $1`, [row.id, req.user_id]);
           changed += 1;
         }
       }

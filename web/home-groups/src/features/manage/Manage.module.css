@@ -219,3 +219,40 @@ textarea.control {
     flex: 1 1 auto;
   }
 }
+
+/* Выбранный ведущий или соведущий из «Людей»: имя и телефон, рядом «Сменить» и «Отвязать». */
+.personChosen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  overflow-wrap: anywhere;
+}
+.personTools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.personChosen .personTools {
+  margin-top: 0;
+}
+
+/* Вопрос «что делать с несохранённым» перед переходом в карточку человека. */
+.leave {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: 13px;
+}
+.leave p {
+  margin: 0;
+}

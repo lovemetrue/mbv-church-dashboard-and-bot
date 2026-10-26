@@ -122,6 +122,8 @@ export const groupsConfig: EntityConfig<GroupItem> = {
     _placedNew: g.placedNew,
     _isNew: g.isNew ? 1 : 0,
     _isEmpty: g.empty ? 1 : 0,
+    // Соведущий второй строкой в ячейке «Ведущий»: двое ведущих видны сразу, даже когда столбец «Со-ведущий» скрыт.
+    _coLeader: g.coLeader,
     'Мест свободно': g.free,
     Вместимость: g.capacity,
     Статус: g.status,

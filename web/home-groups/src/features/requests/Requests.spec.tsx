@@ -229,8 +229,8 @@ describe('«Заявки»: поиск подсказывает, в каком �
     renderAt(<App />, `/?tab=requests&q=${encodeURIComponent(surname)}`);
     const views = await screen.findByRole('group', { name: 'Режим списка заявок' });
     const leadsChip = within(views).getByRole('button', { name: /Хотят открыть группу/ });
-    expect(leadsChip.textContent).toMatch(/найдено [1-9]/);
-    expect(within(views).getByRole('button', { name: /Хотят в группу/ }).textContent).toMatch(/найдено \d+/);
+    expect(leadsChip.getAttribute('aria-label')).toMatch(/найдено [1-9]/);
+    expect(within(views).getByRole('button', { name: /Хотят в группу/ }).getAttribute('aria-label')).toMatch(/найдено \d+/);
   });
 
   test('без поиска чисел найденного нет', async () => {

@@ -16,6 +16,12 @@ export const STATE_LABEL: Record<OtherItem['state'], string> = {
 export const STATE_TONE: Record<OtherItem['state'], PillTone> = { open: 'warn', done: 'ok', cancelled: 'plain' };
 
 /**
+ * Слово на плашке — настоящий статус заявки («Новая», «В работе», «Исполнена»…), а не обобщённое «Открыто»: по нему
+ * видно, взялся ли кто-то за заявку. Цвет — по состоянию. Пустой статус — обобщённое слово.
+ */
+export const statusLabel = (it: Pick<OtherItem, 'status' | 'state'>): string => it.status?.trim() || STATE_LABEL[it.state];
+
+/**
  * Список «Других обращений». Строка: человек, тип с меткой состояния, телефон и срок ожидания; второй строкой — суть
  * обращения (не больше двух строк, остальное обрезается: целиком она в карточке).
  * Флажков для массовых действий нет: обращений мало, и каждое требует отдельного решения.
@@ -71,7 +77,7 @@ export function OtherList({
             <div className={styles.kind}>
               <span className={styles.type}>{it.typeLabel}</span>
               <span className={styles.pills}>
-                <Pill tone={STATE_TONE[it.state]}>{STATE_LABEL[it.state]}</Pill>
+                <Pill tone={STATE_TONE[it.state]}>{statusLabel(it)}</Pill>
                 {it.state === 'open' && it.callback && <Pill tone="callback">{o.callback}</Pill>}
               </span>
             </div>

@@ -1564,6 +1564,8 @@ export interface StaffItem {
   lastLoginAt: string | null;
   /** Есть действующая (не использованная и не истёкшая) ссылка на пароль. */
   hasPendingLink: boolean;
+  /** Человек из «Людей» (миграция 058): «u12» или «p7»; null — ФИО записи только строкой. */
+  personKey: string | null;
 }
 
 export interface PersonalLoginsState {
@@ -1629,6 +1631,8 @@ export interface CreateStaffBody {
   role: Role;
   /** Не указан — сервер подберёт сам (см. SuggestLoginBody). */
   login?: string;
+  /** Человек из «Людей» («u12», «p7»); не указан — ФИО только строкой. */
+  personKey?: string | null;
 }
 
 export interface UpdateStaffBody {
@@ -1638,6 +1642,8 @@ export interface UpdateStaffBody {
   role?: Role;
   /** false — отключить (входить нельзя, текущие входы закрываются), true — включить обратно. */
   active?: boolean;
+  /** Человек из «Людей»: ключ — связать, null — отвязать; не указан — не менять. */
+  personKey?: string | null;
 }
 
 export interface StaffIdBody {

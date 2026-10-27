@@ -151,15 +151,49 @@ describe('очистка базы служителем после склейки
   });
 });
 
-describe('удаление заявки и её карточка', () => {
-  test('карточка, заведённая только ради удалённой заявки, уходит вместе с ней; привязанная к чему-то ещё — остаётся', async () => {
-    const lone = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, origin, fio) VALUES ('join_group', 'Новая', 'ui', 'Дубль') RETURNING id::int AS id`)).rows[0]!.id;
-    const kept = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, origin, fio, phone) VALUES ('join_group', 'Новая', 'ui', 'Пётр', '+79210000010') RETURNING id::int AS id`)).rows[0]!.id;
-    await db.query(`INSERT INTO requests (type, status, origin, fio, phone) VALUES ('question', 'Новая', 'ui', 'Пётр', '+79210000010')`);
-    await db.query('UPDATE requests SET archived_at = now() WHERE id IN ($1, $2)', [lone, kept]);
-    const card = async (id: number) => (await db.query('SELECT p.archived_at IS NOT NULL AS gone FROM requests r JOIN persons p ON p.id = r.person_id WHERE r.id = $1', [id])).rows[0].gone;
-    expect(await card(lone)).toBe(true);
-    // У Петра есть ещё вопрос: человек остаётся в «Людях».
-    expect(await card(kept)).toBe(false);
+describe('удаление заявки и её человек', () => {
+  test('удалённая заявка карточку человека не убирает: он прихожанин, его данные нужны и без кампании и группы', async () => {
+    const id = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, origin, fio, phone) VALUES ('join_group', 'Новая', 'ui', 'Пётр', '+79210000010') RETURNING id::int AS id`)).rows[0]!.id;
+    await db.query('UPDATE requests SET archived_at = now() WHERE id = $1', [id]);
+    expect((await db.query('SELECT p.archived_at FROM requests r JOIN persons p ON p.id = r.person_id WHERE r.id = $1', [id])).rows[0].archived_at).toBeNull();
+    // Подал заявку снова — она цепляется к тому же человеку, дубля нет.
+    const again = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, origin, fio, phone) VALUES ('join_group', 'Новая', 'ui', 'Пётр Громов', '8 921 000-00-10') RETURNING id::int AS id`)).rows[0]!.id;
+    expect((await req(again)).person_id).toBe((await req(id)).person_id);
+    expect((await db.query('SELECT count(*)::int AS n FROM persons')).rows[0].n).toBe(1);
+  });
+});
+
+describe('человек из «Людей» регистрируется в боте или на стойке', () => {
+  test('карточка с тем же телефоном сливается с регистрацией: заявки, состав, ведущий, команда, метка и пол — к регистрации', async () => {
+    const p = (await db.query<{ id: number }>(`INSERT INTO persons (full_name, phone, hobby, place) VALUES ('Пётр Громов', '+79210000020', 'рыбалка', 'Купчино') RETURNING id::int AS id`)).rows[0]!.id;
+    const r = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, origin, fio, phone) VALUES ('join_group', 'Новая', 'таблица', 'Пётр', '+79210000020') RETURNING id::int AS id`)).rows[0]!.id;
+    expect((await req(r)).person_id).toBe(p);
+    const g = (await db.query<{ id: number }>(`INSERT INTO groups (leader, district, direction_id, status, source, leader_person_id) VALUES ('Пётр Громов', 'Приморский', group_direction_id('очно'), 'Функционирует', 'ui', $1) RETURNING id::int AS id`, [p])).rows[0]!.id;
+    await db.query(`INSERT INTO group_members (group_id, person_id) VALUES ($1, $2)`, [g, p]);
+    await db.query(`INSERT INTO strange_marks (person_key, set_by) VALUES ($1, 'a')`, [`p${p}`]);
+    await db.query(`INSERT INTO person_genders (person_key, gender, set_by) VALUES ($1, 'м', 'a')`, [`p${p}`]);
+
+    const u = await seedUser(db, { id: '1', fio: 'Пётр Громов', phone: '89210000020' });
+
+    expect(await req(r)).toEqual({ user_id: u, person_id: null });
+    expect((await db.query('SELECT leader_user_id::int AS lu, leader_person_id AS lp FROM groups WHERE id = $1', [g])).rows[0]).toEqual({ lu: u, lp: null });
+    expect((await db.query('SELECT user_id::int AS u, person_id FROM group_members WHERE archived_at IS NULL')).rows).toEqual([{ u, person_id: null }]);
+    expect((await db.query('SELECT person_key FROM strange_marks')).rows).toEqual([{ person_key: `u${u}` }]);
+    expect((await db.query('SELECT person_key FROM person_genders')).rows).toEqual([{ person_key: `u${u}` }]);
+    expect((await db.query('SELECT hobby, location FROM users WHERE id = $1', [u])).rows[0]).toEqual({ hobby: 'рыбалка', location: 'Купчино' });
+    // Карточка уходит: человек теперь один — регистрация.
+    expect((await person(p)).archived_at).not.toBeNull();
+  });
+
+  test('номер у двух карточек — не угадываем, не сливаем', async () => {
+    await db.query(`INSERT INTO persons (full_name, phone) VALUES ('А', '+79210000021'), ('Б', '+79210000021')`);
+    await seedUser(db, { id: '1', phone: '+79210000021' });
+    expect((await db.query('SELECT count(*)::int AS n FROM persons WHERE archived_at IS NULL')).rows[0].n).toBe(2);
+  });
+
+  test('незавершённая анкета (без номера регистрации) не сливает', async () => {
+    await db.query(`INSERT INTO persons (full_name, phone) VALUES ('А', '+79210000022')`);
+    await seedUser(db, { id: '1', phone: '+79210000022', registered: false });
+    expect((await db.query('SELECT count(*)::int AS n FROM persons WHERE archived_at IS NULL')).rows[0].n).toBe(1);
   });
 });

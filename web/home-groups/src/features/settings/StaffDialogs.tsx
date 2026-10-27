@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import type { Role, StaffItem } from '@contracts';
 import { ru } from '../../shared/i18n/ru';
 import { Button, Modal } from '../../shared/ui';
+import { PersonField } from '../manage/PersonField';
 import { isValidEmail } from './model';
 import styles from './Settings.module.css';
 import u from './Users.module.css';
@@ -17,6 +18,8 @@ export interface StaffFormValues {
   role: Role;
   /** Только при добавлении; пусто — пусть подберёт сервер. */
   login: string;
+  /** Человек из «Людей» («u12», «p7»); пусто — ФИО только строкой (служебная запись, человек не из «Людей»). */
+  personKey: string;
 }
 
 function ErrorLine({ text }: { text: string | null }) {
@@ -59,7 +62,7 @@ export function StaffFormDialog({
   onSubmit: (values: StaffFormValues) => Promise<string | null>;
   onClose: () => void;
 }) {
-  const ids = { name: useId(), email: useId(), login: useId(), nameErr: useId(), emailErr: useId(), loginHint: useId() };
+  const ids = { name: useId(), email: useId(), login: useId(), nameErr: useId(), emailErr: useId(), loginHint: useId(), person: useId(), personHint: useId() };
   const nameRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const [values, setValues] = useState<StaffFormValues>(initial);
@@ -113,7 +116,8 @@ export function StaffFormDialog({
     fixedLogin !== undefined &&
     values.fullName.trim() === initial.fullName &&
     values.email.trim() === initial.email &&
-    values.role === initial.role;
+    values.role === initial.role &&
+    values.personKey === initial.personKey;
 
   return (
     <Modal title={title} onClose={onClose}>
@@ -141,6 +145,26 @@ export function StaffFormDialog({
             {problems.name}
           </p>
         )}
+
+        {/* ФИО — строкой, а если это человек из «Людей», рядом ссылка на него: его данные не дублируются. */}
+        <label htmlFor={ids.person} className={styles.fieldLabel}>
+          {t.person}
+        </label>
+        <PersonField
+          id={ids.person}
+          label={t.person}
+          value={values.personKey}
+          taken=""
+          disabled={busy}
+          describedBy={ids.personHint}
+          onPick={(p) => {
+            setValues((v) => ({ ...v, personKey: p?.key ?? '', fullName: v.fullName.trim() ? v.fullName : (p?.fio ?? '') }));
+            setError(null);
+          }}
+        />
+        <p id={ids.personHint} className={styles.muted}>
+          {t.personHint}
+        </p>
 
         <label htmlFor={ids.email} className={styles.fieldLabel}>
           {t.email}
@@ -334,4 +358,5 @@ export const toFormValues = (item: StaffItem): StaffFormValues => ({
   email: item.email ?? '',
   role: item.role,
   login: '',
+  personKey: item.personKey ?? '',
 });

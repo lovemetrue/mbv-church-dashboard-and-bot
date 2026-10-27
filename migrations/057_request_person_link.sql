@@ -143,24 +143,70 @@ END
 $$;
 CREATE TRIGGER requests_link_person AFTER INSERT ON requests FOR EACH ROW EXECUTE FUNCTION requests_link_person();
 
--- Заявку удалили (дубль, заведена по ошибке): карточка, заведённая только ради неё и больше ни к чему не привязанная
--- (других заявок, состава, групп, команды нет), уходит вместе с ней — так раньше пропадал «человек из заявки». Человек,
--- у которого есть что-то ещё, остаётся: «Люди» — общий справочник, удаление заявки его не стирает.
-CREATE FUNCTION requests_archive_orphan_person() RETURNS trigger LANGUAGE plpgsql AS $$
+-- Человек из «Людей» регистрируется (в боте или на стойке): регистрация — это тот же человек, что и его карточка с тем
+-- же телефоном. Иначе он раздвоился бы: заявки и группа у карточки, рассылки и набор — у регистрации. Карточка
+-- сливается с регистрацией: всё, что ссылалось на карточку, переезжает, пустые поля регистрации дополняются, карточка
+-- уходит. Сливаем, только если и карточка, и регистрация с этим номером — единственные (тёзок и общие номера не угадываем).
+CREATE FUNCTION merge_person_into_user(p_user bigint) RETURNS boolean LANGUAGE plpgsql AS $$
+DECLARE
+  u users;
+  k text;
+  pid bigint;
+  n int;
 BEGIN
-  IF NEW.person_id IS NOT NULL THEN
-    UPDATE persons p SET archived_at = now()
-     WHERE p.id = NEW.person_id AND p.archived_at IS NULL AND p.created_by = 'заявка'
-       AND NOT EXISTS (SELECT 1 FROM requests r WHERE r.person_id = p.id AND r.archived_at IS NULL)
-       AND NOT EXISTS (SELECT 1 FROM group_members m WHERE m.person_id = p.id AND m.archived_at IS NULL)
-       AND NOT EXISTS (SELECT 1 FROM groups g WHERE g.archived_at IS NULL AND (g.leader_person_id = p.id OR g.co_leader_person_id = p.id))
-       AND NOT EXISTS (SELECT 1 FROM coordinators c WHERE c.person_id = p.id AND c.archived_at IS NULL);
+  SELECT * INTO u FROM users WHERE id = p_user;
+  IF NOT FOUND OR u.registration_no IS NULL THEN RETURN false; END IF;
+  k := person_phone_key(u.phone);
+  IF k IS NULL THEN RETURN false; END IF;
+  SELECT count(*) INTO n FROM users x WHERE x.registration_no IS NOT NULL AND x.id <> p_user AND person_phone_key(x.phone) = k;
+  IF n > 0 THEN RETURN false; END IF;
+  SELECT count(*), min(id) INTO n, pid FROM persons WHERE archived_at IS NULL AND person_phone_key(phone) = k;
+  IF n <> 1 THEN RETURN false; END IF;
+
+  UPDATE users x SET
+    age = coalesce(x.age, p.age), location = coalesce(x.location, p.place),
+    address_raw = coalesce(x.address_raw, p.address), schedule_raw = coalesce(x.schedule_raw, p.schedule),
+    hobby = coalesce(x.hobby, p.hobby), profession = coalesce(x.profession, p.profession),
+    family_status = coalesce(x.family_status, p.family_status), admin_comment = coalesce(x.admin_comment, p.note)
+    FROM persons p WHERE x.id = p_user AND p.id = pid;
+
+  UPDATE requests SET user_id = p_user, person_id = NULL WHERE person_id = pid;
+  -- Состав: уже состоит в той же группе как регистрация — запись по карточке лишняя.
+  UPDATE group_members m SET archived_at = now()
+   WHERE m.person_id = pid AND m.archived_at IS NULL
+     AND EXISTS (SELECT 1 FROM group_members x WHERE x.group_id = m.group_id AND x.user_id = p_user AND x.archived_at IS NULL);
+  UPDATE group_members SET user_id = p_user, person_id = NULL WHERE person_id = pid AND archived_at IS NULL;
+  UPDATE groups SET leader_user_id = p_user, leader_person_id = NULL WHERE leader_person_id = pid AND leader_user_id IS NULL;
+  UPDATE groups SET co_leader_user_id = p_user, co_leader_person_id = NULL WHERE co_leader_person_id = pid AND co_leader_user_id IS NULL;
+  IF NOT EXISTS (SELECT 1 FROM coordinators WHERE user_id = p_user AND archived_at IS NULL) THEN
+    UPDATE coordinators SET user_id = p_user, person_id = NULL WHERE person_id = pid;
   END IF;
+  INSERT INTO strange_marks (person_key, note, set_by, set_at)
+    SELECT 'u' || p_user, note, set_by, set_at FROM strange_marks WHERE person_key = 'p' || pid
+  ON CONFLICT (person_key) DO NOTHING;
+  DELETE FROM strange_marks WHERE person_key = 'p' || pid;
+  INSERT INTO person_genders (person_key, gender, set_by, set_at)
+    SELECT 'u' || p_user, gender, set_by, set_at FROM person_genders WHERE person_key = 'p' || pid
+  ON CONFLICT (person_key) DO NOTHING;
+  DELETE FROM person_genders WHERE person_key = 'p' || pid;
+  UPDATE persons SET archived_at = now() WHERE id = pid;
+  RETURN true;
+END
+$$;
+
+CREATE FUNCTION users_merge_person() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.registration_no IS NOT NULL THEN PERFORM merge_person_into_user(NEW.id); END IF;
   RETURN NULL;
 END
 $$;
-CREATE TRIGGER requests_archive_orphan_person AFTER UPDATE OF archived_at ON requests
-  FOR EACH ROW WHEN (OLD.archived_at IS NULL AND NEW.archived_at IS NOT NULL) EXECUTE FUNCTION requests_archive_orphan_person();
+CREATE TRIGGER users_merge_person_ins AFTER INSERT ON users FOR EACH ROW EXECUTE FUNCTION users_merge_person();
+CREATE TRIGGER users_merge_person_upd AFTER UPDATE OF registration_no, phone ON users FOR EACH ROW
+  WHEN (NEW.registration_no IS DISTINCT FROM OLD.registration_no OR NEW.phone IS DISTINCT FROM OLD.phone)
+  EXECUTE FUNCTION users_merge_person();
+-- Уже зарегистрированные и их карточки-двойники (заведённые выше по заявкам из таблицы с тем же номером уже склеены
+-- с регистрацией, а внесённые вручную — нет).
+SELECT merge_person_into_user(id) FROM users WHERE registration_no IS NOT NULL;
 
 -- Ведущие групп из таблицы церкви: имя и телефон записаны текстом. Каждому — человек (по телефону — ровно одно
 -- совпадение, иначе карточка с его именем и телефоном), как у ведущих, выбранных в правке группы (миграция 054).

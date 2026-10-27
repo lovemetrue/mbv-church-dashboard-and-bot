@@ -302,7 +302,7 @@ export function buildSettingsStaff(): SettingsStaffView {
         role: 'super',
         status: 'active',
         lastLoginAt: '2026-10-09T08:41:00+03:00',
-        hasPendingLink: false,
+        hasPendingLink: false, personKey: null,
       },
       {
         id: 2,
@@ -312,7 +312,7 @@ export function buildSettingsStaff(): SettingsStaffView {
         role: 'admin',
         status: 'active',
         lastLoginAt: '2026-10-07T19:15:00+03:00',
-        hasPendingLink: true,
+        hasPendingLink: true, personKey: 'u1',
       },
       {
         id: 3,
@@ -322,7 +322,7 @@ export function buildSettingsStaff(): SettingsStaffView {
         role: 'admin',
         status: 'invited',
         lastLoginAt: null,
-        hasPendingLink: true,
+        hasPendingLink: true, personKey: null,
       },
       {
         id: 4,
@@ -332,7 +332,7 @@ export function buildSettingsStaff(): SettingsStaffView {
         role: 'admin',
         status: 'invited',
         lastLoginAt: null,
-        hasPendingLink: false,
+        hasPendingLink: false, personKey: null,
       },
       {
         id: 5,
@@ -342,7 +342,7 @@ export function buildSettingsStaff(): SettingsStaffView {
         role: 'admin',
         status: 'disabled',
         lastLoginAt: '2026-08-14T12:05:00+03:00',
-        hasPendingLink: false,
+        hasPendingLink: false, personKey: null,
       },
     ],
     personal: { enabled: false, canEnable: true, activeWithPassword: 2, mailConfigured: false },

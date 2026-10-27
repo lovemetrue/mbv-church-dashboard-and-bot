@@ -17,7 +17,14 @@ export interface StaffRow {
   last_login_at: Date | null;
   /** Чья это запись в справочнике команды (`coordinators.id`); null — заведён вручную в «Пользователях». */
   coordinator_id: number | null;
+  /** Человек из «Людей» (миграция 058): «u12» или «p7»; null — ФИО записи только строкой. */
+  person_key: string | null;
 }
+
+/** Человек из «Людей» для учётной записи: регистрация или карточка; null — не связывать. */
+export type StaffPersonRef = { userId: number } | { personId: number } | null;
+const personColumns = (ref: StaffPersonRef | undefined): [number | null, number | null] =>
+  !ref ? [null, null] : 'userId' in ref ? [ref.userId, null] : [null, ref.personId];
 
 /** Человек из справочника команды и его учётная запись, если она есть. */
 export interface TeamAccountRow {
@@ -44,8 +51,9 @@ export class StaffConflict extends Error {
   }
 }
 
+const PERSON_KEY = (t: string) => `CASE WHEN ${t}user_id IS NOT NULL THEN 'u' || ${t}user_id WHEN ${t}person_id IS NOT NULL THEN 'p' || ${t}person_id END AS person_key`;
 const COLUMNS = `id::int AS id, login, full_name, email, role, password_hash, active, session_version,
-                 created_at, password_set_at, last_login_at, coordinator_id::int AS coordinator_id`;
+                 created_at, password_set_at, last_login_at, coordinator_id::int AS coordinator_id, ${PERSON_KEY('')}`;
 
 /**
  * Учётная запись человека из справочника команды: сначала связанная (`coordinator_id`), иначе заведённая вручную
@@ -118,13 +126,21 @@ export class StaffRepo {
     return new Set(rows.map((r) => r.login.toLowerCase()));
   }
 
-  async create(input: { login: string; fullName: string; email: string; role: Role }, actor: string): Promise<StaffRow> {
+  /** Есть ли такой человек в «Людях»: регистрация или действующая карточка. */
+  async personExists(ref: NonNullable<StaffPersonRef>): Promise<boolean> {
+    const { rowCount } = 'userId' in ref
+      ? await this.db.query('SELECT 1 FROM users WHERE id = $1 AND registration_no IS NOT NULL', [ref.userId])
+      : await this.db.query('SELECT 1 FROM persons WHERE id = $1 AND archived_at IS NULL', [ref.personId]);
+    return (rowCount ?? 0) > 0;
+  }
+
+  async create(input: { login: string; fullName: string; email: string; role: Role; person?: StaffPersonRef }, actor: string): Promise<StaffRow> {
     return this.tx(async (c) => {
       let id: number;
       try {
         const { rows } = await c.query<{ id: number }>(
-          `INSERT INTO staff (login, full_name, email, role, created_by) VALUES ($1, $2, $3, $4, $5) RETURNING id::int AS id`,
-          [input.login, input.fullName, input.email, input.role, actor],
+          `INSERT INTO staff (login, full_name, email, role, created_by, user_id, person_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id::int AS id`,
+          [input.login, input.fullName, input.email, input.role, actor, ...personColumns(input.person)],
         );
         id = rows[0]!.id;
       } catch (err) {
@@ -140,7 +156,7 @@ export class StaffRepo {
 
   /** Правка данных. Отключение и смена роли повышают версию сессий: прежние входы человека закрываются. */
   async update(
-    id: number, patch: { fullName?: string; email?: string; role?: Role; active?: boolean }, actor: string,
+    id: number, patch: { fullName?: string; email?: string; role?: Role; active?: boolean; person?: StaffPersonRef }, actor: string,
   ): Promise<StaffRow | null> {
     return this.tx(async (c) => {
       const { rows: before } = await c.query<StaffRow>(`SELECT ${COLUMNS} FROM staff WHERE id = $1 FOR UPDATE`, [id]);
@@ -160,6 +176,10 @@ export class StaffRepo {
             WHERE id = $1`,
           [id, next.full_name, next.email, next.role, next.active, closeSessions],
         );
+        // Ссылка на человека меняется, только если её прислали (null — отвязать).
+        if (patch.person !== undefined) {
+          await c.query('UPDATE staff SET user_id = $2, person_id = $3 WHERE id = $1', [id, ...personColumns(patch.person)]);
+        }
       } catch (err) {
         if ((err as { code?: string }).code === '23505') throw new StaffConflict('email');
         throw err;
@@ -169,6 +189,7 @@ export class StaffRepo {
       if (next.active !== old.active) changed['active'] = { was: old.active, now: next.active };
       if (next.full_name !== old.full_name) changed['full_name'] = true;
       if (next.email !== old.email) changed['email'] = true;
+      if (patch.person !== undefined) changed['person'] = patch.person !== null;
       if (Object.keys(changed).length > 0) {
         await StaffRepo.audit(c, actor, next.active !== old.active ? (next.active ? 'staff.enable' : 'staff.disable') : 'staff.update', id, changed);
       }
@@ -205,7 +226,7 @@ export class StaffRepo {
   async staffByToken(tokenHash: string): Promise<(StaffRow & { purpose: TokenPurpose }) | null> {
     const { rows } = await this.db.query<StaffRow & { purpose: TokenPurpose }>(
       `SELECT s.id::int AS id, s.login, s.full_name, s.email, s.role, s.password_hash, s.active, s.session_version,
-              s.created_at, s.password_set_at, s.last_login_at, s.coordinator_id::int AS coordinator_id, t.purpose
+              s.created_at, s.password_set_at, s.last_login_at, s.coordinator_id::int AS coordinator_id, ${PERSON_KEY('s.')}, t.purpose
          FROM staff_tokens t JOIN staff s ON s.id = t.staff_id
         WHERE t.token_hash = $1 AND t.used_at IS NULL AND t.expires_at > now() AND s.active`,
       [tokenHash],
@@ -305,8 +326,10 @@ export class StaffRepo {
       let id: number;
       try {
         const { rows } = await c.query<{ id: number }>(
-          `INSERT INTO staff (login, full_name, email, role, created_by, coordinator_id)
-           VALUES ($1, $2, NULL, 'admin', $3, $4) RETURNING id::int AS id`,
+          // Человек — тот же, что у участника команды (миграция 058).
+          `INSERT INTO staff (login, full_name, email, role, created_by, coordinator_id, user_id, person_id)
+           SELECT $1, $2, NULL, 'admin', $3, $4, c.user_id, c.person_id FROM coordinators c WHERE c.id = $4
+           RETURNING id::int AS id`,
           [input.login, input.fullName, actor, input.coordinatorId],
         );
         id = rows[0]!.id;

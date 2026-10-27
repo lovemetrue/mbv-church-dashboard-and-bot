@@ -29,14 +29,19 @@ function group(over: Partial<DashboardGroup> & { id: number }): DashboardGroup {
 }
 
 function request(over: Partial<DashboardRequest> & { id: number }): DashboardRequest {
-  return {
-    user_id: null, group_id: null, fio: `Человек ${over.id}`, responsible: null, status: 'Новая', date: '2026-10-05',
+  const base = {
+    user_id: null, person_id: null, group_id: null, fio: `Человек ${over.id}`, responsible: null, status: 'Новая', date: '2026-10-05',
     phone: null, phones: [], age: null, place: null, source: null, ministry: null, note: null, extra: null,
     recommended: null, recommended_at: null, final_group: null, cancel_reason: null, attendance: null,
     type: 'join_group', text: null, origin: 'таблица', church: null, mdg_status: null, leader_name: null,
     schedule: null, address: null, callback: false,
     ...over,
   };
+  // «Как пришла» — по умолчанию то же, что сейчас: так было до миграции 057, и старые ожидания не меняются.
+  return {
+    ...base,
+    raw: over.raw ?? { fio: base.fio, phone: base.phone, phones: base.phones, age: base.age, place: base.place, schedule: base.schedule, address: base.address },
+  } as DashboardRequest;
 }
 
 function participant(over: Partial<RegisteredParticipant> & { id: number }): RegisteredParticipant {
@@ -1160,13 +1165,19 @@ describe('метка «Странный человек»', () => {
     expect(views.people.items.find((p) => p.key === 'u9')!.strange).toBeNull();
   });
 
-  test('метка действует и на тот же телефон в другой записи: человек один, а записей у него несколько', () => {
+  test('метка — на человеке: заявка его карточки её видит, а чужая запись с тем же телефоном — нет', () => {
+    // Одного человека с двумя записями склеила миграция 057; совпавший номер у разных людей метку не переносит.
     const { views } = build({
       participants: [participant({ id: 9, phone: '+79111234567' })],
-      requests: [request({ id: 1, phone: '+7 911 123-45-67', phones: ['+7 911 123-45-67'] })],
-      ...withMarks([['u9', mark('boris')]]),
+      requests: [
+        request({ id: 1, phone: '+7 911 123-45-67', phones: ['+7 911 123-45-67'], person_id: 4 }),
+        request({ id: 2, person_id: 7 }),
+      ],
+      ...withMarks([['u9', mark('boris')], ['p7', mark('anna')]]),
     });
-    expect(views.requests.items.find((i) => i.id === 1)!.strange).toMatchObject({ by: 'boris' });
+    expect(views.requests.items.find((i) => i.id === 1)!.strange).toBeNull();
+    expect(views.requests.items.find((i) => i.id === 2)!.strange).toMatchObject({ by: 'anna' });
+    expect(views.requests.items.find((i) => i.id === 2)!.personKey).toBe('p7');
   });
 
   test('заявка с меткой не попадает в расчёт групп и не занимает места, ей показано «нужна отдельная группа»', () => {

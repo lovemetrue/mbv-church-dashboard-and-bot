@@ -47,7 +47,7 @@ const refOfRow = (userId: number | null | undefined, personId: number | null | u
 /** Ссылки на людей в форму группы не входят: проверяются отдельно (`personRefOf`), а пишутся вместе с правкой. */
 const GROUP_LINKS = ['leaderKey', 'coLeaderKey'] as const;
 
-/** Человек из заявки без регистрации: ссылаться на него можно, только заведя ему карточку (`personFromRequest`). */
+/** Старый ключ «r» (человек заявки): ссылаемся на человека, на которого указывает заявка (`personFromRequest`). */
 type LinkRef = PersonRef | { kind: 'request'; id: number };
 
 /**
@@ -114,9 +114,9 @@ export function createManager(deps: {
     if (check) return 'checked';
     let own: PersonRef = ref as PersonRef;
     if (ref.kind === 'request') {
-      const personId = await deps.groups.personFromRequest(ref.id, actor);
-      if (personId === null) return fail('bad_request', PERSON_GONE) as Extract<ActionOutcome, { ok: false }>;
-      own = { kind: 'person', id: personId };
+      const human = await deps.groups.personFromRequest(ref.id, actor);
+      if (human === null) return fail('bad_request', PERSON_GONE) as Extract<ActionOutcome, { ok: false }>;
+      own = human;
     }
     const name = await deps.groups.personName(own);
     if (!name) return fail('bad_request', PERSON_GONE) as Extract<ActionOutcome, { ok: false }>;
@@ -172,9 +172,9 @@ export function createManager(deps: {
         if (link === undefined) continue;
         let ref: PersonRef | null = null;
         if (link?.kind === 'request') {
-          const personId = await deps.groups.personFromRequest(link.id, actor);
-          if (personId === null) return fail('bad_request', 'Этого человека уже нет в справочнике «Люди»: обновите страницу и выберите снова.');
-          ref = { kind: 'person', id: personId };
+          const human = await deps.groups.personFromRequest(link.id, actor);
+          if (human === null) return fail('bad_request', 'Этого человека уже нет в справочнике «Люди»: обновите страницу и выберите снова.');
+          ref = human;
         } else {
           ref = link;
         }

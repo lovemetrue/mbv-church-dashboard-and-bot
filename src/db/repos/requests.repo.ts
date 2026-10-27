@@ -51,27 +51,35 @@ export interface RequestWithUser {
   origin: 'таблица' | 'бот' | 'ui';
 }
 
-// LEFT JOIN, а не JOIN: у заявки из таблицы церкви участника в боте нет.
-// coalesce берёт данные участника, если он есть, иначе то, что записано в самой заявке.
+// Человек заявки — регистрация или карточка в «Людях» (миграция 057); данные берутся из его записи, а поля самой
+// заявки — только если человека нет (старая заявка). LEFT JOIN: у заявки из таблицы церкви участника в боте нет.
 const WITH_USER = `
   SELECT r.id, r.type, r.text, r.status, r.created_at, r.origin,
          u.id AS user_id, u.platform, u.chat_id,
-         coalesce(u.phone, r.phone) AS phone,
-         coalesce(u.full_name, r.fio) AS full_name,
+         coalesce(u.phone, p.phone, r.phone) AS phone,
+         coalesce(u.full_name, p.full_name, r.fio) AS full_name,
          u.username,
-         coalesce(u.location, r.place) AS location,
-         u.age, u.church, u.mdg_status,
+         coalesce(u.location, p.place, r.place) AS location,
+         coalesce(u.age, p.age) AS age, u.church, u.mdg_status,
          u.companions, u.leader_name, u.registration_no, u.preferred_contact,
-         u.schedule_raw AS schedule, u.address_raw AS address
+         coalesce(u.schedule_raw, p.schedule) AS schedule, coalesce(u.address_raw, p.address) AS address
     FROM requests r
-    LEFT JOIN users u ON u.id = r.user_id`;
+    LEFT JOIN users u ON u.id = r.user_id
+    LEFT JOIN persons p ON p.id = r.person_id`;
 
 
 /** Заявка в том виде, в каком её ждёт дашборд: имена полей как в листе ЗАЯВКИ. */
 export interface DashboardRequest {
   id: number;
-  /** Участник в боте; null у заявок из таблицы и заведённых в дашборде вручную. */
+  /** Человек заявки — регистрация (участник в боте или склеенный с ним по телефону, миграция 057)… */
   user_id: number | null;
+  /** …или карточка в «Людях»; одно из двух. Оба null — только у старой удалённой заявки. */
+  person_id: number | null;
+  /**
+   * Заявка «как пришла»: снимок из таблицы церкви, формы или анкеты бота. Текущие данные человека (поля выше) — из его
+   * записи, а это для сверки.
+   */
+  raw: { fio: string | null; phone: string | null; phones: string[]; age: string | null; place: string | null; schedule: string | null; address: string | null };
   group_id: number | null;
   fio: string | null;
   responsible: string | null;
@@ -113,6 +121,10 @@ export interface DashboardRequest {
   profession: string | null;
   family: string | null;
 }
+
+/** Поле человека: из регистрации, иначе из карточки, иначе (старая заявка без человека) — из самой заявки. */
+const PERSON = (userCol: string, personCol: string, requestCol: string): string =>
+  `CASE WHEN u.id IS NOT NULL THEN u.${userCol} WHEN p.id IS NOT NULL THEN p.${personCol} ELSE ${requestCol} END`;
 
 /** Что можно заполнить в форме дашборда. */
 export interface RequestInput {
@@ -366,42 +378,48 @@ export class RequestsRepo {
    * У ботовых имя и телефон берутся от участника, у остальных — из самой заявки.
    */
   async forDashboard(): Promise<DashboardRequest[]> {
-    const { rows } = await this.db.query<{
-      id: number; user_id: number | null; group_id: number | null; fio: string | null; responsible: string | null; status: RequestStatus;
-      date: string | null; phone: string | null; phones: string[]; age: string | null;
-      place: string | null; source: string | null; ministry: string | null; note: string | null;
-      extra: string | null; recommended: string | null; recommended_at: string | null;
-      final_group: string | null; cancel_reason: string | null; attendance: string | null;
-      type: RequestType; text: string | null; origin: 'таблица' | 'бот' | 'ui';
-      church: string | null; mdg_status: MdgStatus | null; leader_name: string | null;
-      schedule: string | null; address: string | null; callback: boolean;
-      manual_street: string | null; manual_schedule: string | null;
-      hobby: string | null; profession: string | null; family: string | null;
+    const { rows } = await this.db.query<Omit<DashboardRequest, 'raw'> & {
+      raw_fio: string | null; raw_phone: string | null; raw_phones: string[] | null; raw_age: string | null; raw_place: string | null;
+      raw_schedule: string | null; raw_address: string | null;
     }>(
-      `SELECT r.id, r.user_id, r.group_id,
-              coalesce(r.fio, u.full_name) AS fio,
+      // Данные человека — из его записи (миграция 057): регистрации или карточки. Поля самой заявки — снимок «как
+      // пришла» (raw_*): по нему координатор сверяет, как система поняла заявку, но текущие данные из него не берутся.
+      `SELECT r.id, r.user_id, r.person_id::int AS person_id, r.group_id,
+              ${PERSON('full_name', 'full_name', 'r.fio')} AS fio,
               r.responsible, r.status,
               coalesce(r.requested_at, r.created_at::date) AS date,
-              coalesce(r.phone, u.phone) AS phone,
-              CASE WHEN array_length(r.phones, 1) > 0 THEN r.phones
-                   WHEN u.phone IS NOT NULL THEN ARRAY[u.phone]
-                   ELSE '{}'::text[] END AS phones,
-              coalesce(r.age, u.age::text) AS age,
-              coalesce(r.place, u.location) AS place,
+              ${PERSON('phone', 'phone', 'r.phone')} AS phone,
+              CASE WHEN u.id IS NOT NULL THEN array_remove(ARRAY[u.phone], NULL)
+                   WHEN p.id IS NOT NULL THEN array_remove(ARRAY[p.phone], NULL)
+                   WHEN array_length(r.phones, 1) > 0 THEN r.phones ELSE array_remove(ARRAY[r.phone], NULL) END AS phones,
+              ${PERSON('age', 'age', 'r.age')} AS age,
+              ${PERSON('location', 'place', 'r.place')} AS place,
               r.source, r.ministry, r.note, r.extra, r.recommended, r.recommended_at,
               r.final_group, r.cancel_reason, r.attendance, r.type, r.text, r.origin,
               -- Ответы из анкеты бота: у заявок из таблицы церкви участника нет, будет null.
               u.church, u.mdg_status, u.leader_name,
-              u.schedule_raw AS schedule, u.address_raw AS address, r.callback,
-              r.manual_street, r.manual_schedule,
-              coalesce(r.hobby, u.hobby) AS hobby, coalesce(r.profession, u.profession) AS profession,
-              coalesce(r.family_status, u.family_status) AS family
+              ${PERSON('schedule_raw', 'schedule', 'r.manual_schedule')} AS schedule,
+              ${PERSON('address_raw', 'address', 'r.manual_street')} AS address, r.callback,
+              -- Правки координатора больше не отдельный слой: улица и время — данные человека (миграция 057).
+              NULL::text AS manual_street, NULL::text AS manual_schedule,
+              ${PERSON('hobby', 'hobby', 'r.hobby')} AS hobby, ${PERSON('profession', 'profession', 'r.profession')} AS profession,
+              ${PERSON('family_status', 'family_status', 'r.family_status')} AS family,
+              coalesce(r.fio, u.full_name) AS raw_fio, coalesce(r.phone, u.phone) AS raw_phone, r.phones AS raw_phones,
+              coalesce(r.age, u.age) AS raw_age, coalesce(r.place, u.location) AS raw_place,
+              u.schedule_raw AS raw_schedule, u.address_raw AS raw_address
          FROM requests r
          LEFT JOIN users u ON u.id = r.user_id
+         LEFT JOIN persons p ON p.id = r.person_id
         WHERE r.archived_at IS NULL
         ORDER BY coalesce(r.requested_at, r.created_at::date) DESC, r.id DESC`,
     );
-    return rows.map((r) => ({ ...r, phones: r.phones ?? [] }));
+    return rows.map(({ raw_fio, raw_phone, raw_phones, raw_age, raw_place, raw_schedule, raw_address, ...r }) => ({
+      ...r,
+      phones: r.phones ?? [],
+      raw: {
+        fio: raw_fio, phone: raw_phone, phones: raw_phones ?? [], age: raw_age, place: raw_place, schedule: raw_schedule, address: raw_address,
+      },
+    }));
   }
 
   async findById(id: number): Promise<RequestWithUser | null> {

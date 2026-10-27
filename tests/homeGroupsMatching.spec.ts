@@ -164,7 +164,8 @@ describe('«подобрать заново» и изменившиеся дан
     const s = service();
     await s.matching.run('a');
     expect((await active())[0]).toMatchObject({ group_id: g1 });
-    await db.query(`UPDATE requests SET place = 'Невский' WHERE id = $1`, [r]);
+    // Район — у человека заявки (миграция 057): правят его запись.
+    await db.query(`UPDATE persons p SET place = 'Невский' FROM requests r WHERE r.id = $1 AND p.id = r.person_id`, [r]);
     s.views.invalidate();
     expect((await itemOf(s, r)).proposal).toMatchObject({ dataChanged: true });
     await s.matching.run('a');

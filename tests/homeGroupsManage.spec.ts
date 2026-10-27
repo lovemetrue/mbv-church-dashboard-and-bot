@@ -205,11 +205,14 @@ describe('ведущий и соведущий — люди из «Людей»'
     expect((await g(id)).co_leader).toBe('Заявкин Олег');
   });
 
-  test('правка, которая не прошла проверку, карточку человеку из заявки не заводит', async () => {
+  test('правка, которая не прошла проверку, лишней карточки не заводит и группу не связывает', async () => {
     const id = await group();
     const r = (await db.query<{ id: number }>(`INSERT INTO requests (type, fio, status, origin) VALUES ('join_group', 'Заявкин Олег', 'Новая', 'таблица') RETURNING id`)).rows[0]!.id;
+    // Карточка у человека заявки уже есть (миграция 057): отказ не заводит ещё одну и не связывает группу.
+    const before = (await db.query('SELECT 1 FROM persons')).rowCount;
     expect(await manager().updateGroup(id, { fields: { coLeaderKey: `r${r}`, people: 'много' } }, 'a')).toMatchObject({ ok: false });
-    expect((await db.query('SELECT 1 FROM persons')).rowCount).toBe(0);
+    expect((await db.query('SELECT 1 FROM persons')).rowCount).toBe(before);
+    expect((await g(id)).co_leader_person_id).toBeNull();
   });
 
   test('ФИО, поправленное в «Людях», сразу видно в группе: имя берётся из карточки, а не из текста группы', async () => {

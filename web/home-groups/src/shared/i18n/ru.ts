@@ -411,7 +411,7 @@ export const ru = {
       saving: 'Сохраняем…',
       cancel: 'Отмена',
       remove: 'Убрать мою правку',
-      sourceAnketa: 'со слов человека (анкета)',
+      sourceAnketa: 'из карточки человека в «Людях»',
       sourceManual: 'поправил координатор',
       understood: (text: string) => `Понято как: ${text}`,
       notUnderstood: 'Система не смогла разобрать — запишите дни и время проще, например «пн, ср вечером»',

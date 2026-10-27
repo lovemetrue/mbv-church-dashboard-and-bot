@@ -39,13 +39,13 @@ export class StrangeRepo {
       let userId: number | null = null;
       let requestId: number | null = null;
       if (target.kind === 'request') {
-        const { rows } = await c.query<{ user_id: number | null }>(
-          'SELECT user_id::int AS user_id FROM requests WHERE id = $1 AND archived_at IS NULL', [target.id],
+        const { rows } = await c.query<{ user_id: number | null; person_id: number | null }>(
+          'SELECT user_id::int AS user_id, person_id::int AS person_id FROM requests WHERE id = $1 AND archived_at IS NULL', [target.id],
         );
         if (!rows[0]) { await c.query('ROLLBACK'); return { ok: false, error: 'not_found', message: 'Заявка не найдена.' }; }
         userId = rows[0].user_id;
-        // Человек из заявки: с регистрацией — это его регистрация, без неё — сама заявка (как в справочнике людей).
-        key = userId !== null ? `u${userId}` : `r${target.id}`;
+        // Метка — на человеке заявки (миграция 057): регистрация или карточка. «r» — только у старой заявки без человека.
+        key = userId !== null ? `u${userId}` : rows[0].person_id !== null ? `p${rows[0].person_id}` : `r${target.id}`;
         requestId = target.id;
       } else if (target.kind === 'user') {
         const { rowCount } = await c.query('SELECT 1 FROM users WHERE id = $1', [target.id]);
@@ -68,8 +68,10 @@ export class StrangeRepo {
         await c.query(
           `UPDATE placement_proposals SET status = 'superseded', decided_by = $3, decided_at = now()
             WHERE status = 'proposed'
-              AND request_id IN (SELECT id FROM requests WHERE archived_at IS NULL AND (($1::bigint IS NOT NULL AND user_id = $1) OR ($2::bigint IS NOT NULL AND id = $2 AND user_id IS NULL)))`,
-          [userId, requestId ?? (key.startsWith('r') ? Number(key.slice(1)) : null), actor],
+              AND request_id IN (SELECT id FROM requests WHERE archived_at IS NULL AND (($1::bigint IS NOT NULL AND user_id = $1)
+                OR ($4::bigint IS NOT NULL AND person_id = $4) OR ($2::bigint IS NOT NULL AND id = $2 AND user_id IS NULL AND person_id IS NULL)))`,
+          // Человек — регистрация («u»), карточка («p», все его заявки, миграция 057) или старая заявка без человека («r»).
+          [userId, key.startsWith('r') ? Number(key.slice(1)) : null, actor, key.startsWith('p') ? Number(key.slice(1)) : null],
         );
       } else {
         await c.query('DELETE FROM strange_marks WHERE person_key = $1', [key]);

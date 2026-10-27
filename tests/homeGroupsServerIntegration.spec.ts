@@ -172,12 +172,15 @@ describe('представления из живых репозиториев', 
     });
     expect(byFio('Борис Калинин')).toMatchObject({ key: `u${s.mx}`, from: 'Бот · MAX', mdgLabel: 'Откроет свою группу', requestId: null });
     expect(byFio('Из формы')).toMatchObject({ from: 'Форма регистрации', mdgLabel: 'Уже в группе' });
+    // Человек заявки из таблицы — его карточка в «Людях» (миграция 057), с заявкой и её состоянием.
     expect(byFio('Станислав Ким')).toMatchObject({
-      key: `r${s.tableRequestId}`, from: 'Таблица', mdgLabel: 'Заявка: нужна помощь в сопоставлении', requestId: s.tableRequestId,
+      key: expect.stringMatching(/^p\d+$/), from: 'Таблица', mdgLabel: 'Заявка: нужна помощь в сопоставлении', requestId: s.tableRequestId,
     });
-    // Заявка участника отдельной строкой не дублируется, убранная и «хочет открыть» в людях не видны.
+    // Заявка участника отдельной строкой не дублируется, человек убранной заявки в «Людях» не появляется; человек
+    // «хочет открыть» — есть: «Люди» — все, кто связан с церковью, а не только ищущие группу.
     expect(people.items.filter((p) => p.fio === 'Дарья Ефимова')).toHaveLength(1);
-    expect(people.items.some((p) => p.fio === 'Убранная' || p.fio === 'Хочет открыть')).toBe(false);
+    expect(people.items.some((p) => p.fio === 'Убранная')).toBe(false);
+    expect(people.items.some((p) => p.fio === 'Хочет открыть')).toBe(true);
   });
 
   test('координаторы: убранный не виден, группы и участники считаются по имени', async () => {

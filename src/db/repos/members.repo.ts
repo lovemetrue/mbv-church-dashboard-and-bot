@@ -111,8 +111,8 @@ export class MembersRepo {
 
   /** Уже направлен в эту группу через сервис (заявка «Исполнена»): второй раз вручную его вносить не нужно. */
   private async placedIn(c: Pool | import('pg').PoolClient, groupId: number, ref: PersonRef): Promise<boolean> {
-    if (ref.kind === 'p') return false;
-    const where = ref.kind === 'u' ? 'user_id = $2' : 'id = $2';
+    // У карточки заявки тоже бывают (миграция 057): человек из таблицы церкви, направленный через сервис.
+    const where = ref.kind === 'u' ? 'user_id = $2' : ref.kind === 'p' ? 'person_id = $2' : 'id = $2';
     const { rowCount } = await c.query(
       `SELECT 1 FROM requests WHERE group_id = $1 AND status = 'Исполнена' AND type = 'join_group' AND archived_at IS NULL AND ${where}`,
       [groupId, ref.id],
@@ -165,6 +165,15 @@ export class MembersRepo {
   ): Promise<AddResult> {
     const group = await c.query('SELECT 1 FROM groups WHERE id = $1 AND archived_at IS NULL FOR SHARE', [groupId]);
     if ((group.rowCount ?? 0) === 0) return { ok: false, reason: 'no_group' };
+    // Старый ключ «r» (человек заявки): в состав вносится сам человек — регистрация или карточка (миграция 057).
+    if (ref.kind === 'r') {
+      const { rows } = await c.query<{ user_id: number | null; person_id: number | null }>(
+        'SELECT user_id::int AS user_id, person_id::int AS person_id FROM requests WHERE id = $1 AND archived_at IS NULL', [ref.id],
+      );
+      const r = rows[0];
+      if (r?.user_id != null) ref = { kind: 'u', id: r.user_id };
+      else if (r?.person_id != null) ref = { kind: 'p', id: r.person_id };
+    }
     if (!(await this.personExists(c, ref))) return { ok: false, reason: 'no_person' };
     if (await this.placedIn(c, groupId, ref)) return { ok: false, reason: 'duplicate' };
     const col = ref.kind === 'u' ? 'user_id' : ref.kind === 'r' ? 'request_id' : 'person_id';

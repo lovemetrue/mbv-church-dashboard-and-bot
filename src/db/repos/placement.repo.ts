@@ -2,7 +2,7 @@ import type { Pool, PoolClient } from 'pg';
 import { groupCode } from '../../core/groups.js';
 import { PASSING_STATUSES } from '../../core/matching.js';
 import { normalizePhone } from '../../core/phone.js';
-import { writeToUser, type ContactPatch } from './contacts.repo.js';
+import { humanOfRequest, readHuman, writeToHuman, type ContactPatch } from './contacts.repo.js';
 import { diffSnapshots, parseSnapshot, type InputSnapshot } from '../../home-groups/plan/signature.js';
 
 /**
@@ -26,14 +26,15 @@ const EDIT_LIMITS: Record<keyof RequestEdit, number> = {
   fio: 200, phone: 40, age: 60, place: 200, note: 1000, address: 200, schedule: 200, hobby: 200, profession: 200, family: 200,
   source: 200, ministry: 200, extra: 2000, recommended: 200, recommendedAt: 10, attendance: 200,
 };
-// Адрес и время — правка координатора (`manual_*`): она главнее ответа анкеты, так же как в «Параметрах подбора».
-// Поля из таблицы церкви (источник, служение, рекомендация…) — свойство самой заявки: `writeToUser` берёт из правки
-// только поля человека, поэтому в регистрацию и другие его заявки они не уходят. «Ходит в группу» (текст из таблицы)
-// здесь не правится: куда человек ходит, задаёт утверждение в группу, и второе поле о том же разошлось бы с ним.
-const EDIT_COLUMNS: Record<keyof RequestEdit, string> = {
-  fio: 'fio', phone: 'phone', age: 'age', place: 'place', note: 'note', address: 'manual_street', schedule: 'manual_schedule',
-  hobby: 'hobby', profession: 'profession', family: 'family_status',
-  source: 'source', ministry: 'ministry', extra: 'extra', recommended: 'recommended', recommendedAt: 'recommended_at',
+// Поля человека (ФИО, телефон, возраст, район, адрес, время, хобби, профессия, семья) пишутся в его запись — регистрацию
+// или карточку (миграция 057): заявка на него ссылается. Комментарий и поля из таблицы церкви (источник, служение,
+// рекомендация…) — свойство самой заявки. «Ходит в группу» (текст из таблицы) здесь не правится: куда человек ходит,
+// задаёт утверждение в группу, и второе поле о том же разошлось бы с ним.
+const HUMAN_FIELDS = ['fio', 'phone', 'age', 'place', 'address', 'schedule', 'hobby', 'profession', 'family'] as const;
+type HumanField = (typeof HUMAN_FIELDS)[number];
+const isHumanField = (k: keyof RequestEdit): k is HumanField => (HUMAN_FIELDS as readonly string[]).includes(k);
+const REQUEST_EDIT_COLUMNS: Record<Exclude<keyof RequestEdit, HumanField>, string> = {
+  note: 'note', source: 'source', ministry: 'ministry', extra: 'extra', recommended: 'recommended', recommendedAt: 'recommended_at',
   attendance: 'attendance',
 };
 
@@ -295,36 +296,35 @@ export class PlacementRepo {
       if (k === 'recommendedAt' && t !== '' && !isIsoDate(t)) return fail('bad_request', 'Дата рекомендации — в виде 2026-08-27.');
       clean[k] = t === '' ? null : t;
     }
+    // ФИО — у человека в «Людях», без него записи не бывает.
+    if (keys.includes('fio') && !clean.fio) return fail('bad_request', 'ФИО не может быть пустым.');
 
     return this.tx(async (c) => {
       const state = await this.lockOpenRequest(c, requestId);
       if (PlacementRepo.isFailure(state)) return state;
-      const { rows } = await c.query<Record<keyof RequestEdit, string | null> & { user_id: number | null }>(
-        `SELECT fio, phone, age, place, note, manual_street AS address, manual_schedule AS schedule, hobby, profession, family_status AS family,
-                source, ministry, extra, recommended, recommended_at AS "recommendedAt", attendance, user_id
-           FROM requests WHERE id = $1`, [requestId],
+      const human = await humanOfRequest(c, requestId);
+      if (!human && keys.some(isHumanField)) return fail('not_found', 'У заявки нет человека в «Людях»: обновите страницу.');
+      const { rows } = await c.query<Record<Exclude<keyof RequestEdit, HumanField>, string | null>>(
+        `SELECT note, source, ministry, extra, recommended, recommended_at AS "recommendedAt", attendance FROM requests WHERE id = $1`, [requestId],
       );
-      const old = rows[0]!;
+      const old: Partial<Record<keyof RequestEdit, string | null>> = { ...rows[0]!, ...(human ? await readHuman(c, human) : {}) };
       const changed = keys.filter((k) => (clean[k] ?? null) !== (old[k] ?? null));
       if (changed.length === 0) return { ok: true } as const;
-      const sets = changed.map((k, i) => `${EDIT_COLUMNS[k]} = $${i + 2}`);
-      const values = changed.map((k) => clean[k] ?? null);
-      // Список для ссылки «позвонить» держим в согласии с телефоном.
-      if (changed.includes('phone')) {
-        sets.push(`phones = $${values.length + 2}::text[]`);
-        values.push((clean.phone ? [clean.phone] : []) as never);
+      const own = changed.filter((k): k is Exclude<keyof RequestEdit, HumanField> => !isHumanField(k));
+      if (own.length > 0) {
+        await c.query(
+          `UPDATE requests SET ${own.map((k, i) => `${REQUEST_EDIT_COLUMNS[k]} = $${i + 2}`).join(', ')},
+                  origin = CASE WHEN origin = 'таблица' THEN 'ui' ELSE origin END
+            WHERE id = $1`,
+          [requestId, ...own.map((k) => clean[k] ?? null)],
+        );
       }
-      await c.query(
-        `UPDATE requests SET ${sets.join(', ')},
-                origin = CASE WHEN origin = 'таблица' THEN 'ui' ELSE origin END
-          WHERE id = $1`,
-        [requestId, ...values],
-      );
-      // У человека есть регистрация: те же данные там и в других его заявках, иначе карточка в «Людях» разойдётся с заявкой.
-      if (old.user_id !== null) {
-        const shared: ContactPatch = {};
-        for (const k of changed) if (k !== 'note') (shared as Record<string, string | null>)[k] = clean[k] ?? null;
-        await writeToUser(c, old.user_id, shared);
+      const forHuman: ContactPatch = {};
+      for (const k of changed) if (isHumanField(k)) (forHuman as Record<string, string | null>)[k] = clean[k] ?? null;
+      if (human && Object.keys(forHuman).length > 0) {
+        await writeToHuman(c, human, forHuman);
+        // Правка через заявку — правка заявки: из таблицы она переходит в «ui», и повторный перенос таблицы её не затрёт.
+        await c.query(`UPDATE requests SET origin = 'ui' WHERE id = $1 AND origin = 'таблица'`, [requestId]);
       }
       await this.audit(c, actor, 'request.edit', requestId, {}, { fields: changed }, null);
       return { ok: true } as const;
@@ -544,23 +544,21 @@ export class PlacementRepo {
     return this.tx(async (c) => {
       const state = await this.lockOpenRequest(c, requestId);
       if (PlacementRepo.isFailure(state)) return state;
-      const { rows } = await c.query<{ manual_street: string | null; manual_schedule: string | null }>(
-        'SELECT manual_street, manual_schedule FROM requests WHERE id = $1', [requestId],
-      );
-      const old = rows[0]!;
-      const changedStreet = street !== undefined && street !== old.manual_street;
-      const changedSchedule = schedule !== undefined && schedule !== old.manual_schedule;
+      // Улица и удобное время — данные человека (миграция 057): правка в подборе пишет в его запись.
+      const human = await humanOfRequest(c, requestId);
+      if (!human) return fail('not_found', 'У заявки нет человека в «Людях»: обновите страницу.');
+      const now = await readHuman(c, human);
+      const changedStreet = street !== undefined && street !== now.address;
+      const changedSchedule = schedule !== undefined && schedule !== now.schedule;
       if (!changedStreet && !changedSchedule) return { ok: true } as const;
-      await c.query(
-        `UPDATE requests
-            SET manual_street = CASE WHEN $2 THEN $3 ELSE manual_street END,
-                manual_schedule = CASE WHEN $4 THEN $5 ELSE manual_schedule END,
-                origin = CASE WHEN origin = 'таблица' THEN 'ui' ELSE origin END
-          WHERE id = $1`,
-        [requestId, changedStreet, street ?? null, changedSchedule, schedule ?? null],
-      );
+      await writeToHuman(c, human, {
+        ...(changedStreet ? { address: street ?? null } : {}),
+        ...(changedSchedule ? { schedule: schedule ?? null } : {}),
+      });
+      // Как любая правка заявки: из таблицы — под управление интерфейса, иначе повторный перенос таблицы её затрёт.
+      await c.query(`UPDATE requests SET origin = 'ui' WHERE id = $1 AND origin = 'таблица'`, [requestId]);
       await this.audit(c, actor, 'request.params', requestId,
-        { street: old.manual_street !== null, schedule: old.manual_schedule !== null },
+        { street: now.address !== null, schedule: now.schedule !== null },
         { street: changedStreet ? street !== null : undefined, schedule: changedSchedule ? schedule !== null : undefined },
         null);
       return { ok: true } as const;

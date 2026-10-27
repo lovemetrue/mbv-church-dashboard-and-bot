@@ -107,7 +107,8 @@ describe('помощник: разбор непонятных заявок', () 
     const svc = compose(llm);
     await svc.assistant.setEnabled(true, 'boss');
     await svc.assistant.run('boss');
-    await db.query(`UPDATE requests SET place = 'совсем другое непонятное место' WHERE id = $1`, [r]);
+    // Место — у человека заявки (миграция 057): правят его запись.
+    await db.query(`UPDATE persons p SET place = 'совсем другое непонятное место' FROM requests r WHERE r.id = $1 AND p.id = r.person_id`, [r]);
     expect((await svc.views()).requests.assistant.pending).toBe(1);
   });
 

@@ -13,6 +13,10 @@ beforeAll(async () => { db = await setupTestDb(); repo = new GendersRepo(db); })
 afterAll(async () => { await db.end(); });
 beforeEach(async () => { await truncateAll(db); });
 
+/** Человек заявки в «Людях»: у заявки без регистрации — её карточка (миграция 057). */
+const keyOfRequest = async (id: number): Promise<string> =>
+  (await db.query<{ key: string }>(`SELECT CASE WHEN user_id IS NOT NULL THEN 'u' || user_id ELSE 'p' || person_id END AS key FROM requests WHERE id = $1`, [id])).rows[0]!.key;
+
 async function request(userId: number | null = null): Promise<number> {
   const { rows } = await db.query<{ id: number }>(
     `INSERT INTO requests (type, user_id, fio, status, origin) VALUES ('join_group', $1, 'Саша Ким', 'Новая', 'ui') RETURNING id`,
@@ -27,15 +31,15 @@ const proposal = async (requestId: number) => {
 const proposalStatus = async (requestId: number) => (await db.query('SELECT status FROM placement_proposals WHERE request_id = $1', [requestId])).rows.map((r) => r.status);
 
 describe('пол человека в базе', () => {
-  test('у заявки с регистрацией пол ложится на регистрацию, без неё — на заявку; null снимает', async () => {
+  test('у заявки с регистрацией пол ложится на регистрацию, без неё — на карточку её человека; null снимает', async () => {
     const u = await seedUser(db, { id: '1' });
     const withUser = await request(u);
     const noUser = await request();
     expect(await repo.set({ kind: 'request', id: withUser }, 'ж', 'anna')).toEqual({ ok: true });
     expect(await repo.set({ kind: 'request', id: noUser }, 'м', 'anna')).toEqual({ ok: true });
-    expect(await repo.all()).toEqual(new Map([[`u${u}`, { gender: 'ж', by: 'anna' }], [`r${noUser}`, { gender: 'м', by: 'anna' }]]));
+    expect(await repo.all()).toEqual(new Map([[`u${u}`, { gender: 'ж', by: 'anna' }], [await keyOfRequest(noUser), { gender: 'м', by: 'anna' }]]));
     expect(await repo.set({ kind: 'user', id: u }, null, 'anna')).toEqual({ ok: true });
-    expect([...(await repo.all()).keys()]).toEqual([`r${noUser}`]);
+    expect([...(await repo.all()).keys()]).toEqual([await keyOfRequest(noUser)]);
   });
 
   test('смена пола снимает закреплённое предложение группы: оно могло быть в группу другого пола', async () => {

@@ -246,16 +246,18 @@ function paramInfo(manual: string | null | undefined, anketa: string | null | un
  * Нужна, чтобы координатор мог сверить, правильно ли система поняла карточку. Пустое не показываем.
  */
 function originalFields(r: DashboardRequest): OriginalField[] {
+  // Снимок самой заявки (миграция 057): текущие данные человека — в его записи, а здесь то, что пришло.
+  const raw = r.raw;
   const rows: [string, string | null][] = [
-    ['ФИО', nonBlank(r.fio)],
-    ['Телефон', displayPhone(r.phones, r.phone)],
-    ['Возраст', nonBlank(r.age)],
-    ['Район и метро (как написал)', nonBlank(r.place)],
+    ['ФИО', nonBlank(raw.fio)],
+    ['Телефон', displayPhone(raw.phones, raw.phone)],
+    ['Возраст', nonBlank(raw.age)],
+    ['Район и метро (как написал)', nonBlank(raw.place)],
     ['Церковь', nonBlank(r.church)],
     ['Ответ про малую группу', r.mdg_status ? (MDG_LABELS[r.mdg_status] ?? null) : null],
     ['Кто ведущий', nonBlank(r.leader_name)],
-    ['Удобные дни и время', nonBlank(r.schedule)],
-    ['Улица и дом', nonBlank(r.address)],
+    ['Удобные дни и время', nonBlank(raw.schedule)],
+    ['Улица и дом', nonBlank(raw.address)],
     ['Вопрос или сообщение', nonBlank(r.text)],
   ];
   return rows.filter((row): row is [string, string] => row[1] !== null).map(([label, value]) => ({ label, value }));
@@ -417,7 +419,12 @@ export function buildViewsWithPlan(
     const guessed = genderFromFio(fio);
     return { value: guessed, by: guessed ? 'fio' : null };
   };
-  const requestKey = (r: DashboardRequest): string => (r.user_id !== null ? `u${r.user_id}` : `r${r.id}`);
+  /**
+   * Человек заявки в «Людях»: регистрация или карточка (миграция 057). «r…» — только у старой удалённой заявки без
+   * человека: такие в выдачу не попадают, ключ на всякий случай остаётся однозначным.
+   */
+  const requestKey = (r: Pick<DashboardRequest, 'id' | 'user_id' | 'person_id'>): string =>
+    r.user_id !== null ? `u${r.user_id}` : r.person_id != null ? `p${r.person_id}` : `r${r.id}`;
 
   /** Удобное время человека: подходящие дни и время суток и то, что он назвал неподходящим («кроме воскресенья»). */
   const humanWhen = (text: string | null): HumanWhen => {
@@ -529,36 +536,20 @@ export function buildViewsWithPlan(
   };
 
   // ── метка «Странный человек» ──────────────────────────────────────────────
-  // Метка лежит на ключе человека (u12, r345, p7), а записей на одного человека бывает несколько (регистрация, заявка из
-  // таблицы, карточка): поэтому метка действует и на тот же телефон. Так её не потерять, если заявку завели по-другому.
+  // Метка лежит на человеке (u12, p7), а у заявки человек — ссылкой (миграция 057). Угадывания по телефону больше нет:
+  // одного человека с двумя записями склеила миграция, а метка не должна переходить на чужого с тем же номером.
   const strangeMarks = input.strange ?? new Map<string, StrangeMarkRow>();
+  /** Последние десять цифр номера: по ним ответ ведущего боту находит его группу (ниже). */
   const phoneIdent = (phone: string | null | undefined): string | null => {
     const digits = (phone ?? '').replace(/\D/g, '');
     return digits.length >= 10 ? digits.slice(-10) : null;
   };
-  const phonesOfKey = new Map<string, string[]>();
-  const addPhones = (key: string, phones: readonly (string | null | undefined)[]) => {
-    const idents = phones.map(phoneIdent).filter((x): x is string => x !== null);
-    if (idents.length > 0) phonesOfKey.set(key, [...(phonesOfKey.get(key) ?? []), ...idents]);
-  };
-  for (const u of input.participants) addPhones(`u${u.id}`, [u.phone]);
-  for (const p of input.persons ?? []) addPhones(`p${p.id}`, [p.phone]);
-  for (const r of input.requests) addPhones(r.user_id !== null ? `u${r.user_id}` : `r${r.id}`, [r.phone, ...r.phones]);
-  const strangeByPhone = new Map<string, StrangeMarkRow>();
-  for (const [key, row] of strangeMarks) for (const ident of phonesOfKey.get(key) ?? []) strangeByPhone.set(ident, row);
   const toStrange = (row: StrangeMarkRow): StrangeMark => ({ by: row.by, at: new Date(row.at).toISOString(), note: row.note });
-  const strangeOf = (key: string, phones: readonly (string | null | undefined)[]): StrangeMark | null => {
+  const strangeOf = (key: string): StrangeMark | null => {
     const own = strangeMarks.get(key);
-    if (own) return toStrange(own);
-    for (const phone of phones) {
-      const ident = phoneIdent(phone);
-      const byPhone = ident !== null ? strangeByPhone.get(ident) : undefined;
-      if (byPhone) return toStrange(byPhone);
-    }
-    return null;
+    return own ? toStrange(own) : null;
   };
-  const strangeOfRequest = (r: DashboardRequest): StrangeMark | null =>
-    strangeOf(r.user_id !== null ? `u${r.user_id}` : `r${r.id}`, [r.phone, ...r.phones]);
+  const strangeOfRequest = (r: DashboardRequest): StrangeMark | null => strangeOf(requestKey(r));
 
   const joinById = new Map(joinRequests.map((r) => [r.id, r]));
   // Отпечаток данных заявки и закрепление: предложение, полученное по другим данным, устарело —
@@ -706,7 +697,7 @@ export function buildViewsWithPlan(
     const finalBrief = bucket === 'done' && r.group_id !== null ? brief(r.group_id) : null;
     requestItems.push({
       id: r.id,
-      personKey: r.user_id !== null ? `u${r.user_id}` : `r${r.id}`,
+      personKey: requestKey(r),
       strange: strangeOfRequest(r),
       gender: genderOf(requestKey(r), r.fio),
       contactsHidden: false,
@@ -831,7 +822,7 @@ export function buildViewsWithPlan(
     prospects: r.type === 'lead_group' && otherState(r) === 'open' ? prospectsOf(r) : null,
     ownGroup: ownGroupOf(r),
     // Аннулированная заявка «хочу в группу» без регистрации — тоже человек в «Людях» (ключ «r»).
-    personKey: r.user_id !== null ? `u${r.user_id}` : r.type === 'join_group' ? `r${r.id}` : null,
+    personKey: r.user_id !== null || r.person_id != null ? requestKey(r) : null,
     outcome: outcomeOf(r),
   });
   const otherOpen = otherAll.filter((r) => otherState(r) === 'open').map(otherItem)
@@ -868,19 +859,19 @@ export function buildViewsWithPlan(
     addMember(m.group_id, {
       kind: 'manual', id: m.id, personKey: m.personKey, fio: nonBlank(m.full_name) ?? 'Без имени',
       phone: nonBlank(formatPhone(nonBlank(m.phone))), date: validIsoDate(m.joined_on), note: nonBlank(m.note), alsoIn: [],
-      strange: strangeOf(m.personKey, [m.phone]),
+      strange: strangeOf(m.personKey),
     });
   }
   for (const r of joinRequests) {
     if (r.status !== DONE || r.group_id === null) continue;
-    const key = r.user_id !== null ? `u${r.user_id}` : `r${r.id}`;
+    const key = requestKey(r);
     // Внесён и вручную, и утверждён: показываем одну строку, ручная точнее (в ней дата вступления).
     if (manualKeys.get(r.group_id)?.has(key)) continue;
     const approved = (auditByRequest.get(r.id) ?? []).filter((a) => a.action === 'request.approve').at(-1);
     addMember(r.group_id, {
       kind: 'placed', id: r.id, personKey: key, fio: nonBlank(r.fio) ?? 'Без имени', phone: displayPhone(r.phones, r.phone),
       date: approved?.at ? localIsoDate(approved.at, timeZone) : null, note: null, alsoIn: [],
-      strange: strangeOf(key, [r.phone, ...r.phones]),
+      strange: strangeOf(key),
     });
   }
   // «Есть и в другой группе»: тот же человек по телефону, а без телефона — по ключу справочника.
@@ -920,9 +911,12 @@ export function buildViewsWithPlan(
     label: r.type === 'join_group' ? 'Заявка в группу' : (TYPE_LABEL[r.type as OtherItem['type']] ?? 'Обращение'),
     state: otherState(r),
   });
-  const requestsByUser = new Map<number, PersonItem['requests']>();
+  // Заявки человека по его ключу (регистрация или карточка), свежие первыми.
+  const requestsByKey = new Map<string, PersonItem['requests']>();
   for (const r of [...input.requests].sort((a, b) => b.id - a.id)) {
-    if (r.user_id !== null) requestsByUser.set(r.user_id, [...(requestsByUser.get(r.user_id) ?? []), requestRef(r)]);
+    if (r.user_id === null && r.person_id == null) continue;
+    const key = requestKey(r);
+    requestsByKey.set(key, [...(requestsByKey.get(key) ?? []), requestRef(r)]);
   }
 
   // ── ответ ведущего боту ───────────────────────────────────────────────────
@@ -995,10 +989,12 @@ export function buildViewsWithPlan(
   });
 
   // ── справочник: люди ──────────────────────────────────────────────────────
-  const joinRequestByUser = new Map<number, number>();
+  // Заявка в группу человека: несколько — показываем самую свежую (больший id).
+  const joinRequestByKey = new Map<string, DashboardRequest>();
   for (const r of joinRequests) {
-    // Несколько заявок на одного человека: показываем самую свежую (больший id).
-    if (r.user_id !== null && r.id > (joinRequestByUser.get(r.user_id) ?? 0)) joinRequestByUser.set(r.user_id, r.id);
+    if (r.user_id === null && r.person_id == null) continue;
+    const key = requestKey(r);
+    if (r.id > (joinRequestByKey.get(key)?.id ?? 0)) joinRequestByKey.set(key, r);
   }
 
   // Участники команды — люди из «Людей» (миграция 056): в карточке человека видно, что он в команде и с какими ролями.
@@ -1009,14 +1005,14 @@ export function buildViewsWithPlan(
   for (const u of input.participants) {
     people.push({
       key: `u${u.id}`,
-      strange: strangeOf(`u${u.id}`, [u.phone]),
+      strange: strangeOf(`u${u.id}`),
       gender: genderOf(`u${u.id}`, u.full_name),
       team: teamOf(`u${u.id}`),
       contactsHidden: false,
       personId: null,
       groups: groupCodesOf(`u${u.id}`),
       leads: leadsOf(`u${u.id}`),
-      requests: requestsByUser.get(u.id) ?? [],
+      requests: requestsByKey.get(`u${u.id}`) ?? [],
       fio: nonBlank(u.full_name) ?? 'Без имени',
       phone: nonBlank(formatPhone(nonBlank(u.phone))),
       ageLabel: nonBlank(u.age),
@@ -1034,13 +1030,14 @@ export function buildViewsWithPlan(
       registrationNo: u.registration_no ?? null,
       mdgLabel: (u.mdg_status && MDG_LABELS[u.mdg_status]) || MDG_NO_ANSWER,
       date: localIsoDate(new Date(u.registered_at), options.timeZone ?? DEFAULT_TIME_ZONE),
-      requestId: joinRequestByUser.get(u.id) ?? null,
+      requestId: joinRequestByKey.get(`u${u.id}`)?.id ?? null,
       // Дата по поясу кампании, а не toISOString(): выдача в половине первого ночи по Москве иначе ушла бы во вчера.
       kitIssuedOn: u.kit_issued_at ? localIsoDate(new Date(u.kit_issued_at), options.timeZone ?? DEFAULT_TIME_ZONE) : null,
     });
   }
+  // Старая заявка без человека (до миграции 057 и без карточки) — человек «из заявки», как раньше.
   for (const r of joinRequests) {
-    if (r.user_id !== null) continue;
+    if (r.user_id !== null || r.person_id != null) continue;
     const pr = planRequests.get(r.id)!;
     people.push({
       key: `r${r.id}`,
@@ -1071,18 +1068,21 @@ export function buildViewsWithPlan(
       kitIssuedOn: null,
     });
   }
-  // Карточки, внесённые вручную (кого нет ни среди зарегистрированных, ни среди заявок).
+  // Карточки: внесённые вручную, заведённые по заявке без регистрации, участники команды и ведущие (миграции 056, 057).
   for (const p of input.persons ?? []) {
+    const key = `p${p.id}`;
+    // Человек с заявкой в группу: «откуда» и «Малая группа» — по ней, как у регистрации.
+    const join = joinRequestByKey.get(key);
     people.push({
       key: `p${p.id}`,
-      strange: strangeOf(`p${p.id}`, [p.phone]),
+      strange: strangeOf(`p${p.id}`),
       gender: genderOf(`p${p.id}`, p.full_name),
       team: teamOf(`p${p.id}`),
       contactsHidden: false,
       personId: p.id,
       groups: groupCodesOf(`p${p.id}`),
       leads: leadsOf(`p${p.id}`),
-      requests: [],
+      requests: requestsByKey.get(key) ?? [],
       fio: nonBlank(p.full_name) ?? 'Без имени',
       phone: nonBlank(formatPhone(nonBlank(p.phone))),
       ageLabel: nonBlank(p.age),
@@ -1093,12 +1093,12 @@ export function buildViewsWithPlan(
       hobby: nonBlank(p.hobby), profession: nonBlank(p.profession), family: nonBlank(p.family), note: nonBlank(p.note),
       church: null, leaderName: null, preferredContact: null,
       addressGeo: geoStateOf(p.address),
-      from: 'Внесён вручную',
+      from: join ? sourceLabel(join.origin, join.source) : 'Внесён вручную',
       userId: null,
       registrationNo: null,
-      mdgLabel: 'Не спрошено',
-      date: localIsoDate(new Date(p.created_at), options.timeZone ?? DEFAULT_TIME_ZONE),
-      requestId: null,
+      mdgLabel: join ? `Заявка: ${BUCKET_NAMES[bucketById.get(join.id)!]}` : 'Не спрошено',
+      date: join ? validIsoDate(join.date) : localIsoDate(new Date(p.created_at), options.timeZone ?? DEFAULT_TIME_ZONE),
+      requestId: join?.id ?? null,
       kitIssuedOn: null,
     });
   }

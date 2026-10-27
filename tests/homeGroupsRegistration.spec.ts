@@ -110,7 +110,7 @@ describe('заявка из «+ Создать» уведомляет служи
     expect(out.ok).toBe(true);
   });
 
-  test('адрес, удобные дни и время, хобби, профессия и семья сохраняются в заявку и видны подбору', async () => {
+  test('адрес, удобные дни и время, хобби, профессия и семья — у человека заявки (его карточки) и видны подбору', async () => {
     const out = await creator({}).request({ fields: {
       fio: 'Анна Смирнова', type: 'join_group', status: 'Новая',
       address: 'Савушкина 5', days: 'ср,пн', time: 'вечер', hobby: 'хор', profession: 'врач', family: 'замужем, двое детей',
@@ -120,9 +120,12 @@ describe('заявка из «+ Создать» уведомляет служи
     expect(rows[0]).toEqual({
       manual_street: 'Савушкина 5', manual_schedule: 'пн, ср вечером', hobby: 'хор', profession: 'врач', family_status: 'замужем, двое детей',
     });
-    // Подбор и карточка читают те же поля, что правка «Править данные».
+    // Форма — снимок «как пришла»; заявка получила человека (карточку), и данные живут у него (миграция 057).
+    const card = (await db.query('SELECT p.full_name, p.address, p.schedule, p.hobby FROM requests r JOIN persons p ON p.id = r.person_id WHERE r.id = $1', [out.id])).rows[0];
+    expect(card).toEqual({ full_name: 'Анна Смирнова', address: 'Савушкина 5', schedule: 'пн, ср вечером', hobby: 'хор' });
+    // Подбор и карточка читают данные человека — те же, что правит «Править данные».
     const request = (await new RequestsRepo(db).forDashboard()).find((r) => r.id === out.id);
-    expect(request).toMatchObject({ manual_street: 'Савушкина 5', manual_schedule: 'пн, ср вечером', hobby: 'хор', profession: 'врач', family: 'замужем, двое детей' });
+    expect(request).toMatchObject({ address: 'Савушкина 5', schedule: 'пн, ср вечером', hobby: 'хор', profession: 'врач', family: 'замужем, двое детей' });
   });
 
   test('неверная форма не создаёт заявку и никого не уведомляет', async () => {

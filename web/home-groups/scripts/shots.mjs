@@ -6,6 +6,8 @@
 //   HG_CHROMIUM=/путь/к/chrome npm run shots   (если браузер лежит в другом месте)
 //   npm run shots:guide                        снимки для инструкции координаторам (docs/инструкция-координатора/):
 //                                              только экраны GUIDE_SHOTS, с красными рамками и номерами «куда нажать»
+//   npm run shots:dist                         снимки для инструкции распределителям (docs/инструкция-распределителя/):
+//                                              экраны DIST_SHOTS, рамки со стрелками и номерами
 import { execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { mkdirSync, mkdtempSync, readFileSync, existsSync, statSync, rmSync } from 'node:fs';
@@ -16,8 +18,11 @@ import { chromium } from 'playwright-core';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GUIDE = process.argv.includes('--guide');
+const DIST = process.argv.includes('--dist');
 const outArg = process.argv.slice(2).find((a) => !a.startsWith('--'));
-const outDir = resolve(outArg ?? (GUIDE ? join(root, '../../docs/инструкция-координатора') : join(root, 'shots')));
+const outDir = resolve(
+  outArg ?? (DIST ? join(root, '../../docs/инструкция-распределителя') : GUIDE ? join(root, '../../docs/инструкция-координатора') : join(root, 'shots')),
+);
 const chromePath = process.env.HG_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 mkdirSync(outDir, { recursive: true });
 
@@ -372,6 +377,299 @@ SCREENS.push(
 );
 const GUIDE_SHOTS = SCREENS.filter((s) => s.name.startsWith('guide-')).map((s) => [s.name, 1280, 'light']);
 
+/**
+ * Инструкция распределителю (docs/ИНСТРУКЦИЯ-РАСПРЕДЕЛИТЕЛЯ.md): все снимки от имени распределителя Анны Л. Элемент mark —
+ * селектор или { sel, from, row, tight }: from — откуда идёт стрелка к рамке (left, right, top, bottom; там же стоит
+ * номер), row — обвести у dt строку «название — значение» по тексту, tight — обвести текст элемента, а не всю его ширину.
+ * bottom — прокрутить страницу до конца. callback — номера заявок, которые демо покажет в «Перезвонить»
+ * (fixtures/build.ts). fakeMap — вместо Яндекс.Карт схема из FAKE_YMAPS: настоящей карте в демо нужен ключ и сеть.
+ */
+const PREVIEW = 'role=dialog[name="Группа ДГ-0012"]';
+const CLOSE = '[role=dialog][aria-modal=true]';
+const PROPOSAL = `${REQ} >> role=button[name="Карточка группы ДГ-0012"] >> xpath=ancestor::*[contains(., "уверенность")][1]`;
+const MAP = '[role=region][aria-label="Карта домашних групп"]';
+SCREENS.push(
+  {
+    name: 'dist-01-requests',
+    as: 'distributor',
+    url: '/?tab=requests',
+    ready: '[aria-label="Список заявок"]',
+    mark: [
+      { sel: '[role=tablist][aria-label="Разделы"] >> role=tab[name=/^Заявки/]', from: 'bottom' },
+      { sel: 'role=group[name="Отбор списка заявок"] >> internal:label="В работе у"', from: 'right' },
+      { sel: 'ul[aria-label="Список заявок"] li:has-text("Мария Соколова")', from: 'right' },
+      { sel: 'role=button[name="Выйти"]', from: 'bottom' },
+    ],
+  },
+  {
+    name: 'dist-02-take',
+    as: 'distributor',
+    url: '/?tab=requests&req=1',
+    ready: REQ,
+    scroll: `${REQ} >> text=Итог звонка`,
+    mark: [{ sel: `${REQ} >> internal:label="В работе у"`, from: 'left' }],
+  },
+  {
+    name: 'dist-03-call',
+    as: 'distributor',
+    url: '/?tab=requests&req=1',
+    ready: REQ,
+    mark: [
+      { sel: `${REQ} >> role=link[name=/^Позвонить/]`, from: 'bottom' },
+      { sel: PROPOSAL, from: 'left' },
+      { sel: `${REQ} >> role=button[name="Карточка группы ДГ-0012"]`, from: 'left' },
+    ],
+  },
+  {
+    name: 'dist-04-result',
+    as: 'distributor',
+    url: '/?tab=requests&req=1',
+    ready: REQ,
+    scroll: `${REQ} >> text=Странный человек >> nth=0`,
+    fill: [[`${REQ} >> internal:label="Комментарий к звонку (необязательно)"`, 'Удобно во вторник, ждёт звонка ведущей']],
+    mark: [
+      { sel: `${REQ} >> internal:label="Комментарий к звонку (необязательно)"`, from: 'left' },
+      { sel: `${REQ} >> role=button[name="Дозвонился"]`, from: 'left' },
+    ],
+  },
+  {
+    name: 'dist-05-approve',
+    as: 'distributor',
+    url: '/?tab=requests&req=1',
+    ready: REQ,
+    mark: [
+      { sel: `${REQ} >> role=button[name=/^Утвердить в группу/]`, from: 'left' },
+      { sel: `${REQ} >> role=button[name=/^Следующая/]`, from: 'bottom' },
+    ],
+  },
+  {
+    name: 'dist-06-group-preview',
+    as: 'distributor',
+    url: '/?tab=requests&req=1',
+    ready: REQ,
+    click: `${REQ} >> role=button[name="Карточка группы ДГ-0012"]`,
+    then: PREVIEW,
+    mark: [
+      { sel: `${PREVIEW} >> dt:has-text("Когда")`, row: true, from: 'right' },
+      { sel: `${PREVIEW} >> dt:has-text("Места")`, row: true, from: 'right' },
+      { sel: `${PREVIEW} >> dt:has-text("Телефон")`, row: true, from: 'right' },
+      { sel: `${PREVIEW} >> dt:has-text("Адрес")`, row: true, from: 'right' },
+      { sel: `${PREVIEW} >> h3:has-text("В составе")`, tight: true, from: 'right' },
+    ],
+  },
+  {
+    name: 'dist-07-groups-tab',
+    as: 'distributor',
+    url: '/?tab=groups',
+    ready: 'table',
+    fill: [['input[placeholder="Поиск по таблице"]', 'Калининский']],
+    mark: [
+      { sel: '[role=tablist][aria-label="Разделы"] >> role=tab[name=/^Группы/]', from: 'bottom' },
+      { sel: 'input[placeholder="Поиск по таблице"]', from: 'right' },
+      { sel: 'table tbody tr >> nth=0', from: 'bottom' },
+    ],
+  },
+  {
+    name: 'dist-08-other-group',
+    as: 'distributor',
+    url: '/?tab=requests&req=1',
+    ready: REQ,
+    // Окно выше обычного: запасной вариант и кнопки под предложением должны попасть в один снимок.
+    height: 1180,
+    mark: [
+      { sel: `${REQ} >> role=button[name=/^Утвердить эту группу/]`, from: 'left' },
+      { sel: `${REQ} >> role=button[name="Выбрать другую группу из списка"]`, from: 'top' },
+      { sel: `${REQ} >> role=button[name=/^Отклонить группу/]`, from: 'top' },
+    ],
+  },
+  {
+    name: 'dist-09-pick',
+    as: 'distributor',
+    url: '/?tab=requests&req=1',
+    ready: REQ,
+    click: `${REQ} >> role=button[name="Выбрать другую группу из списка"]`,
+    then: 'role=dialog[name="Другая группа"]',
+    mark: [
+      { sel: 'role=dialog[name="Другая группа"] >> input', from: 'right' },
+      { sel: 'role=dialog[name="Другая группа"] >> role=button[name=/^Карточка/] >> nth=0', from: 'right' },
+      { sel: 'role=dialog[name="Другая группа"] >> role=button[name=/^Выбрать и утвердить/] >> nth=0', from: 'bottom' },
+    ],
+  },
+  {
+    name: 'dist-10-no-answer',
+    as: 'distributor',
+    url: '/?tab=requests&req=1',
+    ready: REQ,
+    scroll: `${REQ} >> text=Странный человек >> nth=0`,
+    fill: [[`${REQ} >> internal:label="Комментарий к звонку (необязательно)"`, 'Не взяла трубку в 18:30']],
+    mark: [
+      { sel: `${REQ} >> internal:label="Комментарий к звонку (необязательно)"`, from: 'left' },
+      { sel: `${REQ} >> role=button[name="Не дозвонился"]`, from: 'left' },
+    ],
+  },
+  {
+    name: 'dist-11-callback',
+    as: 'distributor',
+    callback: '5,7',
+    url: '/?tab=requests&bucket=callback',
+    ready: '[aria-label="Список заявок"]',
+    mark: [
+      { sel: 'role=group[name="Фильтр по состоянию заявки"] >> role=button[name=/^Перезвонить/]', from: 'bottom' },
+      { sel: 'ul[aria-label="Список заявок"] li >> nth=0', from: 'right' },
+    ],
+  },
+  {
+    name: 'dist-12-close-button',
+    as: 'distributor',
+    url: '/?tab=requests&req=1',
+    ready: REQ,
+    scroll: `${REQ} >> role=button[name="Закрыть заявку…"]`,
+    mark: [{ sel: `${REQ} >> role=button[name="Закрыть заявку…"]`, from: 'left' }],
+  },
+  {
+    name: 'dist-13-close-dialog',
+    as: 'distributor',
+    url: '/?tab=requests&req=1',
+    ready: REQ,
+    click: [`${REQ} >> role=button[name="Закрыть заявку…"]`, 'label:has-text("Аннулировать")', 'label:has-text("Не отвечают")'],
+    then: `${CLOSE} textarea`,
+    fill: [[`${CLOSE} textarea`, 'Звонили 3 раза за неделю, не отвечает']],
+    mark: [
+      { sel: `${CLOSE} label:has-text("Аннулировать")`, from: 'right' },
+      { sel: `${CLOSE} label:has-text("Не отвечают")`, from: 'right' },
+      { sel: `${CLOSE} textarea`, from: 'right' },
+      { sel: `${CLOSE} >> role=button[name="Закрыть заявку"]`, from: 'bottom' },
+    ],
+  },
+  {
+    name: 'dist-14-edit-button',
+    as: 'distributor',
+    url: '/?tab=requests&req=1',
+    ready: REQ,
+    mark: [
+      { sel: `${REQ} >> role=button[name=/^Править данные/] >> nth=0`, from: 'bottom' },
+      { sel: `${REQ} >> role=button[name=/^Подобрать заново/]`, from: 'left' },
+    ],
+  },
+  {
+    name: 'dist-15-edit-form',
+    as: 'distributor',
+    url: '/?tab=requests&req=1',
+    ready: REQ,
+    click: `${REQ} >> role=button[name=/^Править данные/] >> nth=0`,
+    then: `${EDIT} form`,
+    fill: [[`${EDIT} >> internal:label="Район, метро, ориентир"`, 'м. Пионерская']],
+    mark: [
+      { sel: `${EDIT} >> internal:label="Район, метро, ориентир"`, from: 'right' },
+      { sel: `${EDIT} >> internal:label="Удобные день и время"`, from: 'right' },
+      { sel: `${EDIT} >> role=button[name="Сохранить"]`, from: 'bottom' },
+    ],
+  },
+  {
+    name: 'dist-16-map-button',
+    as: 'distributor',
+    url: '/',
+    ready: 'role=button[name=/^Показать карту/]',
+    full: true,
+    mark: [
+      { sel: '[role=tablist][aria-label="Разделы"] >> role=tab[name=/^Сегодня/]', from: 'bottom' },
+      { sel: 'role=button[name=/^Показать карту/]', from: 'top' },
+    ],
+  },
+  {
+    name: 'dist-17-map',
+    as: 'distributor',
+    fakeMap: true,
+    url: '/',
+    ready: 'role=button[name=/^Показать карту/]',
+    click: 'role=button[name=/^Показать карту/]',
+    then: `${MAP} [data-fake-placemark]`,
+    bottom: true,
+    mark: [
+      { sel: 'role=group[name="Какие группы показать на карте"]', from: 'left' },
+      { sel: `${MAP} [data-fake-placemark] >> nth=0`, from: 'right' },
+    ],
+  },
+  {
+    name: 'dist-17b-map-card',
+    as: 'distributor',
+    fakeMap: true,
+    url: '/',
+    ready: 'role=button[name=/^Показать карту/]',
+    click: ['role=button[name=/^Показать карту/]', `${MAP} [data-fake-placemark] >> nth=0`],
+    then: CARD,
+    mark: [{ sel: `${CARD} >> dt:has-text("Адрес")`, row: true, from: 'left' }],
+  },
+  {
+    name: 'dist-18-district',
+    as: 'distributor',
+    url: '/',
+    ready: 'button[aria-label^="Приморский, 26–35:"]',
+    click: ['button[aria-label^="Приморский, 26–35:"]', '[role=dialog][aria-label^="Клетка таблицы"] [role=tab]:has-text("Группы")'],
+    then: '[role=dialog][aria-label^="Клетка таблицы"] [role=tabpanel] button[data-group]',
+    mark: [
+      { sel: 'button[aria-label^="Приморский, 26–35:"]', from: 'bottom' },
+      { sel: '[role=dialog][aria-label^="Клетка таблицы"] [role=tab]:has-text("Группы")', from: 'right' },
+      { sel: '[role=dialog][aria-label^="Клетка таблицы"] [role=tabpanel] button[data-group] >> nth=0', from: 'left' },
+    ],
+  },
+  {
+    name: 'dist-19-search',
+    as: 'distributor',
+    url: '/?tab=requests',
+    ready: '[aria-label="Список заявок"]',
+    fill: [['input[placeholder^="Поиск по заявкам"]', 'Рябова']],
+    after: 'ul[aria-label="Список заявок"] li:has-text("Ольга Рябова")',
+    mark: [
+      { sel: 'input[placeholder^="Поиск по заявкам"]', from: 'bottom' },
+      { sel: 'ul[aria-label="Список заявок"] li:has-text("Ольга Рябова")', from: 'right' },
+    ],
+  },
+);
+const DIST_SHOTS = SCREENS.filter((s) => s.name.startsWith('dist-')).map((s) => [s.name, 1280, 'light']);
+
+/**
+ * Подмена Яндекс.Карт для снимка: тот же кусок API, что в shared/yandexMaps.ts. Рисует схему города (суша, река, дороги) и
+ * точки групп по их координатам; клик по точке, как и на настоящей карте, открывает карточку группы.
+ */
+const FAKE_YMAPS = `(() => {
+  const BG = "url(\\"data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420">'
+    + '<rect width="1200" height="420" fill="#f2efe9"/>'
+    + '<path d="M0 250 C200 230 330 300 520 255 S860 170 1200 210 L1200 260 C900 220 760 320 540 300 S180 290 0 290 Z" fill="#aad3df"/>'
+    + '<path d="M80 0 L260 420 M600 0 L560 420 M980 0 L860 420 M0 120 L1200 90 M0 360 L1200 380" stroke="#fff" stroke-width="9" fill="none"/>'
+    + '<path d="M0 60 L1200 40 M380 0 L420 420 M760 0 L720 420 M0 180 L1200 160" stroke="#fff" stroke-width="4" fill="none"/>'
+    + '<rect x="640" y="20" width="90" height="60" rx="8" fill="#c8e6b6"/><rect x="120" y="330" width="120" height="70" rx="8" fill="#c8e6b6"/></svg>') + "\\")";
+  class Placemark {
+    constructor(coords, props, opts) { this.coords = coords; this.props = props; this.opts = opts || {}; this.handlers = []; this.events = { add: (t, f) => { if (t === 'click') this.handlers.push(f); } }; }
+  }
+  class Map {
+    constructor(el) {
+      this.el = el; this.items = []; this.bounds = null;
+      el.style.position = 'relative'; el.style.overflow = 'hidden'; el.style.background = BG + ' center/cover';
+      this.geoObjects = { add: (p) => { this.items.push(p); this.draw(); }, remove: (p) => { this.items = this.items.filter((x) => x !== p); this.draw(); } };
+    }
+    setBounds(b) { this.bounds = b; this.draw(); }
+    draw() {
+      this.el.querySelectorAll('[data-fake-placemark]').forEach((n) => n.remove());
+      if (!this.bounds) return;
+      const [[la1, lo1], [la2, lo2]] = this.bounds, w = this.el.clientWidth, h = this.el.clientHeight, m = 50;
+      for (const p of this.items) {
+        const x = m + (w - 2 * m) * (lo2 === lo1 ? 0.5 : (p.coords[1] - lo1) / (lo2 - lo1));
+        const y = m + (h - 2 * m) * (la2 === la1 ? 0.5 : (la2 - p.coords[0]) / (la2 - la1));
+        const dot = document.createElement('button');
+        dot.setAttribute('data-fake-placemark', '');
+        dot.title = p.props.hintContent || '';
+        const color = /orange/.test(p.opts.preset || '') ? '#f08c00' : '#1e6fd9';
+        dot.style.cssText = 'position:absolute;width:22px;height:22px;border-radius:50%;border:4px solid ' + color + ';background:#fff;cursor:pointer;padding:0;box-shadow:0 1px 3px rgba(0,0,0,.35);left:' + (x - 11) + 'px;top:' + (y - 11) + 'px';
+        dot.onclick = () => p.handlers.forEach((f) => f());
+        this.el.append(dot);
+      }
+    }
+    destroy() { this.el.innerHTML = ''; }
+  }
+  window.ymaps = { Map, Placemark, ready: (cb) => setTimeout(cb, 0) };
+})();`;
+
 const SHOTS_ALL = [
   ...['requests-group-preview', 'requests-pick-preview'].flatMap((s) => [[s, 1280, 'light'], [s, 400, 'light']]),
   ['settings-team-passwords', 1280, 'light'],
@@ -450,7 +748,7 @@ const SHOTS_ALL = [
   ...['strange-list', 'strange-card', 'strange-confirm'].flatMap((s) => [[s, 400, 'dark'], [s, 400, 'gray']]),
 ];
 
-const SHOTS = GUIDE ? GUIDE_SHOTS : SHOTS_ALL.filter(([n]) => !n.startsWith('guide-'));
+const SHOTS = DIST ? DIST_SHOTS : GUIDE ? GUIDE_SHOTS : SHOTS_ALL.filter(([n]) => !n.startsWith('guide-') && !n.startsWith('dist-'));
 
 /**
  * Страница входа рисуется сервером (src/home-groups/loginPage.ts), а не приложением, поэтому для инструкции её HTML
@@ -485,6 +783,54 @@ async function shootLoginPage(browser) {
   await ctx.close();
 }
 
+/**
+ * Рамки со стрелками для инструкции распределителю: номер в кружке стоит в стороне (from), стрелка от него упирается в
+ * рамку. Если в эту сторону не хватает места до края окна, номер переносится на противоположную.
+ */
+function drawCallouts(list) {
+  const RED = '#e5484d';
+  const LEN = 64;
+  const vw = document.documentElement.clientWidth;
+  const vh = document.documentElement.scrollHeight;
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('width', String(document.documentElement.scrollWidth));
+  svg.setAttribute('height', String(vh));
+  svg.style.cssText = 'position:absolute;left:0;top:0;z-index:2147483646;pointer-events:none;overflow:visible';
+  svg.innerHTML = `<defs><marker id="hg-head" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="4.2" markerHeight="4.2" orient="auto-start-reverse">
+    <path d="M0 0 L10 5 L0 10 Z" fill="${RED}"/></marker></defs>`;
+  const flip = { left: 'right', right: 'left', top: 'bottom', bottom: 'top' };
+  list.forEach((b, i) => {
+    const r = { left: b.x + scrollX - 5, top: b.y + scrollY - 5, width: b.width + 10, height: b.height + 10 };
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    const ends = (side) => {
+      if (side === 'left') return { tail: [r.left - LEN, cy], head: [r.left - 3, cy] };
+      if (side === 'right') return { tail: [r.left + r.width + LEN, cy], head: [r.left + r.width + 3, cy] };
+      if (side === 'top') return { tail: [cx, r.top - LEN], head: [cx, r.top - 3] };
+      return { tail: [cx, r.top + r.height + LEN], head: [cx, r.top + r.height + 3] };
+    };
+    let { tail, head } = ends(b.from);
+    const out = (p) => p[0] < 20 || p[0] > vw - 20 || p[1] < 20 || p[1] > vh - 20;
+    if (out(tail)) ({ tail, head } = ends(flip[b.from]));
+    if (out(tail)) throw new Error(`номеру ${i + 1} не хватает места ни с одной стороны`);
+    const frame = document.createElement('div');
+    frame.style.cssText = `position:absolute;z-index:2147483646;pointer-events:none;border:3px solid ${RED};border-radius:8px;
+      box-shadow:0 0 0 2px #fff;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;box-sizing:border-box`;
+    document.body.append(frame);
+    // Белая подложка под стрелкой: на синих кнопках и тёмном тексте красная линия иначе теряется.
+    const line = (stroke, width, marker) =>
+      `<line x1="${tail[0]}" y1="${tail[1]}" x2="${head[0]}" y2="${head[1]}" stroke="${stroke}" stroke-width="${width}" stroke-linecap="round"${marker ? ' marker-end="url(#hg-head)"' : ''}/>`;
+    svg.insertAdjacentHTML('beforeend', line('#fff', 8, false) + line(RED, 4, true));
+    const badge = document.createElement('div');
+    badge.textContent = String(i + 1);
+    badge.style.cssText = `position:absolute;z-index:2147483647;pointer-events:none;width:32px;height:32px;border-radius:50%;
+      background:${RED};color:#fff;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);box-sizing:border-box;
+      font:700 16px/26px system-ui,sans-serif;text-align:center;left:${tail[0] - 16}px;top:${tail[1] - 16}px`;
+    document.body.append(badge);
+  });
+  document.body.append(svg);
+}
+
 const browser = await chromium.launch({ executablePath: chromePath, args: ['--no-sandbox'] });
 if (GUIDE && (!process.env.HG_ONLY || process.env.HG_ONLY.split(',').includes('guide-01-login'))) await shootLoginPage(browser);
 const problems = [];
@@ -516,7 +862,7 @@ for (const [screenName, width, theme] of SHOTS) {
   const screen = SCREENS.find((s) => s.name === screenName);
   const mobile = width < 700;
   const ctx = await browser.newContext({
-    viewport: { width, height: mobile ? 800 : 900 },
+    viewport: { width, height: screen.height ?? (mobile ? 800 : 900) },
     deviceScaleFactor: mobile ? 2 : 1,
     isMobile: mobile,
     hasTouch: mobile,
@@ -530,20 +876,23 @@ for (const [screenName, width, theme] of SHOTS) {
       localStorage.setItem('hg.theme', t);
     } catch {}
   }, theme === 'dark' ? 'auto' : theme);
-  if (GUIDE) {
-    await ctx.addInitScript(([name, role]) => {
+  if (GUIDE || DIST) {
+    await ctx.addInitScript(([name, role, callback]) => {
       try {
         localStorage.setItem('hg.demo.person', name);
         localStorage.setItem('hg.demo.role', role);
+        if (callback) localStorage.setItem('hg.demo.callback', callback);
       } catch {}
-    }, AS[screen.as ?? 'coordinator']);
+    }, [...AS[screen.as ?? 'coordinator'], screen.callback ?? '']);
   }
+  const MAPS_URL = 'https://api-maps.yandex.ru/';
+  if (screen.fakeMap) await ctx.route(`${MAPS_URL}**`, (route) => route.fulfill({ contentType: 'text/javascript', body: FAKE_YMAPS }));
   const page = await ctx.newPage();
   // Фиксируем время, чтобы приветствие и дата на снимках не гуляли.
   await page.clock.setFixedTime(new Date('2026-10-09T09:30:00+03:00'));
   page.on('pageerror', (e) => problems.push(`${screenName}/${width}: ошибка страницы: ${e.message}`));
   page.on('console', (m) => m.type() === 'error' && problems.push(`${screenName}/${width}: console.error: ${m.text()}`));
-  page.on('request', (r) => !r.url().startsWith(origin) && !r.url().startsWith('data:') && problems.push(`${screenName}: внешний запрос ${r.url()}`));
+  page.on('request', (r) => !r.url().startsWith(origin) && !r.url().startsWith('data:') && !(screen.fakeMap && r.url().startsWith(MAPS_URL)) && problems.push(`${screenName}: внешний запрос ${r.url()}`));
   await page.goto(origin + screen.url);
   try {
     await page.waitForSelector(screen.ready, { timeout: 15000 });
@@ -567,18 +916,32 @@ for (const [screenName, width, theme] of SHOTS) {
   // afterClick — клик уже после ответа «сервера» (например, раскрыть блок «Как посмотрел» под ответом).
   for (const sel of [screen.afterClick].flat().filter(Boolean)) await page.click(sel);
   if (screen.scroll) await page.locator(screen.scroll).first().scrollIntoViewIfNeeded();
+  if (screen.bottom) await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
   await page.waitForTimeout(150);
   if (screen.mark) {
     // markRow — у строки карточки («название — значение») обводим всю строку, а не только название.
     const boxes = [];
-    for (const sel of screen.mark) {
+    for (const item of screen.mark) {
+      const { sel, from = 'left', row = false, tight = false } = typeof item === 'string' ? { sel: item } : item;
       const loc = page.locator(sel).first();
       const target = screen.markRow && /\bdt:has-text/.test(sel) ? loc.locator('xpath=..') : loc;
-      const box = await target.boundingBox().catch(() => null);
-      if (box) boxes.push(box);
+      // row и tight обводят текст, а не блок: строки «название — значение» и заголовки тянутся на всю ширину окна.
+      const box = await (row || tight
+        ? loc.evaluate((el, isRow) => {
+            const range = document.createRange();
+            range.selectNodeContents(isRow ? el.nextElementSibling : el);
+            const rects = [range.getBoundingClientRect(), ...(isRow ? [el.getBoundingClientRect()] : [])];
+            const x = Math.min(...rects.map((r) => r.left));
+            const y = Math.min(...rects.map((r) => r.top));
+            return { x, y, width: Math.max(...rects.map((r) => r.right)) - x, height: Math.max(...rects.map((r) => r.bottom)) - y };
+          }, row)
+        : target.boundingBox()
+      ).catch(() => null);
+      if (box) boxes.push({ ...box, from });
       else problems.push(`${screenName}: не нашлось, что обвести: ${sel}`);
     }
-    await page.evaluate((list) => {
+    if (DIST) await page.evaluate(drawCallouts, boxes);
+    else await page.evaluate((list) => {
       list.forEach((b, i) => {
         const frame = document.createElement('div');
         frame.style.cssText = `position:absolute;z-index:2147483647;pointer-events:none;border:3px solid #e5484d;border-radius:8px;
@@ -601,7 +964,7 @@ for (const [screenName, width, theme] of SHOTS) {
     if (r.scrollWidth > r.vw || r.bad.length) problems.push(`${tag}: горизонтальная прокрутка (scrollWidth=${r.scrollWidth} > ${r.vw}) ${r.bad.join('; ')}`);
     else console.log(`ок: ${tag} без горизонтальной прокрутки (scrollWidth=${r.scrollWidth}, окно=${r.vw})`);
   }
-  const file = join(outDir, GUIDE ? `${screenName}.png` : `${screenName}-${width}-${theme}.png`);
+  const file = join(outDir, GUIDE || DIST ? `${screenName}.png` : `${screenName}-${width}-${theme}.png`);
   await page.screenshot({ path: file, fullPage: Boolean(screen.full) });
   await ctx.close();
 }

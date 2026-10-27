@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "shots": "node scripts/shots.mjs",
-    "shots:guide": "node scripts/shots.mjs --guide"
+    "shots:guide": "node scripts/shots.mjs --guide",
+    "shots:dist": "node scripts/shots.mjs --dist"
   },
   "dependencies": {
     "@fontsource/jetbrains-mono": "^5.3.0",

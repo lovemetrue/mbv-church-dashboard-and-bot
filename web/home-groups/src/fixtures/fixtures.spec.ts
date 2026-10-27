@@ -40,6 +40,19 @@ describe('фикстуры', () => {
     expect(buildToday().counters.callback).toBe(0);
   });
 
+  test('отметка hg.demo.callback переводит готовые заявки в «Перезвонить» — для снимка инструкции распределителю', () => {
+    localStorage.setItem('hg.demo.callback', '1,7');
+    try {
+      const { items, counters } = buildRequests();
+      const marked = items.filter((i) => i.id === 1 || i.id === 7);
+      expect(marked.map((i) => [i.bucket, i.callback])).toEqual([['callback', true], ['callback', true]]);
+      expect(counters.callback).toBe(2);
+    } finally {
+      localStorage.removeItem('hg.demo.callback');
+    }
+    expect(buildRequests().counters.callback).toBe(0);
+  });
+
   test('данных достаточно для всех экранов и в них есть редкие случаи', () => {
     const r = buildRequests();
     expect(r.items.length).toBeGreaterThanOrEqual(15);

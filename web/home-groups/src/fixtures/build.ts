@@ -309,12 +309,26 @@ export function buildPlan(requests: RawRequest[] = RAW_REQUESTS, groups: RawGrou
   return { byRequest, takenBy };
 }
 
+/**
+ * Заявки «Перезвонить» в демо: `localStorage['hg.demo.callback']` — номера через запятую. Ставит `npm run shots:dist`
+ * для снимка раздела «Не дозвонился»; без отметки таких заявок в демо нет.
+ */
+function demoCallback(r: RawRequest): boolean {
+  if (r.callback) return true;
+  try {
+    const ids = globalThis.localStorage?.getItem('hg.demo.callback') ?? '';
+    return ids.split(',').map(Number).includes(r.id);
+  } catch {
+    return false;
+  }
+}
+
 function bucketOf(r: RawRequest, entry: PlanEntry | undefined): Bucket {
   if (r.cancelled) return 'cancelled';
   if (r.status === 'Исполнена') return 'done';
   const p = entry?.proposal;
   if (!p || (p.main.confidence ?? 0) < CONFIDENCE_THRESHOLD) return 'human';
-  return r.callback ? 'callback' : 'ready';
+  return demoCallback(r) ? 'callback' : 'ready';
 }
 
 const BUCKET_ORDER: Record<Bucket, number> = { callback: 0, ready: 1, human: 2, done: 3, cancelled: 4 };
@@ -357,7 +371,7 @@ export function buildRequests(): RequestsView {
       source: r.source,
       status: r.status,
       bucket: held ? 'human' : bucket,
-      callback: r.callback,
+      callback: demoCallback(r),
       waitingDays: r.waitingDays,
       dataFill: [!!r.district, !!r.age, r.days.length > 0 || !!r.slot, !!r.street],
       proposal: held ? null : (entry?.proposal ?? null),

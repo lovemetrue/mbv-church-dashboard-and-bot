@@ -51,6 +51,14 @@ const countKnown = (known: KnownParams): number => known.filter(Boolean).length;
 // ── жёсткие отсевы ──────────────────────────────────────────────────────────
 
 /**
+ * Принимает ли группа людей вообще, без оглядки на человека: статус, «Не направлять», камерная. Места не в счёт — они
+ * освобождаются сами. Нужна, чтобы отличить снятое предложение «группа закрылась для подбора» от прочих замен.
+ */
+export function groupTakesPeople(g: PlanGroup): boolean {
+  return PASSING_STATUSES.has(g.status) && g.acceptsNew && !g.doNotRefer && !g.chamber;
+}
+
+/**
  * Почему группа не может быть предложена заявке; null — может. Это ответ на вопрос «можно ли
  * вообще», он не зависит от других заявок (занятость мест учитывает план).
  * Район заявки неизвестен — по району не отсеиваем: такой заявке план не строится, а отсев по
@@ -296,7 +304,7 @@ export function buildPlan(input: PlanInput): PlanOutput {
   // Закреплённые (накопленные) предложения идут первыми: их место уже обещано, и новая «трудная»
   // заявка не должна его отнимать. Остальные — от трудных к лёгким, как раньше.
   const isPinned = (w: Work): boolean =>
-    w.request.pinnedGroupId !== null && w.candidates.some((c) => c.groupId === w.request.pinnedGroupId);
+    [w.request.pinnedGroupId, ...(w.request.restoreGroupIds ?? [])].some((id) => id !== null && w.candidates.some((c) => c.groupId === id));
   work.sort(
     (a, b) =>
       Number(isPinned(b)) - Number(isPinned(a)) ||
@@ -337,7 +345,9 @@ export function buildPlan(input: PlanInput): PlanOutput {
     // место человеку уже обещано.
     const bestNew = ordered.find((c) => groupById.get(c.groupId)?.isNew === true);
     const strongNew = bestNew && confidenceOf(bestNew) >= settings.humanThreshold ? bestNew : undefined;
-    const main = pinned ?? strongNew ?? ordered[0]!;
+    // Группа, откуда человека увела только её временная недоступность, снова принимает — он возвращается туда.
+    const restored = (request.restoreGroupIds ?? []).map((id) => ordered.find((c) => c.groupId === id)).find((c) => c !== undefined);
+    const main = restored ?? pinned ?? strongNew ?? ordered[0]!;
 
     remaining.set(main.groupId, remaining.get(main.groupId)! - 1);
     takenBy.set(main.groupId, [...(takenBy.get(main.groupId) ?? []), request.id]);

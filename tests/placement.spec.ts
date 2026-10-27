@@ -266,6 +266,33 @@ describe('накопленные предложения', () => {
     expect(await active()).toHaveLength(1);
   });
 
+  test('у снятого пишется причина: группа закрылась для подбора, изменились данные или заменено; вернуть можно только первое', async () => {
+    const g1 = await group();
+    const g2 = await group({ leader: 'Пётр' });
+    const r = await request();
+    const withHash = (g: number, h: string) => ({ ...desired(r, g), inputHash: h });
+    const ctx = (open: number[], h: string) => ({ openGroupIds: new Set(open), signatures: new Map([[r, h]]) });
+    const reasons = async () =>
+      (await db.query(`SELECT superseded_reason FROM placement_proposals WHERE status = 'superseded' ORDER BY id`)).rows.map((x) => x.superseded_reason);
+    await repo.syncProposals([withHash(g1, 'a')], 'auto', undefined, ctx([g1, g2], 'a'));
+    // g1 закрыли для подбора — ушёл в g2.
+    await repo.syncProposals([withHash(g2, 'a')], 'auto', undefined, ctx([g2], 'a'));
+    expect(await repo.restorableProposals()).toEqual(new Map([[r, [{ groupId: g1, inputHash: 'a' }]]]));
+    // g2 тоже закрыли, а других нет: снято без замены — тоже «закрылась»; цепочка свежая первой.
+    await repo.syncProposals([], 'auto', undefined, ctx([], 'a'));
+    expect((await repo.restorableProposals()).get(r)).toEqual([{ groupId: g2, inputHash: 'a' }, { groupId: g1, inputHash: 'a' }]);
+    // Человек нажал «Подобрать заново» — возвращать нечего.
+    await repo.syncProposals([withHash(g1, 'a')], 'auto', undefined, ctx([g1, g2], 'a'));
+    await repo.resetProposals(r, 'Вера');
+    expect((await repo.restorableProposals()).get(r)).toBeUndefined();
+    // Изменились данные — «data»; группа доступна, но заменена — «replaced».
+    await repo.syncProposals([withHash(g1, 'a')], 'auto', undefined, ctx([g1, g2], 'a'));
+    await repo.syncProposals([withHash(g2, 'b')], 'auto', undefined, ctx([g1, g2], 'b'));
+    await repo.syncProposals([withHash(g1, 'b')], 'auto', undefined, ctx([g1, g2], 'b'));
+    expect(await reasons()).toEqual(['unavailable', 'unavailable', null, 'data', 'replaced']);
+    expect((await repo.restorableProposals()).get(r)).toBeUndefined();
+  });
+
   test('запуск записывает сводку в журнал', async () => {
     const g = await group();
     const r = await request();

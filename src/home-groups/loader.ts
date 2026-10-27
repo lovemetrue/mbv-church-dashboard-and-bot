@@ -17,7 +17,7 @@ export interface LoaderRepos {
   requests: Pick<RequestsRepo, 'forDashboard'>;
   users: Pick<UsersRepo, 'listRegistered'>;
   coordinators: Pick<CoordinatorsRepo, 'listActive'>;
-  placement: Pick<PlacementRepo, 'rejectedGroups' | 'activeProposals' | 'placedSinceFeedback'>;
+  placement: Pick<PlacementRepo, 'rejectedGroups' | 'activeProposals' | 'restorableProposals' | 'placedSinceFeedback'>;
   settings: Pick<SettingsRepo, 'get'>;
   audit: Pick<AuditRepo, 'requestEntries' | 'activitySince'>;
   hints: Pick<HintsRepo, 'all'>;
@@ -36,7 +36,7 @@ export interface LoaderRepos {
  */
 export function createLoader(repos: LoaderRepos, opts: { timeZone?: string; assistantAvailable?: boolean | (() => Promise<boolean>) } = {}): () => Promise<ViewsInput> {
   return async () => {
-    const [groups, requests, participants, coordinators, rejectedGroups, audit, activity, activeProposals, placedNew, auto, lastRun, hints, assistantEnabled, members, persons] = await Promise.all([
+    const [groups, requests, participants, coordinators, rejectedGroups, audit, activity, activeProposals, restorable, placedNew, auto, lastRun, hints, assistantEnabled, members, persons] = await Promise.all([
       repos.groups.forDashboard(),
       repos.requests.forDashboard(),
       repos.users.listRegistered(),
@@ -45,6 +45,7 @@ export function createLoader(repos: LoaderRepos, opts: { timeZone?: string; assi
       repos.audit.requestEntries(),
       repos.audit.activitySince(7),
       repos.placement.activeProposals(),
+      repos.placement.restorableProposals(),
       repos.placement.placedSinceFeedback(opts.timeZone),
       repos.settings.get<boolean>('matching.auto'),
       repos.settings.get<NonNullable<ViewsInput['matching']>['lastRun']>('matching.last_run'),
@@ -58,7 +59,7 @@ export function createLoader(repos: LoaderRepos, opts: { timeZone?: string; assi
     const genders = repos.genders ? await repos.genders.all() : undefined;
     return {
       strange, geo, genders,
-      groups, requests, participants, coordinators, rejectedGroups, audit, activity, activeProposals, placedNew,
+      groups, requests, participants, coordinators, rejectedGroups, audit, activity, activeProposals, restorable, placedNew,
       matching: { auto: auto === true, lastRun: lastRun ?? null },
       hints,
       members,

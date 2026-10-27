@@ -857,6 +857,26 @@ describe('накопленные предложения и счётчик уча
     expect(calls.plan[0]!.requests.find((r) => r.id === 7)!.pinnedGroupId).toBe(2);
   });
 
+  test('снятые из-за недоступности группы предложения уходят в движок на возврат — только при тех же данных и вместо автоматического', () => {
+    const groups = [group({ id: 1 }), group({ id: 2 })];
+    const requests = [request({ id: 7, place: 'Приморский' }), request({ id: 8, place: 'Приморский' }), request({ id: 9, place: 'Приморский' })];
+    const sig = build({ groups, requests }).signatures;
+    const { calls } = build({
+      groups, requests,
+      activeProposals: new Map([[8, { groupId: 1, source: 'manual' as const, inputHash: sig.get(8)! }]]),
+      restorable: new Map([
+        [7, [{ groupId: 2, inputHash: sig.get(7)! }]],
+        [8, [{ groupId: 2, inputHash: sig.get(8)! }]],
+        // Данные заявки с тех пор другие: прежнюю группу сама не вернёт.
+        [9, [{ groupId: 2, inputHash: 'другой отпечаток' }]],
+      ]),
+    });
+    const sent = (id: number) => calls.plan[0]!.requests.find((r) => r.id === id)!.restoreGroupIds;
+    expect(sent(7)).toEqual([2]);
+    expect(sent(8)).toEqual([]);
+    expect(sent(9)).toEqual([]);
+  });
+
   test('источник предложения берётся из сохранённого, если показана та же группа', () => {
     const { views } = build({
       groups: [group({ id: 1 })],

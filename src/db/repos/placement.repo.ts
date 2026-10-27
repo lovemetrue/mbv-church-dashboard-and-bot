@@ -89,6 +89,21 @@ export interface DesiredProposal {
   rationale: unknown;
 }
 
+/**
+ * Что знает расчёт о моменте запуска: какие группы принимают людей и текущие отпечатки данных заявок. По ним
+ * снятому предложению пишется причина (`superseded_reason`, миграция 061); без них — «заменено», и оно не вернётся.
+ */
+export interface SyncContext {
+  openGroupIds: ReadonlySet<number>;
+  signatures: ReadonlyMap<number, string>;
+}
+
+/** Снятое автоматом предложение, которое вернётся, когда его группа снова примет людей (`PlanRequest.restoreGroupIds`). */
+export interface RestorableProposal {
+  groupId: number;
+  inputHash: string | null;
+}
+
 export interface SyncResult {
   created: number;
   /** Заменённые и снятые предложения. */
@@ -644,12 +659,36 @@ export class PlacementRepo {
   }
 
   /**
+   * Что вернуть открытым заявкам: подряд идущие с конца снятые предложения с причиной «группа перестала принимать людей»,
+   * свежее первым. Снятое иначе (человеком, сменой данных, утверждением) обрывает цепочку: дальше назад не смотрим.
+   */
+  async restorableProposals(): Promise<Map<number, RestorableProposal[]>> {
+    const { rows } = await this.db.query<{ request_id: number; group_id: number; input_hash: string | null; superseded_reason: string | null }>(
+      `SELECT p.request_id, p.group_id, p.input_hash, p.superseded_reason
+         FROM placement_proposals p
+         JOIN requests r ON r.id = p.request_id
+        WHERE p.status = 'superseded' AND p.group_id IS NOT NULL
+          AND r.archived_at IS NULL AND r.status NOT IN ('Исполнена', 'Аннулирована')
+        ORDER BY p.request_id, p.decided_at DESC, p.id DESC`,
+    );
+    const out = new Map<number, RestorableProposal[]>();
+    const broken = new Set<number>();
+    for (const row of rows) {
+      const id = Number(row.request_id);
+      if (broken.has(id)) continue;
+      if (row.superseded_reason !== 'unavailable') { broken.add(id); continue; }
+      out.set(id, [...(out.get(id) ?? []), { groupId: Number(row.group_id), inputHash: row.input_hash }]);
+    }
+    return out;
+  }
+
+  /**
    * Сохраняет в базе то, что предлагает расчёт: новым заявкам — предложение, изменившимся —
    * замену, пропавшим (группа заполнилась, закрылась) — снятие. Остальное не трогает: накопленное
    * не меняется само, пока остаётся доступным. Один запуск за раз (блокировка), иначе кнопка и
    * автоматический запуск, нажатые вместе, переписывали бы друг друга.
    */
-  async syncProposals(desired: readonly DesiredProposal[], actor: string, scope?: ReadonlySet<number>): Promise<SyncResult> {
+  async syncProposals(desired: readonly DesiredProposal[], actor: string, scope?: ReadonlySet<number>, context?: SyncContext): Promise<SyncResult> {
     return this.tx(async (c) => {
       await c.query(`SELECT pg_advisory_xact_lock(hashtext('hg_matching'))`);
       const { rows } = await c.query<{ id: number; request_id: number; group_id: number; input_hash: string | null; input_snapshot: unknown }>(
@@ -676,10 +715,17 @@ export class PlacementRepo {
           [actor, d.requestId, JSON.stringify({ fields })],
         );
       };
-      const supersede = (id: number) =>
+      // Изменились данные заявки — «data»; группа перестала принимать людей — «unavailable» (вернётся, когда снова примет).
+      const reasonOf = (had: { request_id: number; group_id: number; input_hash: string | null }, hash: string | undefined) => {
+        const now = hash ?? context?.signatures.get(Number(had.request_id));
+        if (now && had.input_hash && now !== had.input_hash) return 'data';
+        if (context && !context.openGroupIds.has(Number(had.group_id))) return 'unavailable';
+        return 'replaced';
+      };
+      const supersede = (id: number, reason: string) =>
         c.query(
-          `UPDATE placement_proposals SET status = 'superseded', decided_by = $2, decided_at = now() WHERE id = $1`,
-          [id, actor],
+          `UPDATE placement_proposals SET status = 'superseded', decided_by = $2, decided_at = now(), superseded_reason = $3 WHERE id = $1`,
+          [id, actor, reason],
         );
 
       for (const d of desired) {
@@ -695,13 +741,13 @@ export class PlacementRepo {
           continue;
         }
         await logDataChange(had, d);
-        await supersede(Number(had.id));
+        await supersede(Number(had.id), reasonOf(had, d.inputHash));
         await insert(d);
         result.replaced += 1;
       }
       for (const [requestId, had] of current) {
         if (wanted.has(requestId)) continue;
-        await supersede(Number(had.id));
+        await supersede(Number(had.id), reasonOf(had, undefined));
         result.replaced += 1;
       }
 

@@ -48,7 +48,7 @@ async function openOthers(query = '', overrides: Overrides = {}) {
 describe('«Заявки»: вкладки по виду обращения', () => {
   // Настоящие типы фикстур: «открыть группу» 202 (и закрытое 204), «дать дом» 213, вопрос 201, «уже состоят» 203, 206,
   // 207, 211, «уже ведут» 208–210 (и закрытое 212), аннулированная «хочу в группу» 205.
-  const tabs = () => within(switchEl()).getAllByRole('button').map((b) => b.textContent);
+  const tabs = () => within(switchEl()).getAllByRole('button').map((b) => b.getAttribute('aria-label'));
 
   test('у каждого вида своя вкладка с числом открытых; закрытые в счёт не идут, у аннулированных — сколько их всего', async () => {
     stubFetchWithFixtures();
@@ -64,6 +64,17 @@ describe('«Заявки»: вкладки по виду обращения', ()
       'Аннулированные заявки (1)',
     ]);
     expect(within(switchEl()).getByRole('button', { name: 'Хотят в группу' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('на кнопке — значок и число, название — подсказкой при наведении; название открытой вкладки — строкой под значками', async () => {
+    stubFetchWithFixtures();
+    renderAt(<App />, '/?tab=requests&view=members');
+    await screen.findByRole('group', { name: 'Фильтр по состоянию обращения' });
+    const members = within(switchEl()).getByRole('button', { name: 'Уже состоят (4)' });
+    expect(members).toHaveAttribute('title', 'Уже состоят (4)');
+    expect(members.querySelector('svg')).not.toBeNull();
+    expect(members.textContent).toBe('4');
+    expect(screen.getByText('Уже состоят', { selector: 'p' })).toBeInTheDocument();
   });
 
   test('в каждой вкладке только обращения её вида', async () => {
@@ -180,7 +191,8 @@ describe('«Другие обращения»: список и чипы', () => 
     await user.click(within(chips()).getByRole('button', { name: /^Аннулированные/ }));
     expect(currentSearch().get('ostate')).toBe('cancelled');
     expect(namesOf()).toEqual(OTHERS.filter((o) => o.state === 'cancelled').map((o) => o.fio));
-    expect(within(rowsOf()[0]!).getByText('Аннулировано')).toBeInTheDocument();
+    // На плашке — настоящий статус заявки, а не обобщённое «Аннулировано».
+    expect(within(rowsOf()[0]!).getByText('Аннулирована')).toBeInTheDocument();
   });
 
   test('чип «Обработанные» и чип «Все»', async () => {
@@ -204,7 +216,9 @@ describe('«Другие обращения»: список и чипы', () => 
     expect(row).toHaveTextContent('+7 921 555 01 02');
     expect(row).toHaveTextContent('Ждёт 4 дн.');
     expect(row).toHaveTextContent('В работе: Пётр Г.');
-    expect(within(row).getByText('Открыто')).toBeInTheDocument();
+    // Статус заявки как есть («Новая»), а не обобщённое «Открыто».
+    expect(within(row).getByText('Новая')).toBeInTheDocument();
+    expect(within(row).queryByText('Открыто')).not.toBeInTheDocument();
   });
 
   test('обращение без телефона и без ответственного не ломает строку', async () => {

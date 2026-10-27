@@ -11,7 +11,7 @@ import { WorkPlace } from '../work/WorkPlace';
 import { PersonLink } from '../work/PersonLink';
 import { useAppNav } from '../../../shared/nav';
 import { Button } from '../../../shared/ui';
-import { STATE_LABEL, STATE_TONE } from './OtherList';
+import { STATE_TONE, statusLabel } from './OtherList';
 import styles from './Others.module.css';
 import { PairsBlock } from './PairsBlock';
 import { ProspectsBlock } from './ProspectsBlock';
@@ -80,7 +80,7 @@ export function OtherCard({ item, onClose, onClosed }: { item: OtherItem; onClos
       }
       subtitle={
         <>
-          <Pill tone={STATE_TONE[item.state]}>{STATE_LABEL[item.state]}</Pill>
+          <Pill tone={STATE_TONE[item.state]}>{statusLabel(item)}</Pill>
           <span className={styles.typeInTitle}>{item.typeLabel}</span>
           {item.ageLabel && <AgeTag>{item.ageLabel}</AgeTag>}
           {item.ownGroup && <OwnGroupLink group={item.ownGroup} />}

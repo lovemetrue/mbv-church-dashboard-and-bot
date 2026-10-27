@@ -886,7 +886,7 @@
   color: var(--muted);
 }
 
-/* Переключатель «Хотят в группу | Другие обращения»: две кнопки в ряд над списком, на телефоне делят ширину. */
+/* Переключатель вкладок заявок: кнопки-значки в ряд над списком, на телефоне делят ширину. */
 .views {
   display: flex;
   gap: 8px;
@@ -897,11 +897,16 @@
   flex: 0 1 auto;
 }
 @media (max-width: 700px) {
+  .views {
+    gap: 4px;
+  }
   .views > button {
     flex: 1 1 0;
     min-width: 0;
     justify-content: center;
     text-align: center;
+    /* Семь кнопок в ширину телефона: значок и число, без лишних полей. */
+    padding-inline: 2px;
   }
 }
 
@@ -1030,4 +1035,31 @@
 /* «Карточка человека» под контактами заявки и обращения. */
 .personLink {
   margin-top: 8px;
+}
+
+/* Вкладка-значок: значок, число открытых, при поиске — сколько найдено. Название — подсказкой и строкой ниже. */
+.viewTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.viewCount {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.viewFound {
+  font-family: var(--mono);
+  font-size: 11px;
+  opacity: 0.75;
+}
+.viewCaption {
+  margin: -6px 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+@media (max-width: 700px) {
+  .viewTab {
+    gap: 3px;
+  }
 }

@@ -211,7 +211,7 @@ function PersonRequests({ p }: { p: PersonItem }) {
             <Button
               size="sm"
               aria-label={t.openRequestAria(r.label, r.id)}
-              onClick={() => (r.kind === 'join' ? nav.openRequest(r.id) : nav.openOther(r.id, r.kind === 'lead' ? 'leads' : 'others'))}
+              onClick={() => (r.kind === 'join' ? nav.openRequest(r.id) : nav.openOther(r.id, r.kind === 'lead' ? 'leads' : 'questions'))}
             >
               {ru.reference.openPlanned}
             </Button>

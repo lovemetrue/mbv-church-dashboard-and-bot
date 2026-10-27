@@ -59,8 +59,9 @@ describe('вкладки по ролям', () => {
 });
 
 describe('режим списка «Заявок» в адресе', () => {
-  test('view=others включает «Другие обращения», всё остальное — обычный список', () => {
-    expect(parseView('others')).toBe('others');
+  test('view — вкладка обращений; прежний view=others ведёт во «Вопросы», всё остальное — обычный список', () => {
+    for (const v of ['leads', 'homes', 'questions', 'members', 'leaders', 'cancelled']) expect(parseView(v)).toBe(v);
+    expect(parseView('others')).toBe('questions');
     expect(parseView(null)).toBe('wait');
     expect(parseView('wait')).toBe('wait');
     expect(parseView('что-то')).toBe('wait');

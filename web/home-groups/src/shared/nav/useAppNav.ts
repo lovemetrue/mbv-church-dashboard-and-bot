@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { BucketFilter } from '../../entities/buckets';
-import type { OtherFilter, ReconcileFilter, RequestsView } from '../../entities/others';
+import type { OtherFilter, OtherView, ReconcileFilter, RequestsView } from '../../entities/others';
 import {
   parseBucket,
   parseEntity,
@@ -47,7 +47,7 @@ export function useAppNav() {
       tab: parseTab(params.get('tab')),
       search: params.get('q') ?? '',
       bucket: parseBucket(params.get('bucket')),
-      /** Режим списка «Заявок»: 'wait' — хотят в группу, 'leads' — хотят открыть группу, 'others' — другие обращения. */
+      /** Режим списка «Заявок»: 'wait' — хотят в группу, остальные — вкладки обращений по виду (`OTHER_VIEWS`). */
       view: parseView(params.get('view')),
       /** Чип списка обращений; 'open' по умолчанию. */
       otherFilter: parseOtherFilter(params.get('ostate')),
@@ -99,10 +99,10 @@ export function useAppNav() {
       return next;
     }),
     /**
-     * Карточка «другого обращения» из любого места (карточка человека). «Хочу открыть группу» живут в своём списке
-     * (`leads`). Отбор «Все»: обращение может быть и закрытым, а под чипом «Открытые» его бы не было.
+     * Карточка обращения из любого места (карточка человека). Вкладку вызывающий угадывает по типу, а точную (дом или
+     * открыть группу) выставит сам список по `viewOf`. Отбор «Все»: обращение может быть и закрытым, а под чипом «Открытые» его бы не было.
      */
-    openOther: (id: number, view: 'others' | 'leads' = 'others') =>
+    openOther: (id: number, view: OtherView) =>
       setParams(() => new URLSearchParams({ tab: 'requests', view, ostate: 'all', req: String(id) })),
     closeRequest: () => update({ req: null }),
     /**
@@ -110,8 +110,8 @@ export function useAppNav() {
      * Поиск шапки не переносим: он спрятал бы часть заявок, и число в строке «Нагрузки» разошлось бы со списком.
      */
     goResponsible: (who: string | null) => setParams(() => new URLSearchParams({ tab: 'requests', resp: who ?? RESP_NOBODY })),
-    /** «Других обращений открыто» в «Команде»: «Заявки» в режиме «Другие обращения». Поиск шапки не переносим, как и у goResponsible. */
-    goOthers: () => setParams(() => new URLSearchParams({ tab: 'requests', view: 'others' })),
+    /** «Обращений открыто» в «Команде»: «Заявки» во вкладке обращений. Поиск шапки не переносим, как и у goResponsible. */
+    goOthers: (view: OtherView = 'questions') => setParams(() => new URLSearchParams({ tab: 'requests', view })),
     goBucket: (b: BucketFilter) => setParams((prev) => {
       const next = tabParams(prev, 'requests');
       if (b !== 'all') next.set('bucket', b);

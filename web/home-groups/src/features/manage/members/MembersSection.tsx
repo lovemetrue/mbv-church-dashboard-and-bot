@@ -79,14 +79,24 @@ function MemberRow({
  * через сервис (`placed`) только читаются, внесённые вручную (`manual`) правятся и убираются здесь.
  */
 export function MembersSection({ g }: { g: GroupItem }) {
+  const nav = useAppNav();
   const people = usePeople();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<GroupMember | null>(null);
   const [removing, setRemoving] = useState<GroupMember | null>(null);
   const [saved, setSaved] = useState(false);
 
-  const placed = g.members.filter((m) => m.kind === 'placed');
-  const manual = g.members.filter((m) => m.kind === 'manual');
+  // Ведущий и соведущий — тоже люди группы: они в составе первыми, по ссылкам группы (миграции 030 и 054), а не копией.
+  // Внесённый ещё и участником показывается один раз — строкой ведущего.
+  type Leader = { role: string; fio: string; key: string | null };
+  const leaders = ([
+    g.leader ? { role: t.leaderRole, fio: g.leader, key: g.leaderKey } : null,
+    g.coLeader ? { role: t.coLeaderRole, fio: g.coLeader, key: g.coLeaderKey } : null,
+  ] as (Leader | null)[]).filter((x): x is Leader => x !== null);
+  const leaderKeys = new Set(leaders.map((l) => l.key).filter(Boolean));
+  const members = g.members.filter((m) => !leaderKeys.has(m.personKey));
+  const placed = members.filter((m) => m.kind === 'placed');
+  const manual = members.filter((m) => m.kind === 'manual');
   // Пока справочник людей не пришёл, имя уже кнопка; нет человека в справочнике — просто текст (карточки открывать не из чего).
   const known = people.data ? new Set(people.data.items.map((p) => p.key)) : null;
   const rows = (list: GroupMember[]) =>
@@ -107,8 +117,31 @@ export function MembersSection({ g }: { g: GroupItem }) {
     ));
 
   return (
-    <DrawerSection title={t.sectionTitle(g.members.length)}>
-      {g.members.length === 0 && <p className={styles.empty}>{t.empty}</p>}
+    <DrawerSection title={t.sectionTitle(leaders.length + members.length)}>
+      {leaders.length > 0 && (
+        <>
+          <h4 className={styles.sub}>{t.leadersTitle}</h4>
+          <ul className={styles.list} aria-label={t.leadersTitle}>
+            {leaders.map((l) => (
+              <li key={l.role} className={styles.row}>
+                <div className={styles.who}>
+                  {l.key ? (
+                    <button type="button" className={styles.name} title={t.openPerson} onClick={() => nav.openPerson(l.key!)}>
+                      {l.fio}
+                    </button>
+                  ) : (
+                    <b className={styles.name}>{l.fio}</b>
+                  )}
+                  {/* Ведущий, внесённый и участником, показан строкой ведущего — метку участника он не теряет. */}
+                  <StrangeBadge mark={g.members.find((m) => l.key && m.personKey === l.key)?.strange ?? null} />
+                </div>
+                <p className={styles.meta}>{l.role}</p>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {leaders.length + members.length === 0 && <p className={styles.empty}>{t.empty}</p>}
       {placed.length > 0 && (
         <>
           <h4 className={styles.sub}>{t.placedTitle}</h4>

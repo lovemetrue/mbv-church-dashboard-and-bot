@@ -8,7 +8,7 @@ import { demoStrangeOf } from './strange';
 
 /** Обращение без метки: метка накладывается при сборке (`buildOthers`), потому что её можно поставить в демо. */
 type BaseOther = Omit<OtherItem, 'strange'>;
-type RawOther = Omit<BaseOther, 'address' | 'schedule' | 'hobby' | 'profession' | 'family' | 'table' | 'ownGroup' | 'contactsHidden' | 'personKey' | 'outcome'>;
+type RawOther = Omit<BaseOther, 'address' | 'schedule' | 'hobby' | 'profession' | 'family' | 'table' | 'ownGroup' | 'contactsHidden' | 'personKey' | 'outcome' | 'offer'> & Partial<Pick<BaseOther, 'offer'>>;
 
 /** Поля из таблицы церкви у демо-заявок пусты: их заполняют вручную. */
 export function emptyTable(note: string | null): RequestTableFields {
@@ -22,6 +22,8 @@ function baseOthers(): BaseOther[] {
   return rawOthers().map((o) => ({
     address: null, schedule: null, hobby: null, profession: null, family: null, table: emptyTable(o.note), ownGroup: o.prospects?.futureGroup ?? null, contactsHidden: false,
     personKey: null,
+    // Что предлагает человек из «хочу открыть»: в демо по одной на «откроет группу» и «даст дом».
+    offer: o.offer ?? null,
     outcome: o.state === 'open' ? null : { text: 'Закрыто без записи в журнале', by: o.responsible, at: null, groups: [] },
     ...o,
   }));
@@ -62,7 +64,8 @@ function rawOthers(): RawOther[] {
     {
       id: 202,
       type: 'lead_group',
-      typeLabel: 'Хочет открыть группу или дать дом',
+      typeLabel: 'Хочет открыть группу',
+      offer: 'open',
       gist: 'Хочет открыть свою группу в Выборгском районе.',
       reconcile: null,
       state: 'open',
@@ -78,6 +81,11 @@ function rawOthers(): RawOther[] {
       note: null,
       cancelReason: null,
       // Кого можно направить в её будущую группу: двое ищущих из Выборгского, одному подбор уже предложил ДГ-0031.
+      pairs: {
+        side: 'homes',
+        total: 1,
+        items: [{ requestId: 213, fio: 'Татьяна Фёдорова', ageLabel: null, place: 'Новочеркасская', score: 72, reasons: [{ tone: 'good', text: 'тот же район' }], ownGroup: null }],
+      },
       prospects: {
         futureGroup: null,
         unknownPlace: false,
@@ -109,8 +117,9 @@ function rawOthers(): RawOther[] {
       // Ведущая ДГ-0112 (координатор Морозов Д.): на ней снята инструкция координатора.
       id: 213,
       type: 'lead_group',
-      typeLabel: 'Хочет открыть группу или дать дом',
-      gist: 'Хочет открыть женскую группу у себя дома на Новочеркасской.',
+      typeLabel: 'Даёт дом для группы',
+      offer: 'home',
+      gist: 'Может предоставить свой дом для женской группы на Новочеркасской.',
       reconcile: null,
       state: 'open',
       fio: 'Татьяна Фёдорова',
@@ -124,6 +133,11 @@ function rawOthers(): RawOther[] {
       responsible: 'Морозов Д.',
       note: null,
       cancelReason: null,
+      pairs: {
+        side: 'leaders',
+        total: 1,
+        items: [{ requestId: 202, fio: 'Юлия Громова', ageLabel: '35-45 лет', place: 'Озерки', score: 72, reasons: [{ tone: 'good', text: 'тот же район' }], ownGroup: null }],
+      },
       prospects: {
         futureGroup: { id: 12, code: 'ДГ-0112' },
         unknownPlace: false,

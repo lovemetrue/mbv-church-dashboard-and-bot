@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { GroupItem, GroupsView, OtherItem, PeopleView, PersonItem, RequestItem, RequestsView, TeamRoleKind } from '../src/home-groups/contracts.js';
-import { draftFor, formMetaFor, groupsFor, kitPersonFor, maskPhone, peopleFor, requestsFor, type Viewer } from '../src/home-groups/contactsAccess.js';
+import { draftFor, groupsFor, kitPersonFor, maskPhone, peopleFor, requestsFor, type Viewer } from '../src/home-groups/contactsAccess.js';
 
 /**
  * Кто какие контакты видит: решает сервер на выходе, снимок представлений один на всех. Правило — персональные данные
@@ -167,12 +167,6 @@ describe('черновик группы, списки форм, наборы', (
     const draft = { requestId: 1, fio: 'Пётр', ownGroup: null, fields: { leader: 'Пётр', phone: '+79110001122' } };
     expect(draftFor(draft, person('Галя', 'coordinator'), requestsView([request({ id: 1, responsible: 'Вера' })])).fields).toEqual({ leader: 'Пётр' });
     expect(draftFor(draft, person('Галя', 'coordinator'), requestsView([request({ id: 1, responsible: 'Галя' })]))).toEqual(draft);
-  });
-
-  test('«Подобрать из зарегистрированных» при ограниченном входе подставляет только ФИО', () => {
-    const meta = { leaderCandidates: [{ id: 1, fullName: 'Пётр', phone: '+79110001122', label: 'Пётр' }] } as Parameters<typeof formMetaFor>[0];
-    expect(formMetaFor(meta, person('Галя', 'coordinator')).leaderCandidates[0]!.phone).toBeNull();
-    expect(formMetaFor(meta, SUPER)).toBe(meta);
   });
 
   test('на «Наборах» при ограниченном входе — последние цифры телефона', () => {

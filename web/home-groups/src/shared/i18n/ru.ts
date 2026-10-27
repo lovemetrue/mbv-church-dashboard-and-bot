@@ -1736,7 +1736,7 @@ export const ru = {
     /** Подпись пустого пункта «Домашняя группа» и «Рекомендованная группа». */
     groupNotSet: '— не назначена —',
     groupNotRecommended: '— не рекомендовано —',
-    leaderCandidateEmpty: '— ввести вручную —',
+    leaderKeyHint: 'Любой человек из «Людей», в том числе тот, кто уже ведёт группу. Нет его там — оставьте пустым и впишите ФИО ниже.',
     groupFields: {
       leader: 'ФИО ведущего',
       district: 'Район',
@@ -1752,7 +1752,7 @@ export const ru = {
       coordinator: 'Координатор',
       comment: 'Комментарий',
       address: 'Адрес',
-      leaderCandidate: 'Подобрать из зарегистрированных',
+      leaderKey: 'Ведущий из «Людей»',
       composition: 'Состав',
       coLeader: 'Со-ведущий',
       coLeaderPhone: 'Телефон соведущего',

@@ -42,17 +42,41 @@ describe('создание группы: ведущий и соведущий с
     expect((await db.query('SELECT 1 FROM persons')).rowCount).toBe(1);
   });
 
-  test('ведущий, выбранный «из зарегистрированных», — ссылка на его регистрацию, лишней карточки нет', async () => {
-    const u = await seedUser(db, { id: '601', fio: 'Ведущий Из Бота', mdgStatus: 'home' });
-    const out = await creator().group({ fields: { ...base, leader: 'Ведущий Из Бота', leaderCandidate: String(u) } }, 'a');
+  test('ведущий, выбранный из «Людей» (регистрация), — ссылка на него, имя группы из анкеты, лишней карточки нет', async () => {
+    const u = await seedUser(db, { id: '601', fio: 'Ведущий Из Бота', mdgStatus: 'join' });
+    const out = await creator().group({ fields: { ...base, leaderKey: `u${u}` } }, 'a');
     if (!out.ok) throw new Error(out.message);
     expect(await links(out.id)).toMatchObject({ lu: u, lp: null });
+    expect((await db.query('SELECT leader FROM groups WHERE id = $1', [out.id])).rows[0].leader).toBe('Ведущий Из Бота');
     expect((await db.query('SELECT 1 FROM persons')).rowCount).toBe(0);
   });
 
-  test('несуществующий «из зарегистрированных» — ведущий заводится карточкой по вписанному ФИО', async () => {
-    const out = await creator().group({ fields: { ...base, leader: 'Кто-то', leaderCandidate: '99999' } }, 'a');
+  test('один человек ведёт вторую группу: обе группы ссылаются на одну карточку, вписанное ФИО не мешает', async () => {
+    const first = await creator().group({ fields: { ...base, leader: 'Новиков Владимир', phone: '+79215754970' } }, 'a');
+    if (!first.ok) throw new Error(first.message);
+    const { lp } = await links(first.id);
+    const second = await creator().group({ fields: { ...base, leaderKey: `p${lp}`, leader: 'опечатка' } }, 'a');
+    if (!second.ok) throw new Error(second.message);
+    expect(await links(second.id)).toMatchObject({ lu: null, lp });
+    // Телефон — из карточки: по нему бот узнаёт ведущего («уже ведёт группу»), и обе группы на нём.
+    expect((await db.query('SELECT leader, phones FROM groups WHERE id = $1', [second.id])).rows[0]).toEqual({ leader: 'Новиков Владимир', phones: ['+79215754970'] });
+    expect(await new GroupsRepo(db).activeLeaderByPhone('+79215754970')).toBe(true);
+    expect((await db.query('SELECT 1 FROM persons')).rowCount).toBe(1);
+  });
+
+  test('ведущий из заявки без регистрации («r») — ссылка на человека этой заявки', async () => {
+    const r = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, fio, phone, origin) VALUES ('lead_group', 'Новая', 'Мария Заявкина', '+79110002233', 'ui') RETURNING id::int AS id`)).rows[0]!.id;
+    const out = await creator().group({ fields: { ...base, leaderKey: `r${r}` } }, 'a');
     if (!out.ok) throw new Error(out.message);
-    expect(await links(out.id)).toMatchObject({ lu: null, lp: expect.any(Number) });
+    const l = await links(out.id);
+    const linked = (await db.query('SELECT user_id::int AS u, person_id::int AS p FROM requests WHERE id = $1', [r])).rows[0];
+    expect({ lu: l.lu, lp: l.lp }).toEqual({ lu: linked.u, lp: linked.p });
+    expect((await db.query('SELECT leader FROM groups WHERE id = $1', [out.id])).rows[0].leader).toBe('Мария Заявкина');
+  });
+
+  test('несуществующий или кривой ключ ведущего — отказ, группа не заводится', async () => {
+    expect(await creator().group({ fields: { ...base, leaderKey: 'p99999' } }, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
+    expect(await creator().group({ fields: { ...base, leaderKey: '601' } }, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
+    expect((await db.query('SELECT 1 FROM groups')).rowCount).toBe(0);
   });
 });

@@ -207,7 +207,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   const teamRoles = createTeamRoles({ repo: new TeamRolesRepo(db), audit: auditRepo });
   const groupDirections = createGroupDirections({ repo: new GroupDirectionsRepo(db), audit: auditRepo });
   const kits = createKits({ users: usersRepo, audit: auditRepo, timeZone: opts.timeZone ?? 'Europe/Moscow' });
-  const formMeta = createFormMeta({ defaultCapacity: opts.defaultCapacity, coordinators: new CoordinatorsRepo(db), teamRoles: new TeamRolesRepo(db), directions: new GroupDirectionsRepo(db), groups: new GroupsRepo(db), users: usersRepo });
+  const formMeta = createFormMeta({ defaultCapacity: opts.defaultCapacity, coordinators: new CoordinatorsRepo(db), teamRoles: new TeamRolesRepo(db), directions: new GroupDirectionsRepo(db), groups: new GroupsRepo(db) });
   return { load, views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, geocoderConfig, geocodeAddresses, mapConfig, chat, members, contacts, reconciler, strange, genders, kits, teamRoles, groupDirections, formMeta };
 }
 

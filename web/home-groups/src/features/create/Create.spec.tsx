@@ -439,24 +439,40 @@ describe('«+ Создать»: группа', () => {
     });
   });
 
-  test('«Подобрать из зарегистрированных» подставляет ФИО и телефон, а сам выбор на сервер не уходит', async () => {
+  test('ведущего ищут по всем «Людям» по ФИО или телефону — и того, кто уже ведёт группу; уходит ключом, без ФИО от руки', async () => {
     const fetchMock = stubFetchWithFixtures({ me: meOf(null), 'groups/create': () => json({ ok: true, id: 15 }) });
     const user = userEvent.setup();
     renderAt(<App />, REFERENCE);
     const dialog = await ready(await openForm(user, 'Группа'));
-    const pick = within(dialog).getByRole('combobox', { name: 'Подобрать из зарегистрированных' });
-    await user.selectOptions(pick, 'Ольга Домова · +79110001122 · МБВ Колизей · готов предоставить свой дом · Приморский · 25-40');
-    expect(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' })).toHaveValue('Ольга Домова');
-    expect(within(dialog).getByRole('textbox', { name: 'Телефон' })).toHaveValue('+79110001122');
-    // Подставленное правится как обычно.
-    await user.type(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' }), ' Ивановна');
+    const search = within(dialog).getByRole('searchbox', { name: 'Найти: Ведущий из «Людей»' });
+    // По ФИО: отбор идёт по мере ввода.
+    await user.type(search, 'Громов');
+    expect(within(dialog).getByRole('list', { name: 'Подходящие люди: Ведущий из «Людей»' })).toHaveTextContent('Михаил Громов');
+    // По последним цифрам телефона — тот же человек (он уже ведёт ДГ-0002).
+    await user.clear(search);
+    await user.type(search, '1755');
+    await user.click(within(dialog).getByRole('button', { name: /Михаил Громов/ }));
+    // Выбранному ФИО и телефон от руки не нужны: они из его карточки.
+    expect(within(dialog).queryByRole('textbox', { name: 'ФИО ведущего' })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('textbox', { name: 'Телефон' })).not.toBeInTheDocument();
     await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Район' }), 'Приморский');
     await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Направление' }), 'Молодёжное служение');
     await user.click(within(dialog).getByRole('button', { name: 'Создать группу' }));
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
     expect(posts(fetchMock)[0]!.body.fields).toEqual({
-      leader: 'Ольга Домова Ивановна', phone: '+79110001122', district: 'Приморский', direction: 'Молодёжное служение', status: 'Функционирует',
+      leaderKey: 'u2', district: 'Приморский', direction: 'Молодёжное служение', status: 'Функционирует',
     });
+  });
+
+  test('выбранного ведущего можно отвязать — и снова вписать ФИО от руки', async () => {
+    stubFetchWithFixtures({ me: meOf(null) });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const dialog = await ready(await openForm(user, 'Группа'));
+    await user.type(within(dialog).getByRole('searchbox', { name: 'Найти: Ведущий из «Людей»' }), 'Громов');
+    await user.click(within(dialog).getByRole('button', { name: /Михаил Громов/ }));
+    await user.click(within(dialog).getByRole('button', { name: 'Отвязать: Ведущий из «Людей»' }));
+    expect(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' })).toBeInTheDocument();
   });
 
   test('группа не отправляется, пока не выбраны район и формат', async () => {

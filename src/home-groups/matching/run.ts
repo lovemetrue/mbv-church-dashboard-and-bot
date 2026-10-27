@@ -31,7 +31,7 @@ export function createMatching(deps: MatchingDeps) {
     /** `scope` — только эти заявки («подобрать заново» одной): остальные закреплённые предложения не трогаются. */
     async run(actor: string, scope?: ReadonlySet<number>): Promise<MatchingRunOk> {
       const input = await deps.load();
-      const { plan, openRequestIds, signatures, snapshots } = buildViewsWithPlan(input, deps.engine, now(), deps.options);
+      const { plan, openRequestIds, signatures, snapshots, openGroupIds } = buildViewsWithPlan(input, deps.engine, now(), deps.options);
 
       const desired = [];
       for (const requestId of openRequestIds) {
@@ -48,7 +48,7 @@ export function createMatching(deps: MatchingDeps) {
         });
       }
 
-      const result = await deps.placement.syncProposals(desired, actor, scope);
+      const result = await deps.placement.syncProposals(desired, actor, scope, { openGroupIds, signatures });
       const lastRun: NonNullable<MatchingStatus['lastRun']> = {
         at: now().toISOString(), created: result.created, replaced: result.replaced, actor,
       };

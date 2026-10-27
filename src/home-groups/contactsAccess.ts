@@ -185,15 +185,6 @@ export function draftFor(draft: GroupDraftView, viewer: Viewer, requests: Reques
   return { ...draft, fields };
 }
 
-/**
- * Списки форм: «Подобрать из зарегистрированных» подставляет телефон будущего ведущего — при ограниченном входе
- * подставляется только ФИО (замаскированный номер в поле испортил бы данные группы).
- */
-export function formMetaFor(meta: FormMeta, viewer: Viewer): FormMeta {
-  if (restrictedName(viewer) === null) return meta;
-  return { ...meta, leaderCandidates: meta.leaderCandidates.map((c) => ({ ...c, phone: null })) };
-}
-
 /** Найденный на «Наборах» участник: при ограниченном входе — последние цифры телефона, чтобы отличить тёзок. */
 export function kitPersonFor(person: KitPerson, viewer: Viewer): KitPerson {
   return restrictedName(viewer) === null ? person : { ...person, phone: maskPhone(person.phone) };

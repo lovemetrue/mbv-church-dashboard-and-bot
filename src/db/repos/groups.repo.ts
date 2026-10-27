@@ -370,6 +370,17 @@ export class GroupsRepo {
   }
 
   /**
+   * Телефон человека из «Людей» по ссылке; null — номера нет. Группе он нужен в `phones`: по ним бот узнаёт, что человек
+   * уже ведёт группу, и ставит отметку «40 дней» (`activeLeaderByPhone`, `markCampaignRegisteredByPhone`).
+   */
+  async personPhone(ref: PersonRef): Promise<string | null> {
+    const { rows } = await this.db.query<{ phone: string | null }>(
+      ref.kind === 'user' ? 'SELECT phone FROM users WHERE id = $1' : 'SELECT phone FROM persons WHERE id = $1', [ref.id],
+    );
+    return rows[0]?.phone?.trim() || null;
+  }
+
+  /**
    * Поставить людей на позиции ведущего и соведущего у только что заведённой группы. Позицию, где уже есть ссылка
    * (ведущий из заявки — `linkToRequest`), не трогаем: undefined — не менять.
    */

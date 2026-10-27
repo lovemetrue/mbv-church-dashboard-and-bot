@@ -2,6 +2,8 @@ import type { DashboardGroup } from '../../db/repos/groups.repo.js';
 import type { MemberRow, PersonRow } from '../../db/repos/members.repo.js';
 import type { StoredHint } from '../../db/repos/hints.repo.js';
 import type { StrangeMarkRow } from '../../db/repos/strange.repo.js';
+import type { RestorableProposal } from '../../db/repos/placement.repo.js';
+import { groupTakesPeople } from '../plan/engine.js';
 import { diffSnapshots, inputSnapshot, type InputSnapshot } from '../plan/signature.js';
 import { streetName } from '../plan/street.js';
 import { addressKey } from '../geocode.js';
@@ -59,6 +61,11 @@ export interface ViewsInput {
    * сохраняет группу, пока она остаётся доступной, и подбирает новые заявки вокруг неё.
    */
   activeProposals?: ReadonlyMap<number, { groupId: number | null; source: 'script' | 'agent' | 'manual'; inputHash?: string | null; inputSnapshot?: InputSnapshot | null }>;
+  /**
+   * Снятые автоматом предложения, которые вернутся, когда их группа снова примет людей (`PlacementRepo.restorableProposals`):
+   * группу временно убрали из подбора — люди ушли в другие, открыли снова — вернулись те же.
+   */
+  restorable?: ReadonlyMap<number, readonly RestorableProposal[]>;
   /** Сколько человек утвердил сервис в группу после последней обратной связи ведущего. */
   placedNew?: ReadonlyMap<number, number>;
   /** Кэш координат адресов (ключ — `addressKey`); нет записи или null — адрес не геокодирован или не найден. */
@@ -316,7 +323,12 @@ export function buildViews(input: ViewsInput, engine: PlanEngineApi, now: Date, 
 /** Представления и сам план: автоматический подбор берёт из плана то, что нужно сохранить. */
 export function buildViewsWithPlan(
   input: ViewsInput, engine: PlanEngineApi, now: Date, options: ViewsOptions = {},
-): { views: Views; plan: PlanOutput; openRequestIds: number[]; signatures: Map<number, string>; snapshots: Map<number, InputSnapshot>; assistantCandidates: AssistantCandidate[] } {
+): {
+  views: Views; plan: PlanOutput; openRequestIds: number[]; signatures: Map<number, string>; snapshots: Map<number, InputSnapshot>;
+  assistantCandidates: AssistantCandidate[];
+  /** Группы, которые сейчас принимают людей: по ним запуск подбора отличает «группа закрылась» от прочих замен. */
+  openGroupIds: Set<number>;
+} {
   const defaultCapacity = options.defaultCapacity ?? DEFAULT_CAPACITY;
   const timeZone = options.timeZone ?? DEFAULT_TIME_ZONE;
   const today = localIsoDate(now, timeZone);
@@ -566,7 +578,11 @@ export function buildViewsWithPlan(
     const stored = input.activeProposals?.get(r.id);
     const changed = stored !== undefined && stored.groupId !== null && stored.inputHash != null && stored.inputHash !== signature;
     if (changed) dataChanged.add(r.id);
-    planRequests.set(r.id, { ...base, pinnedGroupId: changed ? null : (stored?.groupId ?? null) });
+    // Вернуть можно только вместо закреплённого автоматом: поставленное человеком сильнее. И только при тех же данных заявки.
+    const restoreGroupIds = changed || (stored !== undefined && stored.source !== 'script')
+      ? []
+      : (input.restorable?.get(r.id) ?? []).filter((x) => x.inputHash === signature).map((x) => x.groupId);
+    planRequests.set(r.id, { ...base, pinnedGroupId: changed ? null : (stored?.groupId ?? null), restoreGroupIds });
   }
   const openRequests = joinRequests.filter((r) => r.status !== DONE && r.status !== CANCELLED);
   // Отмеченные «странными» в подбор обычных групп не идут и мест не занимают: для них нужна отдельная группа, и решает человек.
@@ -1210,7 +1226,8 @@ export function buildViewsWithPlan(
     coordinators: { generatedAt, items: coordinatorItems },
     groupDrafts: new Map(input.requests.map((r) => [r.id, groupDraftOf(r)])),
   };
-  return { views, plan, openRequestIds: openRequests.map((r) => r.id), signatures, snapshots, assistantCandidates };
+  const openGroupIds = new Set(planGroups.filter(groupTakesPeople).map((g) => g.id));
+  return { views, plan, openRequestIds: openRequests.map((r) => r.id), signatures, snapshots, assistantCandidates, openGroupIds };
 }
 
 /**

@@ -89,12 +89,12 @@ function DraftForm({ meta, draft, onClose, onCreated, onBusyChange }: {
   onBusyChange: (busy: boolean) => void;
 }) {
   // Форма та же, что у «+ Создать → Группа», только начальные значения — из заявки, а номер заявки уходит скрытым полем.
-  // «Подобрать из зарегистрированных» здесь не нужно: ведущий уже известен — это человек из заявки.
+  // Выбор ведущего из «Людей» здесь не нужен: ведущий уже известен — это человек из заявки.
   const spec = useMemo((): FormSpec => {
     const base = groupSpec(meta);
     return {
       ...base,
-      fields: base.fields.filter((f) => f.name !== 'leaderCandidate'),
+      fields: base.fields.filter((f) => f.name !== 'leaderKey'),
       initial: { ...base.initial, ...draft.fields },
       hidden: { sourceRequestId: String(draft.requestId) },
     };

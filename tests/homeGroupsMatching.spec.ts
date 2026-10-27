@@ -218,6 +218,94 @@ describe('«подобрать заново» и изменившиеся дан
   });
 });
 
+describe('группу временно сняли с подбора и вернули', () => {
+  const setStatus = (id: number, status: string) => db.query('UPDATE groups SET status = $2 WHERE id = $1', [id, status]);
+  // Старая группа — не новая: дату открытия база ставит при вставке, а новые идут в подборе первыми.
+  const old = async (over: { district?: string } = {}) => {
+    const id = await group(over);
+    await db.query('UPDATE groups SET opened_on = NULL WHERE id = $1', [id]);
+    return id;
+  };
+  async function home(): Promise<number> {
+    return (await db.query<{ id: number }>(
+      `INSERT INTO groups (leader, district, direction_id, status, people, age, source)
+       VALUES ('Дам дом', 'Приморский', group_direction_id('Основная церковь'), 'Потенциальная', 0, '25-40', 'ui') RETURNING id`,
+    )).rows[0]!.id;
+  }
+
+  test('«Дам дом»: открыли — люди к ней; вернули в «Потенциальную» — ушли; открыли снова — вернулись те же', async () => {
+    const oldId = await old();
+    const dom = await home();
+    const r1 = await request();
+    const r2 = await request();
+    const s = service();
+    await setStatus(dom, 'Функционирует');
+    await s.matching.run('auto');
+    expect(await active()).toEqual([{ request_id: r1, group_id: dom }, { request_id: r2, group_id: dom }]);
+    await setStatus(dom, 'Потенциальная');
+    await s.matching.run('auto');
+    expect(await active()).toEqual([{ request_id: r1, group_id: oldId }, { request_id: r2, group_id: oldId }]);
+    await setStatus(dom, 'Функционирует');
+    await s.matching.run('auto');
+    expect(await active()).toEqual([{ request_id: r1, group_id: dom }, { request_id: r2, group_id: dom }]);
+    // И на экране главной стоит она же, закреплённой.
+    const items = (await s.views()).requests.items;
+    expect(items.find((i) => i.id === r1)?.proposal).toMatchObject({ saved: true, main: { group: { id: dom } } });
+  });
+
+  test('возвращаются только те, у кого группу отняла её недоступность: закреплённые за старой до открытия остаются', async () => {
+    const oldId = await old();
+    const dom = await home();
+    const before = await request();
+    const s = service();
+    await s.matching.run('auto');
+    await setStatus(dom, 'Функционирует');
+    await setStatus(dom, 'Потенциальная');
+    await setStatus(dom, 'Функционирует');
+    await s.matching.run('auto');
+    expect(await active()).toEqual([{ request_id: before, group_id: oldId }]);
+  });
+
+  test('предложение, поставленное вручную, и «Подобрать заново» возврат отменяют', async () => {
+    const oldId = await old();
+    const other = await old();
+    const dom = await home();
+    const manual = await request();
+    const rematched = await request();
+    const s = service();
+    await setStatus(dom, 'Функционирует');
+    await s.matching.run('auto');
+    await setStatus(dom, 'Потенциальная');
+    await s.matching.run('auto');
+    // Координатор сам поставил человеку группу; другому нажал «Подобрать заново».
+    await db.query(`UPDATE placement_proposals SET source = 'manual', group_id = $2 WHERE request_id = $1 AND status = 'proposed'`, [manual, other]);
+    await s.matching.rematch(rematched, 'Вера');
+    const pinned = (await active()).find((x) => x.request_id === rematched)!.group_id;
+    await setStatus(dom, 'Функционирует');
+    await s.matching.run('auto');
+    expect(await active()).toEqual([{ request_id: manual, group_id: other }, { request_id: rematched, group_id: pinned }]);
+    expect([oldId, other]).toContain(pinned);
+  });
+
+  test('изменились данные заявки, пока группа была недоступна, — прежняя группа не возвращается сама', async () => {
+    await old();
+    await old({ district: 'Невский' });
+    const dom = await home();
+    const r = await request();
+    const s = service();
+    await setStatus(dom, 'Функционирует');
+    await s.matching.run('auto');
+    await setStatus(dom, 'Потенциальная');
+    // Возраст — данные человека (миграция 057): правим его запись, а не снимок заявки.
+    await db.query(`UPDATE persons SET age = '35' WHERE id = (SELECT person_id FROM requests WHERE id = $1)`, [r]);
+    await s.matching.run('auto');
+    const after = (await active())[0]!.group_id;
+    await setStatus(dom, 'Функционирует');
+    await s.matching.run('auto');
+    expect((await active())[0]!.group_id).toBe(after);
+  });
+});
+
 describe('автоматический запуск по таймеру', () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); });

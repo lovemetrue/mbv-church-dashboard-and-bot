@@ -13,6 +13,7 @@ import { useAppNav } from '../../../shared/nav';
 import { Button } from '../../../shared/ui';
 import { STATE_LABEL, STATE_TONE } from './OtherList';
 import styles from './Others.module.css';
+import { PairsBlock } from './PairsBlock';
 import { ProspectsBlock } from './ProspectsBlock';
 import { ReconcileBlock } from './ReconcileBlock';
 
@@ -98,6 +99,11 @@ export function OtherCard({ item, onClose, onClosed }: { item: OtherItem; onClos
       {item.prospects && (
         <DrawerSection>
           <ProspectsBlock p={item.prospects} />
+        </DrawerSection>
+      )}
+      {item.pairs && (
+        <DrawerSection>
+          <PairsBlock p={item.pairs} />
         </DrawerSection>
       )}
       {item.outcome && <OutcomeBlock outcome={item.outcome} />}

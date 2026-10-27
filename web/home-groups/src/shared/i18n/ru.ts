@@ -544,11 +544,30 @@ export const ru = {
       openAria: (fio: string) => `Открыть заявку: ${fio}`,
     },
 
+    /** Кого с кем соединить: дому — кто рядом готов вести, ведущему — дома рядом. */
+    pairs: {
+      leadersTitle: 'Кто рядом готов вести',
+      homesTitle: 'Дома рядом',
+      leadersHint: 'Люди, которые хотят открыть группу, — их можно соединить с этим домом. Готовые вести часто готовы и принять у себя, и наоборот.',
+      homesHint: 'Люди, которые дают дом для группы, — если у человека нет своего места, его можно соединить с одним из них.',
+      none: 'Пока никого рядом не видим.',
+      count: (n: number) => `Подходят: ${n}`,
+      more: (n: number) => `И ещё ${n} — с меньшим совпадением.`,
+      scoreTitle: 'Насколько совпадают место, возраст и время, из 100',
+      ownGroup: (code: string) => `по нему уже заведена ${code}`,
+      open: 'Открыть обращение',
+      openAria: (fio: string) => `Открыть обращение: ${fio}`,
+    },
+
     view: {
       label: 'Режим списка заявок',
       wait: 'Хотят в группу',
       leads: (open: number) => `Хотят открыть группу (${open})`,
-      others: (open: number) => `Другие обращения (${open})`,
+      homes: (open: number) => `Дают дом (${open})`,
+      questions: (open: number) => `Вопросы (${open})`,
+      members: (open: number) => `Уже состоят (${open})`,
+      leaders: (open: number) => `Уже ведут (${open})`,
+      cancelled: (n: number) => `Аннулированные заявки (${n})`,
       found: (n: number) => `найдено ${n}`,
     },
 
@@ -585,8 +604,6 @@ export const ru = {
       gistTitle: 'Суть обращения',
       /** Вторая строка чипов под «Открытыми»: что сервер нашёл в справочниках групп. */
       reconcileChipsLabel: 'Фильтр открытых обращений по разбору',
-      offerChipsLabel: 'Что предлагает человек',
-      offer: { all: 'Все', open: 'Откроют группу', home: 'Дают дом' } as Record<'all' | 'open' | 'home', string>,
       reconcileAll: 'Все открытые',
       reconcileReady: 'Готово к разбору',
       reconcileChoose: 'Нужен выбор',

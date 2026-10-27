@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { BucketFilter } from '../../entities/buckets';
-import type { OtherFilter, ReconcileFilter, RequestsView } from '../../entities/others';
+import type { OtherFilter, OtherView, ReconcileFilter, RequestsView } from '../../entities/others';
 import {
   parseBucket,
   parseEntity,
@@ -47,14 +47,12 @@ export function useAppNav() {
       tab: parseTab(params.get('tab')),
       search: params.get('q') ?? '',
       bucket: parseBucket(params.get('bucket')),
-      /** Режим списка «Заявок»: 'wait' — хотят в группу, 'leads' — хотят открыть группу, 'others' — другие обращения. */
+      /** Режим списка «Заявок»: 'wait' — хотят в группу, остальные — вкладки обращений по виду (`OTHER_VIEWS`). */
       view: parseView(params.get('view')),
       /** Чип списка обращений; 'open' по умолчанию. */
       otherFilter: parseOtherFilter(params.get('ostate')),
       /** Отбор открытых обращений по разбору; 'all' по умолчанию. Действует только при чипе «Открытые». */
       reconcileFilter: parseReconcileFilter(params.get('orec')),
-      /** «Хотят открыть группу»: все, только «откроют группу» или только «дают дом» (параметр `offer`). */
-      offerFilter: (params.get('offer') === 'open' || params.get('offer') === 'home' ? params.get('offer') : 'all') as 'all' | 'open' | 'home',
       /** «В работе у»: '' — все, RESP_NOBODY — никто не взял, иначе имя. */
       responsible: params.get('resp') ?? '',
       requestId: parseId(params.get('req')),
@@ -91,21 +89,20 @@ export function useAppNav() {
     setBucket: (b: BucketFilter) => update({ bucket: b === 'all' ? null : b, req: null }),
     // Режим списка: открытая карточка и отборы чипов принадлежат прежнему списку и сбрасываются.
     // Поиск и «В работе у» общие для обоих режимов и сохраняются.
-    setView: (v: RequestsView) => update({ view: v === 'wait' ? null : v, req: null, bucket: null, ostate: null, orec: null, offer: null }),
+    setView: (v: RequestsView) => update({ view: v === 'wait' ? null : v, req: null, bucket: null, ostate: null, orec: null }),
     // Отбор по разбору существует только у «Открытых»: ушли с них — он сбрасывается, иначе скрытый отбор прятал бы строки.
     setOtherFilter: (f: OtherFilter) => update({ ostate: f === 'open' ? null : f, orec: null, req: null }),
     setReconcileFilter: (f: ReconcileFilter) => update({ orec: f === 'all' ? null : f, req: null }),
-    setOfferFilter: (f: 'all' | 'open' | 'home') => update({ offer: f === 'all' ? null : f, req: null }),
     openRequest: (id: number) => setParams((prev) => {
       const next = tabParams(prev, 'requests');
       next.set('req', String(id));
       return next;
     }),
     /**
-     * Карточка «другого обращения» из любого места (карточка человека). «Хочу открыть группу» живут в своём списке
-     * (`leads`). Отбор «Все»: обращение может быть и закрытым, а под чипом «Открытые» его бы не было.
+     * Карточка обращения из любого места (карточка человека). Вкладку вызывающий угадывает по типу, а точную (дом или
+     * открыть группу) выставит сам список по `viewOf`. Отбор «Все»: обращение может быть и закрытым, а под чипом «Открытые» его бы не было.
      */
-    openOther: (id: number, view: 'others' | 'leads' = 'others') =>
+    openOther: (id: number, view: OtherView) =>
       setParams(() => new URLSearchParams({ tab: 'requests', view, ostate: 'all', req: String(id) })),
     closeRequest: () => update({ req: null }),
     /**
@@ -113,8 +110,8 @@ export function useAppNav() {
      * Поиск шапки не переносим: он спрятал бы часть заявок, и число в строке «Нагрузки» разошлось бы со списком.
      */
     goResponsible: (who: string | null) => setParams(() => new URLSearchParams({ tab: 'requests', resp: who ?? RESP_NOBODY })),
-    /** «Других обращений открыто» в «Команде»: «Заявки» в режиме «Другие обращения». Поиск шапки не переносим, как и у goResponsible. */
-    goOthers: () => setParams(() => new URLSearchParams({ tab: 'requests', view: 'others' })),
+    /** «Обращений открыто» в «Команде»: «Заявки» во вкладке обращений. Поиск шапки не переносим, как и у goResponsible. */
+    goOthers: (view: OtherView = 'questions') => setParams(() => new URLSearchParams({ tab: 'requests', view })),
     goBucket: (b: BucketFilter) => setParams((prev) => {
       const next = tabParams(prev, 'requests');
       if (b !== 'all') next.set('bucket', b);

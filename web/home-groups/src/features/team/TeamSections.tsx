@@ -10,7 +10,7 @@ const t = ru.team;
 
 /**
  * Шесть плиток сверху. Подпись идёт первой в разметке (список определений), число — под ней.
- * Плитка «Других обращений открыто» ведёт в «Заявки» в режиме «Другие обращения»: остальные плитки — просто числа.
+ * Плитка «Других обращений открыто» ведёт в «Заявки» во вкладку обращений (там у каждой вкладки своё число): остальные плитки — просто числа.
  */
 export function Tiles({ totals }: { totals: TeamView['totals'] }) {
   const nav = useAppNav();
@@ -25,7 +25,7 @@ export function Tiles({ totals }: { totals: TeamView['totals'] }) {
     {
       label: ru.requests.others.teamTile,
       value: otherOpen,
-      open: { aria: ru.requests.others.teamTileAria(otherOpen), go: nav.goOthers },
+      open: { aria: ru.requests.others.teamTileAria(otherOpen), go: () => nav.goOthers() },
     },
   ];
   return (

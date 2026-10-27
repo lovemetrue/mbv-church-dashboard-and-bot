@@ -986,6 +986,12 @@ export interface OtherItem {
    * обращения (район, возраст, время, улица). null — у других обращений.
    */
   prospects?: Prospects | null;
+  /**
+   * Кого с кем соединить: у открытого «даёт дом» — кто рядом готов вести (`side: 'leaders'`), у открытого «хочет открыть
+   * группу» — дома рядом (`side: 'homes'`). Люди готовы и вести, и дать дом по надобности, поэтому подсказка в обе стороны.
+   * null — у остальных и у закрытых обращений.
+   */
+  pairs?: Pairs | null;
   /** Группа, заведённая по этому обращению: потенциальная из «хочу открыть» или «Создать группу по заявке»; null — нет. */
   ownGroup: { id: number; code: string } | null;
   /** Человек в «Людях» («u12»); null — у обращения нет регистрации, и карточки человека нет. */
@@ -1005,6 +1011,25 @@ export interface Prospects {
   /** Сколько всего подходящих (в `items` — первые, самые подходящие). */
   total: number;
   items: ProspectItem[];
+}
+
+export interface Pairs {
+  side: 'leaders' | 'homes';
+  /** Сколько всего подходящих (в `items` — первые, самые подходящие). */
+  total: number;
+  items: PairItem[];
+}
+
+export interface PairItem {
+  requestId: number;
+  fio: string;
+  ageLabel: string | null;
+  place: string | null;
+  /** 0–100: насколько совпадают место, возраст и время — той же оценкой, что подбор группы. */
+  score: number;
+  reasons: Reason[];
+  /** Потенциальная группа, уже заведённая по этому обращению; null — нет. */
+  ownGroup: { id: number; code: string } | null;
 }
 
 export interface ProspectItem {

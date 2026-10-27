@@ -81,6 +81,11 @@ function rawOthers(): RawOther[] {
       note: null,
       cancelReason: null,
       // Кого можно направить в её будущую группу: двое ищущих из Выборгского, одному подбор уже предложил ДГ-0031.
+      pairs: {
+        side: 'homes',
+        total: 1,
+        items: [{ requestId: 213, fio: 'Татьяна Фёдорова', ageLabel: null, place: 'Новочеркасская', score: 72, reasons: [{ tone: 'good', text: 'тот же район' }], ownGroup: null }],
+      },
       prospects: {
         futureGroup: null,
         unknownPlace: false,
@@ -128,6 +133,11 @@ function rawOthers(): RawOther[] {
       responsible: 'Морозов Д.',
       note: null,
       cancelReason: null,
+      pairs: {
+        side: 'leaders',
+        total: 1,
+        items: [{ requestId: 202, fio: 'Юлия Громова', ageLabel: '35-45 лет', place: 'Озерки', score: 72, reasons: [{ tone: 'good', text: 'тот же район' }], ownGroup: null }],
+      },
       prospects: {
         futureGroup: { id: 12, code: 'ДГ-0112' },
         unknownPlace: false,

@@ -1782,4 +1782,38 @@ describe('«хочу открыть группу» и «дам дом»', () => 
     expect([o(2).offer, o(2).typeLabel]).toEqual(['home', 'Даёт дом для группы']);
     expect([o(3).offer, o(3).typeLabel]).toEqual([null, 'Хочет открыть группу или дать дом']);
   });
+
+  test('«дают дом» и «готовы открыть» подсказывают друг друга: дому — кто рядом может вести, ведущему — дома рядом', () => {
+    const { views } = build({
+      requests: [
+        request({ id: 1, type: 'lead_group', user_id: 5, mdg_status: 'home', place: 'Приморский' }),
+        request({ id: 2, type: 'lead_group', user_id: 6, mdg_status: 'open', place: 'Приморский район', age: '26-35' }),
+        request({ id: 3, type: 'lead_group', user_id: 7, mdg_status: 'open', place: 'Невский' }),
+        // Ответа анкеты нет (из таблицы): человек хочет открыть группу — значит, может и вести.
+        request({ id: 4, type: 'lead_group', place: 'Приморский' }),
+        request({ id: 5, type: 'lead_group', user_id: 8, mdg_status: 'open', place: 'Приморский', status: 'Исполнена' }),
+        request({ id: 6, type: 'lead_group', user_id: 9, mdg_status: 'home', place: 'Невский' }),
+      ],
+    });
+    const o = (id: number) => views.requests.others.find((x) => x.id === id)!;
+    const home = o(1).pairs!;
+    expect(home).toMatchObject({ side: 'leaders', total: 2 });
+    expect(home.items.map((x) => x.requestId).sort()).toEqual([2, 4]);
+    expect(home.items.find((x) => x.requestId === 2)).toMatchObject({ fio: 'Человек 2', ageLabel: '26-35', place: 'Приморский район' });
+    expect(o(2).pairs).toMatchObject({ side: 'homes', total: 1, items: [{ requestId: 1 }] });
+    expect(o(3).pairs).toMatchObject({ side: 'homes', total: 1, items: [{ requestId: 6 }] });
+    expect(o(4).pairs).toMatchObject({ side: 'homes', total: 1 });
+    // Закрытым подсказка не нужна; вопросам — тем более.
+    expect(o(5).pairs).toBeNull();
+  });
+
+  test('сам с собой не пара: человек, давший оба ответа двумя заявками, не предлагается сам себе', () => {
+    const { views } = build({
+      requests: [
+        request({ id: 1, type: 'lead_group', user_id: 5, mdg_status: 'home', place: 'Приморский' }),
+        request({ id: 2, type: 'lead_group', user_id: 5, mdg_status: 'open', place: 'Приморский' }),
+      ],
+    });
+    expect(views.requests.others.find((x) => x.id === 1)!.pairs).toMatchObject({ total: 0, items: [] });
+  });
 });

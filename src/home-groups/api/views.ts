@@ -22,7 +22,7 @@ import { CONTACT_LABEL } from '../../core/csv.js';
 import type { GroupDraftView } from '../contracts.js';
 import type {
   Bucket, Candidate, Counters, CoordinatorItem, CoordinatorsView, GroupBrief, GroupItem, GroupsView,
-  GenderInfo, HealthItem, LogEntry, MatchingStatus, NoPlan, StrangeMark, DataChange, OriginalField, ParamInfo, RequestTableFields, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, AssistantReviewItem, GroupMember, OtherItem, Prospects, ProspectItem, RequestsView, TeamView, TodayView,
+  GenderInfo, HealthItem, LogEntry, MatchingStatus, NoPlan, StrangeMark, DataChange, OriginalField, ParamInfo, RequestTableFields, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, AssistantReviewItem, GroupMember, OtherItem, Pairs, PairItem, Prospects, ProspectItem, RequestsView, TeamView, TodayView,
 } from '../contracts.js';
 import type {
   Day, PlanEngineApi, PlanEntry, PlanEntryProposal, PlanGroup, PlanOutput, PlanRequest, ScoredGroup, Slot,
@@ -736,20 +736,25 @@ export function buildViewsWithPlan(
   // Координатор при звонке говорит «могли бы направить к вам N человек»: считаем всех открытых «хочу в группу», кому
   // будущая группа подходит, даже если подбор уже предложил им другую (её код — рядом). Будущая группа — потенциальная,
   // заведённая по обращению (`source_request_id`, миграция 032), а без неё — ответы самого обращения.
+  /** Будущая группа обращения: заведённая по нему потенциальная, а без неё — его ответы; null — место неизвестно. */
+  const futureOf = (r: DashboardRequest): PlanGroup | null => {
+    const linked = groupBySourceRequest.get(r.id);
+    const own = linked ? planGroupById.get(linked.id) ?? null : null;
+    if (own) return own;
+    const lead = planRequestOf(r);
+    if (lead.district === null && !lead.coords) return null;
+    return {
+      id: -r.id, no: null, leader: nonBlank(r.fio) ?? '', district: lead.district ?? 'Не указан', metro: null,
+      ageRange: lead.ageRange, day: lead.days[0] ?? null, slot: lead.slot, street: lead.street, coords: lead.coords ?? null,
+      people: 0, capacity: defaultCapacity, status: 'Потенциальная', acceptsNew: true, doNotRefer: false, verifiedDaysAgo: null,
+    };
+  };
   const prospectsOf = (r: DashboardRequest): Prospects => {
     const linked = groupBySourceRequest.get(r.id);
-    let future = linked ? planGroupById.get(linked.id) ?? null : null;
-    if (!future) {
-      const lead = planRequestOf(r);
-      if (lead.district === null && !lead.coords) return { futureGroup: null, unknownPlace: true, total: 0, items: [] };
-      future = {
-        id: -r.id, no: null, leader: nonBlank(r.fio) ?? '', district: lead.district ?? 'Не указан', metro: null,
-        ageRange: lead.ageRange, day: lead.days[0] ?? null, slot: lead.slot, street: lead.street, coords: lead.coords ?? null,
-        people: 0, capacity: defaultCapacity, status: 'Потенциальная', acceptsNew: true, doNotRefer: false, verifiedDaysAgo: null,
-      };
-    }
+    const future = futureOf(r);
+    if (!future) return { futureGroup: null, unknownPlace: true, total: 0, items: [] };
     const scored = openPlanRequests
-      .map((pr) => ({ pr, s: engine.scoreProspect(pr, future!, settings) }))
+      .map((pr) => ({ pr, s: engine.scoreProspect(pr, future, settings) }))
       .filter((x): x is { pr: PlanRequest; s: NonNullable<typeof x.s> } => x.s !== null)
       .sort((a, b) => b.s.score - a.s.score || (b.pr.waitingDays ?? -1) - (a.pr.waitingDays ?? -1) || a.pr.id - b.pr.id);
     const items = scored.slice(0, PROSPECTS_SHOWN).map(({ pr, s }): ProspectItem => {
@@ -761,6 +766,33 @@ export function buildViewsWithPlan(
       };
     });
     return { futureGroup: linked ? { id: linked.id, code: groupCode(linked.id) } : null, unknownPlace: false, total: scored.length, items };
+  };
+
+  // ── «Дают дом» ↔ «Хотят открыть группу»: кого с кем соединить ──────────────
+  // Дом ищет ведущего, ведущий — дом. Оценка та же, что в подборе: ведущий — как заявка, дом — как будущая группа
+  // (`futureOf`), поэтому совпадение района, возраста и времени считается одинаково в обе стороны. Без ответа анкеты
+  // (заявки из таблицы) человек «хочет открыть группу», то есть готов вести: он в стороне ведущих.
+  const openLeads = input.requests.filter((r) => r.type === 'lead_group' && r.status !== DONE && r.status !== CANCELLED);
+  const homeRequests = openLeads.filter((r) => r.mdg_status === 'home');
+  const leaderRequests = openLeads.filter((r) => r.mdg_status !== 'home');
+  const samePerson = (a: DashboardRequest, b: DashboardRequest): boolean =>
+    (a.user_id !== null && a.user_id === b.user_id) || (a.person_id != null && a.person_id === b.person_id);
+  const pairsOf = (r: DashboardRequest): Pairs => {
+    const isHome = r.mdg_status === 'home';
+    const scored = (isHome ? leaderRequests : homeRequests)
+      .filter((x) => x.id !== r.id && !samePerson(x, r))
+      .map((x) => {
+        const home = isHome ? r : x;
+        const future = futureOf(home);
+        return { x, s: future ? engine.scoreProspect(planRequestOf(isHome ? x : r), future, settings) : null };
+      })
+      .filter((p): p is { x: DashboardRequest; s: NonNullable<typeof p.s> } => p.s !== null)
+      .sort((a, b) => b.s.score - a.s.score || a.x.id - b.x.id);
+    const items = scored.slice(0, PROSPECTS_SHOWN).map(({ x, s }): PairItem => ({
+      requestId: x.id, fio: nonBlank(x.fio) ?? 'Без имени', ageLabel: nonBlank(x.age), place: nonBlank(x.place),
+      score: s.score, reasons: s.reasons, ownGroup: ownGroupOf(x),
+    }));
+    return { side: isHome ? 'leaders' : 'homes', total: scored.length, items };
   };
 
   // Остальные обращения: всё, что не идёт в подбор, и аннулированные «хочу в группу» (чтобы вернуть в работу).
@@ -824,6 +856,7 @@ export function buildViewsWithPlan(
     table: tableFieldsOf(r),
     log: logOf(r, null),
     prospects: r.type === 'lead_group' && otherState(r) === 'open' ? prospectsOf(r) : null,
+    pairs: r.type === 'lead_group' && otherState(r) === 'open' ? pairsOf(r) : null,
     ownGroup: ownGroupOf(r),
     // Аннулированная заявка «хочу в группу» без регистрации — тоже человек в «Людях» (ключ «r»).
     personKey: r.user_id !== null || r.person_id != null ? requestKey(r) : null,

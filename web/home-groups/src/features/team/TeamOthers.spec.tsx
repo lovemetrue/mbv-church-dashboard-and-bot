@@ -24,7 +24,7 @@ describe('«Команда»: плитка «Других обращений о�
     expect(within(tiles).getAllByRole('term')).toHaveLength(6);
   });
 
-  test('нажатие открывает «Заявки» в режиме «Другие обращения»', async () => {
+  test('нажатие открывает «Заявки» во вкладке обращений (там у каждой вкладки своё число)', async () => {
     stubFetchWithFixtures({ team: () => json(withOthers(3)), me: meAs('admin') });
     const user = userEvent.setup();
     renderAt(<App />, '/?tab=team');
@@ -32,7 +32,7 @@ describe('«Команда»: плитка «Других обращений о�
     await user.click(within(tiles).getByRole('button', { name: /Других обращений открыто: 3/ }));
     const params = currentSearch();
     expect(params.get('tab')).toBe('requests');
-    expect(params.get('view')).toBe('others');
+    expect(params.get('view')).toBe('questions');
     expect(params.has('bucket')).toBe(false);
     expect(await screen.findByRole('list', { name: 'Список обращений' })).toBeInTheDocument();
   });

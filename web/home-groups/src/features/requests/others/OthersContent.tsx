@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { RequestsView as RequestsData } from '@contracts';
-import { isLead, OTHER_FILTERS, RECONCILE_FILTERS, type OtherFilter, type ReconcileFilter } from '../../../entities/others';
+import { OTHER_FILTERS, RECONCILE_FILTERS, viewOf, type OtherFilter, type OtherView, type ReconcileFilter } from '../../../entities/others';
 import { ru } from '../../../shared/i18n/ru';
 import { useAppNav } from '../../../shared/nav';
 import { Chip, EmptyState } from '../../../shared/ui';
@@ -41,7 +41,7 @@ const RECONCILE_LABEL: Record<ReconcileFilter, string> = {
 };
 
 /**
- * Режим «Другие обращения»: обращения, которые не идут в подбор группы. Поиск шапки и «В работе у»
+ * Вкладка обращений одного вида (`viewOf`): то, что не идёт в подбор группы. Поиск шапки и «В работе у»
  * общие с заявками и сужают список до чипов, как там. Открытая карточка ищется среди всех обращений,
  * а не среди показанных: ссылка на закрытое обращение работает и при чипе «Открытые».
  *
@@ -56,16 +56,16 @@ export function OthersContent({
   onHideNote,
 }: {
   data: RequestsData;
-  /** leads — «Хотят открыть группу» (рабочее место координатора), others — остальные обращения. */
-  kind: 'leads' | 'others';
+  /** Вкладка: leads — «Хотят открыть группу», homes — «Дают дом» (рабочее место координатора), остальные — по виду. */
+  kind: OtherView;
   note: string | null;
   onClosed: (text: string) => void;
   onHideNote: () => void;
 }) {
   const nav = useAppNav();
   const resp = useResponsible(kind);
-  // «Хотят открыть группу» и остальные обращения приходят одним списком: делим по типу.
-  const all = useMemo(() => data.others.filter((o) => (kind === 'leads') === isLead(o)), [data.others, kind]);
+  // Все обращения приходят одним списком: делим по вкладкам.
+  const all = useMemo(() => data.others.filter((o) => viewOf(o) === kind), [data.others, kind]);
   const found = useMemo(
     () => filterByResponsible(all.filter((o) => matchesOtherSearch(o, nav.search)), resp.value, resp.myName),
     [all, nav.search, resp.value, resp.myName],
@@ -74,21 +74,21 @@ export function OthersContent({
   const recCounts = useMemo(() => countReconcile(found), [found]);
   // Отбор по разбору есть только у «Открытых»: в адресе он мог остаться от прежней ссылки, а строки чипов при других
   // состояниях нет, и скрытый отбор прятал бы обращения без объяснений.
-  const recFilter: ReconcileFilter = nav.otherFilter === 'open' && kind === 'others' ? nav.reconcileFilter : 'all';
-  // «Открыть группу» и «дать дом» — одна заявка, различает их ответ анкеты (`offer`). Отбор есть только у «Хотят открыть».
-  const offerFilter = kind === 'leads' ? nav.offerFilter : 'all';
-  const offerCounts = useMemo(
-    () => ({ all: found.length, open: found.filter((o) => o.offer === 'open').length, home: found.filter((o) => o.offer === 'home').length }),
-    [found],
-  );
-  const visible = useMemo(
-    () => filterByReconcile(filterOthers(found.filter((o) => offerFilter === 'all' || o.offer === offerFilter), nav.otherFilter), recFilter),
-    [found, offerFilter, nav.otherFilter, recFilter],
-  );
+  // Разбирать по справочникам групп есть что только у «уже состоят» и «уже ведут».
+  const reconcilable = kind === 'members' || kind === 'leaders';
+  const recFilter: ReconcileFilter = nav.otherFilter === 'open' && reconcilable ? nav.reconcileFilter : 'all';
+  const visible = useMemo(() => filterByReconcile(filterOthers(found, nav.otherFilter), recFilter), [found, nav.otherFilter, recFilter]);
   const ready = useMemo(() => readyToReconcile(visible), [visible]);
   const readyBulk = useReconcileReady();
   // Карточку ищем во всех обращениях: ссылка на «хочу открыть группу», сделанная до выделения подвкладки, открывается.
   const selected = nav.requestId != null ? data.others.find((o) => o.id === nav.requestId) : undefined;
+  // Ссылка из карточки человека или из «пары» знает только тип обращения, а не вкладку: дом и «открыть группу» — одна
+  // заявка. Открытое обращение другой вкладки переносит туда, чтобы строка была видна в списке рядом с карточкой.
+  const selectedView = selected ? viewOf(selected) : null;
+  const { update } = nav;
+  useEffect(() => {
+    if (selectedView && selectedView !== kind) update({ view: selectedView }, { replace: true });
+  }, [selectedView, kind, update]);
 
   return (
     <div className={styles.work}>
@@ -102,16 +102,7 @@ export function OthersContent({
             </Chip>
           ))}
         </div>
-        {kind === 'leads' && (
-          <div className={styles.bar} role="group" aria-label={t.offerChipsLabel}>
-            {(['all', 'open', 'home'] as const).map((f) => (
-              <Chip key={f} pressed={offerFilter === f} count={offerCounts[f]} onClick={() => nav.setOfferFilter(f)}>
-                {t.offer[f]}
-              </Chip>
-            ))}
-          </div>
-        )}
-        {nav.otherFilter === 'open' && kind === 'others' && (
+        {nav.otherFilter === 'open' && reconcilable && (
           <div className={styles.bar} role="group" aria-label={t.reconcileChipsLabel}>
             {RECONCILE_FILTERS.map((f) => (
               <Chip key={f} pressed={recFilter === f} count={recCounts[f]} onClick={() => nav.setReconcileFilter(f)}>

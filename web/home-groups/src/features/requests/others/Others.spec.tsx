@@ -4,6 +4,7 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { App } from '../../../app/App';
+import { buildRequests } from '../../../fixtures/build';
 import { buildOthers } from '../../../fixtures/others';
 import { currentSearch, renderAt, stubFetchWithFixtures } from '../../../test/render';
 import type { OtherItem } from '@contracts';
@@ -11,8 +12,21 @@ import { fixtureOther, getsOf, json, ok, posts, viewWithOthers } from '../reques
 
 afterEach(() => vi.unstubAllGlobals());
 
-// «Хочу открыть группу» живут в своей подвкладке (`view=leads`, см. Leads.spec.tsx): здесь — все остальные обращения.
+// «Хочу открыть группу» и «дают дом» живут в своих вкладках (см. Leads.spec.tsx): здесь — все остальные обращения.
 const OTHERS = buildOthers().filter((o) => o.type !== 'lead_group');
+type Overrides = Record<string, () => Response | Promise<Response>>;
+
+/**
+ * Механика списка (чипы состояния, поиск, «В работе у», разбор, массовый разбор, карточка) у всех вкладок обращений
+ * одна. Проверяем её на вкладке «Уже состоят», сложив туда все обращения фикстур, кроме «открыть группу» и «дать дом»:
+ * так в одном списке есть и все состояния, и все виды разбора. Подпись вида приходит с сервера и не меняется.
+ * Раскладка по вкладкам — в «вкладки по виду обращения» ниже, на настоящих типах.
+ */
+const inOneTab = (o: OtherItem): OtherItem => (o.type === 'lead_group' ? o : { ...o, type: 'already_member' });
+const oneTab = (make: () => Response | Promise<Response>) => async () => {
+  const view = (await (await make()).json()) as ReturnType<typeof buildRequests>;
+  return json({ ...view, others: view.others.map(inOneTab) });
+};
 const openCount = OTHERS.filter((o) => o.state === 'open').length;
 
 const listEl = () => screen.getByRole('list', { name: 'Список обращений' });
@@ -23,46 +37,108 @@ const switchEl = () => screen.getByRole('group', { name: 'Режим списк�
 const toolsSelect = () =>
   within(screen.getByRole('group', { name: 'Отбор списка заявок' })).getByRole('combobox', { name: 'В работе у' });
 
-async function openOthers(query = '', overrides: Record<string, () => Response | Promise<Response>> = {}) {
-  const fetchMock = stubFetchWithFixtures(overrides);
-  const utils = renderAt(<App />, `/?tab=requests&view=others${query}`);
+async function openOthers(query = '', overrides: Overrides = {}) {
+  const fetchMock = stubFetchWithFixtures({ ...overrides, requests: oneTab(overrides.requests ?? (() => json(buildRequests()))) });
+  const utils = renderAt(<App />, `/?tab=requests&view=members${query}`);
   // Не список: при пустом отборе на его месте «Ничего не найдено».
   await screen.findByRole('group', { name: 'Фильтр по состоянию обращения' });
   return { fetchMock, ...utils };
 }
 
-describe('«Заявки»: переключатель «Хотят в группу | Другие обращения»', () => {
-  test('показывает число открытых обращений: закрытые в счёт не идут', async () => {
+describe('«Заявки»: вкладки по виду обращения', () => {
+  // Настоящие типы фикстур: «открыть группу» 202 (и закрытое 204), «дать дом» 213, вопрос 201, «уже состоят» 203, 206,
+  // 207, 211, «уже ведут» 208–210 (и закрытое 212), аннулированная «хочу в группу» 205.
+  const tabs = () => within(switchEl()).getAllByRole('button').map((b) => b.textContent);
+
+  test('у каждого вида своя вкладка с числом открытых; закрытые в счёт не идут, у аннулированных — сколько их всего', async () => {
     stubFetchWithFixtures();
     renderAt(<App />, '/?tab=requests');
     await screen.findByRole('list', { name: 'Список заявок' });
-    expect(OTHERS.length).toBeGreaterThan(openCount);
-    expect(within(switchEl()).getByRole('button', { name: `Другие обращения (${openCount})` })).toBeInTheDocument();
+    expect(tabs()).toEqual([
+      'Хотят в группу',
+      'Хотят открыть группу (1)',
+      'Дают дом (1)',
+      'Вопросы (1)',
+      'Уже состоят (4)',
+      'Уже ведут (3)',
+      'Аннулированные заявки (1)',
+    ]);
     expect(within(switchEl()).getByRole('button', { name: 'Хотят в группу' })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  test('число не зависит от поиска и отбора: оно про все открытые обращения', async () => {
+  test('в каждой вкладке только обращения её вида', async () => {
+    const user = userEvent.setup();
     stubFetchWithFixtures();
-    renderAt(<App />, '/?tab=requests&q=Седов');
-    // по такому поиску среди заявок никого нет, но число открытых обращений всё равно полное; найденное — отдельно
-    await screen.findByRole('group', { name: 'Режим списка заявок' });
-    expect(within(switchEl()).getByRole('button', { name: new RegExp(`^Другие обращения \\(${openCount}\\) · найдено \\d+$`) })).toBeInTheDocument();
+    renderAt(<App />, '/?tab=requests&ostate=all');
+    await screen.findByRole('list', { name: 'Список заявок' });
+    const shown: Record<string, string[]> = {};
+    for (const [tab, label] of [['leads', /^Хотят открыть/], ['homes', /^Дают дом/], ['questions', /^Вопросы/], ['members', /^Уже состоят/], ['leaders', /^Уже ведут/], ['cancelled', /^Аннулированные заявки/]] as const) {
+      await user.click(within(switchEl()).getByRole('button', { name: label }));
+      expect(currentSearch().get('view')).toBe(tab);
+      await user.click(within(chips()).getByRole('button', { name: /^Все/ }));
+      shown[tab] = namesOf();
+    }
+    expect(shown).toEqual({
+      leads: ['Юлия Громова', 'Виктор Лебедев'],
+      homes: ['Татьяна Фёдорова'],
+      questions: ['Игорь Седов'],
+      members: ['Анастасия Орлова', 'Мария Кузнецова', 'Сергей Волков', 'Олег Фомин'],
+      leaders: ['Дмитрий Воронин', 'Роман Белов', 'Татьяна Фёдорова', 'Нина Кравец'],
+      cancelled: ['Тимур Ахметов'],
+    });
   });
 
-  test('«Другие обращения» записывает view=others в адрес и сбрасывает открытую карточку и чип прежнего списка', async () => {
+  test('числа не зависят от поиска: найденное дописано отдельно у каждой вкладки', async () => {
+    stubFetchWithFixtures();
+    renderAt(<App />, '/?tab=requests&q=Седов');
+    await screen.findByRole('group', { name: 'Режим списка заявок' });
+    expect(within(switchEl()).getByRole('button', { name: 'Вопросы (1) · найдено 1' })).toBeInTheDocument();
+    expect(within(switchEl()).getByRole('button', { name: 'Уже состоят (4) · найдено 0' })).toBeInTheDocument();
+  });
+
+  test('вкладки аннулированных нет, пока их нет', async () => {
+    stubFetchWithFixtures({ requests: () => json(viewWithOthers(OTHERS.filter((o) => o.type !== 'join_group'))) });
+    renderAt(<App />, '/?tab=requests');
+    await screen.findByRole('group', { name: 'Режим списка заявок' });
+    expect(within(switchEl()).queryByRole('button', { name: /^Аннулированные заявки/ })).not.toBeInTheDocument();
+  });
+
+  test('вкладка пишет view в адрес и сбрасывает открытую карточку и чип прежнего списка; «В работе у» остаётся', async () => {
     stubFetchWithFixtures();
     const user = userEvent.setup();
     renderAt(<App />, '/?tab=requests&bucket=ready&req=1&resp=Анна Л.');
     await screen.findByRole('dialog', { name: /Карточка заявки/ });
-    await user.click(within(switchEl()).getByRole('button', { name: /^Другие обращения/ }));
+    await user.click(within(switchEl()).getByRole('button', { name: /^Уже состоят/ }));
     const params = currentSearch();
-    expect(params.get('view')).toBe('others');
+    expect(params.get('view')).toBe('members');
     expect(params.has('req')).toBe(false);
     expect(params.has('bucket')).toBe(false);
-    // «В работе у» общий для обоих списков и остаётся
     expect(params.get('resp')).toBe('Анна Л.');
     expect(await screen.findByRole('list', { name: 'Список обращений' })).toBeInTheDocument();
     expect(screen.queryByRole('list', { name: 'Список заявок' })).not.toBeInTheDocument();
+  });
+
+  test('старая ссылка view=others ведёт во «Вопросы»', async () => {
+    stubFetchWithFixtures();
+    renderAt(<App />, '/?tab=requests&view=others');
+    await screen.findByRole('group', { name: 'Фильтр по состоянию обращения' });
+    expect(within(switchEl()).getByRole('button', { name: /^Вопросы/ })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('обращение, открытое по ссылке из чужой вкладки, переносит в свою: дом и «открыть группу» — одна заявка', async () => {
+    stubFetchWithFixtures();
+    renderAt(<App />, '/?tab=requests&view=leads&ostate=all&req=213');
+    await screen.findByRole('dialog', { name: /Карточка обращения/ });
+    await waitFor(() => expect(currentSearch().get('view')).toBe('homes'));
+    expect(currentSearch().get('req')).toBe('213');
+    expect(namesOf()).toEqual(['Татьяна Фёдорова']);
+  });
+
+  test('разбор по справочникам есть только у «Уже состоят» и «Уже ведут»', async () => {
+    stubFetchWithFixtures();
+    renderAt(<App />, '/?tab=requests&view=questions');
+    await screen.findByRole('group', { name: 'Фильтр по состоянию обращения' });
+    expect(screen.queryByRole('group', { name: 'Фильтр открытых обращений по разбору' })).not.toBeInTheDocument();
   });
 
   test('«Хотят в группу» убирает view из адреса и возвращает список заявок', async () => {
@@ -177,9 +253,9 @@ describe('«Другие обращения»: список и чипы', () => 
 
   test('пустой отбор показывает «Ничего не найдено», а не пустую рамку', async () => {
     stubFetchWithFixtures({ requests: () => json(viewWithOthers([])) });
-    renderAt(<App />, '/?tab=requests&view=others');
+    renderAt(<App />, '/?tab=requests&view=questions');
     expect(await screen.findByText('Ничего не найдено.')).toBeInTheDocument();
-    expect(within(switchEl()).getByRole('button', { name: 'Другие обращения (0)' })).toBeInTheDocument();
+    expect(within(switchEl()).getByRole('button', { name: 'Вопросы (0)' })).toBeInTheDocument();
   });
 
   test('неизвестное значение чипа в адресе заменяется на «Открытые»', async () => {
@@ -313,7 +389,6 @@ describe('«Другие обращения»: карточка', () => {
 
 // ── Суть обращения, разбор по справочникам и массовый разбор ─────────────────────────────────────────
 
-type Overrides = Record<string, () => Response | Promise<Response>>;
 const openOf = () => OTHERS.filter((o) => o.state === 'open');
 const nameOf = (id: number) => OTHERS.find((o) => o.id === id)!.fio;
 const recChips = () => screen.getByRole('group', { name: 'Фильтр открытых обращений по разбору' });

@@ -396,19 +396,21 @@ export class GroupsRepo {
   }
 
   /**
-   * Карточка в «Людях» для человека из заявки без регистрации («r»): ссылаться можно только на регистрацию или
-   * карточку, а у такого человека есть лишь заявка. Данные переносятся из заявки. null — заявки нет или у неё есть
-   * регистрация (тогда ссылаются на регистрацию).
+   * Человек заявки («r» — старый ключ): заявка ссылается на регистрацию или карточку (миграция 057), на неё и ссылаемся.
+   * Заявку без человека (старая, заведённая до триггера) связываем тут же — тем же правилом, что миграция. null — заявки нет.
    */
-  async personFromRequest(requestId: number, by: string): Promise<number | null> {
-    const { rows } = await this.db.query<{ id: number }>(
-      `INSERT INTO persons (full_name, phone, age, place, address, schedule, hobby, profession, family_status, created_by)
-       SELECT fio, COALESCE(phones[1], phone), age, place, manual_street, manual_schedule, hobby, profession, family_status, $2
-         FROM requests WHERE id = $1 AND user_id IS NULL AND archived_at IS NULL AND btrim(coalesce(fio, '')) <> ''
-       RETURNING id::int AS id`,
-      [requestId, by],
-    );
-    return rows[0]?.id ?? null;
+  async personFromRequest(requestId: number, _by: string): Promise<PersonRef | null> {
+    const read = async () => (await this.db.query<{ user_id: number | null; person_id: number | null }>(
+      'SELECT user_id::int AS user_id, person_id::int AS person_id FROM requests WHERE id = $1 AND archived_at IS NULL', [requestId],
+    )).rows[0];
+    let r = await read();
+    if (!r) return null;
+    if (r.user_id === null && r.person_id === null) {
+      await this.db.query('SELECT request_link_person($1)', [requestId]);
+      r = await read();
+      if (!r) return null;
+    }
+    return r.user_id !== null ? { kind: 'user', id: r.user_id } : r.person_id !== null ? { kind: 'person', id: r.person_id } : null;
   }
 
   async findActive(id: number): Promise<GroupRow | null> {

@@ -147,6 +147,14 @@ export function useAppNav() {
         next.set('rec', key);
         return next;
       }),
+    /** Строка участника команды в «Справочнике → Координаторы» (из карточки человека). */
+    openCoordinator: (id: number) =>
+      setParams((prev) => {
+        const next = tabParams(prev, 'reference');
+        next.set('ent', 'coordinators');
+        next.set('rec', String(id));
+        return next;
+      }),
     /** Карточка группы в «Справочнике → Группы» (из карточки человека). */
     openGroup: (id: number) =>
       setParams((prev) => {

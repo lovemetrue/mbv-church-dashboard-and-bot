@@ -516,7 +516,7 @@ describe('создание и параметры подбора через HTTP 
     } finally { app.server.close(); }
   });
 
-  test('улица и время, поправленные координатором, меняют понимание заявки сразу и видны в ленте без текста улицы', async () => {
+  test('улица и время, поправленные координатором, пишутся человеку, меняют понимание заявки сразу и видны в ленте без текста улицы', async () => {
     await db.query(`INSERT INTO groups (leader, district, direction_id, status, people, source) VALUES ('Иван', 'Приморский', group_direction_id('Основная церковь'), 'Функционирует', 3, 'ui')`);
     const r = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, fio, place, origin) VALUES ('join_group', 'Новая', 'Мария', 'Приморский', 'ui') RETURNING id`)).rows[0]!.id;
     const app = await startAdmin();
@@ -526,7 +526,8 @@ describe('создание и параметры подбора через HTTP 
       const saved = await app.post(`requests/${r}/params`, { street: 'ул. Рылеева 32', schedule: 'пн, ср вечером' });
       expect(saved.status).toBe(200);
       const after = (await app.get('requests')).items.find((i: { id: number }) => i.id === r);
-      expect(after).toMatchObject({ days: ['Пн', 'Ср'], slot: 'вечер', street: 'ул. Рылеева 32', scheduleInfo: { source: 'manual' }, streetInfo: { source: 'manual' } });
+      // Улица и время — данные человека (миграция 057): правка пишет в его запись, отдельного слоя «правки координатора» нет.
+      expect(after).toMatchObject({ days: ['Пн', 'Ср'], slot: 'вечер', street: 'ул. Рылеева 32', scheduleInfo: { source: 'anketa' }, streetInfo: { source: 'anketa' } });
       expect(after.log.map((l: { text: string }) => l.text)).toContain('Уточнено вручную: улица, удобное время · mbv_admin');
       expect(JSON.stringify(after.log)).not.toContain('Рылеева');
       // «Убрать правку» возвращает пустое.

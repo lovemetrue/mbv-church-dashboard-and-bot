@@ -10,6 +10,10 @@ beforeAll(async () => { db = await setupTestDb(); svc = createStrange({ repo: ne
 afterAll(async () => { await db.end(); });
 beforeEach(async () => { await truncateAll(db); });
 
+/** Человек заявки в «Людях»: у заявки без регистрации — её карточка (миграция 057). */
+const keyOfRequest = async (id: number): Promise<string> =>
+  (await db.query<{ key: string }>(`SELECT CASE WHEN user_id IS NOT NULL THEN 'u' || user_id ELSE 'p' || person_id END AS key FROM requests WHERE id = $1`, [id])).rows[0]!.key;
+
 const marks = async () => (await db.query('SELECT person_key, note, set_by FROM strange_marks ORDER BY person_key')).rows;
 async function request(userId: number | null = null): Promise<number> {
   return (await db.query<{ id: number }>(`INSERT INTO requests (type, user_id, fio, status, origin) VALUES ('join_group', $1, 'Человек', 'Новая', 'ui') RETURNING id`, [userId])).rows[0]!.id;
@@ -19,7 +23,7 @@ describe('метка «Странный человек»: разбор запр�
   test('со страницы заявки: метка ложится на человека заявки, автор и заметка записываются', async () => {
     const r = await request();
     expect(await svc.forRequest(r, { value: true, note: ' непонятная речь ' }, 'anna')).toEqual({ ok: true });
-    expect(await marks()).toEqual([{ person_key: `r${r}`, note: 'непонятная речь', set_by: 'anna' }]);
+    expect(await marks()).toEqual([{ person_key: await keyOfRequest(r), note: 'непонятная речь', set_by: 'anna' }]);
     expect(await svc.forRequest(r, { value: false }, 'boris')).toEqual({ ok: true });
     expect(await marks()).toEqual([]);
   });
@@ -29,7 +33,8 @@ describe('метка «Странный человек»: разбор запр�
     const r = await request();
     const p = (await db.query<{ id: number }>(`INSERT INTO persons (full_name) VALUES ('Карточка') RETURNING id`)).rows[0]!.id;
     for (const key of [`u${u}`, `r${r}`, `p${p}`]) expect(await svc.forPerson({ key, value: true }, 'anna'), key).toEqual({ ok: true });
-    expect((await marks()).map((m) => m.person_key).sort()).toEqual([`p${p}`, `r${r}`, `u${u}`].sort());
+    // Старый ключ «r» заявки ведёт к её человеку — карточке (миграция 057).
+    expect((await marks()).map((m) => m.person_key).sort()).toEqual([`p${p}`, await keyOfRequest(r), `u${u}`].sort());
   });
 
   test.each([

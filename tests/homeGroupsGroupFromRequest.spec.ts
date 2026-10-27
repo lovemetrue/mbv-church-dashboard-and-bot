@@ -23,10 +23,13 @@ const creator = () => createRecordCreator({ requests: new RequestsRepo(db), grou
 
 async function leaderRequest(): Promise<{ requestId: number; userId: number }> {
   const userId = await seedUser(db, { id: '501', fio: 'Пётр Ведущий', phone: '+79215550011' });
+  // Данные человека — в его регистрации (миграция 057), заявка на неё ссылается.
+  await db.query(
+    `UPDATE users SET age = '25-40', location = 'Приморский, м. Беговая', address_raw = 'Савушкина 5', schedule_raw = 'среда вечером' WHERE id = $1`,
+    [userId],
+  );
   const { rows } = await db.query<{ id: number }>(
-    `INSERT INTO requests (user_id, type, status, fio, phone, age, place, manual_street, manual_schedule, origin)
-     VALUES ($1, 'already_leader', 'Новая', 'Пётр Ведущий', '+79215550011', '25-40', 'Приморский, м. Беговая', 'Савушкина 5', 'среда вечером', 'бот')
-     RETURNING id::int AS id`,
+    `INSERT INTO requests (user_id, type, status, origin) VALUES ($1, 'already_leader', 'Новая', 'бот') RETURNING id::int AS id`,
     [userId],
   );
   return { requestId: rows[0]!.id, userId };

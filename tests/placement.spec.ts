@@ -343,9 +343,13 @@ describe('счётчик участников: утверждённые посл
 });
 
 describe('улица и удобное время, поправленные координатором', () => {
-  const manual = async (id: number) => (await db.query('SELECT manual_street, manual_schedule, origin FROM requests WHERE id = $1', [id])).rows[0];
+  // Улица и время — данные человека заявки (миграция 057): правка пишет в его запись, заявка лишь ссылается на неё.
+  const manual = async (id: number) => (await db.query(
+    `SELECT coalesce(u.address_raw, p.address) AS manual_street, coalesce(u.schedule_raw, p.schedule) AS manual_schedule, r.origin
+       FROM requests r LEFT JOIN users u ON u.id = r.user_id LEFT JOIN persons p ON p.id = r.person_id WHERE r.id = $1`, [id],
+  )).rows[0];
 
-  test('правка сохраняется, пустое значение убирает её, а непереданное поле не трогается', async () => {
+  test('правка сохраняется у человека заявки, пустое значение убирает её, а непереданное поле не трогается', async () => {
     const r = await request();
     expect(await repo.setParams(r, { street: '  ул. Рылеева 32 ', schedule: 'пн, ср вечером' }, 'a')).toEqual({ ok: true });
     expect(await manual(r)).toMatchObject({ manual_street: 'ул. Рылеева 32', manual_schedule: 'пн, ср вечером' });

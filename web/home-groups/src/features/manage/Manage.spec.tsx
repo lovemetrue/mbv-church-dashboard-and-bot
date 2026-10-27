@@ -670,13 +670,17 @@ async function coordinatorCard(rec = 1) {
 }
 
 describe('координаторы: правка и удаление', () => {
-  test('«Править» открывает форму с ФИО и ролью, заполненную текущими значениями', async () => {
+  test('«Править» открывает форму с выбранным человеком и ролями, заполненную текущими значениями', async () => {
     stubFetchWithFixtures();
     const user = userEvent.setup();
     const card = await coordinatorCard();
     await user.click(within(card).getByRole('button', { name: /^Править координатора/ }));
     const dialog = await screen.findByRole('dialog', { name: /^Правка координатора/ });
-    expect(within(dialog).getByRole('textbox', { name: 'ФИО' })).toHaveValue('Трофимова С.');
+    // Участник команды — человек из «Людей»: ФИО текстом не правится, человека только меняют.
+    expect(within(dialog).queryByRole('textbox', { name: 'ФИО' })).not.toBeInTheDocument();
+    expect(await within(dialog).findByText('Трофимова С.')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Сменить: Человек' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Отвязать: Человек' })).not.toBeInTheDocument();
     // Роли — галочки из справочника ролей (их бывает несколько), отмечены текущие.
     const roles = within(dialog).getByRole('group', { name: 'Роли' });
     expect(within(roles).getAllByRole('checkbox').map((c) => c.closest('label')!.textContent)).toEqual(['Координатор', 'Старший координатор', 'Распределитель', 'Старший распределитель', 'Катализатор']);
@@ -704,16 +708,17 @@ describe('координаторы: правка и удаление', () => {
     });
   });
 
-  test('пустое ФИО не отправляется', async () => {
-    const fetchMock = stubFetchWithFixtures();
+  test('смена человека уходит его ключом из «Людей»', async () => {
+    const fetchMock = stubFetchWithFixtures({ 'coordinators/1/update': () => json({ ok: true }) });
     const user = userEvent.setup();
     const card = await coordinatorCard();
     await user.click(within(card).getByRole('button', { name: /^Править координатора/ }));
     const dialog = await screen.findByRole('dialog', { name: /^Правка координатора/ });
-    await user.clear(within(dialog).getByRole('textbox', { name: 'ФИО' }));
-    expect(within(dialog).getByText('Заполните поле «ФИО».')).toBeInTheDocument();
-    expect(saveButton(dialog)).toBeDisabled();
-    expect(posts(fetchMock)).toHaveLength(0);
+    await user.click(await within(dialog).findByRole('button', { name: 'Сменить: Человек' }));
+    await user.type(within(dialog).getByRole('searchbox', { name: 'Найти: Человек' }), 'Ефимова');
+    await user.click(within(within(dialog).getByRole('list', { name: 'Подходящие люди: Человек' })).getByRole('button', { name: /Дарья Ефимова/ }));
+    await user.click(saveButton(dialog));
+    await waitFor(() => expect(posts(fetchMock)).toEqual([{ path: 'coordinators/1/update', body: { fields: { personKey: 'u1' } } }]));
   });
 
   test('отказ сервера показывается его словами', async () => {
@@ -722,7 +727,7 @@ describe('координаторы: правка и удаление', () => {
     const card = await coordinatorCard();
     await user.click(within(card).getByRole('button', { name: /^Править координатора/ }));
     const dialog = await screen.findByRole('dialog', { name: /^Правка координатора/ });
-    await user.type(within(dialog).getByRole('textbox', { name: 'ФИО' }), 'а');
+    await user.click(within(within(dialog).getByRole('group', { name: 'Роли' })).getByRole('checkbox', { name: 'Катализатор' }));
     await user.click(saveButton(dialog));
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('Укажите роль.');
   });
@@ -744,7 +749,7 @@ describe('координаторы: правка и удаление', () => {
     const card = await screen.findByRole('dialog', { name: /Карточка координатора/ });
     await user.click(within(card).getByRole('button', { name: /^Править координатора/ }));
     const dialog = await screen.findByRole('dialog', { name: /^Правка координатора/ });
-    await user.type(within(dialog).getByRole('textbox', { name: 'ФИО' }), 'а');
+    await user.click(within(within(dialog).getByRole('group', { name: 'Роли' })).getByRole('checkbox', { name: 'Катализатор' }));
     await user.click(saveButton(dialog));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: /^Правка координатора/ })).not.toBeInTheDocument());
 
@@ -780,6 +785,12 @@ describe('координаторы: правка и удаление', () => {
   });
 });
 
+/** Выбрать человека из «Людей» в поле «Человек» формы координатора. */
+async function pickPerson(user: User, dialog: HTMLElement, query: string, name: RegExp) {
+  await user.type(within(dialog).getByRole('searchbox', { name: 'Найти: Человек' }), query);
+  await user.click(await within(within(dialog).getByRole('list', { name: 'Подходящие люди: Человек' })).findByRole('button', { name }));
+}
+
 describe('«+ Создать» → «Координатор»', () => {
   async function openCreate(user: User) {
     renderAt(<App />, '/?tab=reference&ent=coordinators');
@@ -791,22 +802,22 @@ describe('«+ Создать» → «Координатор»', () => {
     return dialog;
   }
 
-  test('форма просит ФИО и роль и не отправляется пустой', async () => {
+  test('форма просит человека и роль и не отправляется пустой', async () => {
     const fetchMock = stubFetchWithFixtures();
     const user = userEvent.setup();
     const dialog = await openCreate(user);
     await user.click(within(dialog).getByRole('button', { name: 'Добавить координатора' }));
-    expect(within(dialog).getByText('Заполните поле «ФИО».')).toBeInTheDocument();
+    expect(within(dialog).getByText('Выберите значение в поле «Человек».')).toBeInTheDocument();
     expect(within(dialog).getByText('Отметьте хотя бы одно в поле «Роли».')).toBeInTheDocument();
     expect(posts(fetchMock)).toHaveLength(0);
   });
 
-  test('отправка шлёт ФИО и роль, показывает подтверждение и перечитывает координаторов', async () => {
+  test('отправка шлёт человека из «Людей» и роли, показывает подтверждение и перечитывает координаторов', async () => {
     const fetchMock = stubFetchWithFixtures({ 'coordinators/create': () => json({ ok: true, id: 5 }) });
     const user = userEvent.setup();
     const dialog = await openCreate(user);
     const before = getsOf(fetchMock, 'coordinators');
-    await user.type(within(dialog).getByRole('textbox', { name: 'ФИО' }), '  Иванова Е. ');
+    await pickPerson(user, dialog, 'Ефимова', /Дарья Ефимова/);
     const roles = within(dialog).getByRole('group', { name: 'Роли' });
     // Роли отмечают из справочника, можно несколько; новую заводят в «Настройках», о чём подсказка под полем.
     expect(within(dialog).getByText(/«Настройки → Роли команды»/)).toBeInTheDocument();
@@ -814,7 +825,7 @@ describe('«+ Создать» → «Координатор»', () => {
     await user.click(within(roles).getByRole('checkbox', { name: 'Распределитель' }));
     await user.click(within(dialog).getByRole('button', { name: 'Добавить координатора' }));
     const notice = await screen.findByRole('status', { name: 'Координатор добавлен' });
-    expect(posts(fetchMock)).toEqual([{ path: 'coordinators/create', body: { fields: { name: 'Иванова Е.', roleIds: '3, 5' } } }]);
+    expect(posts(fetchMock)).toEqual([{ path: 'coordinators/create', body: { fields: { personKey: 'u1', roleIds: '3, 5' } } }]);
     await waitFor(() => expect(getsOf(fetchMock, 'coordinators')).toBeGreaterThan(before));
     await user.click(within(notice).getByRole('button', { name: 'Открыть' }));
     expect(currentSearch().get('tab')).toBe('reference');
@@ -826,7 +837,7 @@ describe('«+ Создать» → «Координатор»', () => {
     stubFetchWithFixtures({ 'coordinators/create': () => json({ error: 'bad_request', message: 'Укажите роль.' }, 400) });
     const user = userEvent.setup();
     const dialog = await openCreate(user);
-    await user.type(within(dialog).getByRole('textbox', { name: 'ФИО' }), 'Иванова Е.');
+    await pickPerson(user, dialog, 'Ефимова', /Дарья Ефимова/);
     await user.click(within(within(dialog).getByRole('group', { name: 'Роли' })).getByRole('checkbox', { name: 'Распределитель' }));
     await user.click(within(dialog).getByRole('button', { name: 'Добавить координатора' }));
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('Укажите роль.');
@@ -846,7 +857,8 @@ describe('«+ Создать» → «Координатор»', () => {
     await user.click(screen.getByRole('button', { name: '+ Создать' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Координатор' }));
     const dialog = await screen.findByRole('dialog', { name: 'Новый координатор' });
-    await user.type(await within(dialog).findByRole('textbox', { name: 'ФИО' }), 'Иванова Е.');
+    await within(dialog).findByRole('group', { name: 'Роли' });
+    await pickPerson(user, dialog, 'Ефимова', /Дарья Ефимова/);
     await user.click(within(within(dialog).getByRole('group', { name: 'Роли' })).getByRole('checkbox', { name: 'Координатор' }));
     await user.click(within(dialog).getByRole('button', { name: 'Добавить координатора' }));
     await screen.findByRole('status', { name: 'Координатор добавлен' });

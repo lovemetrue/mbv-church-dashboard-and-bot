@@ -1,5 +1,5 @@
 import type { TeamRoleKind } from '../../db/repos/coordinators.repo.js';
-import type { StaffRepo, StaffRow } from '../../db/repos/staff.repo.js';
+import type { StaffPersonRef, StaffRepo, StaffRow } from '../../db/repos/staff.repo.js';
 import { StaffConflict } from '../../db/repos/staff.repo.js';
 import type { SettingsRepo } from '../../db/repos/settings.repo.js';
 import type { Role, SessionStore } from '../../dashboard/sessions.js';
@@ -72,7 +72,22 @@ export function createStaffService(deps: StaffServiceDeps) {
   const itemOf = (r: StaffRow & { has_pending_link: boolean }): StaffItem => ({
     id: r.id, login: r.login, fullName: r.full_name, email: r.email, role: r.role, status: statusOf(r),
     lastLoginAt: r.last_login_at ? r.last_login_at.toISOString() : null, hasPendingLink: r.has_pending_link,
+    personKey: r.person_key ?? null,
   });
+
+  /**
+   * Человек из «Людей» для записи: undefined — поле не прислали (не менять), null или «» — без человека, «u12»/«p7» —
+   * ссылка; в ответ — ошибка словами, если ключ не тот или человека уже нет.
+   */
+  async function personOf(raw: unknown): Promise<StaffPersonRef | undefined | { error: string }> {
+    if (raw === undefined) return undefined;
+    if (raw === null || raw === '') return null;
+    const m = typeof raw === 'string' ? /^([up])([1-9]\d{0,14})$/.exec(raw.trim()) : null;
+    if (!m) return { error: 'Человека выбирают из справочника «Люди».' };
+    const ref: NonNullable<StaffPersonRef> = m[1] === 'u' ? { userId: Number(m[2]) } : { personId: Number(m[2]) };
+    if (!(await deps.staff.personExists(ref))) return { error: 'Этого человека уже нет в «Людях»: обновите страницу и выберите снова.' };
+    return ref;
+  }
 
   async function personalState(): Promise<PersonalLoginsState> {
     const [enabled, count] = await Promise.all([deps.settings.get<boolean>(PERSONAL_SETTING), deps.staff.activeWithPassword()]);
@@ -192,17 +207,20 @@ export function createStaffService(deps: StaffServiceDeps) {
 
     async create(body: unknown, actor: string): Promise<StaffOutcome<Omit<DeliveryOk, 'ok'>>> {
       if (typeof body !== 'object' || body === null) return bad('Нужны ФИО, почта и роль.');
-      const { fullName, email, role, login } = body as Record<string, unknown>;
+      const { fullName, email, role, login, personKey } = body as Record<string, unknown>;
       if (typeof fullName !== 'string' || fullName.trim().length < 2 || fullName.trim().length > 120) return bad('Укажите ФИО (до 120 знаков).');
       if (typeof email !== 'string' || email.length > 254 || !EMAIL.test(email.trim())) return bad('Укажите корректную почту.');
       if (!isRole(role)) return bad('Роль: «admin» (обычный), «super» (полный) или «registration» (стойка регистрации).');
       if (login !== undefined && login !== null && typeof login !== 'string') return bad('Логин должен быть текстом.');
 
+      const person = await personOf(personKey);
+      if (person && 'error' in person) return bad(person.error);
+
       const chosen = await usedLoginOrNew(fullName.trim(), typeof login === 'string' ? login : undefined);
       if ('error' in chosen) return bad(chosen.error);
       let created: StaffRow;
       try {
-        created = await deps.staff.create({ login: chosen.login, fullName: fullName.trim(), email: email.trim(), role }, actor);
+        created = await deps.staff.create({ login: chosen.login, fullName: fullName.trim(), email: email.trim(), role, ...(person !== undefined ? { person } : {}) }, actor);
       } catch (err) {
         if (err instanceof StaffConflict) return bad(err.field === 'email' ? 'Пользователь с такой почтой уже есть.' : 'Такой логин уже занят.', 'conflict');
         throw err;
@@ -213,12 +231,15 @@ export function createStaffService(deps: StaffServiceDeps) {
 
     async update(body: unknown, actor: string): Promise<StaffOutcome> {
       if (typeof body !== 'object' || body === null) return bad('Нужно указать пользователя.');
-      const { id, fullName, email, role, active } = body as Record<string, unknown>;
+      const { id, fullName, email, role, active, personKey } = body as Record<string, unknown>;
       if (typeof id !== 'number' || !Number.isInteger(id) || id < 1) return bad('Нужно указать пользователя.');
       if (fullName !== undefined && (typeof fullName !== 'string' || fullName.trim().length < 2 || fullName.trim().length > 120)) return bad('Укажите ФИО (до 120 знаков).');
       if (email !== undefined && (typeof email !== 'string' || email.length > 254 || !EMAIL.test(email.trim()))) return bad('Укажите корректную почту.');
       if (role !== undefined && !isRole(role)) return bad('Неизвестная роль.');
       if (active !== undefined && typeof active !== 'boolean') return bad('Некорректное значение.');
+
+      const person = await personOf(personKey);
+      if (person && 'error' in person) return bad(person.error);
 
       const current = await deps.staff.byId(id);
       if (!current) return bad('Пользователь не найден.', 'not_found');
@@ -237,6 +258,7 @@ export function createStaffService(deps: StaffServiceDeps) {
           ...(typeof email === 'string' ? { email: email.trim() } : {}),
           ...(isRole(role) ? { role } : {}),
           ...(typeof active === 'boolean' ? { active } : {}),
+          ...(person !== undefined ? { person } : {}),
         }, actor);
       } catch (err) {
         if (err instanceof StaffConflict) return bad('Пользователь с такой почтой уже есть.', 'conflict');

@@ -11,6 +11,10 @@ beforeAll(async () => { db = await setupTestDb(); });
 afterAll(async () => { await db.end(); });
 beforeEach(async () => { await truncateAll(db); });
 
+/** Человек заявки в «Людях»: у заявки без регистрации — её карточка (миграция 057). */
+const keyOfRequest = async (id: number): Promise<string> =>
+  (await db.query<{ key: string }>(`SELECT CASE WHEN user_id IS NOT NULL THEN 'u' || user_id ELSE 'p' || person_id END AS key FROM requests WHERE id = $1`, [id])).rows[0]!.key;
+
 const svc = () => createMembers({ members: new MembersRepo(db), audit: new AuditRepo(db), now: () => new Date('2026-10-11T10:00:00Z') });
 const seedGroup = async () => (await db.query<{ id: number }>(
   `INSERT INTO groups (leader, district, direction_id, status, source) VALUES ('Иван', 'Приморский', group_direction_id('Основная церковь'), 'Функционирует', 'ui') RETURNING id`)).rows[0]!.id;
@@ -43,11 +47,11 @@ describe('состав группы: ссылки на справочник лю
     expect((await new MembersRepo(db).all())[0]!.full_name).toBe('Мария Новая');
   });
 
-  test('человека из заявки без регистрации тоже можно добавить', async () => {
+  test('человека из заявки без регистрации тоже можно добавить: в состав встаёт его карточка, а не заявка', async () => {
     const g = await seedGroup();
     const r = await seedRequestOnly();
     expect(await svc().add(g, { personKey: `r${r}` }, 'a')).toMatchObject({ ok: true });
-    expect((await new MembersRepo(db).all())[0]).toMatchObject({ personKey: `r${r}`, full_name: 'Пётр Из Таблицы' });
+    expect((await new MembersRepo(db).all())[0]).toMatchObject({ personKey: await keyOfRequest(r), full_name: 'Пётр Из Таблицы' });
   });
 
   test('новый человек «по плюсу»: карточка появляется в справочнике и сразу в составе, телефон приводится к +7…', async () => {
@@ -84,12 +88,12 @@ describe('состав группы: ссылки на справочник лю
     expect((await db.query('SELECT 1 FROM persons')).rowCount).toBe(0);
   });
 
-  test('участника, который не прошёл регистрацию, и чужую заявку (не «хочу в группу») добавить нельзя', async () => {
+  test('участника, который не прошёл регистрацию, добавить нельзя; человека из любого обращения — можно, он в «Людях»', async () => {
     const g = await seedGroup();
     const unregistered = (await db.query<{ id: number }>(`INSERT INTO users (platform, platform_user_id, chat_id) VALUES ('telegram', 'z1', '') RETURNING id`)).rows[0]!.id;
     expect(await svc().add(g, { personKey: `u${unregistered}` }, 'a')).toMatchObject({ ok: false, error: 'not_found' });
     const q = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, fio, origin) VALUES ('question', 'Новая', 'Вопрос', 'ui') RETURNING id`)).rows[0]!.id;
-    expect(await svc().add(g, { personKey: `r${q}` }, 'a')).toMatchObject({ ok: false, error: 'not_found' });
+    expect(await svc().add(g, { personKey: await keyOfRequest(q) }, 'a')).toMatchObject({ ok: true });
   });
 
   test('одного человека в одну группу дважды не добавить; в другую можно', async () => {
@@ -143,11 +147,13 @@ describe('состав группы: ссылки на справочник лю
     expect(await svc().deletePerson(id, 'boss')).toMatchObject({ ok: false, error: 'not_found' });
   });
 
-  test('убранная группа и удалённая заявка человека в составах не показываются', async () => {
+  test('удалённая заявка человека из состава не убирает: в составе человек, а не заявка; убранная группа — убирает', async () => {
     const g = await seedGroup();
     const r = await seedRequestOnly();
     await svc().add(g, { personKey: `r${r}` }, 'a');
     await db.query('UPDATE requests SET archived_at = now() WHERE id = $1', [r]);
+    expect(await new MembersRepo(db).all()).toHaveLength(1);
+    await db.query('UPDATE groups SET archived_at = now() WHERE id = $1', [g]);
     expect(await new MembersRepo(db).all()).toEqual([]);
   });
 

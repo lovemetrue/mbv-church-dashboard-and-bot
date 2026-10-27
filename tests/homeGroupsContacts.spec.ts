@@ -37,21 +37,22 @@ describe('разбор тела правки', () => {
 });
 
 describe('правка человека из справочника', () => {
-  test('регистрация: данные меняются в ней и в переписанных полях её заявок, а пустые поля заявки остаются пустыми', async () => {
+  test('регистрация: данные меняются только в ней — заявка на неё ссылается, её снимок «как пришла» не трогается', async () => {
     const u = await seedUser();
-    const withOverride = await seedRequest(u, "fio, phone, manual_street|'Старое Имя', '+79000000000', 'Старая 1'");
-    const plain = await seedRequest(u);
+    const withSnapshot = await seedRequest(u, "fio, phone|'Старое Имя', '+79000000000'");
     const out = await svc().update(`u${u}`, { fields: { fio: 'Мария Новая', phone: '+7 921 555-00-11', address: 'Коллонтай 5', schedule: 'пятница' } }, 'тест');
     expect(out).toEqual({ ok: true });
     expect(await user(u)).toMatchObject({ full_name: 'Мария Новая', phone: '+79215550011', address_raw: 'Коллонтай 5', schedule_raw: 'пятница' });
-    expect(await request(withOverride)).toMatchObject({ fio: 'Мария Новая', phone: '+79215550011', manual_street: 'Коллонтай 5', manual_schedule: null });
-    expect(await request(plain)).toMatchObject({ fio: null, phone: null, manual_street: null });
+    expect(await request(withSnapshot)).toMatchObject({ fio: 'Старое Имя', phone: '+79000000000', manual_street: null });
   });
 
-  test('заявка без регистрации: адрес и время пишутся в правку координатора, происхождение из таблицы становится ui', async () => {
+  test('заявка без регистрации: правка по её ключу пишет в карточку её человека (миграция 057), снимок заявки остаётся', async () => {
     const id = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, fio, origin) VALUES ('join_group', 'Новая', 'Пётр', 'таблица') RETURNING id`)).rows[0]!.id;
     expect(await svc().update(`r${id}`, { fields: { address: 'Юкки', schedule: 'вторник', phone: '8 911 000-11-22' } }, 'тест')).toEqual({ ok: true });
-    expect(await request(id)).toMatchObject({ manual_street: 'Юкки', manual_schedule: 'вторник', phone: '+79110001122', phones: ['+79110001122'], origin: 'ui' });
+    const { person_id } = (await db.query('SELECT person_id FROM requests WHERE id = $1', [id])).rows[0];
+    expect((await db.query('SELECT full_name, address, schedule, phone FROM persons WHERE id = $1', [person_id])).rows[0])
+      .toEqual({ full_name: 'Пётр', address: 'Юкки', schedule: 'вторник', phone: '+79110001122' });
+    expect(await request(id)).toMatchObject({ fio: 'Пётр', manual_street: null, phone: null, origin: 'ui' });
   });
 
   test('человек не найден или ключ чужой — ошибка, в журнал ничего не пишется; в журнале только названия полей', async () => {
@@ -67,15 +68,23 @@ describe('правка человека из справочника', () => {
 });
 
 describe('правка из заявки доходит до человека', () => {
-  test('«Править данные» с адресом и временем пишет в заявку и в регистрацию, а другие его заявки с правками обновляются', async () => {
+  test('«Править данные» с адресом и временем пишет в регистрацию человека, а не в заявку', async () => {
     const u = await seedUser();
     const first = await seedRequest(u);
-    const second = await seedRequest(u, "manual_street|'Старая 1'");
     const out = await new PlacementRepo(db).editRequest(first, { address: 'Коллонтай 5', schedule: 'среда', fio: 'Мария Новая' }, 'тест');
     expect(out).toEqual({ ok: true });
-    expect(await request(first)).toMatchObject({ manual_street: 'Коллонтай 5', manual_schedule: 'среда', fio: 'Мария Новая' });
     expect(await user(u)).toMatchObject({ full_name: 'Мария Новая', address_raw: 'Коллонтай 5', schedule_raw: 'среда' });
-    expect(await request(second)).toMatchObject({ manual_street: 'Коллонтай 5', fio: null });
+    expect(await request(first)).toMatchObject({ manual_street: null, manual_schedule: null, fio: null });
+  });
+
+  test('«Править данные» у заявки без регистрации пишет в карточку её человека; ФИО пустым не бывает', async () => {
+    const id = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, fio, origin) VALUES ('join_group', 'Новая', 'Пётр', 'таблица') RETURNING id`)).rows[0]!.id;
+    expect(await new PlacementRepo(db).editRequest(id, { fio: 'Пётр Громов', hobby: 'рыбалка', source: 'Сайт' }, 'тест')).toEqual({ ok: true });
+    const { person_id, source } = (await db.query('SELECT person_id, source FROM requests WHERE id = $1', [id])).rows[0];
+    expect((await db.query('SELECT full_name, hobby FROM persons WHERE id = $1', [person_id])).rows[0]).toEqual({ full_name: 'Пётр Громов', hobby: 'рыбалка' });
+    // «Источник» — поле самой заявки (из таблицы церкви), он остаётся в ней.
+    expect(source).toBe('Сайт');
+    expect(await new PlacementRepo(db).editRequest(id, { fio: '' }, 'тест')).toMatchObject({ ok: false, error: 'bad_request' });
   });
 
   test('комментарий остаётся только в заявке', async () => {
@@ -85,21 +94,19 @@ describe('правка из заявки доходит до человека', 
     expect(await user(u)).toMatchObject({ full_name: 'Мария Участница' });
   });
 
-  test('хобби, профессия, семейное положение: у регистрации и в переписанных полях заявок, а комментарий — каждый свой', async () => {
+  test('хобби, профессия, семейное положение — у регистрации; комментарий у человека и у заявки — каждый свой', async () => {
     const u = await seedUser();
-    const own = await seedRequest(u, "hobby, note|'старое хобби', 'комментарий заявки'");
-    const plain = await seedRequest(u);
+    const own = await seedRequest(u, "note|'комментарий заявки'");
     expect(await svc().update(`u${u}`, { fields: { hobby: 'вязание', profession: 'врач', family: 'замужем', note: 'позвонить вечером' } }, 'тест')).toEqual({ ok: true });
     expect(await user(u)).toMatchObject({ hobby: 'вязание', profession: 'врач', family_status: 'замужем', admin_comment: 'позвонить вечером' });
-    expect(await request(own)).toMatchObject({ hobby: 'вязание', profession: null, note: 'комментарий заявки' });
-    expect(await request(plain)).toMatchObject({ hobby: null, note: null });
+    expect(await request(own)).toMatchObject({ hobby: null, note: 'комментарий заявки' });
   });
 
-  test('«Править данные» заявки: профессия и семейное положение уходят и в регистрацию, комментарий — только в заявку', async () => {
+  test('«Править данные» заявки: профессия и семейное положение — в регистрацию, комментарий — только в заявку', async () => {
     const u = await seedUser();
     const r = await seedRequest(u);
     expect(await new PlacementRepo(db).editRequest(r, { profession: 'учитель', family: 'женат', note: 'только для заявки' }, 'тест')).toEqual({ ok: true });
-    expect(await request(r)).toMatchObject({ profession: 'учитель', family_status: 'женат', note: 'только для заявки' });
+    expect(await request(r)).toMatchObject({ profession: null, family_status: null, note: 'только для заявки' });
     expect(await user(u)).toMatchObject({ profession: 'учитель', family_status: 'женат', admin_comment: null });
   });
 

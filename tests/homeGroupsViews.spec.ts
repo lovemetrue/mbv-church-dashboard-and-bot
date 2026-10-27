@@ -29,14 +29,19 @@ function group(over: Partial<DashboardGroup> & { id: number }): DashboardGroup {
 }
 
 function request(over: Partial<DashboardRequest> & { id: number }): DashboardRequest {
-  return {
-    user_id: null, group_id: null, fio: `Человек ${over.id}`, responsible: null, status: 'Новая', date: '2026-10-05',
+  const base = {
+    user_id: null, person_id: null, group_id: null, fio: `Человек ${over.id}`, responsible: null, status: 'Новая', date: '2026-10-05',
     phone: null, phones: [], age: null, place: null, source: null, ministry: null, note: null, extra: null,
     recommended: null, recommended_at: null, final_group: null, cancel_reason: null, attendance: null,
     type: 'join_group', text: null, origin: 'таблица', church: null, mdg_status: null, leader_name: null,
     schedule: null, address: null, callback: false,
     ...over,
   };
+  // «Как пришла» — по умолчанию то же, что сейчас: так было до миграции 057, и старые ожидания не меняются.
+  return {
+    ...base,
+    raw: over.raw ?? { fio: base.fio, phone: base.phone, phones: base.phones, age: base.age, place: base.place, schedule: base.schedule, address: base.address },
+  } as DashboardRequest;
 }
 
 function participant(over: Partial<RegisteredParticipant> & { id: number }): RegisteredParticipant {
@@ -49,7 +54,7 @@ function participant(over: Partial<RegisteredParticipant> & { id: number }): Reg
 }
 
 const coordinator = (over: Partial<CoordinatorRow> & { id: number }): CoordinatorRow =>
-  ({ name: `Координатор ${over.id}`, role: 'Координатор', role_ids: [1], role_kinds: ['coordinator'], source: 'ui', ...over });
+  ({ name: `Координатор ${over.id}`, role: 'Координатор', role_ids: [1], role_kinds: ['coordinator'], source: 'ui', person_key: null, phone: null, ...over });
 
 const empty: ViewsInput = { groups: [], requests: [], participants: [], coordinators: [] };
 
@@ -645,7 +650,7 @@ describe('люди', () => {
       requests: [request({ id: 40, user_id: 12, place: 'Ломоносовская' })],
     });
     expect(views.people.items).toEqual([{
-      key: 'u12', strange: null, contactsHidden: false, personId: null, groups: [], leads: [], requests: expect.any(Array), gender: { value: 'ж', by: 'fio' }, fio: 'Дарья Ефимова', phone: '+7 911 123-45-67', ageLabel: '26-35', district: 'Невский',
+      key: 'u12', strange: null, contactsHidden: false, personId: null, groups: [], leads: [], requests: expect.any(Array), gender: { value: 'ж', by: 'fio' }, team: null, fio: 'Дарья Ефимова', phone: '+7 911 123-45-67', ageLabel: '26-35', district: 'Невский',
       place: 'Ломоносовская', address: null, schedule: null, hobby: null, profession: null, family: null, note: null, church: null, leaderName: null, preferredContact: null, addressGeo: null, from: 'Бот · MAX', mdgLabel: 'Хочет в группу', date: '2026-09-12', requestId: 40, userId: 12, registrationNo: 12, kitIssuedOn: null,
     }]);
   });
@@ -685,7 +690,7 @@ describe('люди', () => {
     });
     const person = (key: string) => views.people.items.find((p) => p.key === key)!;
     expect(person('r7')).toEqual({
-      key: 'r7', strange: null, contactsHidden: false, personId: null, groups: [], leads: [], requests: expect.any(Array), gender: { value: 'м', by: 'fio' }, fio: 'Станислав Ким', phone: '+7 904 123-45-67', ageLabel: '26-35', district: 'Приморский',
+      key: 'r7', strange: null, contactsHidden: false, personId: null, groups: [], leads: [], requests: expect.any(Array), gender: { value: 'м', by: 'fio' }, team: null, fio: 'Станислав Ким', phone: '+7 904 123-45-67', ageLabel: '26-35', district: 'Приморский',
       place: 'Приморский', address: null, schedule: null, hobby: null, profession: null, family: null, note: null, church: null, leaderName: null, preferredContact: null, addressGeo: null, from: 'Таблица', mdgLabel: 'Заявка: готово к утверждению', date: '2026-10-02', requestId: 7, userId: null, registrationNo: null, kitIssuedOn: null,
     });
     expect(person('r8')).toMatchObject({ from: 'Дашборд · Звонок', mdgLabel: 'Заявка: нужна помощь в сопоставлении', district: null });
@@ -739,8 +744,8 @@ describe('координаторы', () => {
       ],
     });
     expect(views.coordinators.items).toEqual([
-      { id: 1, name: 'Анна Смирнова', role: 'Координатор', roleIds: [1], groups: 3, people: 12, verified30: 1 },
-      { id: 2, name: 'Борис', role: 'Координатор', roleIds: [1], groups: 0, people: 0, verified30: 0 },
+      { id: 1, name: 'Анна Смирнова', personKey: null, phone: null, role: 'Координатор', roleIds: [1], groups: 3, people: 12, verified30: 1 },
+      { id: 2, name: 'Борис', personKey: null, phone: null, role: 'Координатор', roleIds: [1], groups: 0, people: 0, verified30: 0 },
     ]);
   });
 });
@@ -1160,13 +1165,19 @@ describe('метка «Странный человек»', () => {
     expect(views.people.items.find((p) => p.key === 'u9')!.strange).toBeNull();
   });
 
-  test('метка действует и на тот же телефон в другой записи: человек один, а записей у него несколько', () => {
+  test('метка — на человеке: заявка его карточки её видит, а чужая запись с тем же телефоном — нет', () => {
+    // Одного человека с двумя записями склеила миграция 057; совпавший номер у разных людей метку не переносит.
     const { views } = build({
       participants: [participant({ id: 9, phone: '+79111234567' })],
-      requests: [request({ id: 1, phone: '+7 911 123-45-67', phones: ['+7 911 123-45-67'] })],
-      ...withMarks([['u9', mark('boris')]]),
+      requests: [
+        request({ id: 1, phone: '+7 911 123-45-67', phones: ['+7 911 123-45-67'], person_id: 4 }),
+        request({ id: 2, person_id: 7 }),
+      ],
+      ...withMarks([['u9', mark('boris')], ['p7', mark('anna')]]),
     });
-    expect(views.requests.items.find((i) => i.id === 1)!.strange).toMatchObject({ by: 'boris' });
+    expect(views.requests.items.find((i) => i.id === 1)!.strange).toBeNull();
+    expect(views.requests.items.find((i) => i.id === 2)!.strange).toMatchObject({ by: 'anna' });
+    expect(views.requests.items.find((i) => i.id === 2)!.personKey).toBe('p7');
   });
 
   test('заявка с меткой не попадает в расчёт групп и не занимает места, ей показано «нужна отдельная группа»', () => {
@@ -1739,5 +1750,20 @@ describe('пол человека', () => {
       requests: [request({ id: 1, type: 'join_group' })],
     });
     expect(calls.plan[0]!.groups.map((g) => g.gender)).toEqual(['м', 'ж', null, null]);
+  });
+});
+
+describe('участник команды — человек из «Людей»', () => {
+  test('у координатора — ключ человека и его телефон; у человека в «Людях» — что он в команде и роли', () => {
+    const { views } = build({
+      participants: [participant({ id: 12, full_name: 'Анна Лебедева' })],
+      coordinators: [
+        coordinator({ id: 3, name: 'Анна Лебедева', role: 'Распределитель', person_key: 'u12', phone: '+79110001122' }),
+        coordinator({ id: 4, name: 'Пётр', role: 'Координатор', person_key: null, phone: null }),
+      ],
+    });
+    expect(views.coordinators.items.find((c) => c.id === 3)).toMatchObject({ personKey: 'u12', phone: '+79110001122' });
+    expect(views.coordinators.items.find((c) => c.id === 4)).toMatchObject({ personKey: null, phone: null });
+    expect(views.people.items.find((p) => p.key === 'u12')!.team).toEqual({ coordinatorId: 3, role: 'Распределитель' });
   });
 });

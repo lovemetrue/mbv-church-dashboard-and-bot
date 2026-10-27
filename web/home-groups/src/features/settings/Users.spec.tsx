@@ -34,6 +34,7 @@ const item = (over: Partial<StaffItem>): StaffItem => ({
   status: 'active',
   lastLoginAt: '2026-10-08T18:20:00+03:00',
   hasPendingLink: false,
+  personKey: null,
   ...over,
 });
 
@@ -246,6 +247,31 @@ describe('«Пользователи и роли»: добавление', () =>
       },
     ]);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  test('человек из «Людей» — необязательно: выбранный уходит ключом, а пустое ФИО заполняется его именем', async () => {
+    const { fetchMock, user, dialog } = await openAdd({
+      'settings/staff/suggest': () => json({ ok: true, login: 'd_efimova' }),
+      'settings/staff/create': () => json(sentOk('efimova@example.org')),
+    });
+    await user.type(within(dialog).getByRole('searchbox', { name: 'Найти: Человек из «Людей»' }), 'Ефимова');
+    await user.click(await within(within(dialog).getByRole('list', { name: 'Подходящие люди: Человек из «Людей»' })).findByRole('button', { name: /Дарья Ефимова/ }));
+    expect(within(dialog).getByRole('textbox', { name: 'ФИО' })).toHaveValue('Дарья Ефимова');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Почта' }), 'efimova@example.org');
+    await user.click(within(dialog).getByRole('button', { name: 'Добавить' }));
+    await screen.findByText('Письмо отправлено на efimova@example.org');
+    expect(posts(fetchMock).find((p) => p.path === 'settings/staff/create')!.body).toMatchObject({ fullName: 'Дарья Ефимова', personKey: 'u1' });
+  });
+
+  test('без человека ФИО — просто строка, ключ не уходит', async () => {
+    const { fetchMock, user, dialog } = await openAdd({
+      'settings/staff/suggest': () => json({ ok: true, login: 'stoika' }),
+      'settings/staff/create': () => json(sentOk('desk@example.org')),
+    });
+    await fillAdd(user, dialog, 'Стойка Вход', 'desk@example.org');
+    await user.click(within(dialog).getByRole('button', { name: 'Добавить' }));
+    await screen.findByText('Письмо отправлено на desk@example.org');
+    expect(posts(fetchMock).find((p) => p.path === 'settings/staff/create')!.body).not.toHaveProperty('personKey');
   });
 
   test('третий уровень — «Стойка регистрации»: с пояснением, что открыта только страница стойки', async () => {

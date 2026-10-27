@@ -707,3 +707,41 @@ describe('пароли для команды из справочника', () =>
     expect((c.mailer as ReturnType<typeof recordingMailer>).sent).toEqual([]);
   });
 });
+
+describe('пользователь и человек из «Людей»', () => {
+  const card = async (fio: string) => (await db.query<{ id: number }>('INSERT INTO persons (full_name) VALUES ($1) RETURNING id::int AS id', [fio])).rows[0]!.id;
+  const keyOf = async (id: number) => (await db.query<{ k: string | null }>(
+    `SELECT CASE WHEN user_id IS NOT NULL THEN 'u' || user_id WHEN person_id IS NOT NULL THEN 'p' || person_id END AS k FROM staff WHERE id = $1`, [id],
+  )).rows[0]!.k;
+
+  test('ФИО — свободная строка, а ссылка на человека — необязательная; её можно поставить, сменить и снять', async () => {
+    const c = setup();
+    const p = await card('Полина Иванова');
+    const made = await c.service.create({ ...POLINA, personKey: `p${p}` }, 'a');
+    if (!made.ok) throw new Error('не завёлся');
+    expect(await keyOf(made.id)).toBe(`p${p}`);
+    const other = await c.service.create({ fullName: 'Служебная запись', email: 'desk@church.example', role: 'registration' }, 'a');
+    if (!other.ok) throw new Error('не завёлся');
+    expect(await keyOf(other.id)).toBeNull();
+    expect(await c.service.update({ id: made.id, personKey: null }, 'a')).toEqual({ ok: true });
+    expect(await keyOf(made.id)).toBeNull();
+    // ФИО при этом не трогается: правка без ФИО его не меняет.
+    expect((await c.staff.byId(made.id))!.full_name).toBe('Полина Иванова');
+  });
+
+  test('ключ не из «Людей» и удалённая карточка — понятный отказ', async () => {
+    const c = setup();
+    expect(await c.service.create({ ...POLINA, personKey: 'r5' }, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
+    const p = await card('Ушедший');
+    await db.query('UPDATE persons SET archived_at = now() WHERE id = $1', [p]);
+    expect(await c.service.create({ ...POLINA, personKey: `p${p}` }, 'a')).toMatchObject({ ok: false, error: 'bad_request', message: expect.stringMatching(/нет в «Людях»/) });
+  });
+
+  test('в списке у пользователя — ключ его человека', async () => {
+    const c = setup();
+    const p = await card('Полина Иванова');
+    await c.service.create({ ...POLINA, personKey: `p${p}` }, 'a');
+    const view = await c.service.view();
+    expect(view.items.find((i) => i.login === POLINA_LOGIN)).toMatchObject({ personKey: `p${p}` });
+  });
+});

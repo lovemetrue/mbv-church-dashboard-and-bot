@@ -11,6 +11,10 @@ beforeAll(async () => { db = await setupTestDb(); repo = new StrangeRepo(db); })
 afterAll(async () => { await db.end(); });
 beforeEach(async () => { await truncateAll(db); });
 
+/** Человек заявки в «Людях»: у заявки без регистрации — её карточка (миграция 057). */
+const keyOfRequest = async (id: number): Promise<string> =>
+  (await db.query<{ key: string }>(`SELECT CASE WHEN user_id IS NOT NULL THEN 'u' || user_id ELSE 'p' || person_id END AS key FROM requests WHERE id = $1`, [id])).rows[0]!.key;
+
 async function request(opts: { userId?: number | null; status?: string } = {}): Promise<number> {
   const { rows } = await db.query<{ id: number }>(
     `INSERT INTO requests (type, user_id, fio, status, origin) VALUES ('join_group', $1, 'Человек', $2, 'ui') RETURNING id`,
@@ -26,15 +30,15 @@ const proposalStatus = async (requestId: number) => (await db.query('SELECT stat
 const audits = async () => (await db.query(`SELECT actor, action, entity_type, entity_id::int AS entity_id, after, note FROM audit_log ORDER BY id`)).rows;
 
 describe('метка «Странный человек»', () => {
-  test('у заявки с регистрацией метка ложится на регистрацию, у заявки без неё — на саму заявку', async () => {
+  test('у заявки с регистрацией метка ложится на регистрацию, у заявки без неё — на карточку её человека', async () => {
     const u = await seedUser(db, { id: '1' });
     const withUser = await request({ userId: u });
     const noUser = await request();
     expect(await repo.set({ kind: 'request', id: withUser }, true, null, 'anna')).toEqual({ ok: true });
     expect(await repo.set({ kind: 'request', id: noUser }, true, 'говорит сам с собой', 'anna')).toEqual({ ok: true });
     const all = await repo.all();
-    expect([...all.keys()].sort()).toEqual([`r${noUser}`, `u${u}`].sort());
-    expect(all.get(`r${noUser}`)).toMatchObject({ by: 'anna', note: 'говорит сам с собой' });
+    expect([...all.keys()].sort()).toEqual([await keyOfRequest(noUser), `u${u}`].sort());
+    expect(all.get(await keyOfRequest(noUser))).toMatchObject({ by: 'anna', note: 'говорит сам с собой' });
   });
 
   test('карточка человека, внесённая вручную, и регистрация тоже отмечаются напрямую', async () => {
@@ -49,7 +53,7 @@ describe('метка «Странный человек»', () => {
     const r = await request();
     await repo.set({ kind: 'request', id: r }, true, 'первое', 'anna');
     await repo.set({ kind: 'request', id: r }, true, 'второе', 'boris');
-    expect((await repo.all()).get(`r${r}`)).toMatchObject({ by: 'boris', note: 'второе' });
+    expect((await repo.all()).get(await keyOfRequest(r))).toMatchObject({ by: 'boris', note: 'второе' });
     expect((await db.query('SELECT count(*)::int AS n FROM strange_marks')).rows[0]!.n).toBe(1);
     expect(await repo.set({ kind: 'request', id: r }, false, null, 'anna')).toEqual({ ok: true });
     expect((await repo.all()).size).toBe(0);

@@ -180,7 +180,7 @@ describe('«Заявки»: откуда значение и как его по�
   test('время из анкеты: слова человека, источник и «Понято как: Вт, Чт · вечер»', async () => {
     const card = await openCard(1);
     expect(within(card).getByText('вт, чт вечером')).toBeInTheDocument();
-    expect(within(card).getAllByText('со слов человека (анкета)').length).toBeGreaterThanOrEqual(1);
+    expect(within(card).getAllByText('из карточки человека в «Людях»').length).toBeGreaterThanOrEqual(1);
     expect(within(card).getByText('Понято как: Вт, Чт · вечер')).toBeInTheDocument();
   });
 
@@ -205,6 +205,6 @@ describe('«Заявки»: откуда значение и как его по�
   test('если времени нет вовсе, ни источника, ни «Понято как» не показано', async () => {
     const card = await openCard(2);
     expect(within(card).queryByText(/Понято как/)).not.toBeInTheDocument();
-    expect(within(card).queryByText('со слов человека (анкета)')).not.toBeInTheDocument();
+    expect(within(card).queryByText('из карточки человека в «Людях»')).not.toBeInTheDocument();
   });
 });

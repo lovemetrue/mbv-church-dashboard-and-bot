@@ -185,6 +185,7 @@ function StaffBody({ data }: { data: SettingsStaffView }) {
   async function create(values: StaffFormValues): Promise<string | null> {
     const body: CreateStaffBody = { fullName: values.fullName, email: values.email, role: values.role };
     if (values.login) body.login = values.login;
+    if (values.personKey) body.personKey = values.personKey;
     setNotice(null);
     const r = await run(() => actions.create(body));
     if (!r) return null;
@@ -199,6 +200,7 @@ function StaffBody({ data }: { data: SettingsStaffView }) {
     if (values.fullName !== item.fullName) body.fullName = values.fullName;
     if (values.email !== (item.email ?? '')) body.email = values.email;
     if (values.role !== item.role) body.role = values.role;
+    if (values.personKey !== (item.personKey ?? '')) body.personKey = values.personKey || null;
     setNotice(null);
     const r = await run(() => actions.update(body));
     if (!r) return null;
@@ -300,7 +302,7 @@ function StaffBody({ data }: { data: SettingsStaffView }) {
           title={t.addTitle}
           submitLabel={t.create}
           submittingLabel={t.creating}
-          initial={{ fullName: '', email: '', role: 'admin', login: '' }}
+          initial={{ fullName: '', email: '', role: 'admin', login: '', personKey: '' }}
           suggest={async (fullName) => {
             try {
               return (await actions.suggest({ fullName })).login;

@@ -14,7 +14,14 @@ export interface CoordinatorRow {
   /** Смыслы его ролей без повторов: у «Координатора малых групп» и «Распределителя» сразу — оба. */
   role_kinds: TeamRoleKind[];
   source: string;
+  /** Человек из «Людей» (миграция 056): «u12» — регистрация, «p7» — карточка; null — связи нет (не должно быть). */
+  person_key: string | null;
+  /** Телефон этого человека: у участника команды своего телефона нет, он берётся из «Людей». */
+  phone: string | null;
 }
+
+/** Ссылка на человека из «Людей»: регистрация или карточка. Человек из заявки сначала получает карточку (см. manage). */
+export type CoordinatorPersonRef = { userId: number } | { personId: number };
 
 /**
  * Роль — ссылка на справочник (`{ id }`, так выбирает новый интерфейс) или название (`{ name }`: старый дашборд и
@@ -26,6 +33,18 @@ export interface CoordinatorInput {
   name: string;
   /** Хотя бы одна роль; повторы не страшны. */
   roles: RoleRef[];
+  /**
+   * Человек из «Людей» (новый интерфейс выбирает его, имя — его ФИО). Нет — старый дашборд или перенос таблицы
+   * пишут имя словами: при заведении человека по имени находит триггер миграции 056.
+   */
+  person?: CoordinatorPersonRef;
+}
+
+/** Этот человек уже есть в команде: второй строки на него не бывает (уникальные индексы миграции 056). */
+export class CoordinatorTakenError extends Error {
+  constructor() {
+    super('Этот человек уже есть в команде.');
+  }
 }
 
 /** Строка координатора вместе с ролями: роли живут в `coordinator_roles`, а не текстом в самой строке. */
@@ -34,7 +53,9 @@ const COLUMNS = `c.id::int AS id, c.name, coalesce(coordinator_role_names(c.id),
          WHERE cr.coordinator_id = c.id ORDER BY r.name) AS role_ids,
   ARRAY(SELECT DISTINCT r.kind FROM coordinator_roles cr JOIN team_roles r ON r.id = cr.role_id
          WHERE cr.coordinator_id = c.id AND r.kind IS NOT NULL ORDER BY r.kind) AS role_kinds,
-  c.source`;
+  c.source,
+  CASE WHEN c.user_id IS NOT NULL THEN 'u' || c.user_id WHEN c.person_id IS NOT NULL THEN 'p' || c.person_id END AS person_key,
+  COALESCE((SELECT u.phone FROM users u WHERE u.id = c.user_id), (SELECT p.phone FROM persons p WHERE p.id = c.person_id)) AS phone`;
 
 export class CoordinatorsRepo {
   constructor(private readonly db: Pool) {}
@@ -52,7 +73,8 @@ export class CoordinatorsRepo {
   async create(input: CoordinatorInput, source: 'ui' | 'бот' | 'таблица' = 'ui'): Promise<CoordinatorRow> {
     const created = await this.inTransaction(async (c) => {
       const { rows } = await c.query<{ id: number }>(
-        'INSERT INTO coordinators (name, source) VALUES ($1, $2) RETURNING id::int AS id', [input.name, source],
+        'INSERT INTO coordinators (name, source, user_id, person_id) VALUES ($1, $2, $3, $4) RETURNING id::int AS id',
+        [input.name, source, ...refColumns(input.person)],
       );
       await setRoles(c, rows[0]!.id, input.roles);
       return byId(c, rows[0]!.id);
@@ -95,6 +117,9 @@ export class CoordinatorsRepo {
         `UPDATE coordinators SET name = $2, source = CASE WHEN source = 'таблица' THEN 'ui' ELSE source END WHERE id = $1`,
         [id, input.name],
       );
+      if (input.person) {
+        await c.query('UPDATE coordinators SET user_id = $2, person_id = $3 WHERE id = $1', [id, ...refColumns(input.person)]);
+      }
       await setRoles(c, id, input.roles);
       const old = before.rows[0].name;
       if (old !== input.name) {
@@ -124,12 +149,21 @@ export class CoordinatorsRepo {
       return result;
     } catch (err) {
       await client.query('ROLLBACK').catch(() => undefined);
+      if (isUniqueViolation(err, 'coordinators_user_unique') || isUniqueViolation(err, 'coordinators_person_unique')) {
+        throw new CoordinatorTakenError();
+      }
       throw err;
     } finally {
       client.release();
     }
   }
 }
+
+const refColumns = (ref: CoordinatorPersonRef | undefined): [number | null, number | null] =>
+  !ref ? [null, null] : 'userId' in ref ? [ref.userId, null] : [null, ref.personId];
+
+const isUniqueViolation = (err: unknown, constraint: string): boolean =>
+  typeof err === 'object' && err !== null && (err as { code?: string }).code === '23505' && (err as { constraint?: string }).constraint === constraint;
 
 async function byId(c: PoolClient, id: number): Promise<CoordinatorRow | null> {
   const { rows } = await c.query<CoordinatorRow>(`SELECT ${COLUMNS} FROM coordinators c WHERE c.id = $1`, [id]);

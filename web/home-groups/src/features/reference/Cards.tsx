@@ -227,6 +227,20 @@ export function PersonCard({ p, onClose }: { p: PersonItem; onClose: () => void 
   const rows: KvRow[] = [
     { label: 'ФИО', value: p.fio },
     { label: ru.gender.label, value: <GenderField key={p.key} personKey={p.key} gender={p.gender} /> },
+    // «Люди» — сквозной справочник: человек из команды служения ведёт в свою строку в «Координаторах».
+    ...(p.team
+      ? [{
+          label: ru.reference.teamTitle,
+          value: (
+            <>
+              {p.team.role || '—'}{' '}
+              <Button size="sm" variant="ghost" aria-label={ru.reference.openInTeamAria(p.fio)} onClick={() => nav.openCoordinator(p.team!.coordinatorId)}>
+                {ru.reference.openInTeam}
+              </Button>
+            </>
+          ),
+        }]
+      : []),
     { label: 'Телефон', value: p.phone ? <span className="num">{formatPhone(p.phone)}</span> : noValue },
     { label: 'Возраст', value: orNone(p.ageLabel) },
     { label: 'Район', value: orNone(p.district) },
@@ -291,9 +305,27 @@ export function PersonCard({ p, onClose }: { p: PersonItem; onClose: () => void 
 
 export function CoordinatorCard({ c, onClose }: { c: CoordinatorItem; onClose: () => void }) {
   const groups = useGroups();
+  const nav = useAppNav();
   const mine = groups.data?.items.filter((g) => g.coordinator === c.name) ?? [];
+  // Участник команды — человек из «Людей»: имя и телефон оттуда, а переход ведёт в его карточку.
+  const personKey = c.personKey;
   const rows: KvRow[] = [
-    { label: 'Имя', value: c.name },
+    {
+      label: 'Имя',
+      value: personKey ? (
+        <>
+          {c.name}{' '}
+          <Button size="sm" variant="ghost" aria-label={ru.reference.openInPeopleAria(c.name)} onClick={() => nav.openPerson(personKey)}>
+            {ru.reference.openInPeople}
+          </Button>
+        </>
+      ) : (
+        <>
+          {c.name} · <span className={styles.note}>{ru.reference.coordinatorNoPerson}</span>
+        </>
+      ),
+    },
+    { label: ru.reference.coordinatorPhone, value: c.phone ? <span className="num">{formatPhone(c.phone)}</span> : noValue },
     { label: 'Роль', value: c.role },
     { label: 'Групп', value: c.groups },
     { label: 'Участников', value: c.people },

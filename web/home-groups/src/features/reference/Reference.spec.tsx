@@ -333,21 +333,26 @@ describe('«Справочник»: экран', () => {
     expect(within(card).getByText('Выдан 08.10.2026')).toBeInTheDocument();
   });
 
-  test('над списком координаторов — «+ Добавить координатора»: форма с ролями, после сохранения открывается его карточка', async () => {
-    const fetchMock = stubFetchWithFixtures({ 'coordinators/create': () => json({ ok: true, id: 1 }) });
+  test('над списком координаторов — «+ Добавить координатора»: нового человека заводят тут же, после сохранения открывается его карточка', async () => {
+    const fetchMock = stubFetchWithFixtures({ 'coordinators/create': () => json({ ok: true, id: 1 }), 'persons/create': () => json({ ok: true, personKey: 'p900' }) });
     const user = userEvent.setup();
     renderAt(<App />, '/?tab=reference&ent=coordinators');
     await screen.findByRole('table');
     await user.click(screen.getByRole('button', { name: '+ Добавить координатора' }));
     const dialog = await screen.findByRole('dialog', { name: 'Новый координатор' });
-    await user.type(within(dialog).getByRole('textbox', { name: 'ФИО' }), 'Иван Сидоров');
+    // В «Людях» его нет: «+ Новый человек» заводит карточку, набранное в поиске переносится в ФИО.
+    await user.type(await within(dialog).findByRole('searchbox', { name: 'Найти: Человек' }), 'Иван Сидоров');
+    await user.click(within(dialog).getByRole('button', { name: 'Новый человек: Человек' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Завести и выбрать' }));
+    await within(dialog).findByRole('button', { name: 'Сменить: Человек' });
     await user.click(within(dialog).getByRole('checkbox', { name: 'Координатор' }));
     await user.click(within(dialog).getByRole('checkbox', { name: 'Распределитель' }));
     await user.click(within(dialog).getByRole('button', { name: 'Добавить координатора' }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Новый координатор' })).not.toBeInTheDocument());
     const sent = (fetchMock.mock.calls as unknown as [string, RequestInit | undefined][]).filter(([, init]) => init?.method === 'POST');
     expect(sent.map(([url, init]) => [String(url).replace(/^.*\/api\/v1\//, ''), JSON.parse(String(init!.body))])).toEqual([
-      ['coordinators/create', { fields: { name: 'Иван Сидоров', roleIds: '1, 3' } }],
+      ['persons/create', { fields: { fio: 'Иван Сидоров' } }],
+      ['coordinators/create', { fields: { personKey: 'p900', roleIds: '1, 3' } }],
     ]);
     expect(currentSearch().get('rec')).toBe('1');
     expect(await screen.findByRole('dialog', { name: /Карточка координатора/ })).toBeInTheDocument();

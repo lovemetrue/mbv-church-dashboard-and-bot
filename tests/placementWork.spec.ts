@@ -17,8 +17,13 @@ async function request(over: { status?: string; origin?: string; callback?: bool
   );
   return rows[0]!.id;
 }
+/** Заявка и данные её человека: ФИО, телефон, возраст и район — в записи человека (миграция 057), остальное — в заявке. */
 const row = async (id: number) =>
-  (await db.query('SELECT fio, phone, age, place, note, responsible, callback, origin FROM requests WHERE id = $1', [id])).rows[0];
+  (await db.query(
+    `SELECT coalesce(u.full_name, p.full_name) AS fio, coalesce(u.phone, p.phone) AS phone, coalesce(u.age, p.age) AS age,
+            coalesce(u.location, p.place) AS place, r.note, r.responsible, r.callback, r.origin
+       FROM requests r LEFT JOIN users u ON u.id = r.user_id LEFT JOIN persons p ON p.id = r.person_id WHERE r.id = $1`, [id],
+  )).rows[0];
 const audits = async () => (await db.query('SELECT * FROM audit_log ORDER BY id')).rows;
 
 describe('правка заявки координатором', () => {

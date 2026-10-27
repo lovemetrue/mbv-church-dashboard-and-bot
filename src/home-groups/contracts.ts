@@ -1296,6 +1296,8 @@ export interface PersonItem {
    * «other» — «Другие обращения».
    */
   requests: { id: number; kind: 'join' | 'lead' | 'other'; label: string; state: 'open' | 'done' | 'cancelled' }[];
+  /** Человек в команде служения («Координаторы»): строка справочника команды и его роли; null — не в команде. */
+  team: { coordinatorId: number; role: string } | null;
   /** Группы, где человек ведущий или соведущий (ссылка из группы на него, миграции 030 и 054). */
   leads: { groupId: number; code: string; role: 'leader' | 'coLeader' }[];
   /**
@@ -1404,6 +1406,13 @@ export interface KitIssueOk {
 export interface CoordinatorItem {
   id: number;
   name: string;
+  /**
+   * Человек из «Людей» (миграция 056): «u12» или «p7». Имя участника команды — его ФИО и следует за ним; null бывает
+   * только у строки, заведённой до привязки.
+   */
+  personKey: string | null;
+  /** Телефон из карточки человека — у участника команды своего нет. */
+  phone: string | null;
   /** Название роли из справочника ролей — для показа и отборов. */
   role: string;
   /** Ссылки на роли (их бывает несколько): их отмечает форма правки. */
@@ -1555,6 +1564,8 @@ export interface StaffItem {
   lastLoginAt: string | null;
   /** Есть действующая (не использованная и не истёкшая) ссылка на пароль. */
   hasPendingLink: boolean;
+  /** Человек из «Людей» (миграция 058): «u12» или «p7»; null — ФИО записи только строкой. */
+  personKey: string | null;
 }
 
 export interface PersonalLoginsState {
@@ -1620,6 +1631,8 @@ export interface CreateStaffBody {
   role: Role;
   /** Не указан — сервер подберёт сам (см. SuggestLoginBody). */
   login?: string;
+  /** Человек из «Людей» («u12», «p7»); не указан — ФИО только строкой. */
+  personKey?: string | null;
 }
 
 export interface UpdateStaffBody {
@@ -1629,6 +1642,8 @@ export interface UpdateStaffBody {
   role?: Role;
   /** false — отключить (входить нельзя, текущие входы закрываются), true — включить обратно. */
   active?: boolean;
+  /** Человек из «Людей»: ключ — связать, null — отвязать; не указан — не менять. */
+  personKey?: string | null;
 }
 
 export interface StaffIdBody {

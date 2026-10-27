@@ -196,7 +196,8 @@ export function coordinatorEditSpec(c: CoordinatorItem, meta: FormMeta): EditSpe
   const options = meta.teamRoles.map((r) => String(r.id));
   return {
     fields: [
-      { name: 'name', label: t.name, kind: 'text', required: true, wide: true },
+      // Участник команды — человек из «Людей»: его меняют выбором, а ФИО правят в его карточке (имя следует за ней).
+      { name: 'personKey', label: t.name, kind: 'person', required: true, wide: true, allowUnlink: false, legacyName: c.personKey ? null : c.name },
       {
         name: 'roleIds',
         label: t.role,
@@ -209,7 +210,7 @@ export function coordinatorEditSpec(c: CoordinatorItem, meta: FormMeta): EditSpe
       },
     ],
     // В порядке списка, как их складывает `toggleInList`: иначе форма сочла бы неизменённые роли правкой.
-    initial: { name: c.name, roleIds: options.filter((id) => c.roleIds.includes(Number(id))).join(', ') },
+    initial: { personKey: c.personKey ?? '', roleIds: options.filter((id) => c.roleIds.includes(Number(id))).join(', ') },
     note: m.coordinator.renameNote,
   };
 }

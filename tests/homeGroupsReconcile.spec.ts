@@ -159,6 +159,16 @@ describe('несколько групп сразу', () => {
     expect((await db.query('SELECT leader_user_id::int AS lu, co_leader_user_id::int AS cu FROM groups WHERE id = $1', [g])).rows[0]).toEqual({ lu: null, cu: p.userId });
   });
 
+  test('«уже веду»: жена ведущего с общим номером семьи — группа найдена точно, разбор записывает её соведущей, ведущий остаётся', async () => {
+    const g = await group('Олейник Иаков Владиславич', '+7 999 536-40-85');
+    const p = await person('7', 'already_leader', { fio: 'Олейник Анастасия Михайловна', phone: '89995364085' });
+    const item = (await service().views()).requests.others.find((o) => o.id === p.requestId)!;
+    expect(item.reconcile).toMatchObject({ status: 'ready', candidates: [{ groupId: g, tier: 'exact', by: 'phone' }] });
+    expect(item.reconcile!.text).toContain('как с соведущим');
+    expect(await service().reconciler.apply(p.requestId, { groupIds: [g] }, 'boss')).toMatchObject({ ok: true });
+    expect((await db.query('SELECT leader_user_id, co_leader_user_id::int AS co FROM groups WHERE id = $1', [g])).rows[0]).toEqual({ leader_user_id: null, co: p.userId });
+  });
+
   test('«уже веду»: место соведущего занято другим человеком из «Людей» — не записывается ничего', async () => {
     const g = await group('Артёмкин Константин');
     // На месте соведущего — карточка с тем же именем, но другим телефоном: однофамилица, записывать поверх нельзя.

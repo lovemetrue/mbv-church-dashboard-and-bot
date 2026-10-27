@@ -175,12 +175,22 @@ export function findGroups(subject: Subject, groups: readonly LeaderGroup[]): Ca
       const role = [...phoneKeys(g.phones)].some((k) => myPhones.has(k)) ? 'leader'
         : [...phoneKeys(g.coLeaderPhones ?? [])].some((k) => myPhones.has(k)) ? 'coLeader' : null;
       if (role) {
-        // Номер один у всей семьи, поэтому сам по себе он не доказывает, что ведёт именно этот человек. «Точно» — только
-        // когда и имя то же. Совпавшей фамилии мало: «Олейник Анастасия» с номером группы «Олейник Иаков» — жена, и как
-        // «точно» группу связали бы с ней как с ведущей. Совпавшего имени тоже мало: «Бутарев Владимир» с номером группы
-        // «Новиковы Тамара и Владимир» — чужой человек. Такие — «похоже», решает человек.
-        const theirs = [...leaderTokens, ...nameTokens(g.coLeader)];
-        offer({ groupId: g.id, tier: sameName(mine, theirs) ? 'exact' : 'likely', by: 'phone', role });
+        // Номер один у всей семьи. Тот же человек (те же имя и фамилия) — «точно» на совпавшее место. Семья (та же
+        // фамилия, другое имя: «Олейник Анастасия» с общим номером группы «Олейник Иаков») — группа та же, «точно», но
+        // это не ведущий: она встаёт соведущей, если место соведущего пустое или там она сама. Иначе, и для чужой
+        // фамилии («Бутарев Владимир» с номером группы «Новиковы Тамара и Владимир»), — «похоже», решает человек.
+        const leaderName = role === 'leader' ? leaderTokens : nameTokens(g.coLeader);
+        const coTokens = nameTokens(g.coLeader);
+        const theirs = [...leaderTokens, ...coTokens];
+        const mySurnames = mine.filter(looksLikeSurname);
+        // Инициалы («П. М.») тоже имя: годится, если хоть одна буква открывает слово ведущего.
+        const sameFamily = mySurnames.length > 0
+          ? mySurnames.some((t) => theirs.some((l) => sameToken(t, l) || closeToken(t, l)))
+          : mine.some((t) => (t.length > 1 ? theirs.some((l) => sameToken(t, l)) : theirs.some((l) => l.startsWith(t))));
+        if (sameName(mine, leaderName)) offer({ groupId: g.id, tier: 'exact', by: 'phone', role });
+        else if (role === 'leader' && coTokens.length > 0 && sameName(mine, coTokens)) offer({ groupId: g.id, tier: 'exact', by: 'phone', role: 'coLeader' });
+        else if (sameFamily && role === 'leader' && coTokens.length === 0) offer({ groupId: g.id, tier: 'exact', by: 'phone', role: 'coLeader' });
+        else offer({ groupId: g.id, tier: 'likely', by: 'phone', role });
       }
     }
     const byLeader = matchName(mine, leaderTokens);

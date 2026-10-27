@@ -109,13 +109,15 @@ describe('Справочник → Люди: метка', () => {
 describe('Состав группы: метка', () => {
   test('значок стоит у отмеченного участника состава и нет у остальных', async () => {
     stubFetchWithFixtures();
-    // Группа № 27 (id 2): в составе Михаил Громов, на нём стоит метка
+    // Группа № 27 (id 2): Михаил Громов — её ведущий и участник состава, на нём стоит метка; показан он строкой ведущего
     renderAt(<App />, '/?tab=reference&rec=2');
     const card = await screen.findByRole('dialog', { name: /Карточка группы/ });
     const members = (buildGroups().items.find((g) => g.id === 2)?.members ?? []).filter((m) => m.strange);
     expect(members.map((m) => m.fio)).toEqual(['Михаил Громов']);
-    const list = await within(card).findByRole('list', { name: 'Состоят в группе' });
+    const list = await within(card).findByRole('list', { name: 'Ведут группу' });
     expect(badges(list)).toHaveLength(1);
+    // Внесённый и участником показан один раз: второго значка в составе нет.
+    expect(within(card).queryByRole('list', { name: 'Состоят в группе' })).toBeNull();
   });
 
   test('в группе без отмеченных участников значков нет', async () => {

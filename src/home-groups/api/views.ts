@@ -797,7 +797,11 @@ export function buildViewsWithPlan(
     strange: strangeOfRequest(r),
     contactsHidden: false,
     type: r.type as OtherItem['type'],
-    typeLabel: TYPE_LABEL[r.type as OtherItem['type']] ?? 'Обращение',
+    // «Открыть группу» и «дать дом» — один тип заявки; подпись уточняем по ответу анкеты.
+    typeLabel: r.type === 'lead_group' && r.mdg_status === 'home' ? 'Даёт дом для группы'
+      : r.type === 'lead_group' && r.mdg_status === 'open' ? 'Хочет открыть группу'
+      : TYPE_LABEL[r.type as OtherItem['type']] ?? 'Обращение',
+    offer: r.type === 'lead_group' && (r.mdg_status === 'open' || r.mdg_status === 'home') ? r.mdg_status : null,
     gist: gistOf(r),
     // Разбор по справочникам нужен только открытым: закрытое уже разобрано или отложено людьми.
     reconcile: otherState(r) === 'open' ? reconcileOf(r, input.groups) : null,

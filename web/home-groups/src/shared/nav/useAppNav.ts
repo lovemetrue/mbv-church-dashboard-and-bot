@@ -53,6 +53,8 @@ export function useAppNav() {
       otherFilter: parseOtherFilter(params.get('ostate')),
       /** Отбор открытых обращений по разбору; 'all' по умолчанию. Действует только при чипе «Открытые». */
       reconcileFilter: parseReconcileFilter(params.get('orec')),
+      /** «Хотят открыть группу»: все, только «откроют группу» или только «дают дом» (параметр `offer`). */
+      offerFilter: (params.get('offer') === 'open' || params.get('offer') === 'home' ? params.get('offer') : 'all') as 'all' | 'open' | 'home',
       /** «В работе у»: '' — все, RESP_NOBODY — никто не взял, иначе имя. */
       responsible: params.get('resp') ?? '',
       requestId: parseId(params.get('req')),
@@ -89,10 +91,11 @@ export function useAppNav() {
     setBucket: (b: BucketFilter) => update({ bucket: b === 'all' ? null : b, req: null }),
     // Режим списка: открытая карточка и отборы чипов принадлежат прежнему списку и сбрасываются.
     // Поиск и «В работе у» общие для обоих режимов и сохраняются.
-    setView: (v: RequestsView) => update({ view: v === 'wait' ? null : v, req: null, bucket: null, ostate: null, orec: null }),
+    setView: (v: RequestsView) => update({ view: v === 'wait' ? null : v, req: null, bucket: null, ostate: null, orec: null, offer: null }),
     // Отбор по разбору существует только у «Открытых»: ушли с них — он сбрасывается, иначе скрытый отбор прятал бы строки.
     setOtherFilter: (f: OtherFilter) => update({ ostate: f === 'open' ? null : f, orec: null, req: null }),
     setReconcileFilter: (f: ReconcileFilter) => update({ orec: f === 'all' ? null : f, req: null }),
+    setOfferFilter: (f: 'all' | 'open' | 'home') => update({ offer: f === 'all' ? null : f, req: null }),
     openRequest: (id: number) => setParams((prev) => {
       const next = tabParams(prev, 'requests');
       next.set('req', String(id));

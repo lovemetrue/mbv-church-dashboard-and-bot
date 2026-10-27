@@ -1767,3 +1767,19 @@ describe('участник команды — человек из «Людей»
     expect(views.people.items.find((p) => p.key === 'u12')!.team).toEqual({ coordinatorId: 3, role: 'Распределитель' });
   });
 });
+
+describe('«хочу открыть группу» и «дам дом»', () => {
+  test('оба ответа — одна заявка «хочу открыть», а подпись и признак различают их по ответу анкеты', () => {
+    const { views } = build({
+      requests: [
+        request({ id: 1, type: 'lead_group', user_id: 5, mdg_status: 'open' }),
+        request({ id: 2, type: 'lead_group', user_id: 6, mdg_status: 'home' }),
+        request({ id: 3, type: 'lead_group' }),
+      ],
+    });
+    const o = (id: number) => views.requests.others.find((x) => x.id === id)!;
+    expect([o(1).offer, o(1).typeLabel]).toEqual(['open', 'Хочет открыть группу']);
+    expect([o(2).offer, o(2).typeLabel]).toEqual(['home', 'Даёт дом для группы']);
+    expect([o(3).offer, o(3).typeLabel]).toEqual([null, 'Хочет открыть группу или дать дом']);
+  });
+});

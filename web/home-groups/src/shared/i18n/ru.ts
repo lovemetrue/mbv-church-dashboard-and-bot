@@ -585,6 +585,8 @@ export const ru = {
       gistTitle: 'Суть обращения',
       /** Вторая строка чипов под «Открытыми»: что сервер нашёл в справочниках групп. */
       reconcileChipsLabel: 'Фильтр открытых обращений по разбору',
+      offerChipsLabel: 'Что предлагает человек',
+      offer: { all: 'Все', open: 'Откроют группу', home: 'Дают дом' } as Record<'all' | 'open' | 'home', string>,
       reconcileAll: 'Все открытые',
       reconcileReady: 'Готово к разбору',
       reconcileChoose: 'Нужен выбор',
@@ -1942,6 +1944,9 @@ export const ru = {
     empty: 'Состав пока не внесён',
     add: 'Добавить человека',
     addAria: 'Добавить человека',
+    leadersTitle: 'Ведут группу',
+    leaderRole: 'ведущий',
+    coLeaderRole: 'соведущий',
     placedTitle: 'Направлены через сервис',
     placedHint: 'Состав правится заявкой.',
     manualTitle: 'Состоят в группе',

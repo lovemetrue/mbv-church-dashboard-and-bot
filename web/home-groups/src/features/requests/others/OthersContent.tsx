@@ -75,9 +75,15 @@ export function OthersContent({
   // Отбор по разбору есть только у «Открытых»: в адресе он мог остаться от прежней ссылки, а строки чипов при других
   // состояниях нет, и скрытый отбор прятал бы обращения без объяснений.
   const recFilter: ReconcileFilter = nav.otherFilter === 'open' && kind === 'others' ? nav.reconcileFilter : 'all';
+  // «Открыть группу» и «дать дом» — одна заявка, различает их ответ анкеты (`offer`). Отбор есть только у «Хотят открыть».
+  const offerFilter = kind === 'leads' ? nav.offerFilter : 'all';
+  const offerCounts = useMemo(
+    () => ({ all: found.length, open: found.filter((o) => o.offer === 'open').length, home: found.filter((o) => o.offer === 'home').length }),
+    [found],
+  );
   const visible = useMemo(
-    () => filterByReconcile(filterOthers(found, nav.otherFilter), recFilter),
-    [found, nav.otherFilter, recFilter],
+    () => filterByReconcile(filterOthers(found.filter((o) => offerFilter === 'all' || o.offer === offerFilter), nav.otherFilter), recFilter),
+    [found, offerFilter, nav.otherFilter, recFilter],
   );
   const ready = useMemo(() => readyToReconcile(visible), [visible]);
   const readyBulk = useReconcileReady();
@@ -96,6 +102,15 @@ export function OthersContent({
             </Chip>
           ))}
         </div>
+        {kind === 'leads' && (
+          <div className={styles.bar} role="group" aria-label={t.offerChipsLabel}>
+            {(['all', 'open', 'home'] as const).map((f) => (
+              <Chip key={f} pressed={offerFilter === f} count={offerCounts[f]} onClick={() => nav.setOfferFilter(f)}>
+                {t.offer[f]}
+              </Chip>
+            ))}
+          </div>
+        )}
         {nav.otherFilter === 'open' && kind === 'others' && (
           <div className={styles.bar} role="group" aria-label={t.reconcileChipsLabel}>
             {RECONCILE_FILTERS.map((f) => (

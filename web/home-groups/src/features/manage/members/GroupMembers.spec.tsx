@@ -17,10 +17,12 @@ async function groupCard(rec = 1) {
 const rowOf = (card: HTMLElement, fio: string) => within(card).getByText(fio, { selector: 'button' }).closest('li') as HTMLElement;
 
 describe('карточка группы: состав', () => {
-  test('заголовок считает всех, а люди разложены на «Направлены через сервис» и «Состоят в группе»', async () => {
+  test('заголовок считает всех вместе с ведущим, а люди разложены на «Ведут группу», «Направлены через сервис» и «Состоят в группе»', async () => {
     stubFetchWithFixtures();
     const card = await groupCard();
-    expect(within(card).getByRole('heading', { name: 'Состав (3)' })).toBeInTheDocument();
+    // Ведущий — тоже человек группы: строкой «ведущий» первым, по ссылке группы, а не копией в составе.
+    expect(within(card).getByRole('heading', { name: 'Состав (4)' })).toBeInTheDocument();
+    expect(within(within(card).getByRole('list', { name: 'Ведут группу' })).getByRole('listitem')).toHaveTextContent(/ведущий/);
     const placed = within(card).getByRole('list', { name: 'Направлены через сервис' });
     const manual = within(card).getByRole('list', { name: 'Состоят в группе' });
     expect(within(placed).getAllByRole('listitem')).toHaveLength(1);
@@ -83,11 +85,12 @@ describe('карточка группы: состав', () => {
     expect(await screen.findByRole('dialog', { name: 'Карточка человека: Дарья Ефимова' })).toBeInTheDocument();
   });
 
-  test('пустой состав: «Состав пока не внесён» и кнопка «Добавить человека»', async () => {
+  test('без участников: в составе только ведущий, «Добавить человека» на месте', async () => {
     stubFetchWithFixtures();
     const card = await groupCard(3);
-    expect(within(card).getByRole('heading', { name: 'Состав (0)' })).toBeInTheDocument();
-    expect(within(card).getByText('Состав пока не внесён')).toBeInTheDocument();
+    expect(within(card).getByRole('heading', { name: 'Состав (1)' })).toBeInTheDocument();
+    expect(within(card).getByRole('list', { name: 'Ведут группу' })).toBeInTheDocument();
+    expect(within(card).queryByText('Состав пока не внесён')).not.toBeInTheDocument();
     expect(within(card).getByRole('button', { name: 'Добавить человека' })).toBeInTheDocument();
   });
 
@@ -146,7 +149,7 @@ describe('карточка группы: убрать из состава', () =
     await user.click(within(await screen.findByRole('dialog', { name: /^Убрать из состава/ })).getByRole('button', { name: 'Убрать' }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: /^Убрать из состава/ })).not.toBeInTheDocument());
     expect(screen.getByRole('dialog', { name: /Карточка группы/ })).toBeInTheDocument();
-    expect(await within(card).findByRole('heading', { name: 'Состав (2)' })).toBeInTheDocument();
+    expect(await within(card).findByRole('heading', { name: 'Состав (3)' })).toBeInTheDocument();
     expect(within(card).queryByText('Нина Воронцова')).not.toBeInTheDocument();
   });
 

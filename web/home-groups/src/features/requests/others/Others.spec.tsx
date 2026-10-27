@@ -124,7 +124,7 @@ describe('«Другие обращения»: список и чипы', () => 
     stubFetchWithFixtures();
     renderAt(<App />, '/?tab=requests&view=leads');
     const row = within(await screen.findByRole('list', { name: 'Список обращений' })).getByRole('button', { name: 'Юлия Громова' }).closest('li')!;
-    expect(row).toHaveTextContent('Хочет открыть группу или дать дом');
+    expect(row).toHaveTextContent('Хочет открыть группу');
     expect(row).toHaveTextContent('+7 921 555 01 02');
     expect(row).toHaveTextContent('Ждёт 4 дн.');
     expect(row).toHaveTextContent('В работе: Пётр Г.');
@@ -206,7 +206,7 @@ describe('«Другие обращения»: карточка', () => {
   test('заголовок с типом, контакты, «как пришла» и лента', async () => {
     const { card } = await openCard(202);
     expect(within(card).getByRole('heading', { level: 2, name: 'Юлия Громова' })).toBeInTheDocument();
-    expect(within(card).getAllByText('Хочет открыть группу или дать дом').length).toBeGreaterThan(0);
+    expect(within(card).getAllByText('Хочет открыть группу').length).toBeGreaterThan(0);
     expect(within(card).getByText('Как пришла')).toBeInTheDocument();
     expect(within(card).getByText('Малая группа')).toBeInTheDocument();
     expect(within(card).getByText('Хочет открыть свою группу')).toBeInTheDocument();

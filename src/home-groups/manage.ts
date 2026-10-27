@@ -85,7 +85,7 @@ function groupToFields(g: GroupRow): URLSearchParams {
 }
 
 export function createManager(deps: {
-  groups: Pick<GroupsRepo, 'findActive' | 'update' | 'archive' | 'personName' | 'personFromRequest'>;
+  groups: Pick<GroupsRepo, 'findActive' | 'update' | 'archive' | 'personName' | 'personFromRequest' | 'personPhone'>;
   coordinators: Pick<CoordinatorsRepo, 'create' | 'findActive' | 'rename' | 'archive'>;
   teamRoles: Pick<TeamRolesRepo, 'existing'>;
   directions: Pick<GroupDirectionsRepo, 'list'>;
@@ -121,6 +121,23 @@ export function createManager(deps: {
     const name = await deps.groups.personName(own);
     if (!name) return fail('bad_request', PERSON_GONE) as Extract<ActionOutcome, { ok: false }>;
     return { person: own.kind === 'user' ? { userId: own.id } : { personId: own.id }, name };
+  }
+
+  /**
+   * Телефон группы при смене ведущего. Другой человек вместо связанного — номер целиком его (из карточки; нет номера —
+   * пусто: прежний принадлежит прежнему ведущему). Первая привязка группы из таблицы — это обычно тот же человек:
+   * записанный номер остаётся, а номер из карточки добавляется в `phones`. Тот же человек или ведущий не менялся — ничего.
+   */
+  async function phonesForLeader(
+    current: { leader_user_id: number | null; leader_person_id?: number | null; phone: string | null; phones: string[] },
+    next: PersonRef | null | undefined,
+  ): Promise<{ phone?: string | null; phones?: string[] }> {
+    if (!next) return {};
+    const was = refOfRow(current.leader_user_id, current.leader_person_id);
+    if (was && was.kind === next.kind && was.id === next.id) return {};
+    const own = await deps.groups.personPhone(next);
+    if (was) return { phone: own, phones: own ? [own] : [] };
+    return { phone: current.phone ?? own, phones: own && !current.phones.includes(own) ? [...current.phones, own] : current.phones };
   }
 
   const taken = (): Extract<ActionOutcome, { ok: false }> => ({ ok: false, error: 'conflict', message: TAKEN });
@@ -183,6 +200,8 @@ export function createManager(deps: {
         if (ref) names[pos] = (await deps.groups.personName(ref)) ?? undefined;
         else names[pos] = null;
       }
+      // Телефоны группы следуют за ведущим: по `phones` бот узнаёт, что человек уже ведёт группу, и ставит «40 дней».
+      const leaderPhones = await phonesForLeader(current, resolved.leaderRef);
       // Направление проверяем, только если его меняли: прежнее уже в справочнике, а переименованное — под новым названием.
       const direction = given.has('direction') ? await knownDirection(deps.directions, parsed.value.direction) : current.direction;
       if (!direction) return fail('bad_request', UNKNOWN_DIRECTION);
@@ -191,7 +210,7 @@ export function createManager(deps: {
         ...parsed.value,
         direction,
         // Телефон и телефон соведущего меняются только если их прислали; адрес — тоже (пустая строка его очищает); иначе остаются как в базе.
-        ...(given.has('phone') ? {} : { phone: current.phone, phones: current.phones }),
+        ...(given.has('phone') ? {} : { phone: current.phone, phones: current.phones, ...leaderPhones }),
         ...(given.has('address') ? {} : { address: current.address }),
         ...(given.has('coLeaderPhone') ? {} : { coLeaderPhone: current.co_leader_phone }),
         doNotRefer: given.has('doNotRefer') ? merged.has('doNotRefer') : current.do_not_refer,

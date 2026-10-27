@@ -152,7 +152,7 @@ describe('ведущий и соведущий — люди из «Людей»'
     )).rows[0];
   const shown = async (id: number) => (await new GroupsRepo(db).forDashboard()).find((x) => x.id === id)!;
 
-  test('ведущий — регистрация, соведущий — карточка; имя в группе — ФИО из карточки, записанные телефоны не трогаются', async () => {
+  test('ведущий — регистрация, соведущий — карточка; имя в группе — ФИО из карточки, записанные телефоны остаются', async () => {
     const id = await group();
     const u = await seedUser(db, { id: '501', fio: 'Петров Иван' });
     const p = await card('Петрова Мария');
@@ -180,6 +180,33 @@ describe('ведущий и соведущий — люди из «Людей»'
     expect((await g(id)).leader).toBe('Сидоров Пётр');
     expect(await manager().updateGroup(id, { fields: { leaderKey: '' } }, 'a')).toMatchObject({ ok: false, error: 'bad_request' });
     expect(await links(id)).toMatchObject({ lu: null, lp: p });
+  });
+
+  test('ведущий сменился на другого человека — телефон группы его, из карточки: бот узнаёт нового ведущего, а не прежнего', async () => {
+    const id = await group();
+    const u = await seedUser(db, { id: '503', fio: 'Первый Ведущий', phone: '+79215550011' });
+    await manager().updateGroup(id, { fields: { leaderKey: `u${u}` } }, 'a');
+    // Первая привязка группы из таблицы: записанный номер остаётся, номер из анкеты добавляется.
+    expect(await g(id)).toMatchObject({ phone: '+79110001122', phones: ['+79110001122', '+79215550011'] });
+    const p = await card('Второй Ведущий');
+    await manager().updateGroup(id, { fields: { leaderKey: `p${p}` } }, 'a');
+    expect(await g(id)).toMatchObject({ phone: '+79215550099', phones: ['+79215550099'] });
+    const groups = new GroupsRepo(db);
+    expect(await groups.activeLeaderByPhone('+79215550099')).toBe(true);
+    expect(await groups.activeLeaderByPhone('+79215550011')).toBe(false);
+    // Новый ведущий без номера: прежний номер чужой — группа остаётся без телефона.
+    const silent = (await db.query<{ id: number }>(`INSERT INTO persons (full_name) VALUES ('Без Номера') RETURNING id`)).rows[0]!.id;
+    await manager().updateGroup(id, { fields: { leaderKey: `p${silent}` } }, 'a');
+    expect(await g(id)).toMatchObject({ phone: null, phones: [] });
+  });
+
+  test('тот же ведущий выбран заново — телефоны группы не меняются', async () => {
+    const id = await group();
+    const p = await card('Петрова Мария');
+    await manager().updateGroup(id, { fields: { leaderKey: `p${p}` } }, 'a');
+    await db.query(`UPDATE groups SET phone = '+79110001122', phones = ARRAY['+79110001122'] WHERE id = $1`, [id]);
+    await manager().updateGroup(id, { fields: { leaderKey: `p${p}`, people: '7' } }, 'a');
+    expect(await g(id)).toMatchObject({ phone: '+79110001122', phones: ['+79110001122'] });
   });
 
   test('отвязанный соведущий уходит целиком: ссылка, имя и телефон, записанные в группе', async () => {

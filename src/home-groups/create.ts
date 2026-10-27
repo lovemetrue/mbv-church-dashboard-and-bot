@@ -9,8 +9,8 @@ import type { GroupDirectionsRepo } from '../db/repos/groupDirections.repo.js';
 import type { GroupInput, GroupsRepo, PersonRef } from '../db/repos/groups.repo.js';
 import type { MembersRepo, PersonInput } from '../db/repos/members.repo.js';
 import { REQUEST_STATUSES, type RequestsRepo, type RequestWithUser } from '../db/repos/requests.repo.js';
-import type { LeaderCandidate, UsersRepo } from '../db/repos/users.repo.js';
 import type { ActionError, FormMeta } from './contracts.js';
+import { PERSON_GONE, personRefOf } from './manage.js';
 
 /**
  * Создание заявки и группы из «+ Создать». Проверки — те же функции, что у форм старого дашборда
@@ -56,7 +56,7 @@ const cardOf = (fio: string, phone: string | null | undefined): PersonInput => (
 
 export function createRecordCreator(deps: {
   requests: Pick<RequestsRepo, 'createFromDashboard' | 'findById'>;
-  groups: Pick<GroupsRepo, 'create' | 'requestLinkState' | 'linkToRequest' | 'archive' | 'personName' | 'setLinksIfEmpty' | 'hasLeaderLink'>;
+  groups: Pick<GroupsRepo, 'create' | 'requestLinkState' | 'linkToRequest' | 'archive' | 'personName' | 'setLinksIfEmpty' | 'hasLeaderLink' | 'personFromRequest' | 'personPhone'>;
   /** Карточки в «Людях» для ведущего и соведущего, вписанных в форму от руки. */
   persons: Pick<MembersRepo, 'createPerson'>;
   directions: Pick<GroupDirectionsRepo, 'list'>;
@@ -65,18 +65,14 @@ export function createRecordCreator(deps: {
   notify?: (request: RequestWithUser) => Promise<void>;
 }) {
   /**
-   * Ведущий и соведущий новой группы — люди из «Людей», как и при правке. Выбранный «из зарегистрированных»
-   * (`leaderCandidate`) — ссылка на его регистрацию; вписанный от руки — новая карточка с этим ФИО и телефоном. Ведущий
-   * из заявки («Создать группу по заявке») уже связан `linkToRequest`, его не трогаем.
+   * Ведущий и соведущий новой группы — люди из «Людей», как и при правке. Выбранный поиском (`leaderKey`) — ссылка на
+   * него; вписанный от руки — новая карточка с этим ФИО и телефоном. Ведущий из заявки («Создать группу по заявке»)
+   * уже связан `linkToRequest`, его не трогаем.
    */
-  async function linkLeaders(groupId: number, value: GroupInput, form: URLSearchParams, actor: string): Promise<void> {
+  async function linkLeaders(groupId: number, value: GroupInput, picked: PersonRef | null, actor: string): Promise<void> {
     let leader: PersonRef | undefined;
     if (!(await deps.groups.hasLeaderLink(groupId))) {
-      const candidate = form.get('leaderCandidate')?.trim() ?? '';
-      const user: PersonRef | null = /^\d{1,15}$/.test(candidate) ? { kind: 'user', id: Number(candidate) } : null;
-      leader = user && (await deps.groups.personName(user)) !== null
-        ? user
-        : { kind: 'person', id: await deps.persons.createPerson(cardOf(value.leader, value.phone), actor) };
+      leader = picked ?? { kind: 'person', id: await deps.persons.createPerson(cardOf(value.leader, value.phone), actor) };
     }
     const coName = value.coLeader?.trim();
     const coLeader: PersonRef | undefined = coName
@@ -106,6 +102,14 @@ export function createRecordCreator(deps: {
     async group(body: unknown, actor: string): Promise<CreateOutcome> {
       const form = fieldsToForm(body);
       if (typeof form === 'string') return bad(form);
+      // Ведущий из «Людей» — любой человек, в том числе уже ведущий другую группу. ФИО от руки для него не вписывают:
+      // имя группы возьмём из его карточки, когда остальная форма пройдёт проверку (иначе отказ оставил бы карточку,
+      // заведённую человеку из заявки).
+      const picked = personRefOf(form.get('leaderKey') ?? '');
+      if (picked === 'bad') return bad('Ведущего выбирают из справочника «Люди».');
+      if (picked && picked.kind !== 'request' && (await deps.groups.personName(picked)) === null) return bad(PERSON_GONE);
+      // Проверка формы требует ФИО ведущего; у выбранного оно из карточки и подставится ниже.
+      if (picked && !form.get('leader')?.trim()) form.set('leader', '—');
       const parsed = parseGroupForm(form);
       if (!parsed.ok) return bad(parsed.error);
       const direction = await knownDirection(deps.directions, parsed.value.direction);
@@ -118,6 +122,15 @@ export function createRecordCreator(deps: {
         if (state === 'missing') return { ok: false, error: 'not_found', message: 'Заявка не найдена: возможно, её удалили.' };
         if (state !== 'free') return { ok: false, error: 'conflict', message: `По этой заявке группа уже заведена: ${groupCode(state)}.` };
       }
+      let leaderRef: PersonRef | null = null;
+      if (picked) {
+        leaderRef = picked.kind === 'request' ? await deps.groups.personFromRequest(picked.id, actor) : picked;
+        const name = leaderRef && (await deps.groups.personName(leaderRef));
+        if (!name) return bad(PERSON_GONE);
+        // Имя и телефон в группе — из карточки: по телефону бот узнаёт ведущего, по имени группу ищут и сверяют.
+        const phone = await deps.groups.personPhone(leaderRef!);
+        Object.assign(parsed.value, { leader: name, phone, phones: phone ? [phone] : [] });
+      }
       // source='ui': видно, откуда запись, и повторный перенос таблицы её не затирает.
       const created = await deps.groups.create(
         { ...parsed.value, direction, doNotRefer: flag(form, 'doNotRefer'), chamber: flag(form, 'chamber') }, 'ui',
@@ -127,7 +140,7 @@ export function createRecordCreator(deps: {
         await deps.groups.archive(created.id);
         return { ok: false, error: 'conflict', message: 'По этой заявке только что завели другую группу: обновите страницу.' };
       }
-      await linkLeaders(created.id, parsed.value, form, actor);
+      await linkLeaders(created.id, parsed.value, leaderRef, actor);
       await deps.audit.write(actor, 'group.create', 'group', created.id, {
         status: parsed.value.status, district: parsed.value.district, ...(requestId !== null ? { fromRequest: requestId } : {}),
       });
@@ -164,14 +177,6 @@ const OPEN_TO_NEW: FormMeta['openToNew'] = [
   { value: 'По требованию', label: 'По требованию' },
 ];
 
-const MDG_CANDIDATE_LABEL: Record<string, string> = { open: 'готов открыть Малую группу', home: 'готов предоставить свой дом' };
-
-/** Подпись кандидата в ведущие: весь профиль, который человек заполнил в боте, — как в старом дашборде. */
-function candidateLabel(c: LeaderCandidate): string {
-  return [c.full_name, c.phone, c.church, c.mdg_status ? MDG_CANDIDATE_LABEL[c.mdg_status] ?? c.mdg_status : null, c.location, c.age]
-    .filter(Boolean).join(' · ');
-}
-
 /** Справочники форм: серверные списки, чтобы интерфейс не держал свою копию (в старом дашборде они дублировались). */
 export function createFormMeta(deps: {
   defaultCapacity: number;
@@ -179,7 +184,6 @@ export function createFormMeta(deps: {
   teamRoles: Pick<TeamRolesRepo, 'list'>;
   directions: Pick<GroupDirectionsRepo, 'list'>;
   groups: Pick<GroupsRepo, 'forDashboard'>;
-  users: Pick<UsersRepo, 'leaderCandidates'>;
 }): () => Promise<FormMeta> {
   return async () => ({
     districts: [...ALL_DISTRICTS],
@@ -198,8 +202,5 @@ export function createFormMeta(deps: {
     openToNew: OPEN_TO_NEW,
     defaultCapacity: deps.defaultCapacity,
     groups: (await deps.groups.forDashboard()).map((g) => ({ id: g.id, code: groupCode(g.id), leader: g.leader })),
-    leaderCandidates: (await deps.users.leaderCandidates())
-      .filter((c) => c.full_name)
-      .map((c) => ({ id: c.id, fullName: c.full_name!, phone: c.phone, label: candidateLabel(c) })),
   });
 }

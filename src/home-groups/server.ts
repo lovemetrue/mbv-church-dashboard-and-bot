@@ -24,7 +24,7 @@ import type { Genders } from './genders.js';
 import type { Kits } from './kits.js';
 import type { TeamRoles } from './teamRoles.js';
 import type { GroupDirections } from './groupDirections.js';
-import { draftFor, formMetaFor, groupsFor, kitPersonFor, peopleFor, requestsFor, type Viewer } from './contactsAccess.js';
+import { draftFor, groupsFor, kitPersonFor, peopleFor, requestsFor, type Viewer } from './contactsAccess.js';
 import type { Reconciler } from './reconcile/service.js';
 import { registrationCardPage } from '../dashboard/registrationCard.js';
 import type { Settings } from '../platform/settings/service.js';
@@ -1021,7 +1021,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     if (path === '/api/v1/form-meta') {
       const viewer = await viewerOf(sid);
       if (!viewer) { sendJson(res, 401, { error: 'unauthorized' }); return; }
-      sendJson(res, 200, formMetaFor(await deps.formMeta(), viewer));
+      sendJson(res, 200, await deps.formMeta());
       return;
     }
 

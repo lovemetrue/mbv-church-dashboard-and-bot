@@ -19,13 +19,8 @@ export interface FieldSpec {
   /** Для select и multi. */
   options?: Option[];
   /**
-   * Выбор в этом поле подставляет значения в другие поля, а само поле на сервер не уходит: так работает
-   * «Подобрать из зарегистрированных» — ФИО и телефон потом можно поправить руками.
-   */
-  fills?: (value: string) => Record<string, string>;
-  /**
-   * Как `fills`, но само поле тоже уходит на сервер: выбор статуса «Потенциальная» отмечает «40 дней» (их можно
-   * снять руками).
+   * Выбор в этом поле подставляет значения в другие поля, а само поле тоже уходит на сервер: выбор статуса
+   * «Потенциальная» отмечает «40 дней» (их можно снять руками).
    */
   presets?: (value: string) => Record<string, string>;
   /** На всю ширину окна, а не в половину. */
@@ -153,10 +148,16 @@ export function requestSpec(meta: FormMeta, now: Date = new Date()): FormSpec {
 /** Ведущие без повторов: у одного человека бывает две группы, а рекомендуют его по имени. */
 const uniqueLeaders = (groups: FormMeta['groups']): string[] => [...new Set(groups.map((g) => g.leader))];
 
+/** Ведущий выбран из «Людей» — его ФИО и телефон берутся из карточки, вписывать их незачем. */
+const noLeaderPicked = (values: Record<string, string>): boolean => !values['leaderKey'];
+
 export function groupSpec(meta: FormMeta): FormSpec {
   const t = ru.create.groupFields;
   const fields: FieldSpec[] = [
-    { name: 'leader', label: t.leader, kind: 'text', required: true, wide: true, autoComplete: 'off' },
+    // Ведущий — любой из «Людей» (у одного человека бывает несколько групп): поиск по ФИО или телефону. Выбранного
+    // сервер ставит ссылкой, и имя группы берёт из его карточки; ФИО и телефон от руки — только для нового человека.
+    { name: 'leaderKey', label: t.leaderKey, kind: 'person', wide: true, hint: ru.create.leaderKeyHint },
+    { name: 'leader', label: t.leader, kind: 'text', required: true, wide: true, autoComplete: 'off', showWhen: noLeaderPicked },
     { name: 'district', label: t.district, kind: 'select', required: true, options: opts(meta.districts) },
     { name: 'direction', label: t.direction, kind: 'select', required: true, options: opts(meta.groupDirections) },
     {
@@ -168,7 +169,7 @@ export function groupSpec(meta: FormMeta): FormSpec {
       // Потенциальная группа по умолчанию участвует в «40 днях» (просьба служителей); сервер делает так же, если галочки нет.
       presets: (v): Record<string, string> => (v === 'Потенциальная' ? { campaignRegistered: '1' } : {}),
     },
-    { name: 'phone', label: t.phone, kind: 'text', inputMode: 'tel', autoComplete: 'off' },
+    { name: 'phone', label: t.phone, kind: 'text', inputMode: 'tel', autoComplete: 'off', showWhen: noLeaderPicked },
     { name: 'coLeader', label: t.coLeader, kind: 'text', autoComplete: 'off' },
     { name: 'coLeaderPhone', label: t.coLeaderPhone, kind: 'text', inputMode: 'tel', autoComplete: 'off' },
     { name: 'age', label: t.age, kind: 'select', options: opts(meta.ageGroups) },
@@ -196,22 +197,6 @@ export function groupSpec(meta: FormMeta): FormSpec {
     { name: 'doNotRefer', label: t.doNotRefer, kind: 'checkbox', hint: ru.manage.group.doNotReferHint },
     { name: 'chamber', label: t.chamber, kind: 'checkbox', hint: ru.manage.group.chamberHint },
   ];
-  // Готовых вести группу из бота можно выбрать: ФИО и телефон подставятся и останутся правимыми.
-  // Список пуст — поле не рисуем: выбирать не из кого.
-  if (meta.leaderCandidates.length > 0) {
-    fields.splice(1, 0, {
-      name: 'leaderCandidate',
-      label: t.leaderCandidate,
-      kind: 'select',
-      wide: true,
-      options: meta.leaderCandidates.map((c) => ({ value: String(c.id), label: c.label })),
-      emptyLabel: ru.create.leaderCandidateEmpty,
-      fills: (value) => {
-        const c = meta.leaderCandidates.find((x) => String(x.id) === value);
-        return c ? { leader: c.fullName, ...(c.phone ? { phone: c.phone } : {}) } : {};
-      },
-    });
-  }
   return {
     fields,
     address: { name: 'address', label: t.address, kind: 'text', wide: true, autoComplete: 'off' },

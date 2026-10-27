@@ -79,8 +79,6 @@ export function RecordForm({ spec, path, submitLabel, busyLabel, onClose, onCrea
     }
     const fields: Record<string, string> = { ...spec.hidden };
     for (const f of all) {
-      // Поле-подсказка только заполняет соседние: серверу его значение ни к чему.
-      if (f.fills) continue;
       const v = (values[f.name] ?? '').trim();
       if (v) fields[f.name] = v;
     }
@@ -140,7 +138,8 @@ export function RecordForm({ spec, path, submitLabel, busyLabel, onClose, onCrea
             taken=""
             disabled={busy}
             describedBy={common['aria-describedby']}
-            allowUnlink={false}
+            // Необязательного (ведущий новой группы) можно и снять: тогда ФИО вписывают от руки.
+            allowUnlink={!f.required}
             onPick={(p) => change(f.name, p?.key ?? '')}
           />
           {problem && (
@@ -203,7 +202,7 @@ export function RecordForm({ spec, path, submitLabel, busyLabel, onClose, onCrea
           {f.label}
         </label>
         {f.kind === 'select' ? (
-          <select {...common} ref={setRef} onChange={(e) => change(f.name, e.target.value, f.fills?.(e.target.value) ?? f.presets?.(e.target.value))}>
+          <select {...common} ref={setRef} onChange={(e) => change(f.name, e.target.value, f.presets?.(e.target.value))}>
             <option value="">{f.emptyLabel ?? (f.required ? ru.create.choose : ru.create.notChosen)}</option>
             {(f.options ?? []).map((o) => (
               <option key={o.value} value={o.value}>

@@ -45,7 +45,7 @@ describe('«Создать группу по заявке»', () => {
     // Направления в черновике нет: форма ставит первое из справочника, как у любой новой группы.
     expect(within(dialog).getByRole('combobox', { name: 'Направление' })).toHaveValue('Основное служение');
     // Ведущий уже известен — это человек из заявки, выбирать из зарегистрированных незачем.
-    expect(within(dialog).queryByRole('combobox', { name: /Подобрать из зарегистрированных/ })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('searchbox', { name: 'Найти: Ведущий из «Людей»' })).not.toBeInTheDocument();
 
     await user.click(within(dialog).getByRole('button', { name: 'Создать группу' }));
     await waitFor(() => expect(posts(fetchMock).map((p) => p.path)).toEqual(['groups/create']));

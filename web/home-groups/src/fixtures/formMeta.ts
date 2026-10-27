@@ -44,9 +44,5 @@ export function buildFormMeta(): FormMeta {
     ],
     // Первые группы демо-справочника: формы заявки выбирают из них «Домашнюю» и «Рекомендованную».
     groups: RAW_GROUPS.slice(0, 5).map((g) => ({ id: g.id, code: `ДГ-${String(g.id).padStart(4, '0')}`, leader: g.leader })),
-    leaderCandidates: [
-      { id: 501, fullName: 'Ольга Домова', phone: '+79110001122', label: 'Ольга Домова · +79110001122 · МБВ Колизей · готов предоставить свой дом · Приморский · 25-40' },
-      { id: 502, fullName: 'Сергей Новиков', phone: null, label: 'Сергей Новиков · МБВ Филиалы · готов открыть Малую группу · Невский' },
-    ],
   };
 }

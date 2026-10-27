@@ -26,7 +26,7 @@ const fail = (error: 'bad_request' | 'not_found', message: string): ActionOutcom
 const COORDINATOR_EDITABLE: readonly string[] = ['personKey', 'name', 'roleIds', 'role'];
 
 const TAKEN = 'Этот человек уже есть в команде: откройте его строку в «Координаторах».';
-const PERSON_GONE = 'Этого человека уже нет в справочнике «Люди»: обновите страницу и выберите снова.';
+export const PERSON_GONE = 'Этого человека уже нет в справочнике «Люди»: обновите страницу и выберите снова.';
 
 /**
  * ФИО ведущего и соведущего текстом здесь не правится: ведущий — человек из «Людей» (`leaderKey`, `coLeaderKey`), и его
@@ -48,13 +48,13 @@ const refOfRow = (userId: number | null | undefined, personId: number | null | u
 const GROUP_LINKS = ['leaderKey', 'coLeaderKey'] as const;
 
 /** Старый ключ «r» (человек заявки): ссылаемся на человека, на которого указывает заявка (`personFromRequest`). */
-type LinkRef = PersonRef | { kind: 'request'; id: number };
+export type LinkRef = PersonRef | { kind: 'request'; id: number };
 
 /**
  * Ключ справочника «Люди» → ссылка: регистрация («u»), карточка, внесённая вручную («p»), или человек из заявки без
  * регистрации («r») — ему при привязке заводится карточка. null — отвязать.
  */
-function personRefOf(key: string): LinkRef | null | 'bad' {
+export function personRefOf(key: string): LinkRef | null | 'bad' {
   const v = key.trim();
   if (v === '') return null;
   const m = /^([upr])([1-9]\d{0,15})$/.exec(v);

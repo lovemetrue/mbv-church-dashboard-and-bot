@@ -497,22 +497,14 @@ describe('создание и параметры подбора через HTTP 
     } finally { app.server.close(); }
   });
 
-  test('справочники форм отдают действующие группы и кандидатов в ведущие из бота (готов открыть или дать дом)', async () => {
+  test('справочники форм отдают действующие группы, а не кандидатов в ведущие: ведущего ищут по всем «Людям»', async () => {
     const groupId = (await db.query<{ id: number }>(`INSERT INTO groups (leader, district, direction_id, status, source) VALUES ('Иван Петров', 'Приморский', group_direction_id('Основная церковь'), 'Функционирует', 'ui') RETURNING id`)).rows[0]!.id;
     await db.query(`INSERT INTO groups (leader, district, direction_id, status, source, archived_at) VALUES ('Убранная', 'Приморский', group_direction_id('Основная церковь'), 'Закрыта', 'ui', now())`);
-    const add = (id: string, name: string, mdg: string) => db.query(
-      `INSERT INTO users (platform, platform_user_id, chat_id, full_name, phone, church, mdg_status, location, age, complete)
-       VALUES ('telegram', $1, $1, $2, '+79110001122', 'МБВ Колизей', $3, 'Приморский', '25-40', true) RETURNING id`, [id, name, mdg]);
-    const home = (await add('1', 'Ольга Домова', 'home')).rows[0]!.id as number;
-    await add('2', 'Пётр Участник', 'join');
     const app = await startAdmin();
     try {
       const meta = await app.get('form-meta');
       expect(meta.groups).toEqual([{ id: groupId, code: expect.stringMatching(/^ДГ-/), leader: 'Иван Петров' }]);
-      expect(meta.leaderCandidates).toEqual([{
-        id: home, fullName: 'Ольга Домова', phone: '+79110001122',
-        label: 'Ольга Домова · +79110001122 · МБВ Колизей · готов предоставить свой дом · Приморский · 25-40',
-      }]);
+      expect(meta).not.toHaveProperty('leaderCandidates');
     } finally { app.server.close(); }
   });
 

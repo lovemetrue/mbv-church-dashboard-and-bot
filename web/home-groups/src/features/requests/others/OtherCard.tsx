@@ -3,7 +3,7 @@ import { formatDateShort, formatPhone } from '../../../entities/format';
 import { ru } from '../../../shared/i18n/ru';
 import { AgeTag, Drawer, DrawerSection, KeyValue, Pill, StrangeBadge, StrangeBanner, type KvRow } from '../../../shared/ui';
 import { DeleteRequestSection } from '../../manage';
-import { GroupFromRequestSection } from '../../create';
+import { GroupFromRequestSection, OwnGroupLink } from '../../create';
 import { tableRows } from '../tableRows';
 import { subjectOfOther } from '../work/subject';
 import { HeaderTools } from '../work/HeaderTools';
@@ -83,6 +83,7 @@ export function OtherCard({ item, onClose, onClosed }: { item: OtherItem; onClos
           <Pill tone={STATE_TONE[item.state]}>{STATE_LABEL[item.state]}</Pill>
           <span className={styles.typeInTitle}>{item.typeLabel}</span>
           {item.ageLabel && <AgeTag>{item.ageLabel}</AgeTag>}
+          {item.ownGroup && <OwnGroupLink group={item.ownGroup} />}
         </>
       }
       tools={<HeaderTools subject={subjectOfOther(item)} />}

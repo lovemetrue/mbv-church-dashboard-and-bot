@@ -134,6 +134,63 @@ describe('разбор обращения «уже веду группу»', () 
     expect((await db.query('SELECT leader_user_id::int AS u FROM groups WHERE id = $1', [g])).rows[0]!.u).toBe(other1);
   });
 
+  /** Карточка ведущего, какую миграция 057 заводит ведущим групп из таблицы. */
+  const leaderCard = async (g: number, fio: string, phone: string | null = null): Promise<number> => {
+    const p = (await db.query<{ id: number }>(`INSERT INTO persons (full_name, phone, created_by) VALUES ($1, $2, 'группа') RETURNING id::int`, [fio, phone])).rows[0]!.id;
+    await db.query('UPDATE groups SET leader_person_id = $2 WHERE id = $1', [g, p]);
+    return p;
+  };
+
+  test('у группы ведущим связана карточка этого же человека (те же ФИО, у карточки без отчества) — карточка сливается с регистрацией', async () => {
+    const g = await group('Иванов Иван');
+    const { requestId, userId } = await other('already_leader');
+    const phone = (await db.query('SELECT phone FROM users WHERE id = $1', [userId])).rows[0]!.phone as string;
+    const card = await leaderCard(g, 'Иванов Иван', phone);
+    await db.query(`INSERT INTO person_genders (person_key, gender, set_by) VALUES ($1, 'м', 'anna')`, [`p${card}`]);
+    await db.query(`UPDATE users SET full_name = 'Иванов Иван Иванович' WHERE id = $1`, [userId]);
+    expect(await repo.reconcile(requestId, 'leader', [g], 'boss')).toEqual({ ok: true, already: false });
+    const row = (await db.query('SELECT leader_user_id::int AS u, leader_person_id, source FROM groups WHERE id = $1', [g])).rows[0]!;
+    expect(row).toEqual({ u: userId, leader_person_id: null, source: 'ui' });
+    // Человек один: карточка ушла, её пол — у регистрации.
+    expect((await db.query('SELECT archived_at IS NOT NULL AS gone FROM persons WHERE id = $1', [card])).rows[0]!.gone).toBe(true);
+    expect((await db.query('SELECT person_key FROM person_genders')).rows).toEqual([{ person_key: `u${userId}` }]);
+    expect((await status(requestId))!.status).toBe('Исполнена');
+  });
+
+  test('карточка с теми же ФИО, но другим телефоном — однофамилец: отказ, ничего не сливается', async () => {
+    const g = await group('Иванов Иван Иванович');
+    const card = await leaderCard(g, 'Иванов Иван Иванович', '+7 999 000-11-22');
+    const { requestId } = await other('already_leader');
+    expect(await repo.reconcile(requestId, 'leader', [g], 'boss')).toMatchObject({ ok: false, error: 'conflict' });
+    expect((await db.query('SELECT archived_at FROM persons WHERE id = $1', [card])).rows[0]!.archived_at).toBeNull();
+  });
+
+  test('карточка с тем же телефоном, но другим именем (жена с номером мужа) — по-прежнему отказ, ничего не сливается', async () => {
+    const g = await group('Олейник Иаков Владиславич');
+    const card = await leaderCard(g, 'Олейник Иаков Владиславич', '+7 900 000-05-01');
+    const { requestId, userId } = await other('already_leader');
+    await db.query(`UPDATE users SET full_name = 'Олейник Анастасия Михайловна', phone = '+7 900 000-05-01' WHERE id = $1`, [userId]);
+    expect(await repo.reconcile(requestId, 'leader', [g], 'boss')).toMatchObject({ ok: false, error: 'conflict' });
+    expect((await db.query('SELECT leader_person_id::int AS p FROM groups WHERE id = $1', [g])).rows[0]!.p).toBe(card);
+    expect((await db.query('SELECT archived_at FROM persons WHERE id = $1', [card])).rows[0]!.archived_at).toBeNull();
+  });
+
+  test('миграция 059: карточки ведущих из таблицы сливаются с регистрацией того же человека (телефон и ФИО), чужие остаются', async () => {
+    const g1 = await group('Иванов Иван');
+    const g2 = await group('Олейник Иаков');
+    const { userId } = await other('already_leader');
+    await db.query(`UPDATE users SET full_name = 'Иванов Иван Иванович' WHERE id = $1`, [userId]);
+    const phone = (await db.query('SELECT phone FROM users WHERE id = $1', [userId])).rows[0]!.phone as string;
+    // Заводим карточки после регистрации: слияние при регистрации их уже не застанет — его и дозаливает миграция.
+    const own = await leaderCard(g1, 'Иванов Иван', phone);
+    const wife = await leaderCard(g2, 'Олейник Иаков', phone);
+    expect((await db.query<{ n: number }>('SELECT merge_leader_cards() AS n')).rows[0]!.n).toBe(1);
+    expect((await db.query('SELECT leader_user_id::int AS u, leader_person_id::int AS p FROM groups WHERE id = ANY($1) ORDER BY id', [[g1, g2]])).rows)
+      .toEqual([{ u: userId, p: null }, { u: null, p: wife }]);
+    expect((await db.query('SELECT id::int AS id FROM persons WHERE archived_at IS NULL')).rows).toEqual([{ id: wife }]);
+    expect(own).not.toBe(wife);
+  });
+
   test('удаление регистрации ведущего снимает ссылку, группа остаётся', async () => {
     const g = await group();
     const { requestId, userId } = await other('already_leader');

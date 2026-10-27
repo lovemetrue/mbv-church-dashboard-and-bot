@@ -411,9 +411,25 @@ export class PlacementRepo {
            FROM groups WHERE id = ANY($1::bigint[]) AND archived_at IS NULL ORDER BY id FOR UPDATE`, [ids],
       );
       const co = (row: (typeof g.rows)[number]) => kind === 'leader' && coLeaderIn.has(row.id);
-      // Кто сейчас на позиции, куда человек встанет: регистрация (число), карточка (другой человек наверняка) или никто.
-      const holder = (row: (typeof g.rows)[number]) =>
-        co(row) ? (row.co_person_id !== null ? -1 : row.co_user_id) : (row.person_id !== null ? -1 : row.user_id);
+      const cardOf = (row: (typeof g.rows)[number]) => (co(row) ? row.co_person_id : row.person_id);
+      // Карточка на позиции бывает этим же человеком: ведущим групп из таблицы миграция 057 завела карточки, а потом
+      // человек сам пишет боту «я веду группу». Такую (те же ФИО — card_is_user, миграция 059) сливаем с регистрацией,
+      // а не отказываем. Чужая карточка — по-прежнему другой человек.
+      const ownCards = new Set<number>();
+      if (kind === 'leader') {
+        for (const row of g.rows) {
+          const card = cardOf(row);
+          if (card === null) continue;
+          const same = await c.query<{ same: boolean }>('SELECT card_is_user($1, $2) AS same', [card, req.user_id]);
+          if (same.rows[0]?.same) ownCards.add(card);
+        }
+      }
+      // Кто сейчас на позиции, куда человек встанет: регистрация (число), карточка (своя — он сам, иначе другой человек) или никто.
+      const holder = (row: (typeof g.rows)[number]) => {
+        const card = cardOf(row);
+        if (card !== null) return ownCards.has(card) ? req.user_id : -1;
+        return co(row) ? row.co_user_id : row.user_id;
+      };
       // Все или ничего: одна недоступная группа в списке отменяет весь разбор, человек увидит ошибку и поправит выбор.
       if (g.rows.length !== ids.length) return fail('group_unavailable', 'Одна из групп не найдена или в архиве.');
 
@@ -440,6 +456,14 @@ export class PlacementRepo {
             [row.id, req.user_id, actor],
           );
           if (inserted !== null && (inserted.rowCount ?? 0) > 0) changed += 1;
+        } else if (ownCards.has(cardOf(row)!)) {
+          // Сливаем один раз (у человека бывает две группы): позиция переходит на регистрацию вместе со всем остальным.
+          const card = cardOf(row)!;
+          if ((await c.query('SELECT 1 FROM persons WHERE id = $1 AND archived_at IS NULL', [card])).rowCount) {
+            await c.query('SELECT merge_card_into_user($1, $2)', [card, req.user_id]);
+          }
+          await c.query(`UPDATE groups SET source = CASE WHEN source = 'таблица' THEN 'ui' ELSE source END WHERE id = $1`, [row.id]);
+          changed += 1;
         } else if (holder(row) !== req.user_id) {
           // Запись из таблицы после правки в интерфейсе — «ui»: повторный перенос таблицы её не затрёт (см. CLAUDE.md).
           const column = co(row) ? 'co_leader_user_id' : 'leader_user_id';

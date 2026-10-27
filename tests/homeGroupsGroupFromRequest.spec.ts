@@ -79,9 +79,9 @@ describe('создание группы по заявке', () => {
     expect((await db.query('SELECT 1 FROM persons')).rowCount).toBe(0);
 
     const after = await views();
-    expect(after.groupDrafts.get(requestId)!.ownGroup).toEqual({ id: out.id, code: expect.stringMatching(/^ДГ-/) });
+    expect(after.groupDrafts.get(requestId)!.ownGroup).toEqual({ id: out.id, code: expect.stringMatching(/^ДГ-/), status: 'Потенциальная' });
     const other = after.requests.others.find((o) => o.id === requestId)!;
-    expect(other.ownGroup).toEqual({ id: out.id, code: expect.stringMatching(/^ДГ-/) });
+    expect(other.ownGroup).toEqual({ id: out.id, code: expect.stringMatching(/^ДГ-/), status: 'Потенциальная' });
     expect(other.log.map((l) => l.text)).toContainEqual(expect.stringMatching(/^По заявке заведена группа ДГ-\d+ · p_ivanova$/));
   });
 

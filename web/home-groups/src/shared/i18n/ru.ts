@@ -1635,6 +1635,9 @@ export const ru = {
       exists: (code: string) => `По этой заявке заведена группа ${code}.`,
       created: (code: string) => `Группа ${code} заведена.`,
       open: (code: string) => `Открыть группу ${code}`,
+      /** Ссылка на группу заявки в строке списка и в шапке карточки: код и статус группы. */
+      link: (code: string, status: string) => `Группа ${code} · ${status}`,
+      linkAria: (code: string) => `Открыть карточку группы ${code}`,
       draftFailed: 'Не удалось подготовить форму по заявке.',
     },
     menuLabel: 'Что создать',

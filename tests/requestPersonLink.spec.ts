@@ -185,6 +185,20 @@ describe('человек из «Людей» регистрируется в б�
     expect((await person(p)).archived_at).not.toBeNull();
   });
 
+  test('тот же номер, а ФИО другие (жена с номером мужа) — не сливаем: его карточка, группа и заявки остаются его', async () => {
+    const p = (await db.query<{ id: number }>(`INSERT INTO persons (full_name, phone) VALUES ('Олейник Иаков Владиславич', '+79210000023') RETURNING id::int AS id`)).rows[0]!.id;
+    const g = (await db.query<{ id: number }>(`INSERT INTO groups (leader, district, direction_id, status, source, leader_person_id) VALUES ('Олейник Иаков', 'Выборгский', group_direction_id('очно'), 'Функционирует', 'ui', $1) RETURNING id::int AS id`, [p])).rows[0]!.id;
+    await seedUser(db, { id: '1', fio: 'Олейник Анастасия Михайловна', phone: '89210000023' });
+    expect((await person(p)).archived_at).toBeNull();
+    expect((await db.query('SELECT leader_user_id, leader_person_id::int AS lp FROM groups WHERE id = $1', [g])).rows[0]).toEqual({ leader_user_id: null, lp: p });
+  });
+
+  test('отчество, записанное только в одной из записей, слиянию не мешает', async () => {
+    const p = (await db.query<{ id: number }>(`INSERT INTO persons (full_name, phone) VALUES ('Кондораки Светлана', '+79210000024') RETURNING id::int AS id`)).rows[0]!.id;
+    await seedUser(db, { id: '1', fio: 'Кондораки Светлана Викторовна', phone: '89210000024' });
+    expect((await person(p)).archived_at).not.toBeNull();
+  });
+
   test('номер у двух карточек — не угадываем, не сливаем', async () => {
     await db.query(`INSERT INTO persons (full_name, phone) VALUES ('А', '+79210000021'), ('Б', '+79210000021')`);
     await seedUser(db, { id: '1', phone: '+79210000021' });

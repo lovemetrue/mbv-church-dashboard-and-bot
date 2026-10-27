@@ -445,3 +445,16 @@ textarea.control {
   background: var(--accent-soft);
   border-color: var(--accent);
 }
+
+/* Ссылка на группу заявки: код и статус, без рамки — как ссылка в тексте. */
+.ownGroupLink {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}

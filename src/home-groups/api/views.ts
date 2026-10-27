@@ -22,7 +22,7 @@ import { CONTACT_LABEL } from '../../core/csv.js';
 import type { GroupDraftView } from '../contracts.js';
 import type {
   Bucket, Candidate, Counters, CoordinatorItem, CoordinatorsView, GroupBrief, GroupItem, GroupsView,
-  GenderInfo, HealthItem, LogEntry, MatchingStatus, NoPlan, StrangeMark, DataChange, OriginalField, ParamInfo, RequestTableFields, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, AssistantReviewItem, GroupMember, OtherItem, Pairs, PairItem, Prospects, ProspectItem, RequestsView, TeamView, TodayView,
+  GenderInfo, HealthItem, LogEntry, MatchingStatus, NoPlan, StrangeMark, DataChange, OriginalField, ParamInfo, RequestTableFields, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, AssistantReviewItem, GroupMember, OtherItem, OwnGroup, Pairs, PairItem, Prospects, ProspectItem, RequestsView, TeamView, TodayView,
 } from '../contracts.js';
 import type {
   Day, PlanEngineApi, PlanEntry, PlanEntryProposal, PlanGroup, PlanOutput, PlanRequest, ScoredGroup, Slot,
@@ -501,9 +501,9 @@ export function buildViewsWithPlan(
   // Связь — `source_request_id` (миграция 032): потенциальная группа из «хочу открыть» или «Создать группу по заявке».
   const groupBySourceRequest = new Map<number, DashboardGroup>();
   for (const g of input.groups) if (g.source_request_id != null) groupBySourceRequest.set(g.source_request_id, g);
-  const ownGroupOf = (r: DashboardRequest): { id: number; code: string } | null => {
+  const ownGroupOf = (r: DashboardRequest): OwnGroup | null => {
     const g = groupBySourceRequest.get(r.id);
-    return g ? { id: g.id, code: groupCode(g.id) } : null;
+    return g ? { id: g.id, code: groupCode(g.id), status: g.status } : null;
   };
   const DISTRICT_SET: ReadonlySet<string> = new Set(ALL_DISTRICTS);
   const AGE_SET: ReadonlySet<string> = new Set(AGE_GROUPS);
@@ -819,6 +819,11 @@ export function buildViewsWithPlan(
       const after = closing.after ?? {};
       const text = after['outcome'] === 'cancel' ? `Аннулировано: ${CANCEL_TEXT[String(after['reason'])] ?? 'причина не указана'}` : 'Закрыто: отмечено обработанным';
       return { text, by: closing.actor, at, groups: [] };
+    }
+    // «Хочу открыть группу» закрылась сама: её группу перевели в рабочий статус (миграция 060).
+    const own = r.type === 'lead_group' ? groupBySourceRequest.get(r.id) : undefined;
+    if (own && own.status !== 'Потенциальная' && r.status === DONE) {
+      return { text: `Группа открыта: статус «${own.status}»`, by: null, at: null, groups: [{ id: own.id, code: groupCode(own.id) }] };
     }
     const groups = r.group_id !== null ? [{ id: r.group_id, code: groupCode(r.group_id) }] : [];
     const text = r.origin === 'таблица' ? 'Закрыто в таблице церкви' : 'Закрыто без записи в журнале';

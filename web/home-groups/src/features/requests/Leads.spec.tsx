@@ -44,6 +44,18 @@ describe('«Заявки»: подвкладка «Хотят открыть г�
     expect(within(card).getByRole('region', { name: 'Дома рядом' })).toHaveTextContent('Татьяна Фёдорова');
   });
 
+  test('группа, заведённая по обращению, видна ссылкой с кодом и статусом в строке и в шапке карточки и ведёт в её карточку', async () => {
+    stubFetchWithFixtures();
+    const user = userEvent.setup();
+    renderAt(<App />, '/?tab=requests&view=homes&req=213');
+    const card = await screen.findByRole('dialog', { name: /Карточка обращения/ });
+    expect(within(card).getByRole('button', { name: 'Открыть карточку группы ДГ-0112' })).toHaveTextContent('Группа ДГ-0112 · Потенциальная');
+    const row = within(screen.getByRole('list', { name: 'Список обращений' })).getByRole('listitem');
+    await user.click(within(row).getByRole('button', { name: 'Открыть карточку группы ДГ-0112' }));
+    expect(currentSearch().get('tab')).toBe('reference');
+    expect(currentSearch().get('rec')).toBe('12');
+  });
+
   test('в карточке — кого можно направить в будущую группу: сколько, кто, насколько подходит и кому уже предложена другая', async () => {
     stubFetchWithFixtures();
     renderAt(<App />, '/?tab=requests&view=leads&req=202');

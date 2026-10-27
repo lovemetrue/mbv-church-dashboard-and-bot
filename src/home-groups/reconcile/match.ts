@@ -143,6 +143,19 @@ function matchName(subject: readonly string[], leader: readonly string[]): Tier 
   return null;
 }
 
+const PATRONYMIC = /(вич|вна|ична|ич)$/;
+
+/**
+ * Имя человека — имя ведущего: каждое его слово есть у ведущего (или соведущего). Отчество, которого в справочнике нет,
+ * не мешает: таблица его часто не записывала. Без имени — не противоречит. Инициал («П.») годится, если открывает слово.
+ */
+function sameName(mine: readonly string[], theirs: readonly string[]): boolean {
+  const near = (t: string): boolean => theirs.some((l) => sameToken(t, l) || closeToken(t, l));
+  const theirPatronymic = theirs.some((l) => l.length >= 6 && PATRONYMIC.test(l));
+  const words = mine.filter((t) => !(t.length >= 6 && PATRONYMIC.test(t) && !theirPatronymic));
+  return words.every((t) => (t.length > 1 ? near(t) : theirs.some((l) => l.startsWith(t))));
+}
+
 /** Группы, у которых ведущий — этот человек. Точные впереди, группа в результате один раз (лучшим из совпадений). */
 export function findGroups(subject: Subject, groups: readonly LeaderGroup[]): Candidate[] {
   const mine = nameTokens(subject.name);
@@ -162,17 +175,22 @@ export function findGroups(subject: Subject, groups: readonly LeaderGroup[]): Ca
       const role = [...phoneKeys(g.phones)].some((k) => myPhones.has(k)) ? 'leader'
         : [...phoneKeys(g.coLeaderPhones ?? [])].some((k) => myPhones.has(k)) ? 'coLeader' : null;
       if (role) {
-        // Номер один у всей семьи: жена с телефоном мужа делит с ним фамилию, а чужой человек с этим номером —
-        // нет. Если имя назвали и ни одного слова ведущего в нём нет, номер сам по себе не доказывает: решает человек.
-        const theirs = [...leaderTokens, ...nameTokens(g.coLeader)];
-        // Назвал фамилию — сверяем по фамилии: совпавшее имя родства не доказывает. «Бутарев Владимир» с номером группы
-        // «Новиковы Тамара и Владимир» шёл «точно» только из-за «Владимира», и группу связывали с чужим человеком.
+        // Номер один у всей семьи. Тот же человек (те же имя и фамилия) — «точно» на совпавшее место. Семья (та же
+        // фамилия, другое имя: «Олейник Анастасия» с общим номером группы «Олейник Иаков») — группа та же, «точно», но
+        // это не ведущий: она встаёт соведущей, если место соведущего пустое или там она сама. Иначе, и для чужой
+        // фамилии («Бутарев Владимир» с номером группы «Новиковы Тамара и Владимир»), — «похоже», решает человек.
+        const leaderName = role === 'leader' ? leaderTokens : nameTokens(g.coLeader);
+        const coTokens = nameTokens(g.coLeader);
+        const theirs = [...leaderTokens, ...coTokens];
         const mySurnames = mine.filter(looksLikeSurname);
         // Инициалы («П. М.») тоже имя: годится, если хоть одна буква открывает слово ведущего.
-        const sameFamily = mine.length === 0 || (mySurnames.length > 0
+        const sameFamily = mySurnames.length > 0
           ? mySurnames.some((t) => theirs.some((l) => sameToken(t, l) || closeToken(t, l)))
-          : mine.some((t) => (t.length > 1 ? theirs.some((l) => sameToken(t, l)) : theirs.some((l) => l.startsWith(t)))));
-        offer({ groupId: g.id, tier: sameFamily ? 'exact' : 'likely', by: 'phone', role });
+          : mine.some((t) => (t.length > 1 ? theirs.some((l) => sameToken(t, l)) : theirs.some((l) => l.startsWith(t))));
+        if (sameName(mine, leaderName)) offer({ groupId: g.id, tier: 'exact', by: 'phone', role });
+        else if (role === 'leader' && coTokens.length > 0 && sameName(mine, coTokens)) offer({ groupId: g.id, tier: 'exact', by: 'phone', role: 'coLeader' });
+        else if (sameFamily && role === 'leader' && coTokens.length === 0) offer({ groupId: g.id, tier: 'exact', by: 'phone', role: 'coLeader' });
+        else offer({ groupId: g.id, tier: 'likely', by: 'phone', role });
       }
     }
     const byLeader = matchName(mine, leaderTokens);

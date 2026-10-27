@@ -431,7 +431,7 @@ export interface RequestItem {
   /** Куда человека утвердили (для bucket = done). */
   finalGroup: GroupBrief | null;
   /** Группа, заведённая по этой заявке («Создать группу по заявке»); null — нет. */
-  ownGroup: { id: number; code: string } | null;
+  ownGroup: OwnGroup | null;
   /** Название группы текстом, если группа в реестре не нашлась. */
   finalGroupText: string | null;
   /**
@@ -993,7 +993,7 @@ export interface OtherItem {
    */
   pairs?: Pairs | null;
   /** Группа, заведённая по этому обращению: потенциальная из «хочу открыть» или «Создать группу по заявке»; null — нет. */
-  ownGroup: { id: number; code: string } | null;
+  ownGroup: OwnGroup | null;
   /** Человек в «Людях» («u12»); null — у обращения нет регистрации, и карточки человека нет. */
   personKey: string | null;
   /**
@@ -1013,6 +1013,13 @@ export interface Prospects {
   items: ProspectItem[];
 }
 
+/** Группа, заведённая по заявке (`groups.source_request_id`), и её статус: «Потенциальная», «Функционирует», … */
+export interface OwnGroup {
+  id: number;
+  code: string;
+  status: string;
+}
+
 export interface Pairs {
   side: 'leaders' | 'homes';
   /** Сколько всего подходящих (в `items` — первые, самые подходящие). */
@@ -1029,7 +1036,7 @@ export interface PairItem {
   score: number;
   reasons: Reason[];
   /** Потенциальная группа, уже заведённая по этому обращению; null — нет. */
-  ownGroup: { id: number; code: string } | null;
+  ownGroup: OwnGroup | null;
 }
 
 export interface ProspectItem {
@@ -1745,5 +1752,5 @@ export interface GroupDraftView {
   /** Имена — как у полей формы группы (`leader`, `phone`, `district`…). Чего по заявке не понять, того здесь нет. */
   fields: Record<string, string>;
   /** Группа, уже заведённая по этой заявке; null — ещё нет. Второй по той же заявке не завести. */
-  ownGroup: { id: number; code: string } | null;
+  ownGroup: OwnGroup | null;
 }

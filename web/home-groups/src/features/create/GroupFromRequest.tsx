@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { FormMeta, GroupDraftView } from '@contracts';
+import type { FormMeta, GroupDraftView, OwnGroup } from '@contracts';
 import { ApiError, apiGet } from '../../shared/api/client';
 import { ru } from '../../shared/i18n/ru';
 import { useAppNav } from '../../shared/nav';
@@ -18,11 +18,11 @@ const t = ru.create.fromRequest;
  * считает сервер — тем же разбором, что подбор), и новая группа связывается с заявкой. Если группа по заявке уже есть
  * (так бывает и у «хочу открыть группу»: потенциальная заводится сама), вместо кнопки — ссылка на неё.
  */
-export function GroupFromRequestSection({ requestId, ownGroup }: { requestId: number; ownGroup: { id: number; code: string } | null }) {
+export function GroupFromRequestSection({ requestId, ownGroup }: { requestId: number; ownGroup: OwnGroup | null }) {
   const nav = useAppNav();
   const [open, setOpen] = useState(false);
   // Код новой группы до того, как список заявок перечитается и принесёт `ownGroup`.
-  const [created, setCreated] = useState<{ id: number; code: string } | null>(null);
+  const [created, setCreated] = useState<OwnGroup | null>(null);
   const group = ownGroup ?? created;
   return (
     <DrawerSection title={t.title}>
@@ -43,7 +43,7 @@ export function GroupFromRequestSection({ requestId, ownGroup }: { requestId: nu
           onClose={() => setOpen(false)}
           onCreated={(id) => {
             setOpen(false);
-            setCreated({ id, code: `ДГ-${String(id).padStart(4, '0')}` });
+            setCreated({ id, code: `ДГ-${String(id).padStart(4, '0')}`, status: 'Потенциальная' });
           }}
         />
       )}

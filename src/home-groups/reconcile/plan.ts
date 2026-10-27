@@ -79,7 +79,10 @@ function reconcileBase(r: DashboardRequest, groups: readonly DashboardGroup[]): 
   switch (plan.status) {
     case 'ready': {
       const how = first!.by === 'phone' ? 'по телефону' : 'по имени ведущего';
-      return { kind, status: 'ready', candidates, text: `Найдена группа ${first!.code}, ведущий ${first!.leader} (${how}). Подтвердите: ${act} и закрыть обращение.` };
+      // Член семьи ведущего с общим номером встаёт соведущим: об этом говорим прямо, чтобы не удивляться.
+      const asCo = kind === 'leader' && plan.candidates.find((c) => c.tier === 'exact')?.role === 'coLeader';
+      const what = asCo ? 'связать группу с этим человеком как с соведущим' : act;
+      return { kind, status: 'ready', candidates, text: `Найдена группа ${first!.code}, ведущий ${first!.leader} (${how}). Подтвердите: ${what} и закрыть обращение.` };
     }
     case 'choose': {
       const exact = candidates.filter((c) => c.tier === 'exact');

@@ -20,7 +20,7 @@ function baseOthers(): BaseOther[] {
   // Группа по обращению в демо — та же, что «будущая группа» у «хочу открыть» (на сервере это одна связь, source_request_id).
   // Регистраций у демо-обращений нет (переход в «Люди» не из чего). Итог закрытых — как без записи в журнале.
   return rawOthers().map((o) => ({
-    address: null, schedule: null, hobby: null, profession: null, family: null, table: emptyTable(o.note), ownGroup: o.prospects?.futureGroup ?? null, contactsHidden: false,
+    address: null, schedule: null, hobby: null, profession: null, family: null, table: emptyTable(o.note), ownGroup: o.prospects?.futureGroup ? { ...o.prospects.futureGroup, status: 'Потенциальная' } : null, contactsHidden: false,
     personKey: null,
     // Что предлагает человек из «хочу открыть»: в демо по одной на «откроет группу» и «даст дом».
     offer: o.offer ?? null,

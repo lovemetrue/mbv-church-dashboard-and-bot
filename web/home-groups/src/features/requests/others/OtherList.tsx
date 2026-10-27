@@ -2,6 +2,7 @@ import type { OtherItem } from '@contracts';
 import { formatPhone } from '../../../entities/format';
 import { ru } from '../../../shared/i18n/ru';
 import { AgeTag, Pill, StrangeBadge, type PillTone } from '../../../shared/ui';
+import { OwnGroupLink } from '../../create';
 import styles from './Others.module.css';
 
 const o = ru.requests.others;
@@ -58,6 +59,8 @@ export function OtherList({
               {it.ageLabel && <AgeTag>{it.ageLabel}</AgeTag>}
               <span className={styles.place}>{it.place ?? ru.common.placeUnknown}</span>
               {it.responsible && <span className={styles.inWork}>{ru.requests.inWorkBy(it.responsible)}</span>}
+              {/* Группа по заявке видна сразу в строке: открыта ли она уже и в каком статусе. */}
+              {it.ownGroup && <span className={styles.inWork}><OwnGroupLink group={it.ownGroup} /></span>}
               {/* У закрытого — чем закончилось: так «обработано» без ответственного не выглядит пустым. */}
               {it.outcome && (
                 <span className={styles.inWork}>

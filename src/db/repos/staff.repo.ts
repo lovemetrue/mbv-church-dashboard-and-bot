@@ -63,6 +63,25 @@ const COLUMNS = `id::int AS id, login, full_name, email, role, password_hash, ac
                  created_at, password_set_at, last_login_at, coordinator_id::int AS coordinator_id, ${PERSON_KEY('')}`;
 
 /**
+ * Участник команды для учётной записи `staff` (подзапрос, `c.id`): по связи `coordinator_id`, а без неё — тот же человек
+ * из «Людей» (миграции 056, 058), затем то же ФИО в любом порядке слов (`person_name_key`). Без запасных путей запись,
+ * заведённая вручную в «Пользователях», теряла имя и роли из справочника: катализатор не видел всего, координатор — своих
+ * заявок («В работе у» с его именем из справочника не совпадало с ФИО записи).
+ */
+const MEMBER_OF_STAFF = (s: string) => `SELECT c.id FROM coordinators c
+   WHERE c.archived_at IS NULL
+     AND (c.id = ${s}.coordinator_id
+          OR (${s}.coordinator_id IS NULL AND (
+                (${s}.user_id IS NOT NULL AND c.user_id = ${s}.user_id)
+             OR (${s}.person_id IS NOT NULL AND c.person_id = ${s}.person_id)
+             OR person_name_key(c.name) = person_name_key(${s}.full_name))))
+   ORDER BY (c.id = ${s}.coordinator_id) DESC NULLS LAST,
+            ((c.user_id IS NOT DISTINCT FROM ${s}.user_id AND ${s}.user_id IS NOT NULL)
+             OR (c.person_id IS NOT DISTINCT FROM ${s}.person_id AND ${s}.person_id IS NOT NULL)) DESC,
+            c.id
+   LIMIT 1`;
+
+/**
  * Учётная запись человека из справочника команды: сначала связанная (`coordinator_id`), иначе заведённая вручную
  * с тем же ФИО в любом порядке слов (`person_name_key`, миграция 045) — чтобы не завести второго «Давида Родионова».
  */
@@ -110,12 +129,7 @@ export class StaffRepo {
                        (SELECT NULLIF(btrim(p.full_name), '') FROM persons p WHERE p.id = staff.person_id AND p.archived_at IS NULL)) AS person_name,
               tc.team_cid AS team_coordinator_id, NULLIF(coordinator_role_names(tc.team_cid), '') AS team_role
          FROM staff
-         LEFT JOIN LATERAL (
-           SELECT c.id::int AS team_cid FROM coordinators c
-            WHERE c.archived_at IS NULL
-              AND (c.id = staff.coordinator_id OR (staff.coordinator_id IS NULL AND person_name_key(c.name) = person_name_key(staff.full_name)))
-            ORDER BY (c.id = staff.coordinator_id) DESC NULLS LAST, c.id LIMIT 1
-         ) tc ON true
+         LEFT JOIN LATERAL (SELECT m.id::int AS team_cid FROM (${MEMBER_OF_STAFF('staff')}) m) tc ON true
         ORDER BY lower(full_name), id`,
     );
     return rows;
@@ -313,15 +327,16 @@ export class StaffRepo {
   }
 
   /**
-   * Как зовут человека в справочнике команды и его роли там (по связи `coordinator_id`), а без связи — ФИО учётной
-   * записи. Ролей бывает несколько: смыслы приходят списком без повторов.
+   * Как зовут человека в справочнике команды и его роли там (участник команды — `MEMBER_OF_STAFF`: связь, общий человек
+   * или ФИО), а если в команде его нет — ФИО учётной записи. Ролей бывает несколько: смыслы приходят списком без повторов.
    */
   async displayName(login: string): Promise<{ name: string; teamRole: string | null; teamKinds: TeamRoleKind[] } | null> {
     const { rows } = await this.db.query<{ name: string; team_role: string | null; team_kinds: TeamRoleKind[] }>(
       `SELECT COALESCE(c.name, s.full_name) AS name, coordinator_role_names(c.id) AS team_role,
               ARRAY(SELECT DISTINCT r.kind FROM coordinator_roles cr JOIN team_roles r ON r.id = cr.role_id
                      WHERE cr.coordinator_id = c.id AND r.kind IS NOT NULL ORDER BY r.kind) AS team_kinds
-         FROM staff s LEFT JOIN coordinators c ON c.id = s.coordinator_id AND c.archived_at IS NULL
+         FROM staff s
+         LEFT JOIN coordinators c ON c.id = (${MEMBER_OF_STAFF('s')})
         WHERE lower(s.login) = lower($1)`,
       [login],
     );

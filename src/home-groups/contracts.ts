@@ -97,6 +97,9 @@
  *   POST /api/v1/settings/prompts/save      SavePromptBody     → ActionOk | ActionError
  *   POST /api/v1/settings/prompts/activate  ActivatePromptBody → ActionOk | ActionError
  *
+ *   GET  /api/v1/help                   → HelpIndexView   (база знаний: статьи для «?» в шапке; любой вход)
+ *   GET  /api/v1/help/:id               → HelpArticleView (статья целиком, Markdown)
+ *   GET  /api/v1/help/files/:name.png   → картинка к статье
  *   POST /api/v1/matching/run           (тело {})     → MatchingRunOk | ActionError
  *   POST /api/v1/matching/auto          MatchingAutoBody → ActionOk | ActionError (только super, иначе 403 forbidden)
  */
@@ -1776,3 +1779,17 @@ export interface GroupDraftView {
   /** Группа, уже заведённая по этой заявке; null — ещё нет. Второй по той же заявке не завести. */
   ownGroup: OwnGroup | null;
 }
+
+// ── База знаний («?» в шапке) ───────────────────────────────────────────────
+
+export interface HelpIndexView {
+  articles: { id: string; title: string }[];
+}
+
+export interface HelpArticleView {
+  id: string;
+  title: string;
+  /** Текст статьи в Markdown, как в репозитории. Картинки — относительными путями `инструкция-координатора/….png`. */
+  markdown: string;
+}
+

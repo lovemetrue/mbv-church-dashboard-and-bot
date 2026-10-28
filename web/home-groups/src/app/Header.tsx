@@ -1,6 +1,7 @@
 import { useId } from 'react';
 import { FIXTURES_MODE, LOGOUT_URL } from '../shared/api/base';
 import { CreateMenu } from '../features/create';
+import { HelpButton } from '../features/help/HelpButton';
 import { useToday } from '../shared/api/queries';
 import { ru } from '../shared/i18n/ru';
 import { useAppNav } from '../shared/nav';
@@ -75,8 +76,10 @@ export function Header() {
       </div>
       </div>
 
-      {/* Выход — обычная форма POST: сервер сбросит куку и вернёт на вход. */}
+      {/* Выход — обычная форма POST: сервер сбросит куку и вернёт на вход. Справка «?» — рядом, в правом верхнем углу:
+          кнопка в форме не отправляет её (type="button"). */}
       <form method="post" action={LOGOUT_URL} className={styles.logout}>
+        <HelpButton />
         <Button type="submit" variant="ghost">
           {ru.header.logout}
         </Button>

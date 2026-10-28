@@ -69,14 +69,16 @@ export function AssistantChat({ children }: { children?: ReactNode }) {
   const tabs = chatOn ? { current: shown ?? 'review', onSelect: (t: DockTab) => setTab(t) } : null;
 
   // «Только чтение» помощника не запускает и не спрашивает: разбор пишет в базу, а вопросы — расход на модель.
-  if (!canChange(me.data)) return <DockContext.Provider value={null}>{children}</DockContext.Provider>;
+  // Разметка одна и та же при любой роли: иначе с приходом роли React пересоздал бы всю оболочку внутри, и открытое
+  // окно (справка, карточка) закрылось бы само.
+  const allowed = canChange(me.data);
 
   return (
-    <DockContext.Provider value={dock}>
+    <DockContext.Provider value={allowed ? dock : null}>
       {children}
-      {shown === 'chat' && <ChatPanel chat={chat} draft={draft} onDraft={setDraft} onClose={close} isSuper={isSuper} tabs={tabs} />}
-      {shown === 'review' && <ReviewPanel run={review} onClose={close} isSuper={isSuper} tabs={tabs} />}
-      {shown === null && chatOn && (
+      {allowed && shown === 'chat' && <ChatPanel chat={chat} draft={draft} onDraft={setDraft} onClose={close} isSuper={isSuper} tabs={tabs} />}
+      {allowed && shown === 'review' && <ReviewPanel run={review} onClose={close} isSuper={isSuper} tabs={tabs} />}
+      {allowed && shown === null && chatOn && (
         <button ref={fabRef} type="button" className={styles.fab} onClick={() => open('chat')}>
           <span aria-hidden="true">✦ </span>
           {ru.chat.fab}

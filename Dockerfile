@@ -50,6 +50,9 @@ COPY dashboard/assets ./dashboard/assets
 # Импорт выгрузки в базу — рабочая операция на сервере, а не сборочный шаг.
 COPY dashboard/data.json ./dashboard/data.json
 COPY scripts ./scripts
+# База знаний («?» в шапке и помощник): инструкции и частые проблемы — те же файлы, что в репозитории, одним каталогом.
+COPY КАК-РАБОТАЕТ-ДАШБОРД.md docs/ИНСТРУКЦИЯ-КООРДИНАТОРА.md docs/база-знаний/ ./help/
+COPY docs/инструкция-координатора ./help/инструкция-координатора
 COPY package.json ./
 
 # Не работаем под root.

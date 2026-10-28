@@ -1,3 +1,5 @@
+import { join } from 'node:path';
+import { createHelp } from './help.js';
 import type { Pool } from 'pg';
 import { AuditRepo } from '../db/repos/audit.repo.js';
 import { CoordinatorsRepo } from '../db/repos/coordinators.repo.js';
@@ -90,7 +92,10 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     invites?: ExtraInvites;
     /** Сбросить кэш входа после изменения людей и режима. */
     onStaffChange?: () => void;
+    /** Каталоги с файлами базы знаний (по порядку: первый найденный файл). По умолчанию — каталоги репозитория. */
+    helpDirs?: readonly string[];
   }) {
+  const help = createHelp({ dirs: opts.helpDirs ?? [process.cwd(), join(process.cwd(), 'docs'), join(process.cwd(), 'docs', 'база-знаний')] });
   const placement = new PlacementRepo(db);
   const appSettings = new SettingsRepo(db);
   // Подключение помощника (провайдер, модель, ключ) читается из настроек при каждом обращении; пока там пусто — из `.env`.
@@ -154,7 +159,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   });
   const chat = createChat({
     llm, settings: appSettings, audit: new AuditRepo(db), history: new ChatHistoryRepo(db), runQuery: createReadonlyRunner(db),
-    pseudonyms: () => loadPseudonyms(db), capacity: opts.defaultCapacity,
+    pseudonyms: () => loadPseudonyms(db), capacity: opts.defaultCapacity, help,
     reportError: (source, err, context) => { void errors.record(source, err instanceof Error ? err.message : String(err), context); },
   });
   const settings = createSettings({
@@ -210,7 +215,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   const groupDirections = createGroupDirections({ repo: new GroupDirectionsRepo(db), audit: auditRepo });
   const kits = createKits({ users: usersRepo, audit: auditRepo, timeZone: opts.timeZone ?? 'Europe/Moscow' });
   const formMeta = createFormMeta({ defaultCapacity: opts.defaultCapacity, coordinators: new CoordinatorsRepo(db), teamRoles: new TeamRolesRepo(db), directions: new GroupDirectionsRepo(db), groups: new GroupsRepo(db) });
-  return { load, views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, geocoderConfig, geocodeAddresses, mapConfig, chat, members, contacts, reconciler, strange, genders, kits, teamRoles, groupDirections, formMeta };
+  return { load, views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, geocoderConfig, geocodeAddresses, mapConfig, chat, members, contacts, reconciler, strange, genders, kits, teamRoles, groupDirections, formMeta, help };
 }
 
 export function composeViews(db: Pool, engine: PlanEngineApi, opts: ComposeOptions): ViewsSource {

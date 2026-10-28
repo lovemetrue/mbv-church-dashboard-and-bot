@@ -741,6 +741,25 @@ describe('пароли для команды из справочника', () =>
     expect(await c.service.personOf('нет_такого')).toBeNull();
   });
 
+  test('учётная запись без связи со справочником команды находит в нём человека по ФИО в любом порядке слов: имя и роли — оттуда', async () => {
+    const c = setup();
+    await seedCoordinator(db, 'Артемкин Сергей', ['Катализатор']);
+    // Завели вручную в «Пользователях» (не кнопкой «Сгенерировать пароль»): связи coordinator_id нет, ФИО — в другом порядке.
+    const made = await c.service.create({ fullName: 'Сергей Артемкин', role: 'admin', generatePassword: true }, 'super_mbv_admin');
+    if (!made.ok) throw new Error(made.message);
+    expect(await c.service.personOf(made.login)).toEqual({ login: made.login, name: 'Артемкин Сергей', teamRole: 'Катализатор', teamKinds: ['catalyst'] });
+  });
+
+  test('учётная запись без связи находит участника команды по общему человеку из «Людей», даже при другом ФИО', async () => {
+    const c = setup();
+    const { rows } = await db.query<{ id: number }>(`INSERT INTO persons (full_name) VALUES ('Дубленых Дмитрий Олегович') RETURNING id::int AS id`);
+    const coordinatorId = await seedCoordinator(db, 'Дубленых Дмитрий', ['Координатор']);
+    await db.query('UPDATE coordinators SET person_id = $2 WHERE id = $1', [coordinatorId, rows[0]!.id]);
+    const made = await c.service.create({ fullName: 'Дима Дубленых', role: 'admin', generatePassword: true, personKey: `p${rows[0]!.id}` }, 'super_mbv_admin');
+    if (!made.ok) throw new Error(made.message);
+    expect(await c.service.personOf(made.login)).toMatchObject({ name: 'Дубленых Дмитрий', teamKinds: ['coordinator'] });
+  });
+
   test('смысл роли берётся из справочника ролей, а не из её названия', async () => {
     const c = setup();
     const id = await member('Родионов Давид');

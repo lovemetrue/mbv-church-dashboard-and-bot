@@ -23,6 +23,7 @@ import { setDemoStrange, strangeKey } from './strange';
 import { buildCampaign } from './campaign';
 import { buildKits, demoKitAction, findDemoKit, searchDemoKits } from './kits';
 import { buildTeamRoles, teamRoleAction } from './teamRoles';
+import { buildHelpArticle, buildHelpIndex } from './help';
 import { buildDirections, directionAction } from './directions';
 import { demoGroupDraft } from './groupDraft';
 import { fixtureChatClear, fixtureChatHistory, fixtureChatReply } from './chat';
@@ -49,6 +50,8 @@ function demoPerson(): { login: string; name: string; teamRole: string | null; t
 export function fixtureResponse(path: string): unknown {
   const draft = /^requests\/(\d+)\/group-draft$/.exec(path.replace(/^\/+/, '').replace(/\/+$/, ''));
   if (draft) return demoGroupDraft(Number(draft[1]));
+  const help = /^help\/([a-z]+)$/.exec(path.replace(/^\/+/, '').replace(/\/+$/, ''));
+  if (help) return buildHelpArticle(help[1]!);
   switch (path.replace(/^\/+/, '').replace(/\/+$/, '')) {
     case 'me': {
       // Снимки для инструкции координатору: «вошёл по личному паролю» (обычный доступ, имя из справочника команды).
@@ -74,6 +77,8 @@ export function fixtureResponse(path: string): unknown {
       return buildTeam();
     case 'campaign':
       return buildCampaign();
+    case 'help':
+      return buildHelpIndex();
     case 'kits':
       return buildKits();
     // История чата «Помощник»: в демо уже есть пара реплик (fixtures/chat.ts).

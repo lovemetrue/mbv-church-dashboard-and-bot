@@ -71,7 +71,7 @@ async function main(): Promise<void> {
     timezone: env('TIMEZONE', 'Europe/Moscow'),
   };
   const bots = serviceFromEnv(db, process.env, schedule, 'домашние группы');
-  const { load, views, matching, placement, settings, errors, staff, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, geocoderConfig, geocodeAddresses, mapConfig, chat, members, contacts, reconciler, strange, genders, kits, teamRoles, groupDirections, formMeta } = composeService(db, engine, {
+  const { load, views, matching, placement, settings, errors, staff, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, geocoderConfig, geocodeAddresses, mapConfig, chat, members, contacts, reconciler, strange, genders, kits, teamRoles, groupDirections, formMeta, help } = composeService(db, engine, {
     campaignSchedule: schedule,
     // Ключ, провайдер и модель можно менять в «Настройки → Помощник»; пока там пусто, действует `.env`. Ключ в базе шифруется
     // секретом SETTINGS_SECRET, а если его нет — паролем полного входа (смена пароля потребует ввести ключ заново).
@@ -86,6 +86,8 @@ async function main(): Promise<void> {
     mailer: mailerFromEnv(process.env),
     publicUrl: process.env['HG_PUBLIC_URL']?.trim() || null,
     onStaffChange: () => auth.invalidate(),
+    // База знаний в образе собрана в один каталог (Dockerfile); при запуске из репозитория — его каталоги.
+    helpDirs: [env('HG_HELP_DIR', '/app/help'), process.cwd(), join(process.cwd(), 'docs'), join(process.cwd(), 'docs', 'база-знаний')],
     // Живое обращение к хранилищу входов: ответ не важен, важно, что оно отвечает.
     pingSessions: async () => { await store.get('health:ping'); },
   });
@@ -115,6 +117,7 @@ async function main(): Promise<void> {
     kits,
     teamRoles,
     groupDirections,
+    help,
     exporter,
     audit,
     logo: async () => readFile(join(env('HG_ASSETS_DIR', '/app/dashboard/assets'), 'church-logo.png')).catch(() => null),

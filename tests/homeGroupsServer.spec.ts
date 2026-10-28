@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { createHomeGroupsServer, mayEditGroups } from '../src/home-groups/server.js';
+import { createHelp } from '../src/home-groups/help.js';
 import { SessionService, type SessionStore } from '../src/dashboard/sessions.js';
 import type { AuthPort } from '../src/platform/auth/personalAuth.js';
 import type { Role } from '../src/home-groups/contracts.js';
@@ -79,7 +80,7 @@ interface ActionCall { name: string; id: number; body: unknown; actor: string }
 interface Started {
   kitCalls: { name: string; body?: unknown; actor?: string }[];
   base: string; viewsCalls: () => number; close: () => void; setViews: (f: () => Promise<ReturnType<typeof sampleViews>>) => void;
-  chatCalls: { body: unknown; actor: string }[]; setChatOutcome: (o: unknown) => void;
+  chatCalls: { body: unknown; actor: string; access?: unknown }[]; setChatOutcome: (o: unknown) => void;
   assistantCalls: { name: string; actor: string; enabled?: boolean }[]; setAssistantOutcome: (o: unknown) => void;
   actionCalls: ActionCall[]; auditCalls: { actor: string; action: string; after: unknown }[]; invalidations: () => number; setOutcome: (o: ActionOutcome) => void;
   matchingCalls: { name: string; actor: string; enabled?: boolean }[];
@@ -95,7 +96,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
   let outcome: ActionOutcome = { ok: true };
   let settingsOutcome: ActionOutcome = { ok: true };
   const actionCalls: ActionCall[] = [];
-  const chatCalls: { body: unknown; actor: string }[] = [];
+  const chatCalls: { body: unknown; actor: string; access?: unknown }[] = [];
   let chatOutcome: unknown = { ok: true, answer: 'Перебор в ДГ-0001.', queries: [{ sql: 'select 1', ok: true, rows: 1 }], tables: [] };
   const assistantCalls: { name: string; actor: string; enabled?: boolean }[] = [];
   let assistantOutcome: unknown = { ok: true, asked: 3, filled: 2, withQuestions: 1, proposals: 1 };
@@ -161,7 +162,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
       update: async (key: string, body: unknown, actor: string) => { actionCalls.push({ name: 'contact.update', key, body, actor } as never); return outcome; },
     } as never,
     chat: {
-      ask: async (body: unknown, actor: string) => { chatCalls.push({ body, actor }); return chatOutcome; },
+      ask: async (body: unknown, actor: string, access?: unknown) => { chatCalls.push({ body, actor, access }); return chatOutcome; },
       history: async (actor: string) => { chatCalls.push({ body: 'history', actor }); return { messages: [{ role: 'user', content: 'Где перебор?' }, { role: 'assistant', content: 'В ДГ-0001.' }] }; },
       clear: async (actor: string) => { chatCalls.push({ body: 'clear', actor }); return { ok: true }; },
     } as never,
@@ -234,6 +235,8 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
     exporter: { requests: async () => '\uFEFF№;ФИО\r\n1;Мария\r\n', people: async () => '\uFEFFномер\r\n' },
     audit: async (actor: string, action: string, after: unknown) => { auditCalls.push({ actor, action, after }); },
     logo: async () => Buffer.from('\x89PNG-логотип'),
+    // Настоящая база знаний из репозитория: тест видит те же файлы, что и служители.
+    help: createHelp({ dirs: [process.cwd(), join(process.cwd(), 'docs'), join(process.cwd(), 'docs', 'база-знаний')] }),
     formMeta: async () => ({ districts: ['Приморский'], groupFormats: [], groupStatuses: [], compositions: [], requestStatuses: [], requestTypes: [], ageGroups: [], coordinators: [], churches: [], mdgStatuses: [] }),
     staff: {
       view: async () => { staffCalls.push({ name: 'view', args: [] }); return { generatedAt: 'g', items: [], personal: { enabled: false, canEnable: false, activeWithPassword: 0, mailConfigured: false } }; },
@@ -1383,7 +1386,7 @@ describe('чат помощника', () => {
     const r = await post(await signIn(REGULAR), body);
     expect(r.status).toBe(200);
     expect(await r.json()).toMatchObject({ ok: true, answer: 'Перебор в ДГ-0001.' });
-    expect(app.chatCalls.at(-1)).toEqual({ body, actor: REGULAR.login });
+    expect(app.chatCalls.at(-1)).toMatchObject({ body, actor: REGULAR.login });
   });
 
   test('не подключён → 503, лимит вопросов → 409, неверный вопрос → 400, и всё с текстом', async () => {
@@ -2010,6 +2013,46 @@ describe('«глазик» у пароля', () => {
     expect(await ok.json()).toEqual({ ok: true, password: 'выданный-пароль' });
     expect(app.staffCalls.at(-1)).toEqual({ name: 'reveal', args: [{ id: 3 }, SUPER.login] });
     expect((await send(await signIn(REGULAR))).status).toBe(403);
+  });
+});
+
+describe('база знаний («?» в шапке)', () => {
+  const get = (cookie: string, path: string) => fetch(`${app.base}${path}`, { headers: { cookie } });
+
+  test('список статей, статья целиком и картинка к ней — любому входу, в том числе стойке и «Только чтение»', async () => {
+    for (const who of [REGULAR, READER, DESK]) {
+      const cookie = await signIn(who);
+      const index = await get(cookie, '/api/v1/help');
+      expect(index.status, who.login).toBe(200);
+      expect((await index.json() as { articles: { id: string }[] }).articles.map((a) => a.id)).toEqual(['faq', 'guide', 'team']);
+    }
+    const cookie = await signIn(READER);
+    const faq = await (await get(cookie, '/api/v1/help/faq')).json() as { title: string; markdown: string };
+    expect(faq.title).toBe('Частые проблемы');
+    expect(faq.markdown).toMatch(/## Нет кнопки «Изменить»/);
+    const png = await get(cookie, '/api/v1/help/files/guide-01-login.png');
+    expect(png.status).toBe(200);
+    expect(png.headers.get('content-type')).toBe('image/png');
+  });
+
+  test('без входа — 401; чужой путь и неизвестная статья — 404', async () => {
+    expect((await fetch(`${app.base}/api/v1/help`)).status).toBe(401);
+    const cookie = await signIn(REGULAR);
+    expect((await get(cookie, '/api/v1/help/nope')).status).toBe(404);
+    expect((await raw(app.base, '/api/v1/help/files/..%2F..%2Fpackage.json', 'GET', { cookie })).status).toBe(404);
+    expect((await get(cookie, '/api/v1/help/files/secret.png')).status).toBe(404);
+  });
+});
+
+describe('помощник знает права спрашивающего', () => {
+  test('в чат уходят роль доступа, логин, имя и роли в команде вошедшего; у общего входа — без логина', async () => {
+    const send = (cookie: string) => fetch(`${app.base}/api/v1/assistant/chat`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: JSON.stringify({ message: 'почему не вижу?' }),
+    });
+    await send(await signIn(DISTRIBUTOR));
+    expect(app.chatCalls.at(-1)!.access).toEqual({ role: 'admin', login: DISTRIBUTOR.login, name: 'Ирина Распределитель', teamRole: 'Распределитель', teamKinds: ['distributor'] });
+    await send(await signIn(REGULAR));
+    expect(app.chatCalls.at(-1)!.access).toEqual({ role: 'admin', login: null, name: null, teamRole: null, teamKinds: [] });
   });
 });
 

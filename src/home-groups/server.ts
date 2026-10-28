@@ -30,6 +30,8 @@ import { registrationCardPage } from '../dashboard/registrationCard.js';
 import type { Settings } from '../platform/settings/service.js';
 import type { ActionError, ActionOk, MatchingRunOk, Me, Role, TeamRoleKind } from './contracts.js';
 import type { Views } from './api/views.js';
+import type { Help } from './help.js';
+import type { ChatAccess } from './assistant/chat.js';
 import { forgotPage, homeGroupsLoginPage, setPasswordPage } from './loginPage.js';
 
 /**
@@ -114,6 +116,8 @@ export interface HomeGroupsDeps {
   mapConfig: MapConfig;
   /** Чат помощника: вопросы по базе, только чтение. */
   chat: Chat;
+  /** База знаний для «?» в шапке и для помощника. Нет — маршруты справки отвечают 404. */
+  help?: Help;
   /** Настройки бота из интерфейса (только полный вход). */
   botSettings: BotSettings;
   /** Статистика кампании «40 дней»; null — расписание не задано. */
@@ -203,6 +207,9 @@ const PERSON_PATH = /^\/api\/v1\/people\/(\d{1,15})\/(qr|card)$/;
 const GROUP_DRAFT_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/group-draft$/;
 const LOGO_PATH = '/api/v1/assets/church-logo.png';
 const MATCHING_PATH = /^\/api\/v1\/matching\/(run|auto|rerun-all)$/;
+/** База знаний: список статей, статья и картинка к ней. Открыта любому входу, в том числе стойке. */
+const HELP_PATH = /^\/api\/v1\/help(?:\/([a-z]{1,20}))?$/;
+const HELP_FILE_PATH = /^\/api\/v1\/help\/files\/([\w.-]{1,80}\.png)$/;
 
 /**
  * Что открыто входу «Стойка регистрации»: ровно то, что нужно странице `/registration` — кто вошёл, справочники формы,
@@ -212,7 +219,8 @@ const MATCHING_PATH = /^\/api\/v1\/matching\/(run|auto|rerun-all)$/;
 function deskAllows(method: string, path: string): boolean {
   if (method === 'POST') return path === '/api/v1/people/create' || KIT_POST_PATH.test(path);
   if (method !== 'GET') return false;
-  return path === '/api/v1/me' || path === '/api/v1/form-meta' || path === KITS_PATH || path === LOGO_PATH || PERSON_PATH.test(path);
+  return path === '/api/v1/me' || path === '/api/v1/form-meta' || path === KITS_PATH || path === LOGO_PATH || PERSON_PATH.test(path)
+    || HELP_PATH.test(path) || HELP_FILE_PATH.test(path);
 }
 
 /**
@@ -685,7 +693,18 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
   async function handleAssistantChat(req: IncomingMessage, res: ServerResponse, sid: string | undefined): Promise<void> {
     const call = await readAuthedJson(req, res, sid);
     if (!call) return;
-    const outcome = await deps.chat.ask(call.body, call.actor);
+    // Права спрашивающего — для вопросов техподдержки («почему не вижу…»): помощник сверяет их с базой знаний и записью.
+    const role = await deps.auth.roleOf(sid);
+    const identity = await deps.auth.identityOf?.(sid);
+    const person = identity ? await deps.staff.personOf(identity.login) : null;
+    const access: ChatAccess | undefined = role ? {
+      role,
+      login: identity?.login ?? null,
+      name: identity ? (person?.name ?? identity.login) : null,
+      teamRole: person?.teamRole ?? null,
+      teamKinds: person?.teamKinds ?? [],
+    } : undefined;
+    const outcome = await deps.chat.ask(call.body, call.actor, access);
     if (!outcome.ok) {
       sendJson(res, ACTION_STATUS[outcome.error], { error: outcome.error, message: outcome.message } satisfies ActionError);
       return;
@@ -1049,6 +1068,21 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       return;
     }
     if (path === KITS_PATH) { sendJson(res, 200, await deps.kits.view()); return; }
+    const helpFile = HELP_FILE_PATH.exec(path);
+    if (helpFile) {
+      const png = deps.help ? await deps.help.image(helpFile[1]!) : null;
+      if (!png) { sendJson(res, 404, { error: 'not_found' }); return; }
+      res.writeHead(200, { ...BASE_HEADERS, 'content-type': 'image/png', 'cache-control': 'no-store' });
+      res.end(png);
+      return;
+    }
+    const help = HELP_PATH.exec(path);
+    if (help) {
+      const found = !deps.help ? null : help[1] ? await deps.help.article(help[1]) : await deps.help.index();
+      if (!found) { sendJson(res, 404, { error: 'not_found' }); return; }
+      sendJson(res, 200, found);
+      return;
+    }
     if (path === '/api/v1/map/config') { sendJson(res, 200, await deps.mapConfig.bootstrap()); return; }
     if (path === '/api/v1/form-meta') {
       const viewer = await viewerOf(sid);

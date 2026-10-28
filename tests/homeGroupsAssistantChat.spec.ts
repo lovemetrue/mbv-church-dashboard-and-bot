@@ -23,6 +23,7 @@ class FakeChatLlm implements LlmClient {
   }
 }
 const ask = (sql: string, id = 'c1'): ChatResponse => ({ content: null, toolCalls: [{ id, name: 'query', arguments: JSON.stringify({ sql }) }] });
+const tool = (name: string, args: object, id = 't1'): ChatResponse => ({ content: null, toolCalls: [{ id, name, arguments: JSON.stringify(args) }] });
 const say = (content: string): ChatResponse => ({ content, toolCalls: [] });
 const turn = (content: string) => ({ messages: [{ role: 'user', content }] });
 
@@ -300,3 +301,52 @@ describe('чат помощника: история разговора на се
     expect(JSON.stringify(rows)).not.toMatch(/Секретн/);
   });
 });
+
+describe('чат помощника: техподдержка', () => {
+  const access = { role: 'readonly' as const, login: 'a_lebedeva', name: 'Анна Лебедева', teamRole: null, teamKinds: [] };
+  const toolResults = (llm: FakeChatLlm) => llm.calls.at(-1)!.filter((m) => m.role === 'tool').map((m) => m.content ?? '');
+
+  test('инструкция велит сначала понять, техподдержка это или данные, и для техподдержки смотреть базу знаний и права', async () => {
+    const llm = new FakeChatLlm(() => say('ок'));
+    await (await enabled(llm)).chat.ask(turn('привет'), 'anna', access);
+    const system = (llm.calls[0]![0] as { content: string }).content;
+    expect(system).toMatch(/Техподдержка/);
+    expect(system).toMatch(/search_help/);
+    expect(system).toMatch(/недостаточно прав/);
+  });
+
+  test('модель находит раздел базы знаний по вопросу и получает права спрашивающего — с его именем условным номером', async () => {
+    await db.query(`INSERT INTO coordinators (name, source) VALUES ('Анна Лебедева', 'ui')`);
+    const llm = new FakeChatLlm((req, n) => {
+      if (n === 1) {
+        expect(req.tools?.map((t) => t.name)).toEqual(['query', 'search_help', 'my_access']);
+        return { content: null, toolCalls: [
+          { id: 'h', name: 'search_help', arguments: JSON.stringify({ query: 'нет кнопки изменить у группы' }) },
+          { id: 'm', name: 'my_access', arguments: '{}' },
+        ] };
+      }
+      return say('Скорее всего, у вас недостаточно прав — обратитесь к администратору.');
+    });
+    const out = await (await enabled(llm)).chat.ask(turn('Почему я не могу изменить группу?'), 'a_lebedeva', access);
+    expect(out).toMatchObject({ ok: true, answer: expect.stringContaining('недостаточно прав') });
+    const [found, rights] = toolResults(llm);
+    expect(found).toMatch(/Нет кнопки «Изменить»/);
+    expect(rights).toMatch(/«Только чтение»/);
+    expect(rights).toMatch(/НЕ связан со справочником команды/);
+    expect(rights).toMatch(/его имя — (?:Координатор-[0-9a-f]{6}|Человек-\d+)\./);
+    expect(JSON.stringify(llm.calls)).not.toMatch(/Лебедева/);
+  });
+
+  test('без прав спрашивающего инструмента my_access у модели нет; ничего не найдено в базе знаний — так и сказано', async () => {
+    const llm = new FakeChatLlm((req, n) => {
+      if (n === 1) {
+        expect(req.tools?.map((t) => t.name)).toEqual(['query', 'search_help']);
+        return tool('search_help', { query: 'зебра жираф' });
+      }
+      return say('Не нашёл.');
+    });
+    await (await enabled(llm)).chat.ask(turn('зебра?'), 'anna');
+    expect(toolResults(llm)[0]).toMatch(/ничего не нашлось/);
+  });
+});
+

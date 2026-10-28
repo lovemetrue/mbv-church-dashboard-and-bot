@@ -1,3 +1,4 @@
+import { useCanChange } from '../../shared/access';
 import { GenderField } from '../gender/GenderField';
 import { useId, useState, type FormEvent } from 'react';
 import type { GroupBrief, GroupItem, LogEntry, RequestItem } from '@contracts';
@@ -84,6 +85,7 @@ function VariantAction({
 }) {
   const why = unavailableReason(group, registry.get(group.id));
   const reasonId = useId();
+  if (!useCanChange()) return null;
   return (
     <div className={styles.variantAction}>
       <Button
@@ -266,7 +268,7 @@ function Params({ r }: { r: RequestItem }) {
   const edit = useRequestParams(r.id);
   const [editing, setEditing] = useState<ParamField | null>(null);
   const [draft, setDraft] = useState('');
-  const editable = r.bucket !== 'done' && r.bucket !== 'cancelled';
+  const editable = useCanChange() && r.bucket !== 'done' && r.bucket !== 'cancelled';
 
   const timeUnderstood = understoodTime(r);
   const timeText = r.scheduleInfo.text ?? timeUnderstood ?? '';

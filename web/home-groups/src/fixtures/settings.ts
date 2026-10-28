@@ -302,7 +302,7 @@ export function buildSettingsStaff(): SettingsStaffView {
         role: 'super',
         status: 'active',
         lastLoginAt: '2026-10-09T08:41:00+03:00',
-        hasPendingLink: false, personKey: null,
+        hasPendingLink: false, personKey: null, personName: null, coordinatorId: null, teamRole: null, hasPassword: true, passwordViewable: true,
       },
       {
         id: 2,
@@ -312,7 +312,7 @@ export function buildSettingsStaff(): SettingsStaffView {
         role: 'admin',
         status: 'active',
         lastLoginAt: '2026-10-07T19:15:00+03:00',
-        hasPendingLink: true, personKey: 'u1',
+        hasPendingLink: true, personKey: 'u1', personName: 'Кузнецов Алексей Петрович', coordinatorId: 1, teamRole: 'Старший координатор', hasPassword: true, passwordViewable: false,
       },
       {
         id: 3,
@@ -322,7 +322,7 @@ export function buildSettingsStaff(): SettingsStaffView {
         role: 'admin',
         status: 'invited',
         lastLoginAt: null,
-        hasPendingLink: true, personKey: null,
+        hasPendingLink: true, personKey: null, personName: null, coordinatorId: null, teamRole: null, hasPassword: false, passwordViewable: false,
       },
       {
         id: 4,
@@ -332,7 +332,7 @@ export function buildSettingsStaff(): SettingsStaffView {
         role: 'admin',
         status: 'invited',
         lastLoginAt: null,
-        hasPendingLink: false, personKey: null,
+        hasPendingLink: false, personKey: null, personName: null, coordinatorId: null, teamRole: null, hasPassword: false, passwordViewable: false,
       },
       {
         id: 5,
@@ -342,13 +342,13 @@ export function buildSettingsStaff(): SettingsStaffView {
         role: 'admin',
         status: 'disabled',
         lastLoginAt: '2026-08-14T12:05:00+03:00',
-        hasPendingLink: false, personKey: null,
+        hasPendingLink: false, personKey: null, personName: null, coordinatorId: null, teamRole: null, hasPassword: true, passwordViewable: true,
       },
     ],
     personal: { enabled: false, canEnable: true, activeWithPassword: 2, mailConfigured: false },
-    // Команда из справочника: у одного пароль уже выдан, у распределителя учётной записи ещё нет.
+    // Команда из справочника: у одного учётная запись уже есть (она же в `items`), у распределителя и координатора — ещё нет.
     team: [
-      { coordinatorId: 1, name: 'Лебедева Анна', teamRole: 'Старший координатор', staffId: 2, login: 'a_lebedeva', hasPassword: true, active: true, lastLoginAt: '2026-10-08T18:20:00+03:00' },
+      { coordinatorId: 1, name: 'Кузнецов Алексей', teamRole: 'Старший координатор', staffId: 2, login: 'a_kuznetsov', hasPassword: true, active: true, lastLoginAt: '2026-10-07T19:15:00+03:00' },
       { coordinatorId: 2, name: 'Родионов Давид', teamRole: 'Распределитель', staffId: null, login: null, hasPassword: false, active: true, lastLoginAt: null },
       { coordinatorId: 3, name: 'Трофимова Светлана', teamRole: 'Координатор', staffId: null, login: null, hasPassword: false, active: true, lastLoginAt: null },
     ],
@@ -359,10 +359,13 @@ export function buildSettingsStaff(): SettingsStaffView {
 export const SAMPLE_ISSUED = ['k7mf', 'x2qp', '9tbh'].join('-');
 
 /** «Сгенерировать пароль» в демо: логин по ФИО из справочника, пароль — образец (настоящий генерирует сервер). */
-export function fixtureGeneratePassword(coordinatorId: number): { ok: true; login: string; password: string } {
-  const m = buildSettingsStaff().team.find((x) => x.coordinatorId === coordinatorId);
+export function fixtureGeneratePassword(body: { coordinatorId?: number; staffId?: number }): { ok: true; login: string; password: string; id: number } {
+  const staff = buildSettingsStaff();
+  const account = body.staffId !== undefined ? staff.items.find((x) => x.id === body.staffId) : undefined;
+  if (account) return { ok: true, login: account.login, password: SAMPLE_ISSUED, id: account.id };
+  const m = staff.team.find((x) => x.coordinatorId === body.coordinatorId);
   const [surname = '', name = ''] = (m?.name ?? '').split(' ');
-  return { ok: true, login: m?.login ?? fixtureSuggestLogin(`${name} ${surname}`), password: SAMPLE_ISSUED };
+  return { ok: true, login: m?.login ?? fixtureSuggestLogin(`${name} ${surname}`), password: SAMPLE_ISSUED, id: m?.staffId ?? 100 + (body.coordinatorId ?? 0) };
 }
 
 const TRANSLIT: Record<string, string> = {

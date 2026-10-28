@@ -28,6 +28,8 @@ export const TAB_IDS: readonly TabId[] = ['today', 'requests', 'groups', 'kits',
 
 /** Вкладки, которые видит только полный вход. */
 const SUPER_ONLY_TABS: readonly TabId[] = ['settings'];
+/** Вкладки, закрытые входу «Только чтение»: «Настройки» и сводка «Команды». «Наборы» он смотрит без кнопки выдачи. */
+const READONLY_HIDDEN_TABS: readonly TabId[] = ['settings', 'team'];
 
 /**
  * Вкладки, видимые при роли. Пока роль неизвестна (ответ `/me` ещё не пришёл), прячем и
@@ -35,7 +37,9 @@ const SUPER_ONLY_TABS: readonly TabId[] = ['settings'];
  * Это только удобство: настоящая защита — 403 от сервера на всех адресах `settings/…`.
  */
 export function visibleTabs(role: Role | undefined): readonly TabId[] {
-  return role === 'super' ? TAB_IDS : TAB_IDS.filter((t) => !SUPER_ONLY_TABS.includes(t));
+  if (role === 'super') return TAB_IDS;
+  if (role === 'readonly') return TAB_IDS.filter((t) => !READONLY_HIDDEN_TABS.includes(t));
+  return TAB_IDS.filter((t) => !SUPER_ONLY_TABS.includes(t));
 }
 
 /** Значение `resp` для заявок без ответственного: имя координатора так не называется. */

@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useMe } from '../shared/api/queries';
 import { ru } from '../shared/i18n/ru';
-import { useAppNav } from '../shared/nav';
+import { useAppNav, visibleTabs } from '../shared/nav';
 import { LoadingState } from '../shared/ui';
 import { AssistantChat } from '../features/assistant-chat';
 import { isRegistrationPath, REGISTRATION_PATH, RegistrationPage } from '../features/create/RegistrationPage';
@@ -51,14 +51,32 @@ export function App() {
   return <Shell />;
 }
 
+/**
+ * Вкладка, которой этому входу не видно (например, «Команда» и «Наборы» у «Только чтение»), по набранному вручную адресу
+ * уводит на «Сегодня», как «Настройки». Настоящая защита — 403 сервера.
+ */
+function HiddenTabGuard() {
+  const nav = useAppNav();
+  const me = useMe();
+  const hidden = me.data !== undefined && !visibleTabs(me.data.role).includes(nav.tab) && nav.tab !== 'settings';
+  useEffect(() => {
+    if (hidden) nav.goTab('today', { replace: true });
+  }, [hidden, nav.goTab]);
+  return null;
+}
+
 function Shell() {
   const nav = useAppNav();
+  // «Команда» и «Наборы» закрыты входу «Только чтение»: их экраны ждут ответа `/me`, чтобы не спросить лишнего.
+  const role = useMe().data?.role;
+  const shown = role ? visibleTabs(role) : [];
   return (
     <div className={styles.wrap}>
       <a className={styles.skip} href="#tabpanel">
         {ru.skipToContent}
       </a>
       {/* Помощник — снаружи вкладок: его окно открывается и плавающей кнопкой, и значком ✦ в блоке подбора. */}
+      <HiddenTabGuard />
       <AssistantChat>
         <Header />
         <Tabs />
@@ -66,8 +84,8 @@ function Shell() {
           {nav.tab === 'today' && <TodayScreen />}
           {nav.tab === 'requests' && <RequestsScreen />}
           {nav.tab === 'groups' && <GroupsScreen />}
-          {nav.tab === 'kits' && <KitsScreen />}
-          {nav.tab === 'team' && <TeamScreen />}
+          {nav.tab === 'kits' && shown.includes('kits') && <KitsScreen />}
+          {nav.tab === 'team' && shown.includes('team') && <TeamScreen />}
           {nav.tab === 'reference' && <ReferenceScreen />}
           {nav.tab === 'settings' && <SettingsRoute />}
         </main>

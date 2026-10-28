@@ -3,7 +3,6 @@ import type {
   ActivatePromptBody,
   ActionOk,
   CreateStaffBody,
-  DeliveryOk,
   ExtraQuestionsBody,
   AddressTableView,
   GeocoderConfigBody,
@@ -16,6 +15,7 @@ import type {
   PersonalModeBody,
   GeneratePasswordBody,
   GeneratePasswordOk,
+  RevealPasswordOk,
   SavePromptBody,
   SendExtraInvitesBody,
   SendExtraInvitesOk,
@@ -156,12 +156,13 @@ export function useStaffActions() {
   }
   return {
     suggest: (body: SuggestLoginBody) => apiPost<SuggestLoginOk>('settings/staff/suggest', body),
-    create: (body: CreateStaffBody) => changing<DeliveryOk>('settings/staff/create', body),
+    // Раздел заводит пользователя сразу с паролем (`generatePassword: true`), поэтому ответ — выданный пароль.
+    create: (body: CreateStaffBody) => changing<GeneratePasswordOk>('settings/staff/create', body),
     update: (body: UpdateStaffBody) => changing<ActionOk>('settings/staff/update', body),
-    invite: (body: StaffIdBody) => changing<DeliveryOk>('settings/staff/invite', body),
-    reset: (body: StaffIdBody) => changing<DeliveryOk>('settings/staff/reset', body),
     setPersonalMode: (body: PersonalModeBody) => changing<ActionOk>('settings/staff/personal-mode', body),
     generatePassword: (body: GeneratePasswordBody) => changing<GeneratePasswordOk>('settings/staff/generate-password', body),
+    /** «Глазик»: список не меняется, перечитывать нечего. */
+    reveal: (body: StaffIdBody) => apiPost<RevealPasswordOk>('settings/staff/password', body),
   };
 }
 

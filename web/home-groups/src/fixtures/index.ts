@@ -11,7 +11,7 @@ import {
   buildSettingsPrompts,
   buildSettingsStaff,
   fixtureStaffDelivery,
-  fixtureGeneratePassword,
+  fixtureGeneratePassword, SAMPLE_ISSUED,
   fixtureSuggestLogin,
   saveDemoLlm,
   sendDemoInvites,
@@ -216,7 +216,7 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
   if (clean === 'kits/issue' || clean === 'kits/undo') return demoKitAction(clean === 'kits/issue' ? 'issue' : 'undo', body);
   // Массовое действие: в демо все выбранные «обработаны», ничего не пропущено.
   if (clean === 'requests/bulk') return { ok: true, done: ((body ?? {}) as { ids?: number[] }).ids?.length ?? 0, skipped: 0 };
-  const input = (body ?? {}) as { fullName?: string; email?: string; id?: number; coordinatorId?: number };
+  const input = (body ?? {}) as { fullName?: string; email?: string; id?: number; coordinatorId?: number; staffId?: number; login?: string; generatePassword?: boolean };
   switch (clean) {
     // Номер новой записи в демо один и тот же: данные не меняются, важно лишь показать подтверждение.
     case 'requests/create':
@@ -232,9 +232,16 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
     case 'settings/staff/suggest':
       return { ok: true, login: fixtureSuggestLogin(input.fullName ?? '') };
     case 'settings/staff/create':
-      return { ...fixtureStaffDelivery(input.email ?? ''), login: fixtureSuggestLogin(input.fullName ?? '') };
+      return input.generatePassword
+        ? { ok: true, login: input.login || fixtureSuggestLogin(input.fullName ?? ''), password: SAMPLE_ISSUED, id: 50 }
+        : { ...fixtureStaffDelivery(input.email ?? ''), login: fixtureSuggestLogin(input.fullName ?? '') };
     case 'settings/staff/generate-password':
-      return fixtureGeneratePassword(Number(input.coordinatorId));
+      return fixtureGeneratePassword({
+        ...(input.coordinatorId !== undefined ? { coordinatorId: Number(input.coordinatorId) } : {}),
+        ...(input.staffId !== undefined ? { staffId: Number(input.staffId) } : {}),
+      });
+    case 'settings/staff/password':
+      return { ok: true, password: SAMPLE_ISSUED };
     case 'settings/staff/invite':
     case 'settings/staff/reset': {
       const person = buildSettingsStaff().items.find((i) => i.id === input.id);

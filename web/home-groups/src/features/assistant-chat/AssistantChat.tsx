@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMe } from '../../shared/api/queries';
+import { canChange } from '../../shared/access';
 import { ru } from '../../shared/i18n/ru';
 import { ReviewPanel } from '../requests/assistant/ReviewPanel';
 import { useAssistantRun } from '../requests/assistant/useAssistantRun';
@@ -66,6 +67,9 @@ export function AssistantChat({ children }: { children?: ReactNode }) {
   // Чат недоступен — вкладки «Вопрос по базе» нет, и окно открывается только на разборе.
   const shown: DockTab | null = tab === 'chat' && !chatOn ? 'review' : tab;
   const tabs = chatOn ? { current: shown ?? 'review', onSelect: (t: DockTab) => setTab(t) } : null;
+
+  // «Только чтение» помощника не запускает и не спрашивает: разбор пишет в базу, а вопросы — расход на модель.
+  if (!canChange(me.data)) return <DockContext.Provider value={null}>{children}</DockContext.Provider>;
 
   return (
     <DockContext.Provider value={dock}>

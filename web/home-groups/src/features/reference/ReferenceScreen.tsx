@@ -1,3 +1,4 @@
+import { useCanChange } from '../../shared/access';
 import { GenderAiButton } from '../gender/GenderAiButton';
 import { useMemo, useState } from 'react';
 import type { UseQueryResult } from '@tanstack/react-query';
@@ -43,6 +44,8 @@ export function ReferenceScreen() {
   const nav = useAppNav();
   const groups = useGroups();
   const people = usePeople();
+  // «Координаторов» вход «Только чтение» смотрит, но не добавляет: кнопки «+ Добавить координатора» у него нет.
+  const canChange = useCanChange();
   const coordinators = useCoordinators();
   const counts: Record<EntityId, number | undefined> = {
     groups: groups.data?.items.length,
@@ -79,7 +82,7 @@ export function ReferenceScreen() {
           query={coordinators}
           items={coordinators.data?.items}
           renderCard={(c, close) => <CoordinatorCard c={c} onClose={close} />}
-          actions={<AddCoordinator />}
+          actions={canChange ? <AddCoordinator /> : undefined}
         />
       )}
     </div>

@@ -1,3 +1,4 @@
+import { useCanChange } from '../../../shared/access';
 import { useState } from 'react';
 import type { GroupItem, GroupMember } from '@contracts';
 import { formatPhone } from '../../../entities/format';
@@ -16,11 +17,13 @@ const t = ru.members;
 function MemberRow({
   m,
   linkable,
+  canChange,
   onEdit,
   onRemove,
 }: {
   m: GroupMember;
   linkable: boolean;
+  canChange: boolean;
   onEdit: (m: GroupMember) => void;
   onRemove: (m: GroupMember) => void;
 }) {
@@ -60,7 +63,7 @@ function MemberRow({
             {t.openRequest}
           </Button>
         ) : (
-          <>
+          canChange && <>
             <Button size="sm" aria-label={t.editAria(m.fio)} onClick={() => onEdit(m)}>
               {t.edit}
             </Button>
@@ -85,6 +88,7 @@ export function MembersSection({ g }: { g: GroupItem }) {
   const [editing, setEditing] = useState<GroupMember | null>(null);
   const [removing, setRemoving] = useState<GroupMember | null>(null);
   const [saved, setSaved] = useState(false);
+  const canChange = useCanChange();
 
   // Ведущий и соведущий — тоже люди группы: они в составе первыми, по ссылкам группы (миграции 030 и 054), а не копией.
   // Внесённый ещё и участником показывается один раз — строкой ведущего.
@@ -104,6 +108,7 @@ export function MembersSection({ g }: { g: GroupItem }) {
       <MemberRow
         key={`${m.kind}-${m.id}`}
         m={m}
+        canChange={canChange}
         linkable={known === null || known.has(m.personKey)}
         onEdit={(x) => {
           setSaved(false);
@@ -159,12 +164,14 @@ export function MembersSection({ g }: { g: GroupItem }) {
           </ul>
         </>
       )}
-      <div className={styles.addRow}>
-        <Button aria-label={t.addAria} onClick={() => setAdding(true)}>
-          <span aria-hidden="true">+ </span>
-          {t.add}
-        </Button>
-      </div>
+      {canChange && (
+        <div className={styles.addRow}>
+          <Button aria-label={t.addAria} onClick={() => setAdding(true)}>
+            <span aria-hidden="true">+ </span>
+            {t.add}
+          </Button>
+        </div>
+      )}
       {saved && (
         <p className={manage.saved} role="status">
           {ru.manage.saved}

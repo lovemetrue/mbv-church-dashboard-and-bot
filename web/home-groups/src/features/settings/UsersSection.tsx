@@ -1,32 +1,49 @@
 import { useCallback, useId, useRef, useState } from 'react';
-import type { CreateStaffBody, DeliveryOk, SettingsStaffView, StaffItem, StaffStatus, UpdateStaffBody } from '@contracts';
+import type { CreateStaffBody, GeneratePasswordOk, SettingsStaffView, StaffItem, TeamAccountItem, UpdateStaffBody } from '@contracts';
 import { ru } from '../../shared/i18n/ru';
-import { Button, EmptyState, Pill, type PillTone } from '../../shared/ui';
-import { buildLinkUrl, formatWhen, staffErrorText } from './model';
+import { Button, EmptyState, Pill } from '../../shared/ui';
+import { formatWhen, staffErrorText } from './model';
+import { PasswordCell } from './PasswordCell';
 import { QueryBoundary } from './QueryBoundary';
 import { RefreshButton } from './RefreshButton';
 import { SectionHead } from './SectionHead';
 import { useSettingsStaff, useStaffActions } from './queries';
-import { ConfirmDialog, LinkDialog, StaffFormDialog, toFormValues, type StaffFormValues } from './StaffDialogs';
-import { TeamPasswords } from './TeamPasswords';
+import { ConfirmDialog, StaffFormDialog, toFormValues, type StaffFormValues } from './StaffDialogs';
 import styles from './Settings.module.css';
 import u from './Users.module.css';
 
 const t = ru.settings.users;
-
-const STATUS_TONE: Record<StaffStatus, PillTone> = { invited: 'warn', active: 'ok', disabled: 'plain' };
 
 interface Notice {
   kind: 'ok' | 'error';
   text: string;
 }
 
+/**
+ * Строка списка: учётная запись (у неё может быть и место в команде) или человек из справочника команды, которому
+ * вход ещё не заведён — запись появится с первым паролем. Прежде это были два списка с одними и теми же людьми.
+ */
+export interface UserRow {
+  key: string;
+  name: string;
+  account: StaffItem | null;
+  member: TeamAccountItem | null;
+}
+
+/** Один список из учётных записей и команды: участник команды со входом — та же строка, что и его учётная запись. */
+export function userRows(data: Pick<SettingsStaffView, 'items' | 'team'>): UserRow[] {
+  const byStaff = new Map(data.team.filter((m) => m.staffId !== null).map((m) => [m.staffId!, m]));
+  const rows: UserRow[] = data.items.map((a) => ({ key: `s${a.id}`, name: a.fullName, account: a, member: byStaff.get(a.id) ?? null }));
+  for (const m of data.team) if (m.staffId === null) rows.push({ key: `c${m.coordinatorId}`, name: m.name, account: null, member: m });
+  return rows.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+}
+
 type Dialog =
   | { kind: 'add' }
   | { kind: 'edit'; item: StaffItem }
   | { kind: 'toggle'; item: StaffItem }
-  | { kind: 'personal'; enable: boolean }
-  | { kind: 'link'; name: string; email: string | null; url: string };
+  | { kind: 'regenerate'; row: UserRow }
+  | { kind: 'personal'; enable: boolean };
 
 type Outcome<T> = { value: T } | { error: string };
 
@@ -56,7 +73,7 @@ function useSingleFlight() {
 
 function PersonalLogins({ data, busy, onToggle }: { data: SettingsStaffView['personal']; busy: boolean; onToggle: (enable: boolean) => void }) {
   const titleId = useId();
-  const { enabled, canEnable, activeWithPassword, mailConfigured } = data;
+  const { enabled, canEnable, activeWithPassword } = data;
   const p = t.personal;
   return (
     <section aria-labelledby={titleId} className={`${styles.card} ${u.personal}`}>
@@ -67,7 +84,6 @@ function PersonalLogins({ data, busy, onToggle }: { data: SettingsStaffView['per
         <Pill tone={enabled ? 'ok' : 'plain'}>{enabled ? p.on : p.off}</Pill>
       </div>
       <p className={u.personalText}>{enabled ? p.explainOn : p.explainOff}</p>
-      {!mailConfigured && <p className={u.mailHint}>{p.mailMissing}</p>}
       <div className={u.personalFoot}>
         {/* Выключить можно всегда: иначе при сбое с паролями из режима было бы не выйти. */}
         <Button
@@ -84,68 +100,89 @@ function PersonalLogins({ data, busy, onToggle }: { data: SettingsStaffView['per
   );
 }
 
-function StaffRow({
-  item,
+function UserLine({
+  row,
+  fresh,
   busy,
-  onReset,
-  onInvite,
+  reveal,
+  onGenerate,
   onEdit,
   onToggle,
 }: {
-  item: StaffItem;
+  row: UserRow;
+  fresh: string | undefined;
   busy: boolean;
-  onReset: (i: StaffItem) => void;
-  onInvite: (i: StaffItem) => void;
+  reveal: (id: number) => Promise<string | { error: string } | null>;
+  onGenerate: (row: UserRow) => void;
   onEdit: (i: StaffItem) => void;
   onToggle: (i: StaffItem) => void;
 }) {
-  const when = formatWhen(item.lastLoginAt);
+  const { account, member, name } = row;
+  const when = formatWhen(account?.lastLoginAt ?? member?.lastLoginAt);
+  const teamRole = account?.teamRole ?? member?.teamRole ?? null;
+  const disabled = account?.status === 'disabled';
+  const hasPassword = fresh !== undefined || (account?.hasPassword ?? false);
   return (
     <tr className={u.row}>
       <td data-label={t.cols.name} className={u.name}>
-        {item.fullName}
+        <div>
+          {name}
+          {account && <p className={u.sub}>{account.personName ? t.personLinked(account.personName) : t.personNone}</p>}
+          {teamRole && <p className={u.sub}>{t.teamRole(teamRole)}</p>}
+        </div>
       </td>
       <td data-label={t.cols.login} className={`${u.login} ${u.nowrap}`}>
-        {item.login}
+        {account?.login ?? <span className={styles.muted}>{t.noLogin}</span>}
       </td>
-      <td data-label={t.cols.email}>{item.email ?? '—'}</td>
-      <td data-label={t.cols.role} className={u.nowrap}>{t.roles[item.role]}</td>
-      <td data-label={t.cols.status}>
-        {/* Обёртка нужна карточке на телефоне: ячейка там — сетка из подписи и одного значения. */}
+      <td data-label={t.cols.role}>
         <div>
-          <Pill tone={STATUS_TONE[item.status]}>{t.statuses[item.status]}</Pill>
-          {item.hasPendingLink ? (
-            <p className={u.linkNote}>{t.pendingLink}</p>
-          ) : (
-            item.status === 'invited' && <p className={u.linkNote}>{t.noPendingLink}</p>
+          {account ? <span className={u.nowrap}>{t.roles[account.role]}</span> : <span className={styles.muted}>{t.noAccount}</span>}
+          {disabled && (
+            <p>
+              <Pill tone="plain">{t.statuses.disabled}</Pill>
+            </p>
           )}
         </div>
+      </td>
+      <td data-label={t.cols.password}>
+        {account ? (
+          // Ключ — выданный пароль: новый сбрасывает открытый прежний.
+          <PasswordCell
+            key={fresh ?? 'saved'}
+            name={name}
+            fresh={fresh}
+            hasPassword={account.hasPassword}
+            viewable={account.passwordViewable}
+            reveal={() => reveal(account.id)}
+          />
+        ) : (
+          <Pill tone="plain">{t.password.none}</Pill>
+        )}
       </td>
       <td data-label={t.cols.lastLogin} className={`${u.when} ${u.nowrap}`}>
         {when || t.neverLoggedIn}
       </td>
       <td data-label={t.cols.actions} className={u.actionsCell}>
         <div className={u.actions}>
-          {item.status === 'active' && (
-            <Button aria-label={t.resetAria(item.fullName)} disabled={busy} onClick={() => onReset(item)}>
-              {t.reset}
+          {hasPassword ? (
+            <Button aria-label={t.regenerateAria(name)} disabled={busy || disabled} onClick={() => onGenerate(row)}>
+              {t.regenerate}
+            </Button>
+          ) : (
+            <Button variant="primary" aria-label={t.generateAria(name)} disabled={busy || disabled} onClick={() => onGenerate(row)}>
+              {t.generate}
             </Button>
           )}
-          {item.status === 'invited' && (
-            <Button aria-label={t.inviteAria(item.fullName)} disabled={busy} onClick={() => onInvite(item)}>
-              {t.invite}
-            </Button>
+          {account && (
+            <>
+              <Button aria-label={t.editAria(name)} disabled={busy} onClick={() => onEdit(account)}>
+                {t.edit}
+              </Button>
+              <Button aria-label={disabled ? t.enableAria(name) : t.disableAria(name)} disabled={busy} onClick={() => onToggle(account)}>
+                {disabled ? t.enableAction : t.disableAction}
+              </Button>
+            </>
           )}
-          <Button aria-label={t.editAria(item.fullName)} disabled={busy} onClick={() => onEdit(item)}>
-            {t.edit}
-          </Button>
-          <Button
-            aria-label={item.status === 'disabled' ? t.enableAria(item.fullName) : t.disableAria(item.fullName)}
-            disabled={busy}
-            onClick={() => onToggle(item)}
-          >
-            {item.status === 'disabled' ? t.enableAction : t.disableAction}
-          </Button>
         </div>
       </td>
     </tr>
@@ -157,40 +194,52 @@ function StaffBody({ data }: { data: SettingsStaffView }) {
   const { busy, run } = useSingleFlight();
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
+  /** Пароли, выданные на этом экране, по id учётной записи: видны сразу, без «глазика». */
+  const [issued, setIssued] = useState<Record<number, string>>({});
   const listId = useId();
+  const rows = userRows(data);
 
-  /** Что сделать после отправки ссылки: письмо ушло — сказать, не ушло — показать ссылку целиком. */
-  function showDelivery(d: DeliveryOk, name: string) {
-    if (d.delivery === 'link') {
-      if (!d.path) {
-        setDialog(null);
-        setNotice({ kind: 'error', text: t.errors.noLink });
-        return;
-      }
-      setDialog({ kind: 'link', name, email: d.email, url: buildLinkUrl(d.path) });
-      return;
-    }
-    setDialog(null);
-    setNotice({ kind: 'ok', text: t.sent(d.email ?? '') });
+  function remember(r: GeneratePasswordOk) {
+    setIssued((prev) => ({ ...prev, [r.id]: r.password }));
   }
 
-  async function sendLink(kind: 'invite' | 'reset', item: StaffItem) {
+  async function generate(row: UserRow): Promise<string | null> {
     setNotice(null);
-    const r = await run(() => actions[kind]({ id: item.id }));
-    if (!r) return;
-    if ('error' in r) setNotice({ kind: 'error', text: r.error });
-    else showDelivery(r.value, item.fullName);
+    const body = row.account ? { staffId: row.account.id } : { coordinatorId: row.member!.coordinatorId };
+    const r = await run(() => actions.generatePassword(body));
+    if (!r) return null;
+    if ('error' in r) return r.error;
+    remember(r.value);
+    setDialog(null);
+    setNotice({ kind: 'ok', text: t.issued(row.name, r.value.login) });
+    return null;
+  }
+
+  async function startGenerate(row: UserRow) {
+    // Новый пароль тому, у кого он уже есть, — после подтверждения: прежний перестанет работать.
+    if (row.account?.hasPassword || (row.account && issued[row.account.id])) return setDialog({ kind: 'regenerate', row });
+    const error = await generate(row);
+    if (error) setNotice({ kind: 'error', text: error });
+  }
+
+  async function reveal(id: number): Promise<string | { error: string } | null> {
+    const r = await run(() => actions.reveal({ id }));
+    if (!r) return null;
+    return 'error' in r ? { error: r.error } : r.value.password;
   }
 
   async function create(values: StaffFormValues): Promise<string | null> {
-    const body: CreateStaffBody = { fullName: values.fullName, email: values.email, role: values.role };
+    const body: CreateStaffBody = { fullName: values.fullName, role: values.role, generatePassword: true };
+    if (values.email) body.email = values.email;
     if (values.login) body.login = values.login;
     if (values.personKey) body.personKey = values.personKey;
     setNotice(null);
     const r = await run(() => actions.create(body));
     if (!r) return null;
     if ('error' in r) return r.error;
-    showDelivery(r.value, values.fullName);
+    remember(r.value);
+    setDialog(null);
+    setNotice({ kind: 'ok', text: t.created(values.fullName, r.value.login) });
     return null;
   }
 
@@ -237,16 +286,6 @@ function StaffBody({ data }: { data: SettingsStaffView }) {
     <>
       <PersonalLogins data={data.personal} busy={busy} onToggle={(enable) => setDialog({ kind: 'personal', enable })} />
 
-      <TeamPasswords
-        team={data.team}
-        busy={busy}
-        generate={async (coordinatorId) => {
-          const r = await run(() => actions.generatePassword({ coordinatorId }));
-          if (!r) return null;
-          return 'error' in r ? r.error : r.value;
-        }}
-      />
-
       <section aria-labelledby={listId}>
         <div className={u.listHead}>
           <h3 id={listId} className={u.listTitle}>
@@ -256,6 +295,7 @@ function StaffBody({ data }: { data: SettingsStaffView }) {
             {t.add}
           </Button>
         </div>
+        <p className={`${styles.muted} ${u.listLead}`}>{t.lead}</p>
 
         {notice && (
           <p className={notice.kind === 'ok' ? styles.noticeOk : styles.noticeError} role={notice.kind === 'ok' ? 'status' : 'alert'}>
@@ -263,28 +303,28 @@ function StaffBody({ data }: { data: SettingsStaffView }) {
           </p>
         )}
 
-        {data.items.length ? (
+        {rows.length ? (
           <div className={u.wrap}>
             <table className={u.table} aria-labelledby={listId}>
               <thead>
                 <tr>
                   <th scope="col">{t.cols.name}</th>
                   <th scope="col">{t.cols.login}</th>
-                  <th scope="col">{t.cols.email}</th>
                   <th scope="col">{t.cols.role}</th>
-                  <th scope="col">{t.cols.status}</th>
+                  <th scope="col">{t.cols.password}</th>
                   <th scope="col">{t.cols.lastLogin}</th>
                   <th scope="col">{t.cols.actions}</th>
                 </tr>
               </thead>
               <tbody>
-                {data.items.map((item) => (
-                  <StaffRow
-                    key={item.id}
-                    item={item}
+                {rows.map((row) => (
+                  <UserLine
+                    key={row.key}
+                    row={row}
+                    fresh={row.account ? issued[row.account.id] : undefined}
                     busy={busy}
-                    onReset={(i) => void sendLink('reset', i)}
-                    onInvite={(i) => void sendLink('invite', i)}
+                    reveal={reveal}
+                    onGenerate={(r) => void startGenerate(r)}
                     onEdit={(i) => setDialog({ kind: 'edit', item: i })}
                     onToggle={(i) => setDialog({ kind: 'toggle', item: i })}
                   />
@@ -327,6 +367,16 @@ function StaffBody({ data }: { data: SettingsStaffView }) {
           onClose={close}
         />
       )}
+      {dialog?.kind === 'regenerate' && (
+        <ConfirmDialog
+          title={t.confirmTitle(dialog.row.name)}
+          text={t.confirmText}
+          confirmLabel={t.confirm}
+          busy={busy}
+          onConfirm={() => generate(dialog.row)}
+          onClose={close}
+        />
+      )}
       {dialog?.kind === 'toggle' &&
         (dialog.item.status === 'disabled' ? (
           <ConfirmDialog
@@ -357,14 +407,14 @@ function StaffBody({ data }: { data: SettingsStaffView }) {
           onClose={close}
         />
       )}
-      {dialog?.kind === 'link' && <LinkDialog name={dialog.name} email={dialog.email} url={dialog.url} onClose={close} />}
     </>
   );
 }
 
 /**
- * Раздел «Пользователи и роли»: личные входы и список людей с их входами. Видит только полный
- * вход. Самостоятельный модуль: берёт общий клиент API и общие компоненты, больше ничего.
+ * Раздел «Пользователи и роли»: личные входы и один список — кто входит, к чьей карточке в «Людях» привязан, какой у
+ * него уровень входа и роль в команде, его пароль («глазик») и кнопка нового пароля. Пароль выдаётся сразу, без ссылок:
+ * администратор передаёт его человеку сам. Видит только полный вход.
  */
 export function UsersSection() {
   const query = useSettingsStaff();

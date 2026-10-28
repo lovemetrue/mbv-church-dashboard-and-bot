@@ -1,3 +1,4 @@
+import { useCanChange } from '../../shared/access';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { KitMatch, KitPerson, KitsView } from '@contracts';
 import { formatDateTime, formatPhone } from '../../entities/format';
@@ -193,6 +194,8 @@ function PersonCard({ result, busy, onIssue, onUndo, onNext }: {
 }) {
   const { person, done } = result;
   const issued = person.issuedAt !== null;
+  // «Только чтение» видит, выдан ли набор, но не выдаёт и не отменяет (сервер ответил бы 403).
+  const canChange = useCanChange();
   const tone = done === 'issued' ? styles.okCard : issued ? styles.warnCard : '';
   return (
     <section className={`${styles.panel} ${styles.card} ${tone}`} aria-label={t.cardLabel}>
@@ -208,13 +211,13 @@ function PersonCard({ result, busy, onIssue, onUndo, onNext }: {
       </p>
       {issued && done !== 'issued' && <p className={styles.warnText}>{t.alreadyIssued}</p>}
       <div className={styles.cardButtons}>
-        {!issued && (
+        {canChange && !issued && (
           <Button variant="ok" size="big" disabled={busy} onClick={onIssue}>
             {busy ? t.issuing : t.issue}
           </Button>
         )}
         <Button variant={issued ? 'primary' : 'default'} size="big" onClick={onNext}>{t.next}</Button>
-        {issued && (
+        {canChange && issued && (
           <Button variant="ghost" disabled={busy} onClick={onUndo}>
             {busy ? t.undoing : t.undo}
           </Button>

@@ -1,3 +1,4 @@
+import { useCanChange } from '../../shared/access';
 import { useId, useState } from 'react';
 import type { StrangeMark } from '@contracts';
 import { STRANGE_NOTE_MAX } from '../../entities/strange';
@@ -14,6 +15,11 @@ const t = ru.strange;
  * Пока запрос идёт, всё заблокировано; при ошибке введённая заметка остаётся.
  */
 export function StrangeSection({ target, mark }: { target: StrangeTarget; mark: StrangeMark | null }) {
+  // Метку видно и без формы — значком и плашкой в карточке; ставит и снимает её не «Только чтение».
+  return useCanChange() ? <StrangeForm target={target} mark={mark} /> : null;
+}
+
+function StrangeForm({ target, mark }: { target: StrangeTarget; mark: StrangeMark | null }) {
   const headId = useId();
   const checkId = useId();
   const hintId = useId();

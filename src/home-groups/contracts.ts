@@ -93,6 +93,7 @@
  *   POST /api/v1/settings/staff/reset        StaffIdBody        → DeliveryOk | ActionError (сброс пароля)
  *   POST /api/v1/settings/staff/personal-mode PersonalModeBody  → ActionOk | ActionError
  *   POST /api/v1/settings/staff/generate-password GeneratePasswordBody → GeneratePasswordOk | ActionError
+ *   POST /api/v1/settings/staff/password     StaffIdBody        → RevealPasswordOk | ActionError (показать выданный пароль; пишется в журнал)
  *   POST /api/v1/settings/prompts/save      SavePromptBody     → ActionOk | ActionError
  *   POST /api/v1/settings/prompts/activate  ActivatePromptBody → ActionOk | ActionError
  *
@@ -103,8 +104,10 @@
 /**
  * Уровень входа. `registration` — «Стойка регистрации»: сервер пускает такой вход только на страницу `/registration`
  * и отвечает 403 на всё, кроме регистрации участника, выдачи наборов и справочников формы (`deskAllows` в server.ts).
+ * `readonly` — «Только чтение»: видит «Сегодня», заявки, группы, людей и кампанию, но ничего не меняет и подбор не запускает;
+ * «Настройки» и «Команда» ему закрыты, «Координаторы» и «Наборы» — только смотреть (`readonlyAllows` в server.ts).
  */
-export type Role = 'admin' | 'super' | 'registration';
+export type Role = 'admin' | 'super' | 'registration' | 'readonly';
 
 export interface Me {
   role: Role;
@@ -1599,6 +1602,19 @@ export interface StaffItem {
   hasPendingLink: boolean;
   /** Человек из «Людей» (миграция 058): «u12» или «p7»; null — ФИО записи только строкой. */
   personKey: string | null;
+  /** ФИО человека из «Людей», к которому привязана запись; null — не привязана (или человека уже нет). */
+  personName: string | null;
+  /** Участник команды (`coordinators.id`), чья это учётная запись; null — не из справочника команды. */
+  coordinatorId: number | null;
+  /** Роли в команде, как в справочнике («Координатор, Распределитель»); null — не из справочника команды. */
+  teamRole: string | null;
+  /** Пароль задан (выдан или задан самим человеком по ссылке). */
+  hasPassword: boolean;
+  /**
+   * Пароль можно открыть «глазиком» (`settings/staff/password`): он выдан после миграции 063 и хранится
+   * зашифрованным. false при заданном пароле — пароль старый, посмотреть нельзя, только выдать новый.
+   */
+  passwordViewable: boolean;
 }
 
 export interface PersonalLoginsState {
@@ -1644,7 +1660,15 @@ export type GeneratePasswordBody = { coordinatorId: number } | { staffId: number
 export interface GeneratePasswordOk {
   ok: true;
   login: string;
-  /** Новый пароль. Показывается один раз: в базе только его хеш. */
+  /** Новый пароль. Его хеш проверяется при входе, а сам он хранится зашифрованным: полный вход откроет его снова. */
+  password: string;
+  /** Учётная запись, которой выдан пароль (у человека из справочника команды она могла только что завестись). */
+  id: number;
+}
+
+/** Выданный пароль, открытый «глазиком» в «Пользователях и ролях». */
+export interface RevealPasswordOk {
+  ok: true;
   password: string;
 }
 
@@ -1660,12 +1684,15 @@ export interface SuggestLoginOk {
 
 export interface CreateStaffBody {
   fullName: string;
-  email: string;
+  /** Необязательна при `generatePassword`: пароль выдают лично, а почта нужна только ссылке «Забыли пароль». */
+  email?: string;
   role: Role;
   /** Не указан — сервер подберёт сам (см. SuggestLoginBody). */
   login?: string;
   /** Человек из «Людей» («u12», «p7»); не указан — ФИО только строкой. */
   personKey?: string | null;
+  /** true — сразу выдать пароль (ответ — GeneratePasswordOk), без ссылки; иначе на почту уходит приглашение (DeliveryOk). */
+  generatePassword?: boolean;
 }
 
 export interface UpdateStaffBody {

@@ -9,7 +9,7 @@ import u from './Users.module.css';
 
 const t = ru.settings.users;
 
-const ROLES: readonly Role[] = ['admin', 'super', 'registration'];
+const ROLES: readonly Role[] = ['admin', 'readonly', 'registration', 'super'];
 
 /** То, что вводят в форме «Добавить» и «Изменить». */
 export interface StaffFormValues {
@@ -103,9 +103,8 @@ export function StaffFormDialog({
     if (busy) return;
     const next: { name?: string; email?: string } = {};
     if (!values.fullName.trim()) next.name = t.errFullName;
-    // У заведённых из справочника команды почты нет: при правке её можно оставить пустой.
-    const emailOptional = fixedLogin !== undefined && initial.email === '';
-    if (!(emailOptional && values.email.trim() === '') && !isValidEmail(values.email)) next.email = t.errEmail;
+    // Почта необязательна: пароль выдаётся сразу, а почта нужна только ссылке «Забыли пароль». Вписанная — проверяется.
+    if (values.email.trim() !== '' && !isValidEmail(values.email)) next.email = t.errEmail;
     setProblems(next);
     if (next.name) return nameRef.current?.focus();
     if (next.email) return emailRef.current?.focus();
@@ -295,59 +294,6 @@ export function ConfirmDialog({
         >
           {busy ? t.working : confirmLabel}
         </Button>
-      </div>
-    </Modal>
-  );
-}
-
-/**
- * Полная ссылка на пароль. Показывается, когда письмо не ушло: администратор передаёт её
- * человеку сам. Ссылка одноразовая, поэтому предупреждение стоит прямо над ней.
- */
-export function LinkDialog({ name, email, url, onClose }: { name: string; email: string | null; url: string; onClose: () => void }) {
-  const boxId = useId();
-  const boxRef = useRef<HTMLTextAreaElement>(null);
-  const [copy, setCopy] = useState<'idle' | 'done' | 'failed'>('idle');
-
-  async function copyLink() {
-    boxRef.current?.select();
-    try {
-      // Без защищённого соединения (http) буфера обмена у страницы нет: тогда пробуем старый способ.
-      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(url);
-      else if (!document.execCommand('copy')) throw new Error('copy');
-      setCopy('done');
-    } catch {
-      setCopy('failed');
-    }
-  }
-
-  return (
-    <Modal title={t.linkTitle(name)} onClose={onClose}>
-      <p>{t.linkLead(email)}</p>
-      <p className={styles.noticeWarn}>{t.linkWarning}</p>
-      <label htmlFor={boxId} className={styles.fieldLabel}>
-        {t.linkLabel}
-      </label>
-      <textarea
-        id={boxId}
-        ref={boxRef}
-        className={u.linkBox}
-        readOnly
-        rows={4}
-        value={url}
-        spellCheck={false}
-        onFocus={(e) => e.currentTarget.select()}
-      />
-      <div className={u.copyRow}>
-        <Button variant="primary" onClick={() => void copyLink()}>
-          {t.copy}
-        </Button>
-        <span role="status" className={copy === 'failed' ? u.copyFail : u.copyOk}>
-          {copy === 'done' ? t.copied : copy === 'failed' ? t.copyFailed : ''}
-        </span>
-      </div>
-      <div className={styles.dialogFoot}>
-        <Button onClick={onClose}>{t.close}</Button>
       </div>
     </Modal>
   );

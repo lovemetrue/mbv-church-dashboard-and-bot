@@ -7,8 +7,10 @@ import { PasswordCell } from './PasswordCell';
 import { QueryBoundary } from './QueryBoundary';
 import { RefreshButton } from './RefreshButton';
 import { SectionHead } from './SectionHead';
-import { useSettingsStaff, useStaffActions } from './queries';
-import { ConfirmDialog, StaffFormDialog, toFormValues, type StaffFormValues } from './StaffDialogs';
+import { useCoordinators } from '../../shared/api/queries';
+import { useSettingsStaff, useSettingsTeamRoles, useStaffActions } from './queries';
+import { ConfirmDialog, sameIds, StaffFormDialog, toFormValues, type StaffFormValues, type TeamRolesChoice } from './StaffDialogs';
+import { RolesGuide } from './RolesGuide';
 import styles from './Settings.module.css';
 import u from './Users.module.css';
 
@@ -198,6 +200,14 @@ function StaffBody({ data }: { data: SettingsStaffView }) {
   const [issued, setIssued] = useState<Record<number, string>>({});
   const listId = useId();
   const rows = userRows(data);
+  // Роли в команде правятся из окна пользователя, если запись — участник команды: нужны справочник ролей и его роли.
+  const teamRoles = useSettingsTeamRoles();
+  const coordinators = useCoordinators();
+  const teamChoice: TeamRolesChoice | undefined = teamRoles.data
+    ? { options: teamRoles.data.items.map((r) => ({ id: r.id, name: r.name, meaning: ru.settings.teamRoles.meaning[r.kind ?? 'none'] })) }
+    : undefined;
+  const teamRoleIdsOf = (item: StaffItem): number[] | null =>
+    item.coordinatorId === null ? null : (coordinators.data?.items.find((c) => c.id === item.coordinatorId)?.roleIds ?? null);
 
   function remember(r: GeneratePasswordOk) {
     setIssued((prev) => ({ ...prev, [r.id]: r.password }));
@@ -243,15 +253,20 @@ function StaffBody({ data }: { data: SettingsStaffView }) {
     return null;
   }
 
-  async function edit(item: StaffItem, values: StaffFormValues): Promise<string | null> {
+  async function edit(item: StaffItem, values: StaffFormValues, teamRoleIds: number[] | null): Promise<string | null> {
     // Отправляем только изменённое: чужие поля сервер не трогаем и не затираем устаревшими.
     const body: UpdateStaffBody = { id: item.id };
     if (values.fullName !== item.fullName) body.fullName = values.fullName;
     if (values.email !== (item.email ?? '')) body.email = values.email;
     if (values.role !== item.role) body.role = values.role;
     if (values.personKey !== (item.personKey ?? '')) body.personKey = values.personKey || null;
+    const before = teamRoleIds ?? [];
+    const teamChanged = item.coordinatorId !== null && teamRoleIds !== null && !sameIds(values.teamRoleIds, before);
     setNotice(null);
-    const r = await run(() => actions.update(body));
+    const r = await run(async () => {
+      if (Object.keys(body).length > 1) await actions.update(body);
+      if (teamChanged) await actions.setTeamRoles(item.coordinatorId!, values.teamRoleIds);
+    });
     if (!r) return null;
     if ('error' in r) return r.error;
     setDialog(null);
@@ -296,6 +311,7 @@ function StaffBody({ data }: { data: SettingsStaffView }) {
           </Button>
         </div>
         <p className={`${styles.muted} ${u.listLead}`}>{t.lead}</p>
+        <RolesGuide />
 
         {notice && (
           <p className={notice.kind === 'ok' ? styles.noticeOk : styles.noticeError} role={notice.kind === 'ok' ? 'status' : 'alert'}>
@@ -342,7 +358,7 @@ function StaffBody({ data }: { data: SettingsStaffView }) {
           title={t.addTitle}
           submitLabel={t.create}
           submittingLabel={t.creating}
-          initial={{ fullName: '', email: '', role: 'admin', login: '', personKey: '' }}
+          initial={{ fullName: '', email: '', role: 'admin', login: '', personKey: '', teamRoleIds: [] }}
           suggest={async (fullName) => {
             try {
               return (await actions.suggest({ fullName })).login;
@@ -360,10 +376,11 @@ function StaffBody({ data }: { data: SettingsStaffView }) {
           title={t.editTitle(dialog.item.fullName)}
           submitLabel={t.save}
           submittingLabel={t.saving}
-          initial={toFormValues(dialog.item)}
+          initial={toFormValues(dialog.item, teamRoleIdsOf(dialog.item) ?? [])}
           fixedLogin={dialog.item.login}
+          {...(teamRoleIdsOf(dialog.item) !== null && teamChoice ? { teamRoles: teamChoice } : {})}
           busy={busy}
-          onSubmit={(values) => edit(dialog.item, values)}
+          onSubmit={(values) => edit(dialog.item, values, teamRoleIdsOf(dialog.item))}
           onClose={close}
         />
       )}

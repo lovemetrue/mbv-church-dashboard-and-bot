@@ -3,6 +3,7 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { App } from '../../app/App';
+import { buildCoordinators } from '../../fixtures/build';
 import { buildSettingsStaff, SAMPLE_ISSUED } from '../../fixtures/settings';
 import { makeClient, renderAt, stubFetchWithFixtures } from '../../test/render';
 import { UsersSection } from './UsersSection';
@@ -536,3 +537,84 @@ describe('«Пользователи и роли»: действия над по
     await waitFor(() => expect(calls).toBeGreaterThan(before));
   });
 });
+
+describe('«Пользователи и роли»: роль доступа и роли в команде', () => {
+  const teamRoles = {
+    items: [
+      { id: 1, name: 'Координатор', kind: 'coordinator', members: 1 },
+      { id: 3, name: 'Распределитель', kind: 'distributor', members: 0 },
+    ],
+  };
+  const coordinator = (roleIds: number[]) => ({ generatedAt: 'g', items: [{ ...buildCoordinators().items[0]!, id: 5, roleIds }] });
+
+  test('в окне пользователя роль доступа — сразу после ФИО, с «Только чтение» среди вариантов', async () => {
+    open(view([item({ id: 7, fullName: 'Ирина Иванова' })]));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Добавить пользователя' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Добавить пользователя' });
+    const group = within(dialog).getByRole('group', { name: 'Роль доступа' });
+    expect(within(group).getByRole('radio', { name: 'Только чтение' })).toBeInTheDocument();
+    // Порядок в окне: ФИО, затем роль доступа, и только потом человек, почта и логин.
+    const name = within(dialog).getByRole('textbox', { name: 'ФИО' });
+    const email = within(dialog).getByRole('textbox', { name: EMAIL });
+    expect(name.compareDocumentPosition(group) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(group.compareDocumentPosition(email) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // У нового пользователя ролей в команде нет: он не из справочника команды.
+    expect(within(dialog).queryByRole('group', { name: 'Роли в команде' })).not.toBeInTheDocument();
+  });
+
+  test('у участника команды в окне правки — его роли в команде; изменённые уходят правкой координатора, а роль доступа — своей', async () => {
+    const { fetchMock } = open(view([item({ id: 7, fullName: 'Ирина Иванова', coordinatorId: 5, teamRole: 'Координатор' })]), {
+      'settings/team-roles': () => json(teamRoles),
+      coordinators: () => json(coordinator([1])),
+      'settings/staff/update': () => json({ ok: true }),
+      'coordinators/5/update': () => json({ ok: true }),
+    });
+    const user = userEvent.setup();
+    await user.click(within(await rowOf(/Иванова/)).getByRole('button', { name: /^Изменить/ }));
+    const dialog = await screen.findByRole('dialog');
+    const team = await within(dialog).findByRole('group', { name: 'Роли в команде' });
+    expect(within(team).getByRole('checkbox', { name: 'Координатор' })).toBeChecked();
+    expect(within(team).getByRole('checkbox', { name: 'Распределитель' })).toHaveAccessibleDescription(/карточки групп не правит/);
+    await user.click(within(team).getByRole('checkbox', { name: 'Распределитель' }));
+    await user.click(within(dialog).getByRole('radio', { name: 'Только чтение' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
+    await waitFor(() =>
+      expect(posts(fetchMock)).toEqual([
+        { path: 'settings/staff/update', body: { id: 7, role: 'readonly' } },
+        { path: 'coordinators/5/update', body: { fields: { roleIds: '1, 3' } } },
+      ]),
+    );
+  });
+
+  test('если поменяли только роли в команде, учётная запись не трогается; без единой роли не сохранить', async () => {
+    const { fetchMock } = open(view([item({ id: 7, fullName: 'Ирина Иванова', coordinatorId: 5 })]), {
+      'settings/team-roles': () => json(teamRoles),
+      coordinators: () => json(coordinator([1])),
+      'coordinators/5/update': () => json({ ok: true }),
+    });
+    const user = userEvent.setup();
+    await user.click(within(await rowOf(/Иванова/)).getByRole('button', { name: /^Изменить/ }));
+    const dialog = await screen.findByRole('dialog');
+    const team = await within(dialog).findByRole('group', { name: 'Роли в команде' });
+    await user.click(within(team).getByRole('checkbox', { name: 'Координатор' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
+    expect(await within(dialog).findByText('Отметьте хотя бы одну роль в команде.')).toBeInTheDocument();
+    expect(posts(fetchMock)).toEqual([]);
+    await user.click(within(team).getByRole('checkbox', { name: 'Распределитель' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
+    await waitFor(() => expect(posts(fetchMock)).toEqual([{ path: 'coordinators/5/update', body: { fields: { roleIds: '3' } } }]));
+  });
+
+  test('«Что может каждая роль»: таблица по ролям доступа и что добавляют роли в команде', async () => {
+    open(view([item({})]));
+    const user = userEvent.setup();
+    await user.click(await screen.findByText('Что может каждая роль'));
+    const table = screen.getByRole('table', { name: 'Что может каждая роль' });
+    const row = within(table).getByRole('row', { name: /Утверждать заявки/ });
+    // Столбцы: «Только чтение», «Стойка регистрации», «Обычный», «Полный».
+    expect(within(row).getAllByRole('cell').map((c) => c.getAttribute('aria-label'))).toEqual(['нет', 'нет', 'да', 'да']);
+    expect(screen.getByText(/Распределитель/, { selector: 'b' })).toBeInTheDocument();
+  });
+});
+

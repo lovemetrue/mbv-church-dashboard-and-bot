@@ -294,3 +294,54 @@
   background: var(--line-soft);
   color: var(--ink);
 }
+
+/* «Что может каждая роль»: раскрывающаяся справка с таблицей. На телефоне таблица прокручивается вбок внутри себя. */
+.guide {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.guideSummary {
+  cursor: pointer;
+  font-weight: 600;
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+}
+.guideWrap {
+  overflow-x: auto;
+  margin: 8px 0;
+}
+.guideTable {
+  border-collapse: collapse;
+  min-width: 520px;
+  width: 100%;
+  font-size: 13px;
+}
+.guideTable th,
+.guideTable td {
+  padding: 6px 8px;
+  border-top: 1px solid var(--line-soft);
+  text-align: center;
+}
+.guideTable th[scope='row'] {
+  text-align: left;
+  font-weight: 400;
+}
+.guideTable thead th {
+  font-weight: 600;
+  background: var(--surface-2);
+}
+.guideSub {
+  margin: 12px 0 6px;
+  font-size: 14px;
+}
+.guideList {
+  margin: 0 0 8px;
+  padding-left: 18px;
+}
+.guideList li {
+  margin-bottom: 4px;
+}

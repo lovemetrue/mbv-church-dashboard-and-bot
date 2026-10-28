@@ -20,6 +20,13 @@ export interface StaffFormValues {
   login: string;
   /** Человек из «Людей» («u12», «p7»); пусто — ФИО только строкой (служебная запись, человек не из «Людей»). */
   personKey: string;
+  /** Роли в команде (`team_roles.id`) — только у участника команды; у остальных пусто и не отправляется. */
+  teamRoleIds: number[];
+}
+
+/** Роли команды для формы: у участника команды они отмечаются галочками рядом с ролью доступа. */
+export interface TeamRolesChoice {
+  options: { id: number; name: string; meaning: string }[];
 }
 
 function ErrorLine({ text }: { text: string | null }) {
@@ -46,6 +53,7 @@ export function StaffFormDialog({
   initial,
   fixedLogin,
   suggest,
+  teamRoles,
   busy,
   onSubmit,
   onClose,
@@ -58,15 +66,17 @@ export function StaffFormDialog({
   fixedLogin?: string;
   /** Подсказка логина по ФИО; undefined — подсказывать нечего (форма «Изменить»). */
   suggest?: (fullName: string) => Promise<string | null>;
+  /** Есть — запись участника команды: его роли в команде правятся тут же. */
+  teamRoles?: TeamRolesChoice;
   busy: boolean;
   onSubmit: (values: StaffFormValues) => Promise<string | null>;
   onClose: () => void;
 }) {
-  const ids = { name: useId(), email: useId(), login: useId(), nameErr: useId(), emailErr: useId(), loginHint: useId(), person: useId(), personHint: useId() };
+  const ids = { name: useId(), email: useId(), login: useId(), nameErr: useId(), emailErr: useId(), loginHint: useId(), person: useId(), personHint: useId(), teamErr: useId() };
   const nameRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const [values, setValues] = useState<StaffFormValues>(initial);
-  const [problems, setProblems] = useState<{ name?: string; email?: string }>({});
+  const [problems, setProblems] = useState<{ name?: string; email?: string; team?: string }>({});
   const [error, setError] = useState<string | null>(null);
 
   // Ответ на подсказку может прийти позже, чем человек успел поменять ФИО: берём только
@@ -101,13 +111,16 @@ export function StaffFormDialog({
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (busy) return;
-    const next: { name?: string; email?: string } = {};
+    const next: { name?: string; email?: string; team?: string } = {};
     if (!values.fullName.trim()) next.name = t.errFullName;
+    // Без роли участника команды сервер не сохранит: справочник требует хотя бы одну.
+    if (teamRoles && values.teamRoleIds.length === 0) next.team = t.errTeamRole;
     // Почта необязательна: пароль выдаётся сразу, а почта нужна только ссылке «Забыли пароль». Вписанная — проверяется.
     if (values.email.trim() !== '' && !isValidEmail(values.email)) next.email = t.errEmail;
     setProblems(next);
     if (next.name) return nameRef.current?.focus();
     if (next.email) return emailRef.current?.focus();
+    if (next.team) return;
     setError(await onSubmit({ ...values, fullName: values.fullName.trim(), email: values.email.trim(), login: values.login.trim() }));
   }
 
@@ -116,7 +129,8 @@ export function StaffFormDialog({
     values.fullName.trim() === initial.fullName &&
     values.email.trim() === initial.email &&
     values.role === initial.role &&
-    values.personKey === initial.personKey;
+    values.personKey === initial.personKey &&
+    sameIds(values.teamRoleIds, initial.teamRoleIds);
 
   return (
     <Modal title={title} onClose={onClose}>
@@ -143,6 +157,77 @@ export function StaffFormDialog({
           <p id={ids.nameErr} className={u.fieldError}>
             {problems.name}
           </p>
+        )}
+
+        {/* Роль доступа — сразу после ФИО: это главное, что решают о пользователе, и её не должно быть видно лишь после прокрутки. */}
+        <fieldset className={u.fieldset}>
+          <legend className={u.legend}>{t.role}</legend>
+          <p className={`${styles.muted} ${u.radioHint}`}>{t.roleLead}</p>
+          {ROLES.map((role) => {
+            const nameId = `${ids.name}-${role}-name`;
+            const descId = `${ids.name}-${role}-desc`;
+            return (
+              // Вся карточка — подпись переключателя, чтобы попасть было легко пальцем; имя же берём
+              // только из заголовка, а пояснение читается как описание.
+              <label key={role} className={u.radio}>
+                <input
+                  type="radio"
+                  name={`${ids.name}-role`}
+                  checked={values.role === role}
+                  aria-labelledby={nameId}
+                  aria-describedby={descId}
+                  onChange={() => set('role', role)}
+                />
+                <span className={u.radioText}>
+                  <span id={nameId} className={u.radioName}>
+                    {t.roles[role]}
+                  </span>
+                  <span id={descId} className={`${styles.muted} ${u.radioHint}`}>
+                    {t.roleHints[role]}
+                  </span>
+                </span>
+              </label>
+            );
+          })}
+        </fieldset>
+
+        {teamRoles && (
+          <fieldset className={u.fieldset} aria-describedby={problems.team ? ids.teamErr : undefined}>
+            <legend className={u.legend}>{t.teamRolesLabel}</legend>
+            <p className={`${styles.muted} ${u.radioHint}`}>{t.teamRolesLead}</p>
+            {teamRoles.options.map((r) => {
+              const nameId = `${ids.name}-team-${r.id}`;
+              const descId = `${ids.name}-team-${r.id}-desc`;
+              return (
+                <label key={r.id} className={u.radio}>
+                  <input
+                    type="checkbox"
+                    checked={values.teamRoleIds.includes(r.id)}
+                    aria-labelledby={nameId}
+                    aria-describedby={descId}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      set('teamRoleIds', on ? [...values.teamRoleIds, r.id] : values.teamRoleIds.filter((x) => x !== r.id));
+                      setProblems((p) => ({ ...p, team: undefined }));
+                    }}
+                  />
+                  <span className={u.radioText}>
+                    <span id={nameId} className={u.radioName}>
+                      {r.name}
+                    </span>
+                    <span id={descId} className={`${styles.muted} ${u.radioHint}`}>
+                      {r.meaning}
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+            {problems.team && (
+              <p id={ids.teamErr} className={u.fieldError} role="alert">
+                {problems.team}
+              </p>
+            )}
+          </fieldset>
         )}
 
         {/* ФИО — строкой, а если это человек из «Людей», рядом ссылка на него: его данные не дублируются. */}
@@ -190,35 +275,6 @@ export function StaffFormDialog({
           </p>
         )}
 
-        <fieldset className={u.fieldset}>
-          <legend className={u.legend}>{t.role}</legend>
-          {ROLES.map((role) => {
-            const nameId = `${ids.name}-${role}-name`;
-            const descId = `${ids.name}-${role}-desc`;
-            return (
-              // Вся карточка — подпись переключателя, чтобы попасть было легко пальцем; имя же берём
-              // только из заголовка, а пояснение читается как описание.
-              <label key={role} className={u.radio}>
-                <input
-                  type="radio"
-                  name={`${ids.name}-role`}
-                  checked={values.role === role}
-                  aria-labelledby={nameId}
-                  aria-describedby={descId}
-                  onChange={() => set('role', role)}
-                />
-                <span className={u.radioText}>
-                  <span id={nameId} className={u.radioName}>
-                    {t.roles[role]}
-                  </span>
-                  <span id={descId} className={`${styles.muted} ${u.radioHint}`}>
-                    {t.roleHints[role]}
-                  </span>
-                </span>
-              </label>
-            );
-          })}
-        </fieldset>
 
         {fixedLogin !== undefined ? (
           <p className={`${styles.muted} ${u.passwordNote}`}>{t.loginFixed(fixedLogin)}</p>
@@ -299,10 +355,15 @@ export function ConfirmDialog({
   );
 }
 
-export const toFormValues = (item: StaffItem): StaffFormValues => ({
+export const toFormValues = (item: StaffItem, teamRoleIds: number[] = []): StaffFormValues => ({
   fullName: item.fullName,
   email: item.email ?? '',
   role: item.role,
   login: '',
   personKey: item.personKey ?? '',
+  teamRoleIds,
 });
+
+/** Те же роли, в любом порядке: порядок галочек не правка. */
+export const sameIds = (a: readonly number[], b: readonly number[]): boolean =>
+  a.length === b.length && a.every((id) => b.includes(id));

@@ -4,6 +4,7 @@ import { serverText } from '../../shared/api/serverText';
 import { ru } from '../../shared/i18n/ru';
 import { Button } from '../../shared/ui';
 import { QueryBoundary } from './QueryBoundary';
+import { RolesGuide } from './RolesGuide';
 import { RefreshButton } from './RefreshButton';
 import { SectionHead } from './SectionHead';
 import { useSettingsTeamRoles, useTeamRoleActions } from './queries';
@@ -62,13 +63,7 @@ function RolesEditor({ items }: { items: TeamRoleItem[] }) {
   return (
     <div className={styles.block}>
       <p>{t.intro}</p>
-      <ul className={r.help}>
-        {t.kindsHelp.map(([kind, meaning]) => (
-          <li key={kind}>
-            <b>{kind}</b> — {meaning}
-          </li>
-        ))}
-      </ul>
+      <RolesGuide />
       <ul className={r.list} aria-label={t.listLabel}>
         {items.map((item) => (
           <RoleRow
@@ -124,6 +119,8 @@ function RoleRow({ item, busy, onSave, onRemove }: {
           <KindSelect id={kindId} value={kind} disabled={busy} onChange={setKind} />
         </div>
       </div>
+      {/* Что даёт роль — по сохранённому смыслу: пока выбор в списке не сохранён, роль даёт прежнее. */}
+      <p className={r.meaning}>{t.meaning[item.kind ?? 'none']}</p>
       <div className={r.foot}>
         <span className={styles.muted}>{t.members(item.members)}</span>
         <span className={r.actions}>

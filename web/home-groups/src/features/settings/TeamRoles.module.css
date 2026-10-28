@@ -77,3 +77,10 @@
   color: var(--ink);
   font-weight: 600;
 }
+
+/* Что даёт роль — под полями, мелко: читается при взгляде на список, не мешая правке. */
+.meaning {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}

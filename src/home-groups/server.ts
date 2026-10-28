@@ -28,7 +28,7 @@ import { draftFor, groupsFor, kitPersonFor, peopleFor, requestsFor, type Viewer 
 import type { Reconciler } from './reconcile/service.js';
 import { registrationCardPage } from '../dashboard/registrationCard.js';
 import type { Settings } from '../platform/settings/service.js';
-import type { ActionError, ActionOk, MatchingRunOk, Me, Role } from './contracts.js';
+import type { ActionError, ActionOk, MatchingRunOk, Me, Role, TeamRoleKind } from './contracts.js';
 import type { Views } from './api/views.js';
 import { forgotPage, homeGroupsLoginPage, setPasswordPage } from './loginPage.js';
 
@@ -168,7 +168,7 @@ const CONTENT_TYPES: Record<string, string> = {
 
 class BodyTooLarge extends Error {}
 
-const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode|staff\/generate-password|team-roles\/create|team-roles\/update|team-roles\/delete|directions\/create|directions\/update|directions\/delete|bot\/extra-questions|bot\/send-extra-questions|assistant\/enabled|assistant\/llm|assistant\/llm-test|geocoder|geocoder-test|geocoder-retry|geocoder-reject|map)$/;
+const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode|staff\/generate-password|staff\/password|team-roles\/create|team-roles\/update|team-roles\/delete|directions\/create|directions\/update|directions\/delete|bot\/extra-questions|bot\/send-extra-questions|assistant\/enabled|assistant\/llm|assistant\/llm-test|geocoder|geocoder-test|geocoder-retry|geocoder-reject|map)$/;
 const MAP_LOADED_PATH = '/api/v1/map/loaded';
 const CREATE_PATH = /^\/api\/v1\/(requests|groups|people|coordinators)\/create$/;
 /** `POST /api/v1/groups/5/update`: правка и удаление записей справочника. */
@@ -213,6 +213,26 @@ function deskAllows(method: string, path: string): boolean {
   if (method === 'POST') return path === '/api/v1/people/create' || KIT_POST_PATH.test(path);
   if (method !== 'GET') return false;
   return path === '/api/v1/me' || path === '/api/v1/form-meta' || path === KITS_PATH || path === LOGO_PATH || PERSON_PATH.test(path);
+}
+
+/**
+ * Что открыто входу «Только чтение»: любые чтения, кроме сводки «Команды», «Настроек» и истории помощника. Из POST —
+ * только то, что ничего не меняет: учёт открытий карты и поиск в «Наборах» (`kits/find`, `kits/search`); выдача и
+ * отмена набора, подбор, помощник, правки и создание отвечают 403. Как и у стойки, закрыто всё, что сюда не вписано.
+ */
+function readonlyAllows(method: string, path: string): boolean {
+  if (method === 'POST') return path === MAP_LOADED_PATH || path === '/api/v1/kits/find' || path === '/api/v1/kits/search';
+  if (method !== 'GET') return false;
+  return !(path === '/api/v1/team' || path.startsWith('/api/v1/settings/') || path === ASSISTANT_CHAT_HISTORY_PATH);
+}
+
+/**
+ * Карточку группы правит не всякий: у кого в команде только роль распределителя, тот направляет людей по заявкам, а
+ * поля группы (адрес, время, ведущие, статус) меняют координаторы. Решает `team_roles.kind`, а не название роли.
+ */
+export function mayEditGroups(viewer: { person: { teamKinds: readonly TeamRoleKind[] } | null }): boolean {
+  const kinds = viewer.person?.teamKinds ?? [];
+  return !(kinds.length > 0 && kinds.every((k) => k === 'distributor'));
 }
 
 /** Адрес страницы регистрации? Слэш на конце не мешает — так же решает интерфейс (`isRegistrationPath`). */
@@ -579,6 +599,13 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       return;
     }
     if (what === 'people' && action === 'update') { sendJson(res, 404, { error: 'not_found' }); return; }
+    if (what === 'groups' && action === 'update') {
+      const viewer = await viewerOf(sid);
+      if (viewer && !mayEditGroups(viewer)) {
+        sendJson(res, 403, { error: 'forbidden', message: 'Распределитель не правит карточки групп: попросите координатора группы.' } satisfies ActionError);
+        return;
+      }
+    }
     const outcome = what === 'people'
       ? await deps.manager.deletePerson(id, call.actor)
       : what === 'groups'
@@ -867,6 +894,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       'staff/reset': () => deps.staff.reset(call.body, call.actor),
       'staff/personal-mode': () => deps.staff.setPersonalMode(call.body, call.actor),
       'staff/generate-password': () => deps.staff.generatePassword(call.body, call.actor),
+      'staff/password': () => deps.staff.revealPassword(call.body, call.actor),
       'team-roles/create': () => deps.teamRoles.create(call.body, call.actor),
       'team-roles/update': () => deps.teamRoles.update(call.body, call.actor),
       'team-roles/delete': () => deps.teamRoles.delete(call.body, call.actor),
@@ -902,6 +930,10 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     // в `deskAllows`, — а не открыт, пока о ней не вспомнят.
     if ((await deps.auth.roleOf(sid)) === 'registration' && !deskAllows(req.method ?? 'GET', path)) {
       sendJson(res, 403, { error: 'forbidden', message: 'Стойке регистрации доступны только регистрация участника и выдача наборов.' } satisfies ActionError);
+      return;
+    }
+    if ((await deps.auth.roleOf(sid)) === 'readonly' && !readonlyAllows(req.method ?? 'GET', path)) {
+      sendJson(res, 403, { error: 'forbidden', message: 'Вход «Только чтение» ничего не меняет и не видит «Настроек» и сводки «Команды».' } satisfies ActionError);
       return;
     }
     const act = req.method === 'POST' ? ACTION_PATH.exec(path) : null;

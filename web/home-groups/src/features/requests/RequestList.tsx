@@ -54,7 +54,8 @@ interface RequestListProps {
   items: readonly RequestItem[];
   selectedId: number | null;
   onSelect: (id: number) => void;
-  selection: RowSelection;
+  /** null — выбирать нечего (вход «Только чтение»): флажков в строках нет. */
+  selection: RowSelection | null;
 }
 
 export function RequestList({ items, selectedId, onSelect, selection }: RequestListProps) {
@@ -72,7 +73,7 @@ export function RequestList({ items, selectedId, onSelect, selection }: RequestL
           const text = proposalText(r);
           const proposal = proposalOf(r);
           const confidence = proposal && r.bucket !== 'done' ? (proposal.main.confidence ?? proposal.main.score) : null;
-          const picked = selection.isPicked(r.id);
+          const picked = selection?.isPicked(r.id) ?? false;
           return (
             <li
               key={r.id}
@@ -80,15 +81,19 @@ export function RequestList({ items, selectedId, onSelect, selection }: RequestL
               onClick={() => onSelect(r.id)}
             >
               {/* Флажок не открывает карточку: клик не всплывает до строки. Зона нажатия — вся ячейка (44 px). */}
-              <label className={styles.pick} onClick={(e) => e.stopPropagation()}>
-                <input
-                  type="checkbox"
-                  checked={picked}
-                  disabled={!picked && selection.limitReached}
-                  onChange={() => selection.toggle(r.id)}
-                  aria-label={ru.requests.bulk.selectRow(r.fio)}
-                />
-              </label>
+              {selection ? (
+                <label className={styles.pick} onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={picked}
+                    disabled={!picked && selection.limitReached}
+                    onChange={() => selection.toggle(r.id)}
+                    aria-label={ru.requests.bulk.selectRow(r.fio)}
+                  />
+                </label>
+              ) : (
+                <span />
+              )}
               <div className={styles.who}>
                 <button
                   type="button"

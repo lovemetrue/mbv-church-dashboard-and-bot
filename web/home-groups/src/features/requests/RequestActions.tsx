@@ -1,3 +1,4 @@
+import { useCanChange } from '../../shared/access';
 import { useId } from 'react';
 import type { RequestItem } from '@contracts';
 import { ru } from '../../shared/i18n/ru';
@@ -34,7 +35,8 @@ export function ActionNoticeLine({ notice }: { notice: ActionNotice | null }) {
  */
 export function RequestActions({ r, act }: { r: RequestItem; act: RequestActionsState }) {
   const hintId = useId();
-  if (!isActionable(r)) return null;
+  const canChange = useCanChange();
+  if (!isActionable(r) || !canChange) return null;
   const proposal = proposalOf(r);
   const group = proposal?.main.group;
   const weak = r.bucket === 'human';

@@ -204,3 +204,23 @@ describe('«Наборы»: выдача', () => {
     expect(screen.getByLabelText('Номер или ФИО')).toHaveValue('');
   });
 });
+
+describe('«Наборы» у входа «Только чтение»', () => {
+  test('человека находят и видят, выдан ли набор, но «Выдать набор» нет', async () => {
+    const fetchMock = open({ role: 'readonly' });
+    const user = userEvent.setup();
+    await search(user, '1042');
+    const card = await screen.findByRole('region', { name: 'Участник' });
+    expect(within(card).getByText('Иван Петров')).toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: 'Выдать набор' })).not.toBeInTheDocument();
+    expect(posts(fetchMock).map((p) => p.path)).toEqual(['kits/find']);
+  });
+
+  test('у выданного набора нет «Отменить выдачу»', async () => {
+    open({ role: 'readonly', find: () => json({ ok: true, person: person({ issuedAt: '2026-10-22T08:00:00Z', issuedBy: 'p_ivanova' }) }) });
+    const user = userEvent.setup();
+    await search(user, '1042');
+    const card = await screen.findByRole('region', { name: 'Участник' });
+    expect(within(card).queryByRole('button', { name: 'Отменить выдачу' })).not.toBeInTheDocument();
+  });
+});

@@ -1,3 +1,4 @@
+import { useCanEditGroups } from '../../../shared/access';
 import { useId, useMemo, useState, type FormEvent } from 'react';
 import type { GroupItem, PersonItem } from '@contracts';
 import { groupLabel } from '../../../entities/format';
@@ -61,6 +62,7 @@ export function AddToGroupDialog({
   const groups = useGroups();
   const { run, busy } = useMemberAction();
   const [role, setRole] = useState<GroupRole>(move?.role ?? 'member');
+  const canEditGroups = useCanEditGroups();
   const [query, setQuery] = useState('');
   const [pickedId, setPickedId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -114,7 +116,8 @@ export function AddToGroupDialog({
         <fieldset className={manage.multi} hidden={!!move}>
           <legend>{t.role}</legend>
           <div className={manage.multiList}>
-            {ROLES.map((r) => (
+            {/* Ведущего и соведущего ставит правка группы, а её распределителю не дают (`mayEditGroups` на сервере). */}
+            {ROLES.filter((r) => r === 'member' || canEditGroups).map((r) => (
               <label key={r} className={manage.check}>
                 <input
                   type="radio"

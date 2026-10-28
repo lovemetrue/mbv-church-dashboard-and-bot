@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { RequestsView } from '@contracts';
 import { BUCKET_LABEL, LIST_BUCKETS, type BucketFilter } from '../../entities/buckets';
+import { useCanChange } from '../../shared/access';
 import { useRequests } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
 import { useAppNav } from '../../shared/nav';
@@ -85,6 +86,8 @@ function WaitingContent({
   const neighbors = useNeighbors(visible, selected?.id ?? null, nav.selectRequest);
   // Выбор для массовых действий принадлежит текущему списку: сменился чип, поиск или «В работе у» — выбор сброшен.
   const bulk = useBulk(visible, `${nav.bucket}\u0000${nav.search}\u0000${resp.value}`);
+  // «Только чтение» ничего не меняет: ни массовых действий, ни флажков выбора у него нет.
+  const canChange = useCanChange();
 
   return (
     <div className={styles.work}>
@@ -123,13 +126,13 @@ function WaitingContent({
           <ResponsibleSelect items={data.items} value={resp.value} mine={resp.myName !== null} onChange={resp.set} />
           <SavedViewsMenu scope="requests" />
         </div>
-        <BulkPanel bulk={bulk} visibleCount={visible.length} />
+        {canChange && <BulkPanel bulk={bulk} visibleCount={visible.length} />}
         {visible.length ? (
           <RequestList
             items={visible}
             selectedId={nav.requestId}
             onSelect={nav.selectRequest}
-            selection={{ isPicked: bulk.isPicked, toggle: bulk.toggle, limitReached: bulk.limitReached }}
+            selection={canChange ? { isPicked: bulk.isPicked, toggle: bulk.toggle, limitReached: bulk.limitReached } : null}
           />
         ) : (
           <div className={styles.listbox}>

@@ -1,3 +1,4 @@
+import { useCanChange } from '../../shared/access';
 import { GenderField } from '../gender/GenderField';
 import type { CoordinatorItem, GroupItem, PersonItem } from '@contracts';
 import { formatDateFull, formatPhone, groupLabel, healthTone } from '../../entities/format';
@@ -305,6 +306,7 @@ export function PersonCard({ p, onClose }: { p: PersonItem; onClose: () => void 
 
 export function CoordinatorCard({ c, onClose }: { c: CoordinatorItem; onClose: () => void }) {
   const groups = useGroups();
+  const canChange = useCanChange();
   const nav = useAppNav();
   const mine = groups.data?.items.filter((g) => g.coordinator === c.name) ?? [];
   // Участник команды — человек из «Людей»: имя и телефон оттуда, а переход ведёт в его карточку.
@@ -335,7 +337,7 @@ export function CoordinatorCard({ c, onClose }: { c: CoordinatorItem; onClose: (
     <Drawer label={`Карточка координатора: ${c.name}`} title={c.name} subtitle={c.role} onClose={onClose}>
       <DrawerSection>
         <KeyValue rows={rows} />
-        <CoordinatorActions key={c.id} c={c} onDeleted={onClose} />
+        {canChange && <CoordinatorActions key={c.id} c={c} onDeleted={onClose} />}
       </DrawerSection>
       <DrawerSection title={ru.reference.coordinatorGroups}>
         {groups.isPending ? (

@@ -4,9 +4,10 @@ import { request as httpRequest } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
-import { createHomeGroupsServer } from '../src/home-groups/server.js';
+import { createHomeGroupsServer, mayEditGroups } from '../src/home-groups/server.js';
 import { SessionService, type SessionStore } from '../src/dashboard/sessions.js';
 import type { AuthPort } from '../src/platform/auth/personalAuth.js';
+import type { Role } from '../src/home-groups/contracts.js';
 import { buildViews } from '../src/home-groups/api/views.js';
 import { createFakeEngine } from './helpers/fakePlanEngine.js';
 import type { ActionOutcome } from '../src/db/repos/placement.repo.js';
@@ -20,6 +21,10 @@ const REGULAR = { login: 'mbv_admin', password: 'обычный-пароль' };
 const SUPER = { login: 'super_mbv_admin', password: 'супер-пароль-123' };
 /** Личный вход с уровнем «Стойка регистрации»: в бою его выдаёт PersonalAuth по строке staff, здесь — обёртка ниже. */
 const DESK = { login: 'stoika', password: 'пароль-стойки' };
+/** Личный вход «Только чтение». */
+const READER = { login: 'chitatel', password: 'пароль-читателя' };
+/** Личный обычный вход человека, у которого в команде только роль распределителя. */
+const DISTRIBUTOR = { login: 'raspred', password: 'пароль-распределителя' };
 const INDEX_MARKER = 'ИНТЕРФЕЙС-ДОМАШНИХ-ГРУПП';
 const SECRET = 'СЕКРЕТ-ВНЕ-КАТАЛОГА-ИНТЕРФЕЙСА';
 
@@ -33,19 +38,30 @@ function memoryStore(): SessionStore {
   };
 }
 
-/** Общие входы как есть плюс вход стойки: его сессия обычная, а уровень `registration` помнит обёртка. */
+/**
+ * Общие входы как есть плюс личные: стойка, «Только чтение» и распределитель. Их сессия обычная, а уровень и логин
+ * помнит обёртка — в бою это делает PersonalAuth по строке staff.
+ */
 function withDesk(inner: SessionService): AuthPort {
-  const desk = new Set<string>();
+  const personal: Record<string, { password: string; role: Role }> = {
+    [DESK.login]: { password: DESK.password, role: 'registration' },
+    [READER.login]: { password: READER.password, role: 'readonly' },
+    [DISTRIBUTOR.login]: { password: DISTRIBUTOR.password, role: 'admin' },
+  };
+  const sessions = new Map<string, { login: string; role: Role }>();
   return {
     async login(password, ip, username) {
-      if (username !== DESK.login) return inner.login(password, ip, username);
-      if (password !== DESK.password) return { ok: false };
-      const sid = await inner.startSession('registration');
-      desk.add(sid);
-      return { ok: true, sid, role: 'registration' };
+      const who = username ? personal[username] : undefined;
+      if (!who || !username) return inner.login(password, ip, username);
+      if (password !== who.password) return { ok: false };
+      const sid = await inner.startSession(who.role);
+      sessions.set(sid, { login: username, role: who.role });
+      return { ok: true, sid, role: who.role };
     },
     verify: (sid) => inner.verify(sid),
-    roleOf: async (sid) => (sid && desk.has(sid) ? 'registration' : inner.roleOf(sid)),
+    roleOf: async (sid) => (sid && sessions.has(sid) ? sessions.get(sid)!.role : inner.roleOf(sid)),
+    // Стойка в этих тестах пишет в журнал от общего логина, как было до личных входов.
+    identityOf: async (sid) => (sid && sessions.has(sid) && sessions.get(sid)!.login !== DESK.login ? { login: sessions.get(sid)!.login } : null),
     logout: (sid) => inner.logout(sid),
   };
 }
@@ -230,6 +246,9 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
       requestReset: async (...a: unknown[]) => { staffCalls.push({ name: 'requestReset', args: a }); },
       tokenInfo: async (t: string) => { staffCalls.push({ name: 'tokenInfo', args: [t] }); return tokenInfo; },
       completePassword: async (...a: unknown[]) => { staffCalls.push({ name: 'complete', args: a }); return complete; },
+      revealPassword: async (...a: unknown[]) => { staffCalls.push({ name: 'reveal', args: a }); return { ok: true, password: 'выданный-пароль' }; },
+      personOf: async (login: string) => (login === DISTRIBUTOR.login ? { login, name: 'Ирина Распределитель', teamRole: 'Распределитель', teamKinds: ['distributor'] }
+        : login === DESK.login || login === READER.login ? { login, name: login, teamRole: null, teamKinds: [] } : null),
     } as never,
     settings: {
       health: async () => { settingsCalls.push({ name: 'health' }); return { generatedAt: 'g', overall: 'ok', metrics: [] }; },
@@ -1923,6 +1942,104 @@ describe('вход «Стойка регистрации»', () => {
     }
     expect(app.viewsCalls()).toBe(views);
     expect(app.actionCalls.length).toBe(actions);
+  });
+});
+
+describe('вход «Только чтение»', () => {
+  const get = (cookie: string, path: string) => fetch(`${app.base}${path}`, { headers: { cookie }, redirect: 'manual' });
+  const postJson = (cookie: string, path: string, body: unknown) => fetch(`${app.base}/api/v1/${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: JSON.stringify(body),
+  });
+
+  test('видит «Сегодня», заявки, группы, людей и кампанию; интерфейс открывается обычной страницей', async () => {
+    const cookie = await signIn(READER);
+    expect(await (await get(cookie, '/api/v1/me')).json()).toMatchObject({ role: 'readonly' });
+    for (const path of ['/api/v1/today', '/api/v1/requests', '/api/v1/groups', '/api/v1/people', '/api/v1/form-meta']) {
+      expect((await get(cookie, path)).status, path).toBe(200);
+    }
+    const page = await get(cookie, '/');
+    expect(page.status).toBe(200);
+    expect(await page.text()).toContain(INDEX_MARKER);
+  });
+
+  test('«Координаторы» и «Наборы» открыты на чтение: список и поиск набора проходят, выдача и отмена — 403', async () => {
+    const cookie = await signIn(READER);
+    for (const path of ['/api/v1/coordinators', '/api/v1/kits']) expect((await get(cookie, path)).status, path).toBe(200);
+    expect((await postJson(cookie, 'kits/find', { code: '1042' })).status).toBe(200);
+    expect((await postJson(cookie, 'kits/search', { query: 'Иван' })).status).toBe(200);
+    const kits = app.kitCalls.filter((c) => c.name === 'issue' || c.name === 'undo').length;
+    for (const path of ['kits/issue', 'kits/undo', 'coordinators/create', 'coordinators/1/update']) {
+      expect((await postJson(cookie, path, { userId: 12 })).status, path).toBe(403);
+    }
+    expect(app.kitCalls.filter((c) => c.name === 'issue' || c.name === 'undo').length).toBe(kits);
+  });
+
+  test('сводка «Команды», «Настройки», выгрузка и история помощника закрыты (403)', async () => {
+    const cookie = await signIn(READER);
+    const settings = app.settingsCalls.length;
+    for (const path of ['/api/v1/team', '/api/v1/settings/staff', '/api/v1/settings/health', '/api/v1/export/people.csv', '/api/v1/assistant/chat/history']) {
+      expect((await get(cookie, path)).status, path).toBe(403);
+    }
+    expect(app.settingsCalls.length).toBe(settings);
+  });
+
+  test('ничего не меняет и подбор не запускает: любое изменение — 403, и ничего не вызывается', async () => {
+    const cookie = await signIn(READER);
+    const counts = () => [app.actionCalls.length, app.createCalls.length, app.matchingCalls.length, app.assistantCalls.length, app.kitCalls.length, app.chatCalls.length, app.invalidations()];
+    const before = counts();
+    for (const path of ['requests/1/approve', 'requests/1/rematch', 'requests/1/assign', 'requests/1/close', 'requests/bulk', 'groups/1/update', 'groups/create',
+      'people/create', 'persons/create', 'groups/1/members/create', 'people/u12/update', 'matching/run', 'matching/rerun-all', 'assistant/run', 'assistant/chat',
+      'kits/issue', 'people/strange', 'people/gender', 'requests/reconcile-ready', 'settings/staff/create']) {
+      const r = await postJson(cookie, path, {});
+      expect(r.status, path).toBe(403);
+      expect(await r.json()).toMatchObject({ error: 'forbidden' });
+    }
+    expect(counts()).toEqual(before);
+    // Учёт открытий карты ничего в данных не меняет: карта нужна и тому, кто только смотрит.
+    expect((await postJson(cookie, 'map/loaded', {})).status).toBe(200);
+  });
+});
+
+describe('«глазик» у пароля', () => {
+  test('полный вход открывает выданный пароль, обычный — нет', async () => {
+    const send = (cookie: string) => fetch(`${app.base}/api/v1/settings/staff/password`, {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: JSON.stringify({ id: 3 }),
+    });
+    const ok = await send(await signIn(SUPER));
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ ok: true, password: 'выданный-пароль' });
+    expect(app.staffCalls.at(-1)).toEqual({ name: 'reveal', args: [{ id: 3 }, SUPER.login] });
+    expect((await send(await signIn(REGULAR))).status).toBe(403);
+  });
+});
+
+describe('распределитель и карточка группы', () => {
+  const postJson = (cookie: string, path: string, body: unknown) => fetch(`${app.base}/api/v1/${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: JSON.stringify(body),
+  });
+
+  test('у кого в команде только роль распределителя, тот карточку группы не правит (403), а заявки — да', async () => {
+    app.setOutcome({ ok: true });
+    const cookie = await signIn(DISTRIBUTOR);
+    const before = app.actionCalls.filter((c) => c.name === 'group.update').length;
+    const r = await postJson(cookie, 'groups/1/update', { fields: { address: 'Невский, 1' } });
+    expect(r.status).toBe(403);
+    expect(await r.json()).toMatchObject({ error: 'forbidden', message: expect.stringContaining('Распределитель') });
+    expect(app.actionCalls.filter((c) => c.name === 'group.update').length).toBe(before);
+    expect((await postJson(cookie, 'requests/1/approve', { groupId: 1 })).status).toBe(200);
+  });
+
+  test.each([
+    [[], true], [['distributor'], false], [['distributor', 'coordinator'], true], [['senior_distributor'], true], [['coordinator'], true],
+  ] as const)('роли команды %j — правка групп: %s', (kinds, allowed) => {
+    expect(mayEditGroups({ person: { teamKinds: kinds } })).toBe(allowed);
+    expect(mayEditGroups({ person: null })).toBe(true);
+  });
+
+  test('общий обычный вход карточку группы правит, как и раньше', async () => {
+    app.setOutcome({ ok: true });
+    const cookie = await signIn(REGULAR);
+    expect((await postJson(cookie, 'groups/1/update', { fields: { address: 'Невский, 1' } })).status).toBe(200);
   });
 });
 

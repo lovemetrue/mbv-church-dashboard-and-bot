@@ -1,9 +1,9 @@
-import type { DeliveryOk, PersonalLoginsState, SettingsStaffView, StaffItem } from '@contracts';
+import type { PersonalLoginsState, SettingsStaffView, StaffItem, TeamAccountItem } from '@contracts';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { App } from '../../app/App';
-import { buildSettingsStaff } from '../../fixtures/settings';
+import { buildSettingsStaff, SAMPLE_ISSUED } from '../../fixtures/settings';
 import { makeClient, renderAt, stubFetchWithFixtures } from '../../test/render';
 import { UsersSection } from './UsersSection';
 
@@ -35,6 +35,23 @@ const item = (over: Partial<StaffItem>): StaffItem => ({
   lastLoginAt: '2026-10-08T18:20:00+03:00',
   hasPendingLink: false,
   personKey: null,
+  personName: null,
+  coordinatorId: null,
+  teamRole: null,
+  hasPassword: true,
+  passwordViewable: true,
+  ...over,
+});
+
+const member = (over: Partial<TeamAccountItem>): TeamAccountItem => ({
+  coordinatorId: 7,
+  name: 'Родионов Давид',
+  teamRole: 'Распределитель',
+  staffId: null,
+  login: null,
+  hasPassword: false,
+  active: true,
+  lastLoginAt: null,
   ...over,
 });
 
@@ -46,11 +63,11 @@ const personal = (over: Partial<PersonalLoginsState> = {}): PersonalLoginsState 
   ...over,
 });
 
-const view = (items: StaffItem[], p: PersonalLoginsState = personal()): SettingsStaffView => ({
+const view = (items: StaffItem[], p: PersonalLoginsState = personal(), team: TeamAccountItem[] = []): SettingsStaffView => ({
   generatedAt: '2026-10-09T09:30:00+03:00',
   items,
   personal: p,
-  team: [],
+  team,
 });
 
 /** Открывает раздел на заданных данных. Остальные маршруты — как в фикстурах. */
@@ -65,70 +82,121 @@ const rowOf = async (name: string | RegExp) => {
   return row;
 };
 
-const sentOk = (email = 'x@example.org'): DeliveryOk => ({ ok: true, delivery: 'sent', email });
-const linkOk = (path = '/set-password?token=abc123', email = 'x@example.org'): DeliveryOk => ({
-  ok: true,
-  delivery: 'link',
-  email,
-  path,
-});
-
 /** Заполняет форму «Добавить пользователя». */
-async function fillAdd(user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement, fullName: string, email: string) {
+async function fillAdd(user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement, fullName: string, email = '') {
   await user.type(within(dialog).getByRole('textbox', { name: 'ФИО' }), fullName);
-  await user.type(within(dialog).getByRole('textbox', { name: 'Почта' }), email);
+  if (email) await user.type(within(dialog).getByRole('textbox', { name: EMAIL }), email);
 }
 
-describe('«Пользователи и роли»: список', () => {
-  test('статус каждого пользователя написан словами, роль тоже, а не входивший помечен', async () => {
+const EMAIL = 'Почта (необязательно)';
+const issuedOk = (id = 50, login = 'm_sokolova') => ({ ok: true, login, password: SAMPLE_ISSUED, id });
+
+describe('«Пользователи и роли»: один список', () => {
+  test('учётная запись и её место в команде — одна строка; участник команды без входа — тоже строка', async () => {
+    open(
+      view(
+        [item({ id: 2, fullName: 'Анна Лебедева', login: 'a_lebedeva', personName: 'Лебедева Анна Игоревна', coordinatorId: 1, teamRole: 'Старший координатор' })],
+        personal(),
+        [member({ coordinatorId: 1, name: 'Лебедева Анна', staffId: 2, login: 'a_lebedeva', hasPassword: true }), member({})],
+      ),
+    );
+    expect(await screen.findAllByRole('row', { name: /Лебедев/ })).toHaveLength(1);
+    const anna = await rowOf(/Лебедева/);
+    expect(within(anna).getByText('Карточка: Лебедева Анна Игоревна')).toBeInTheDocument();
+    expect(within(anna).getByText('Команда: Старший координатор')).toBeInTheDocument();
+    expect(within(anna).getByText('a_lebedeva')).toBeInTheDocument();
+
+    const david = await rowOf(/Родионов/);
+    expect(within(david).getByText('Команда: Распределитель')).toBeInTheDocument();
+    expect(within(david).getByText('входа нет')).toBeInTheDocument();
+    expect(within(david).getByText('появится с первым паролем')).toBeInTheDocument();
+    expect(within(david).queryByRole('button', { name: /^Изменить/ })).not.toBeInTheDocument();
+  });
+
+  test('уровень входа словами, в том числе «Только чтение»; не привязанная к «Людям» запись помечена, отключённая — тоже', async () => {
     open(
       view([
-        item({ id: 1, fullName: 'Ирина Иванова', status: 'active', role: 'super' }),
-        item({ id: 2, fullName: 'Пётр Петров', login: 'p_petrov', status: 'invited', lastLoginAt: null }),
+        item({ id: 1, fullName: 'Ирина Иванова', role: 'readonly' }),
         item({ id: 3, fullName: 'Анна Сидорова', login: 'a_sidorova', status: 'disabled' }),
       ]),
     );
-    const active = await rowOf(/Иванова/);
-    expect(within(active).getByText('Активен')).toBeInTheDocument();
-    expect(within(active).getByText('Полный')).toBeInTheDocument();
-    expect(within(active).getByText('p_ivanova')).toBeInTheDocument();
-    expect(within(active).getByText('ivanova@example.org')).toBeInTheDocument();
-    expect(within(active).getByText(/октября/)).toBeInTheDocument();
-
-    const invited = await rowOf(/Петров/);
-    expect(within(invited).getByText('Ждёт пароль')).toBeInTheDocument();
-    expect(within(invited).getByText('Обычный')).toBeInTheDocument();
-    expect(within(invited).getByText('не входил')).toBeInTheDocument();
-
-    expect(within(await rowOf(/Сидорова/)).getByText('Отключён')).toBeInTheDocument();
-  });
-
-  test('у пользователя с действующей ссылкой на пароль есть пометка', async () => {
-    open(view([item({ id: 2, fullName: 'Пётр Петров', status: 'invited', hasPendingLink: true })]));
-    expect(within(await rowOf(/Петров/)).getByText('Есть действующая ссылка на пароль')).toBeInTheDocument();
-  });
-
-  test('действия в строке зависят от статуса: сброс — активному, приглашение — ждущему пароль', async () => {
-    open(
-      view([
-        item({ id: 1, fullName: 'Ирина Иванова', status: 'active' }),
-        item({ id: 2, fullName: 'Пётр Петров', login: 'p_petrov', status: 'invited' }),
-        item({ id: 3, fullName: 'Анна Сидорова', login: 'a_sidorova', status: 'disabled' }),
-      ]),
-    );
-    const active = await rowOf(/Иванова/);
-    expect(within(active).getByRole('button', { name: /^Сбросить пароль/ })).toBeInTheDocument();
-    expect(within(active).queryByRole('button', { name: /^Прислать приглашение/ })).not.toBeInTheDocument();
-    expect(within(active).getByRole('button', { name: /^Отключить/ })).toBeInTheDocument();
-
-    const invited = await rowOf(/Петров/);
-    expect(within(invited).getByRole('button', { name: /^Прислать приглашение снова/ })).toBeInTheDocument();
-    expect(within(invited).queryByRole('button', { name: /^Сбросить пароль/ })).not.toBeInTheDocument();
-
+    const reader = await rowOf(/Иванова/);
+    expect(within(reader).getByText('Только чтение')).toBeInTheDocument();
+    expect(within(reader).getByText('Карточка в «Людях» не привязана')).toBeInTheDocument();
+    expect(within(reader).getByText(/октября/)).toBeInTheDocument();
     const off = await rowOf(/Сидорова/);
-    expect(within(off).getByRole('button', { name: /^Включить/ })).toBeInTheDocument();
-    expect(within(off).queryByRole('button', { name: /^Сбросить пароль/ })).not.toBeInTheDocument();
-    expect(within(off).queryByRole('button', { name: /^Прислать приглашение/ })).not.toBeInTheDocument();
+    expect(within(off).getByText('Отключён')).toBeInTheDocument();
+    expect(within(off).getByRole('button', { name: /^Новый пароль/ })).toBeDisabled();
+  });
+
+  test('пароль скрыт точками; «глазик» просит его у сервера один раз, показывает и прячет, «Скопировать» кладёт в буфер', async () => {
+    const { fetchMock } = open(view([item({ id: 7, fullName: 'Ирина Иванова' })]), {
+      'settings/staff/password': () => json({ ok: true, password: SAMPLE_ISSUED }),
+    });
+    const user = userEvent.setup();
+    const row = await rowOf(/Иванова/);
+    expect(within(row).getByTestId('user-password')).not.toHaveTextContent('k7mf');
+    expect(posts(fetchMock)).toEqual([]);
+    await user.click(within(row).getByRole('button', { name: 'Показать пароль: Ирина Иванова' }));
+    await waitFor(() => expect(within(row).getByTestId('user-password')).toHaveTextContent(SAMPLE_ISSUED));
+    expect(posts(fetchMock)).toEqual([{ path: 'settings/staff/password', body: { id: 7 } }]);
+    await user.click(within(row).getByRole('button', { name: 'Скопировать пароль: Ирина Иванова' }));
+    expect(await navigator.clipboard.readText()).toBe(SAMPLE_ISSUED);
+    await user.click(within(row).getByRole('button', { name: 'Скрыть пароль: Ирина Иванова' }));
+    expect(within(row).getByTestId('user-password')).not.toHaveTextContent('k7mf');
+    await user.click(within(row).getByRole('button', { name: 'Показать пароль: Ирина Иванова' }));
+    expect(within(row).getByTestId('user-password')).toHaveTextContent(SAMPLE_ISSUED);
+    expect(posts(fetchMock)).toHaveLength(1);
+  });
+
+  test('пароль, заданный раньше, не открыть — так и написано; у кого пароля нет — «Пароля нет»', async () => {
+    open(view([item({ id: 1, fullName: 'Ирина Иванова', passwordViewable: false }), item({ id: 2, fullName: 'Пётр Петров', login: 'p_petrov', status: 'invited', hasPassword: false, passwordViewable: false })]));
+    const old = await rowOf(/Иванова/);
+    expect(within(old).getByText(/Задан раньше — посмотреть нельзя/)).toBeInTheDocument();
+    expect(within(old).queryByRole('button', { name: /Показать пароль/ })).not.toBeInTheDocument();
+    const none = await rowOf(/Петров/);
+    expect(within(none).getByText('Пароля нет')).toBeInTheDocument();
+    expect(within(none).getByRole('button', { name: 'Сгенерировать пароль: Пётр Петров' })).toBeInTheDocument();
+  });
+
+  test('отказ сервера открыть пароль виден словами', async () => {
+    open(view([item({ id: 7, fullName: 'Ирина Иванова' })]), {
+      'settings/staff/password': () => json({ error: 'not_found', message: 'нет' }, 404),
+    });
+    const user = userEvent.setup();
+    const row = await rowOf(/Иванова/);
+    await user.click(within(row).getByRole('button', { name: 'Показать пароль: Ирина Иванова' }));
+    expect(await within(row).findByRole('alert')).toHaveTextContent('Пользователь не найден');
+  });
+
+  test('участнику команды без входа пароль выдаётся сразу по кнопке: запрос по справочнику, пароль открыт', async () => {
+    let data = view([], personal(), [member({})]);
+    const { fetchMock } = open(data, {
+      'settings/staff': () => json(data),
+      'settings/staff/generate-password': () => {
+        data = view([item({ id: 9, fullName: 'Родионов Давид', login: 'd_rodionov', coordinatorId: 7, teamRole: 'Распределитель' })], personal(), [member({ staffId: 9, login: 'd_rodionov', hasPassword: true })]);
+        return json(issuedOk(9, 'd_rodionov'));
+      },
+    });
+    const user = userEvent.setup();
+    await user.click(within(await rowOf(/Родионов/)).getByRole('button', { name: 'Сгенерировать пароль: Родионов Давид' }));
+    expect(await screen.findByText(/Пароль для Родионов Давид выдан, логин d_rodionov/)).toBeInTheDocument();
+    expect(posts(fetchMock)).toEqual([{ path: 'settings/staff/generate-password', body: { coordinatorId: 7 } }]);
+    await waitFor(async () => expect(within(await rowOf(/Родионов/)).getByTestId('user-password')).toHaveTextContent(SAMPLE_ISSUED));
+  });
+
+  test('новый пароль тому, у кого он уже есть, — только после подтверждения, и уходит по учётной записи', async () => {
+    const { fetchMock } = open(view([item({ id: 7, fullName: 'Ирина Иванова' })]), {
+      'settings/staff/generate-password': () => json(issuedOk(7, 'p_ivanova')),
+    });
+    const user = userEvent.setup();
+    await user.click(within(await rowOf(/Иванова/)).getByRole('button', { name: 'Новый пароль: Ирина Иванова' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Новый пароль для Ирина Иванова' });
+    expect(within(dialog).getByText(/Прежний пароль перестанет работать/)).toBeInTheDocument();
+    expect(posts(fetchMock)).toEqual([]);
+    await user.click(within(dialog).getByRole('button', { name: 'Сгенерировать' }));
+    await waitFor(() => expect(posts(fetchMock)).toEqual([{ path: 'settings/staff/generate-password', body: { staffId: 7 } }]));
+    expect(within(await rowOf(/Иванова/)).getByTestId('user-password')).toHaveTextContent(SAMPLE_ISSUED);
   });
 
   test('раздел открывается из «Настроек» и показывает фикстурных пользователей', async () => {
@@ -147,16 +215,16 @@ describe('«Пользователи и роли»: личные входы', ()
     const block = await screen.findByRole('region', { name: 'Личные входы' });
     expect(within(block).getByRole('button', { name: 'Включить личные входы' })).toBeDisabled();
     expect(
-      within(block).getByText('Сначала заведите пользователей и дождитесь, пока хотя бы один задаст пароль.'),
+      within(block).getByText('Сначала выдайте пароль хотя бы одному пользователю.'),
     ).toBeInTheDocument();
-    expect(within(block).getByText('Уже задали пароль: 0')).toBeInTheDocument();
+    expect(within(block).getByText('С паролем: 0')).toBeInTheDocument();
   });
 
   test('когда включать можно, кнопка доступна и подсказки «сначала заведите» нет', async () => {
     open(view([item({})], personal({ canEnable: true, activeWithPassword: 2 })));
     const block = await screen.findByRole('region', { name: 'Личные входы' });
     expect(within(block).getByRole('button', { name: 'Включить личные входы' })).toBeEnabled();
-    expect(within(block).queryByText(/Сначала заведите/)).not.toBeInTheDocument();
+    expect(within(block).queryByText(/Сначала выдайте/)).not.toBeInTheDocument();
     expect(within(block).getByText(/Пока выключено, работает и общий вход mbv_admin, и личные логины/)).toBeInTheDocument();
   });
 
@@ -208,16 +276,6 @@ describe('«Пользователи и роли»: личные входы', ()
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('Нет ни одного пользователя с паролем');
   });
 
-  test('если почта на сервере не настроена, об этом сказано заметно; если настроена — молчим', async () => {
-    open(view([item({})], personal({ mailConfigured: false })));
-    expect(await screen.findByText(/Почта на сервере не настроена: ссылки на пароль показываются на экране/)).toBeInTheDocument();
-  });
-
-  test('при настроенной почте подсказки про ссылки на экране нет', async () => {
-    open(view([item({})], personal({ mailConfigured: true })));
-    await screen.findByRole('region', { name: 'Личные входы' });
-    expect(screen.queryByText(/Почта на сервере не настроена/)).not.toBeInTheDocument();
-  });
 });
 
 describe('«Пользователи и роли»: добавление', () => {
@@ -229,21 +287,21 @@ describe('«Пользователи и роли»: добавление', () =>
     return { fetchMock, user, dialog };
   }
 
-  test('создание шлёт ФИО, почту и роль, а при отправленном письме пишет «Письмо отправлено на …»', async () => {
+  test('создание шлёт ФИО, почту, роль и просьбу сразу выдать пароль; после — логин и где пароль', async () => {
     const { fetchMock, user, dialog } = await openAdd({
       'settings/staff/suggest': () => json({ ok: true, login: 'm_sokolova' }),
-      'settings/staff/create': () => json(sentOk('sokolova@example.org')),
+      'settings/staff/create': () => json(issuedOk()),
     });
     await fillAdd(user, dialog, '  Мария Соколова ', 'sokolova@example.org');
     await user.click(within(dialog).getByRole('radio', { name: 'Полный' }));
     await user.click(within(dialog).getByRole('button', { name: 'Добавить' }));
 
-    expect(await screen.findByText('Письмо отправлено на sokolova@example.org')).toBeInTheDocument();
+    expect(await screen.findByText('Мария Соколова добавлен(а), логин m_sokolova. Пароль открыт в строке — передайте его человеку.')).toBeInTheDocument();
     const created = posts(fetchMock).filter((p) => p.path === 'settings/staff/create');
     expect(created).toEqual([
       {
         path: 'settings/staff/create',
-        body: { fullName: 'Мария Соколова', email: 'sokolova@example.org', role: 'super', login: 'm_sokolova' },
+        body: { fullName: 'Мария Соколова', email: 'sokolova@example.org', role: 'super', login: 'm_sokolova', generatePassword: true },
       },
     ]);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -252,75 +310,55 @@ describe('«Пользователи и роли»: добавление', () =>
   test('человек из «Людей» — необязательно: выбранный уходит ключом, а пустое ФИО заполняется его именем', async () => {
     const { fetchMock, user, dialog } = await openAdd({
       'settings/staff/suggest': () => json({ ok: true, login: 'd_efimova' }),
-      'settings/staff/create': () => json(sentOk('efimova@example.org')),
+      'settings/staff/create': () => json(issuedOk()),
     });
     await user.type(within(dialog).getByRole('searchbox', { name: 'Найти: Человек из «Людей»' }), 'Ефимова');
     await user.click(await within(within(dialog).getByRole('list', { name: 'Подходящие люди: Человек из «Людей»' })).findByRole('button', { name: /Дарья Ефимова/ }));
     expect(within(dialog).getByRole('textbox', { name: 'ФИО' })).toHaveValue('Дарья Ефимова');
-    await user.type(within(dialog).getByRole('textbox', { name: 'Почта' }), 'efimova@example.org');
+
     await user.click(within(dialog).getByRole('button', { name: 'Добавить' }));
-    await screen.findByText('Письмо отправлено на efimova@example.org');
+    await screen.findByText(/добавлен\(а\)/);
     expect(posts(fetchMock).find((p) => p.path === 'settings/staff/create')!.body).toMatchObject({ fullName: 'Дарья Ефимова', personKey: 'u1' });
   });
 
   test('без человека ФИО — просто строка, ключ не уходит', async () => {
     const { fetchMock, user, dialog } = await openAdd({
       'settings/staff/suggest': () => json({ ok: true, login: 'stoika' }),
-      'settings/staff/create': () => json(sentOk('desk@example.org')),
+      'settings/staff/create': () => json(issuedOk()),
     });
     await fillAdd(user, dialog, 'Стойка Вход', 'desk@example.org');
     await user.click(within(dialog).getByRole('button', { name: 'Добавить' }));
-    await screen.findByText('Письмо отправлено на desk@example.org');
+    await screen.findByText(/добавлен\(а\)/);
     expect(posts(fetchMock).find((p) => p.path === 'settings/staff/create')!.body).not.toHaveProperty('personKey');
   });
 
   test('третий уровень — «Стойка регистрации»: с пояснением, что открыта только страница стойки', async () => {
     const { fetchMock, user, dialog } = await openAdd({
       'settings/staff/suggest': () => json({ ok: true, login: 'stoika' }),
-      'settings/staff/create': () => json(sentOk('desk@example.org')),
+      'settings/staff/create': () => json(issuedOk()),
     });
     await fillAdd(user, dialog, 'Стойка Вход', 'desk@example.org');
     const desk = within(dialog).getByRole('radio', { name: 'Стойка регистрации' });
     expect(desk).toHaveAccessibleDescription(/регистрация участника и выдача наборов/);
     await user.click(desk);
     await user.click(within(dialog).getByRole('button', { name: 'Добавить' }));
-    await screen.findByText('Письмо отправлено на desk@example.org');
+    await screen.findByText(/добавлен\(а\)/);
     expect(posts(fetchMock).find((p) => p.path === 'settings/staff/create')?.body).toMatchObject({ role: 'registration' });
   });
 
-  test('роль по умолчанию «Обычный», пустой логин в запрос не попадает', async () => {
+  test('роль по умолчанию «Обычный»; без почты и с пустым логином они в запрос не попадают', async () => {
     const { fetchMock, user, dialog } = await openAdd({
       'settings/staff/suggest': () => json({ error: 'bad_request', message: 'нет' }, 400),
-      'settings/staff/create': () => json(sentOk()),
+      'settings/staff/create': () => json(issuedOk()),
     });
     expect(within(dialog).getByRole('radio', { name: 'Обычный' })).toBeChecked();
-    await fillAdd(user, dialog, 'Мария Соколова', 'm@example.org');
+    await fillAdd(user, dialog, 'Мария Соколова');
     await user.click(within(dialog).getByRole('button', { name: 'Добавить' }));
     await waitFor(() =>
       expect(posts(fetchMock).filter((p) => p.path === 'settings/staff/create')).toEqual([
-        { path: 'settings/staff/create', body: { fullName: 'Мария Соколова', email: 'm@example.org', role: 'admin' } },
+        { path: 'settings/staff/create', body: { fullName: 'Мария Соколова', role: 'admin', generatePassword: true } },
       ]),
     );
-  });
-
-  test('если письмо не ушло, показывается полная ссылка (адрес страницы + путь), кнопка копирования и предупреждение', async () => {
-    const { user, dialog } = await openAdd({
-      'settings/staff/create': () => json(linkOk('/set-password?token=abc123', 'sokolova@example.org')),
-    });
-    await fillAdd(user, dialog, 'Мария Соколова', 'sokolova@example.org');
-    await user.click(within(dialog).getByRole('button', { name: 'Добавить' }));
-
-    const linkDialog = await screen.findByRole('dialog', { name: 'Ссылка для Мария Соколова' });
-    const full = `${window.location.origin}/set-password?token=abc123`;
-    expect(within(linkDialog).getByLabelText('Ссылка на пароль')).toHaveValue(full);
-    expect(
-      within(linkDialog).getByText('Ссылка действует ограниченное время и одноразовая; передайте её только этому человеку.'),
-    ).toBeInTheDocument();
-    expect(within(linkDialog).getByText(/Письмо на sokolova@example.org не отправлено/)).toBeInTheDocument();
-
-    await user.click(within(linkDialog).getByRole('button', { name: 'Копировать' }));
-    expect(await navigator.clipboard.readText()).toBe(full);
-    expect(await within(linkDialog).findByText('Скопировано')).toBeInTheDocument();
   });
 
   test('конфликт логина или почты показывает понятный текст, а введённое остаётся в форме', async () => {
@@ -331,7 +369,7 @@ describe('«Пользователи и роли»: добавление', () =>
     await user.click(within(dialog).getByRole('button', { name: 'Добавить' }));
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('Такой логин или почта уже есть');
     expect(within(dialog).queryByText(/duplicate key/)).not.toBeInTheDocument();
-    expect(within(dialog).getByRole('textbox', { name: 'Почта' })).toHaveValue('sokolova@example.org');
+    expect(within(dialog).getByRole('textbox', { name: EMAIL })).toHaveValue('sokolova@example.org');
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
@@ -365,14 +403,14 @@ describe('«Пользователи и роли»: добавление', () =>
     await fillAdd(user, dialog, 'Мария Соколова', 'не-почта');
     await user.click(within(dialog).getByRole('button', { name: 'Добавить' }));
     expect(posts(fetchMock).filter((p) => p.path === 'settings/staff/create')).toEqual([]);
-    const email = within(dialog).getByRole('textbox', { name: 'Почта' });
+    const email = within(dialog).getByRole('textbox', { name: EMAIL });
     expect(email).toHaveAttribute('aria-invalid', 'true');
     expect(within(dialog).getByText(/Укажите почту полностью/)).toBeInTheDocument();
   });
 
   test('пустое ФИО не отправляется', async () => {
     const { fetchMock, user, dialog } = await openAdd();
-    await user.type(within(dialog).getByRole('textbox', { name: 'Почта' }), 'a@example.org');
+
     await user.click(within(dialog).getByRole('button', { name: 'Добавить' }));
     expect(posts(fetchMock).filter((p) => p.path === 'settings/staff/create')).toEqual([]);
     expect(within(dialog).getByText('Укажите ФИО.')).toBeInTheDocument();
@@ -410,69 +448,29 @@ describe('«Пользователи и роли»: добавление', () =>
     });
     await fillAdd(user, dialog, 'Мария Соколова', 'sokolova@example.org');
     await user.dblClick(within(dialog).getByRole('button', { name: 'Добавить' }));
-    await act(async () => release(json(sentOk())));
+    await act(async () => release(json(issuedOk())));
     await act(async () => {});
     expect(posts(fetchMock).filter((p) => p.path === 'settings/staff/create')).toHaveLength(1);
   });
 
-  test('в окне сказано, что пароль человек задаст сам', async () => {
+  test('в окне сказано, что пароль выдастся сразу и откроется в строке', async () => {
     const { dialog } = await openAdd();
-    expect(within(dialog).getByText('Пароль человек задаст сам по ссылке из письма.')).toBeInTheDocument();
+    expect(within(dialog).getByText(/Пароль сгенерируется сразу и откроется в строке пользователя/)).toBeInTheDocument();
+  });
+
+  test('уровень «Только чтение» — с пояснением, что ничего не меняет', async () => {
+    const { fetchMock, user, dialog } = await openAdd({ 'settings/staff/create': () => json(issuedOk()) });
+    await fillAdd(user, dialog, 'Мария Соколова');
+    const reader = within(dialog).getByRole('radio', { name: 'Только чтение' });
+    expect(reader).toHaveAccessibleDescription(/ничего не меняет и подбор не запускает/);
+    await user.click(reader);
+    await user.click(within(dialog).getByRole('button', { name: 'Добавить' }));
+    await screen.findByText(/добавлен\(а\)/);
+    expect(posts(fetchMock).find((p) => p.path === 'settings/staff/create')?.body).toMatchObject({ role: 'readonly' });
   });
 });
 
 describe('«Пользователи и роли»: действия над пользователем', () => {
-  test('сброс пароля шлёт id и при отправленном письме пишет об этом', async () => {
-    const { fetchMock } = open(view([item({ id: 7, fullName: 'Ирина Иванова' })]), {
-      'settings/staff/reset': () => json(sentOk('ivanova@example.org')),
-    });
-    const user = userEvent.setup();
-    await user.click(within(await rowOf(/Иванова/)).getByRole('button', { name: /^Сбросить пароль/ }));
-    expect(await screen.findByText('Письмо отправлено на ivanova@example.org')).toBeInTheDocument();
-    expect(posts(fetchMock)).toEqual([{ path: 'settings/staff/reset', body: { id: 7 } }]);
-  });
-
-  test('при сбросе без почты показывается ссылка на новый пароль', async () => {
-    open(view([item({ id: 7, fullName: 'Ирина Иванова' })]), {
-      'settings/staff/reset': () => json(linkOk('/set-password?token=zzz', 'ivanova@example.org')),
-    });
-    const user = userEvent.setup();
-    await user.click(within(await rowOf(/Иванова/)).getByRole('button', { name: /^Сбросить пароль/ }));
-    const dialog = await screen.findByRole('dialog', { name: 'Ссылка для Ирина Иванова' });
-    expect(within(dialog).getByLabelText('Ссылка на пароль')).toHaveValue(`${window.location.origin}/set-password?token=zzz`);
-  });
-
-  test('повторное приглашение шлёт id ждущего пароль', async () => {
-    const { fetchMock } = open(view([item({ id: 9, fullName: 'Пётр Петров', status: 'invited' })]), {
-      'settings/staff/invite': () => json(sentOk('petrov@example.org')),
-    });
-    const user = userEvent.setup();
-    await user.click(within(await rowOf(/Петров/)).getByRole('button', { name: /^Прислать приглашение снова/ }));
-    expect(await screen.findByText('Письмо отправлено на petrov@example.org')).toBeInTheDocument();
-    expect(posts(fetchMock)).toEqual([{ path: 'settings/staff/invite', body: { id: 9 } }]);
-  });
-
-  test('ошибка сброса показывается заметно, а не теряется', async () => {
-    open(view([item({ id: 7, fullName: 'Ирина Иванова' })]), {
-      'settings/staff/reset': () => json({ error: 'not_found', message: 'нет' }, 404),
-    });
-    const user = userEvent.setup();
-    await user.click(within(await rowOf(/Иванова/)).getByRole('button', { name: /^Сбросить пароль/ }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Пользователь не найден');
-  });
-
-  test('двойное нажатие «Сбросить пароль» отправляет один запрос', async () => {
-    let release: (r: Response) => void = () => {};
-    const { fetchMock } = open(view([item({ id: 7, fullName: 'Ирина Иванова' })]), {
-      'settings/staff/reset': () => new Promise<Response>((ok) => (release = ok)),
-    });
-    const user = userEvent.setup();
-    await user.dblClick(within(await rowOf(/Иванова/)).getByRole('button', { name: /^Сбросить пароль/ }));
-    await act(async () => release(json(sentOk())));
-    await act(async () => {});
-    expect(posts(fetchMock).filter((p) => p.path === 'settings/staff/reset')).toHaveLength(1);
-  });
-
   test('отключение требует подтверждения и шлёт id и active: false', async () => {
     const { fetchMock } = open(view([item({ id: 7, fullName: 'Ирина Иванова' })]), {
       'settings/staff/update': () => json({ ok: true }),
@@ -506,7 +504,7 @@ describe('«Пользователи и роли»: действия над по
     await user.click(within(await rowOf(/Иванова/)).getByRole('button', { name: /^Изменить/ }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByRole('textbox', { name: 'ФИО' })).toHaveValue('Ирина Иванова');
-    expect(within(dialog).getByRole('textbox', { name: 'Почта' })).toHaveValue('ivanova@example.org');
+    expect(within(dialog).getByRole('textbox', { name: EMAIL })).toHaveValue('ivanova@example.org');
     expect(within(dialog).getByRole('radio', { name: 'Обычный' })).toBeChecked();
     await user.click(within(dialog).getByRole('radio', { name: 'Полный' }));
     await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));

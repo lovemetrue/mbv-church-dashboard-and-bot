@@ -171,6 +171,8 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     // Без хранилища (в тестах) ограничение частоты не действует: счётчик каждый раз начинается заново.
     store: opts.store ?? { async set() {}, async get() { return null; }, async del() {}, async incr() { return 1; } },
     publicUrl: opts.publicUrl ?? null,
+    // Тот же секрет, что у ключей в «Настройках»: выданный пароль хранится зашифрованным, полный вход открывает его снова.
+    secret: opts.llmSettings?.secret ?? '',
     ...(opts.onStaffChange ? { onChange: opts.onStaffChange } : {}),
     reportError: (source, err, context) => { void errors.record(source, err instanceof Error ? err.message : String(err), context); },
   });

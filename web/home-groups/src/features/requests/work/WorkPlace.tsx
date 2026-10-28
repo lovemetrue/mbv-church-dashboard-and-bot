@@ -1,3 +1,4 @@
+import { useCanChange } from '../../../shared/access';
 import { ru } from '../../../shared/i18n/ru';
 import { DrawerSection } from '../../../shared/ui';
 import { StrangeSection } from '../../strange';
@@ -19,6 +20,8 @@ export const isOpenSubject = (r: Pick<WorkSubject, 'state'>): boolean => r.state
 export function WorkPlace({ subject, onClosed }: { subject: WorkSubject; onClosed: (text: string) => void }) {
   const work = useRequestWork(subject.id);
   const open = isOpenSubject(subject);
+  // Весь блок — действия (взять в работу, итог звонка, метка, закрытие): входу «Только чтение» его нет.
+  if (!useCanChange()) return null;
   return (
     <DrawerSection title={ru.requests.work.title}>
       <div className={styles.work}>

@@ -1,3 +1,4 @@
+import { useCanChange } from '../../shared/access';
 import { useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { FormMeta, GroupDraftView, OwnGroup } from '@contracts';
@@ -24,6 +25,8 @@ export function GroupFromRequestSection({ requestId, ownGroup }: { requestId: nu
   // Код новой группы до того, как список заявок перечитается и принесёт `ownGroup`.
   const [created, setCreated] = useState<OwnGroup | null>(null);
   const group = ownGroup ?? created;
+  // «Только чтение» группу не заводит; ссылку на уже заведённую — видит.
+  if (!useCanChange() && !group) return null;
   return (
     <DrawerSection title={t.title}>
       {group ? (

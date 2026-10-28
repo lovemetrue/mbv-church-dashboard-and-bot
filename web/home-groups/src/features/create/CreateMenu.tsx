@@ -1,3 +1,4 @@
+import { useCanChange } from '../../shared/access';
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ru } from '../../shared/i18n/ru';
@@ -21,6 +22,11 @@ interface Notice {
  * клик вне закрывает. «Участник (регистрация)» открывает форму в окне, как «Заявка» и «Группа».
  */
 export function CreateMenu() {
+  // «Только чтение» ничего не создаёт: меню нет вовсе (сервер ответил бы 403).
+  return useCanChange() ? <CreateMenuButton /> : null;
+}
+
+function CreateMenuButton() {
   const nav = useAppNav();
   const [, setParams] = useSearchParams();
   const [open, setOpen] = useState(false);

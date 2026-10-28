@@ -1,3 +1,4 @@
+import { useCanChange } from '../../shared/access';
 import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { GenderInfo, PersonGenderBody } from '@contracts';
@@ -15,6 +16,18 @@ const t = ru.gender;
  * заявках, «Людях» и подборе.
  */
 export function GenderField({ personKey, gender }: { personKey: string; gender: GenderInfo }) {
+  // «Только чтение» видит пол словом, без переключателя.
+  if (!useCanChange()) {
+    return (
+      <div className={gender.value === null ? `${styles.field} ${styles.missing}` : styles.field}>
+        <p>{gender.value === null ? t.missing : t.option[gender.value]}</p>
+      </div>
+    );
+  }
+  return <GenderChoice personKey={personKey} gender={gender} />;
+}
+
+function GenderChoice({ personKey, gender }: { personKey: string; gender: GenderInfo }) {
   const client = useQueryClient();
   const inFlight = useRef(false);
   const [pending, setPending] = useState(false);

@@ -1,16 +1,17 @@
 import type { TeamRoleKind } from '../../db/repos/coordinators.repo.js';
-import type { StaffPersonRef, StaffRepo, StaffRow } from '../../db/repos/staff.repo.js';
+import type { StaffListRow, StaffPersonRef, StaffRepo, StaffRow } from '../../db/repos/staff.repo.js';
 import { StaffConflict } from '../../db/repos/staff.repo.js';
 import type { SettingsRepo } from '../../db/repos/settings.repo.js';
 import type { Role, SessionStore } from '../../dashboard/sessions.js';
 import type {
-  ActionError, DeliveryOk, GeneratePasswordOk, PersonalLoginsState, SettingsStaffView, StaffItem, StaffStatus, SuggestLoginOk,
+  ActionError, DeliveryOk, GeneratePasswordOk, PersonalLoginsState, RevealPasswordOk, SettingsStaffView, StaffItem, StaffStatus, SuggestLoginOk,
   TeamAccountItem,
 } from '../../home-groups/contracts.js';
 import { logger } from '../../logger.js';
 import type { Mailer } from '../mail/mailer.js';
 import { inviteMail, resetMail } from '../mail/templates.js';
 import { baseLogin, freeLogin, LOGIN_PATTERN } from './loginName.js';
+import { decryptSecret, encryptSecret } from '../settings/secrets.js';
 import { generatePassword, hashPassword, hashToken, newToken, passwordProblem } from './password.js';
 
 /**
@@ -27,8 +28,8 @@ export const RESET_TTL_SECONDS = 2 * 3600;
 /** Сколько раз за час человек (или кто-то от его имени) может запросить сброс. */
 export const RESET_PER_HOUR = 3;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-/** Уровень входа: обычный, полный или «Стойка регистрации» (пускает только на `/registration`). */
-const isRole = (v: unknown): v is Role => v === 'admin' || v === 'super' || v === 'registration';
+/** Уровень входа: обычный, полный, «Стойка регистрации» (пускает только на `/registration`) или «Только чтение». */
+const isRole = (v: unknown): v is Role => v === 'admin' || v === 'super' || v === 'registration' || v === 'readonly';
 
 export type StaffOutcome<T = object> = ({ ok: true } & T) | { ok: false; error: ActionError['error']; message: string };
 const bad = (message: string, error: ActionError['error'] = 'bad_request'): { ok: false; error: ActionError['error']; message: string } => ({ ok: false, error, message });
@@ -44,6 +45,11 @@ export interface StaffServiceDeps {
    * заголовка Host запроса: иначе ссылку в чужом письме можно было бы подменить на адрес злоумышленника.
    */
   publicUrl: string | null;
+  /**
+   * Секрет сервера, которым шифруется выданный пароль (как ключи в «Настройках»): полный вход открывает его «глазиком».
+   * Пусто — пароль не сохраняется, виден только сразу после выдачи. Сменили секрет — прежние пароли не открыть.
+   */
+  secret?: string;
   now?: () => Date;
   /** Вызывается после изменений, которые должны подействовать на вход сразу (кэш входа сбрасывается). */
   onChange?: () => void;
@@ -68,12 +74,25 @@ export function teamLogin(name: string, taken: ReadonlySet<string>): string | nu
 export function createStaffService(deps: StaffServiceDeps) {
   const now = deps.now ?? (() => new Date());
   const base = deps.publicUrl?.replace(/\/+$/, '') ?? null;
+  const secret = deps.secret?.trim() ?? '';
+  const seal = (password: string): string | null => (secret ? encryptSecret(password, secret) : null);
 
-  const itemOf = (r: StaffRow & { has_pending_link: boolean }): StaffItem => ({
+  const itemOf = (r: StaffListRow): StaffItem => ({
     id: r.id, login: r.login, fullName: r.full_name, email: r.email, role: r.role, status: statusOf(r),
     lastLoginAt: r.last_login_at ? r.last_login_at.toISOString() : null, hasPendingLink: r.has_pending_link,
-    personKey: r.person_key ?? null,
+    personKey: r.person_key ?? null, personName: r.person_name ?? null,
+    coordinatorId: r.team_coordinator_id ?? null, teamRole: r.team_role ?? null,
+    hasPassword: r.password_hash !== null, passwordViewable: r.password_viewable === true && secret !== '',
   });
+
+  /** Выдать пароль учётной записи: хеш — для входа, зашифрованная копия — чтобы полный вход мог открыть его снова. */
+  async function issuePassword(account: StaffRow, actor: string, coordinatorId: number | null): Promise<string> {
+    let password = generatePassword();
+    while (passwordProblem(password, { login: account.login, email: account.email })) password = generatePassword();
+    await deps.staff.setPassword(account.id, await hashPassword(password), actor, coordinatorId, seal(password));
+    deps.onChange?.();
+    return password;
+  }
 
   /**
    * Человек из «Людей» для записи: undefined — поле не прислали (не менять), null или «» — без человека, «u12»/«p7» —
@@ -184,11 +203,26 @@ export function createStaffService(deps: StaffServiceDeps) {
       if (!account.active) return bad('Пользователь отключён. Сначала включите его в списке пользователей.');
       // Свой пароль так не меняют: вход закрылся бы на середине, а новый пароль остался бы только на этом экране.
       if (account.login.toLowerCase() === actor.toLowerCase()) return bad('Свой пароль меняйте кнопкой «Сбросить пароль».');
-      let password = generatePassword();
-      while (passwordProblem(password, { login: account.login, email: account.email })) password = generatePassword();
-      await deps.staff.setPassword(account.id, await hashPassword(password), actor, coordinatorId);
-      deps.onChange?.();
-      return { ok: true, login: account.login, password };
+      const password = await issuePassword(account, actor, coordinatorId);
+      return { ok: true, login: account.login, password, id: account.id };
+    },
+
+    /**
+     * Открыть выданный пароль («глазик» в «Пользователях и ролях»). Только полный вход (раздел «Настройки»), и каждое
+     * открытие остаётся в журнале — без самого пароля.
+     */
+    async revealPassword(body: unknown, actor: string): Promise<StaffOutcome<Omit<RevealPasswordOk, 'ok'>>> {
+      const staff = await staffFromBody(body);
+      if ('error' in staff) return staff.error;
+      const sealed = await deps.staff.sealedPassword(staff.row.id);
+      const password = sealed === null ? null : decryptSecret(sealed, secret);
+      if (password === null) {
+        return bad(sealed === null
+          ? 'Этот пароль задан раньше, посмотреть его нельзя. Сгенерируйте новый.'
+          : 'Пароль не расшифровать: на сервере сменился секрет. Сгенерируйте новый.', 'not_found');
+      }
+      await deps.staff.auditPasswordViewed(actor, staff.row.id);
+      return { ok: true, password };
     },
 
     /** Кто вошёл под личным логином: логин, имя и роль, как в справочнике команды. */
@@ -205,12 +239,18 @@ export function createStaffService(deps: StaffServiceDeps) {
       return { ok: true, login: freeLogin(b, await deps.staff.logins()) };
     },
 
-    async create(body: unknown, actor: string): Promise<StaffOutcome<Omit<DeliveryOk, 'ok'>>> {
+    /**
+     * Завести пользователя. С `generatePassword` пароль выдаётся сразу (почта необязательна) — администратор раздаёт его
+     * сам; без него на почту уходит приглашение задать пароль по ссылке.
+     */
+    async create(body: unknown, actor: string): Promise<StaffOutcome<Omit<DeliveryOk, 'ok'> | Omit<GeneratePasswordOk, 'ok'>>> {
       if (typeof body !== 'object' || body === null) return bad('Нужны ФИО, почта и роль.');
-      const { fullName, email, role, login, personKey } = body as Record<string, unknown>;
+      const { fullName, email, role, login, personKey, generatePassword: withPassword } = body as Record<string, unknown>;
+      const direct = withPassword === true;
       if (typeof fullName !== 'string' || fullName.trim().length < 2 || fullName.trim().length > 120) return bad('Укажите ФИО (до 120 знаков).');
-      if (typeof email !== 'string' || email.length > 254 || !EMAIL.test(email.trim())) return bad('Укажите корректную почту.');
-      if (!isRole(role)) return bad('Роль: «admin» (обычный), «super» (полный) или «registration» (стойка регистрации).');
+      const noEmail = direct && (email === undefined || email === null || (typeof email === 'string' && email.trim() === ''));
+      if (!noEmail && (typeof email !== 'string' || email.length > 254 || !EMAIL.test(email.trim()))) return bad('Укажите корректную почту.');
+      if (!isRole(role)) return bad('Роль: «admin» (обычный), «super» (полный), «registration» (стойка регистрации) или «readonly» (только чтение).');
       if (login !== undefined && login !== null && typeof login !== 'string') return bad('Логин должен быть текстом.');
 
       const person = await personOf(personKey);
@@ -220,11 +260,12 @@ export function createStaffService(deps: StaffServiceDeps) {
       if ('error' in chosen) return bad(chosen.error);
       let created: StaffRow;
       try {
-        created = await deps.staff.create({ login: chosen.login, fullName: fullName.trim(), email: email.trim(), role, ...(person !== undefined ? { person } : {}) }, actor);
+        created = await deps.staff.create({ login: chosen.login, fullName: fullName.trim(), email: noEmail ? null : (email as string).trim(), role, ...(person !== undefined ? { person } : {}) }, actor);
       } catch (err) {
         if (err instanceof StaffConflict) return bad(err.field === 'email' ? 'Пользователь с такой почтой уже есть.' : 'Такой логин уже занят.', 'conflict');
         throw err;
       }
+      if (direct) return { ok: true, login: created.login, id: created.id, password: await issuePassword(created, actor, null) };
       const delivery = await deliver(created, 'invite', actor);
       return { ...delivery, login: created.login, id: created.id };
     },
@@ -234,7 +275,9 @@ export function createStaffService(deps: StaffServiceDeps) {
       const { id, fullName, email, role, active, personKey } = body as Record<string, unknown>;
       if (typeof id !== 'number' || !Number.isInteger(id) || id < 1) return bad('Нужно указать пользователя.');
       if (fullName !== undefined && (typeof fullName !== 'string' || fullName.trim().length < 2 || fullName.trim().length > 120)) return bad('Укажите ФИО (до 120 знаков).');
-      if (email !== undefined && (typeof email !== 'string' || email.length > 254 || !EMAIL.test(email.trim()))) return bad('Укажите корректную почту.');
+      // Пустая почта — убрать её: пароль выдают лично, почта нужна только ссылке «Забыли пароль».
+      const clearEmail = typeof email === 'string' && email.trim() === '';
+      if (email !== undefined && !clearEmail && (typeof email !== 'string' || email.length > 254 || !EMAIL.test(email.trim()))) return bad('Укажите корректную почту.');
       if (role !== undefined && !isRole(role)) return bad('Неизвестная роль.');
       if (active !== undefined && typeof active !== 'boolean') return bad('Некорректное значение.');
 
@@ -255,7 +298,7 @@ export function createStaffService(deps: StaffServiceDeps) {
       try {
         await deps.staff.update(id, {
           ...(typeof fullName === 'string' ? { fullName: fullName.trim() } : {}),
-          ...(typeof email === 'string' ? { email: email.trim() } : {}),
+          ...(typeof email === 'string' ? { email: clearEmail ? null : email.trim() } : {}),
           ...(isRole(role) ? { role } : {}),
           ...(typeof active === 'boolean' ? { active } : {}),
           ...(person !== undefined ? { person } : {}),
@@ -333,7 +376,7 @@ export function createStaffService(deps: StaffServiceDeps) {
       if (password !== repeat) return bad('Пароли не совпадают.');
       const problem = passwordProblem(password, { login: s.login, email: s.email });
       if (problem) return bad(problem);
-      const done = await deps.staff.setPasswordByToken(hashToken(token), await hashPassword(password));
+      const done = await deps.staff.setPasswordByToken(hashToken(token), await hashPassword(password), seal(password));
       deps.onChange?.();
       return done ? { ok: true } : bad('Ссылка недействительна или устарела. Попросите администратора выслать новую.');
     },

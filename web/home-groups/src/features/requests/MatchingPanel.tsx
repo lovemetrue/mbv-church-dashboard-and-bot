@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import type { AssistantStatus, MatchingStatus, RequestItem } from '@contracts';
 import { formatDateTime } from '../../entities/format';
+import { canChange } from '../../shared/access';
 import { useMe } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
 import { useAppNav } from '../../shared/nav';
@@ -72,7 +73,8 @@ export function MatchingPanel({
         )}
       </div>
 
-      <div className={styles.matchingControls}>
+      {/* «Только чтение» видит, как идёт подбор, но не запускает его. */}
+      {canChange(me.data) && <div className={styles.matchingControls}>
         <Button variant="primary" size="big" disabled={busy} onClick={() => void act.run()}>
           {act.pending === 'run' ? m.running : m.run}
         </Button>
@@ -97,7 +99,7 @@ export function MatchingPanel({
             )}
           </button>
         )}
-      </div>
+      </div>}
       {act.notice &&
         (act.notice.kind === 'error' ? (
           <p className={styles.noticeError} role="alert">

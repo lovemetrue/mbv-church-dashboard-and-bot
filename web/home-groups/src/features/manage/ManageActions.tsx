@@ -1,3 +1,4 @@
+import { useCanEditGroups } from '../../shared/access';
 import { useState } from 'react';
 import type { CoordinatorItem, GroupItem } from '@contracts';
 import { groupLabel } from '../../entities/format';
@@ -65,9 +66,11 @@ function Actions({
 export function GroupHeaderTools({ g }: { g: GroupItem }) {
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
+  // Карандаша нет у «Только чтение» и у того, кто в команде только распределитель: поля группы правят координаторы.
+  const canEdit = useCanEditGroups();
   return (
     <>
-      <IconButton
+      {canEdit && <IconButton
         label={m.group.editAria(groupLabel(g))}
         onClick={() => {
           setSaved(false);
@@ -75,7 +78,7 @@ export function GroupHeaderTools({ g }: { g: GroupItem }) {
         }}
       >
         <Pencil />
-      </IconButton>
+      </IconButton>}
       <PhoneTools phone={g.phone} name={g.leader} noPhone={m.group.noPhone} hiddenHint={g.contactsHidden ? m.group.phonesHidden : undefined} />
       {saved && (
         <span className={styles.saved} role="status">

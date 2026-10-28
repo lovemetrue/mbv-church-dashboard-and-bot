@@ -1,3 +1,4 @@
+import { useCanChange } from '../../../shared/access';
 import { useState, type FormEvent } from 'react';
 import type { GroupBrief, OtherItem, OtherReconcile } from '@contracts';
 import { ru } from '../../../shared/i18n/ru';
@@ -28,6 +29,18 @@ const initialOtherOpen = (rec: OtherReconcile): boolean => rec.candidates.length
  * только руками.
  */
 export function ReconcileBlock({
+  item,
+  rec,
+  onClosed,
+}: {
+  item: Pick<OtherItem, 'id'>;
+  rec: OtherReconcile;
+  onClosed: (text: string) => void;
+}) {
+  return useCanChange() ? <ReconcileForm item={item} rec={rec} onClosed={onClosed} /> : null;
+}
+
+function ReconcileForm({
   item,
   rec,
   onClosed,

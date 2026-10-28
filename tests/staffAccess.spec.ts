@@ -28,7 +28,7 @@ function recordingMailer(opts: { fail?: boolean } = {}): Mailer & { sent: MailMe
 }
 const noMail: Mailer = { configured: false, async send() { throw new Error('нет'); } };
 
-function setup(over: { mailer?: Mailer; publicUrl?: string | null } = {}) {
+function setup(over: { mailer?: Mailer; publicUrl?: string | null; secret?: string } = {}) {
   const store = memoryStore();
   const staff = new StaffRepo(db);
   const settings = new SettingsRepo(db);
@@ -36,6 +36,7 @@ function setup(over: { mailer?: Mailer; publicUrl?: string | null } = {}) {
   const service = createStaffService({
     staff, settings, store, mailer: over.mailer ?? noMail,
     publicUrl: over.publicUrl === undefined ? 'https://hg.example' : over.publicUrl,
+    secret: over.secret ?? 'секрет-сервера-для-тестов',
     reportError: (_s, err) => { reported.push(err instanceof Error ? err.message : String(err)); },
   });
   const session = new SessionService(store, { password: 'общий-обычный-пароль', login: 'mbv_admin', superPassword: 'общий-полный-пароль', superLogin: 'super_mbv_admin', ttlSeconds: 600, maxAttempts: 5 });
@@ -61,6 +62,77 @@ async function activePerson(c: Ctx, over: Partial<typeof POLINA> & { login?: str
   expect(done).toEqual({ ok: true });
   return made;
 }
+
+describe('пароль без ссылок и «глазик»', () => {
+  test('пользователь заводится сразу с паролем и без почты: входит им, ссылка не выдаётся, письма нет', async () => {
+    const mailer = recordingMailer();
+    const c = setup({ mailer });
+    const made = await c.service.create({ fullName: 'Полина Иванова', role: 'readonly', generatePassword: true }, 'super_mbv_admin');
+    expect(made).toMatchObject({ ok: true, login: POLINA_LOGIN });
+    if (!made.ok || !('password' in made)) throw new Error('пароль не выдан');
+    expect(mailer.sent).toHaveLength(0);
+    const item = (await c.service.view()).items.find((i) => i.id === made.id)!;
+    expect(item).toMatchObject({ email: null, role: 'readonly', status: 'active', hasPassword: true, passwordViewable: true, hasPendingLink: false });
+    const entered = await c.auth.login(made.password, ADDR, made.login);
+    expect(entered).toMatchObject({ ok: true, role: 'readonly' });
+  });
+
+  test('выданный пароль открывается «глазиком» тем же, что выдан; в базе он зашифрован, открытие — в журнале', async () => {
+    const c = setup();
+    const made = await c.service.create({ fullName: 'Полина Иванова', role: 'admin', generatePassword: true }, 'super_mbv_admin');
+    if (!made.ok || !('password' in made)) throw new Error('пароль не выдан');
+    expect(await c.service.revealPassword({ id: made.id }, 'super_mbv_admin')).toEqual({ ok: true, password: made.password });
+    const { rows } = await db.query<{ sealed: string }>('SELECT password_sealed AS sealed FROM staff WHERE id = $1', [made.id]);
+    expect(rows[0]!.sealed).not.toContain(made.password);
+    const audit = await db.query<{ actor: string; after: unknown }>(`SELECT actor, after FROM audit_log WHERE action = 'staff.password_viewed'`);
+    expect(audit.rows).toEqual([{ actor: 'super_mbv_admin', after: {} }]);
+  });
+
+  test('новый пароль заменяет прежний и в «глазике»', async () => {
+    const c = setup();
+    const made = await c.service.create({ fullName: 'Полина Иванова', role: 'admin', generatePassword: true }, 'super_mbv_admin');
+    if (!made.ok || !('password' in made)) throw new Error('пароль не выдан');
+    const again = await c.service.generatePassword({ staffId: made.id }, 'super_mbv_admin');
+    if (!again.ok) throw new Error(again.message);
+    expect(again.password).not.toBe(made.password);
+    expect(await c.service.revealPassword({ id: made.id }, 'super_mbv_admin')).toEqual({ ok: true, password: again.password });
+  });
+
+  test('пароль, заданный самим человеком по ссылке, тоже открывается', async () => {
+    const c = setup();
+    const made = await activePerson(c);
+    expect(await c.service.revealPassword({ id: made.id }, 'super_mbv_admin')).toEqual({ ok: true, password: PASSWORD });
+  });
+
+  test('пароль, заданный до шифрования, и пароль при сменённом секрете не открываются — понятный отказ', async () => {
+    const c = setup();
+    const made = await c.service.create({ fullName: 'Полина Иванова', role: 'admin', generatePassword: true }, 'super_mbv_admin');
+    if (!made.ok) throw new Error(made.message);
+    const other = setup({ secret: 'другой-секрет' });
+    expect(await other.service.revealPassword({ id: made.id }, 'super_mbv_admin')).toMatchObject({ ok: false, error: 'not_found' });
+    await db.query('UPDATE staff SET password_sealed = NULL WHERE id = $1', [made.id]);
+    expect(await c.service.revealPassword({ id: made.id }, 'super_mbv_admin')).toMatchObject({ ok: false, message: expect.stringContaining('задан раньше') });
+    expect((await c.service.view()).items.find((i) => i.id === made.id)).toMatchObject({ hasPassword: true, passwordViewable: false });
+  });
+
+  test('без почты пользователя без пароля не завести; почту при правке можно убрать', async () => {
+    const c = setup();
+    expect(await c.service.create({ fullName: 'Полина Иванова', role: 'admin' }, 'super_mbv_admin')).toMatchObject({ ok: false, error: 'bad_request' });
+    const made = await activePerson(c);
+    expect(await c.service.update({ id: made.id, email: '' }, 'super_mbv_admin')).toEqual({ ok: true });
+    expect((await c.service.view()).items.find((i) => i.id === made.id)?.email).toBeNull();
+  });
+
+  test('в списке видно, к кому из «Людей» привязана запись и какая у неё роль в команде', async () => {
+    const c = setup();
+    const coordinatorId = await seedCoordinator(db, 'Иванова Полина', ['Координатор']);
+    const { rows } = await db.query<{ id: number }>(`INSERT INTO persons (full_name) VALUES ('Иванова Полина Сергеевна') RETURNING id::int AS id`);
+    const made = await c.service.create({ fullName: 'Полина Иванова', role: 'admin', generatePassword: true, personKey: `p${rows[0]!.id}` }, 'super_mbv_admin');
+    if (!made.ok) throw new Error(made.message);
+    const item = (await c.service.view()).items.find((i) => i.id === made.id)!;
+    expect(item).toMatchObject({ personName: 'Иванова Полина Сергеевна', coordinatorId, teamRole: 'Координатор' });
+  });
+});
 
 describe('заведение человека', () => {
   test('логин подбирается по ФИО, ссылка на пароль выдаётся, пароля у человека ещё нет', async () => {

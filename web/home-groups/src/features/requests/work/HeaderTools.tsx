@@ -1,3 +1,4 @@
+import { useCanChange } from '../../../shared/access';
 import { useState } from 'react';
 import { ArrowOut, ContactEditDialog, IconButton, Pencil, PhoneTools } from '../../contact';
 import { ru } from '../../../shared/i18n/ru';
@@ -15,10 +16,11 @@ const c = ru.contact;
 export function HeaderTools({ subject, group }: { subject: WorkSubject; group?: { id: number; code: string } | null }) {
   const nav = useAppNav();
   const [editing, setEditing] = useState(false);
+  const canChange = useCanChange();
 
   return (
     <>
-      {isOpenSubject(subject) && (
+      {canChange && isOpenSubject(subject) && (
         <IconButton label={c.editAria(subject.fio)} onClick={() => setEditing(true)}>
           <Pencil />
         </IconButton>

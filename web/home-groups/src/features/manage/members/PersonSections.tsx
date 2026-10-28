@@ -1,3 +1,4 @@
+import { useCanChange, useCanEditGroups } from '../../../shared/access';
 import { useState } from 'react';
 import type { GroupItem, PersonItem } from '@contracts';
 import { groupLine } from '../../../entities/format';
@@ -40,6 +41,8 @@ export function PersonGroups({ p }: { p: PersonItem }) {
   const groups = useGroups();
   const [dialog, setDialog] = useState<{ move?: MoveFrom } | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const canChange = useCanChange();
+  const canEditGroups = useCanEditGroups();
   const byCode = new Map((groups.data?.items ?? []).map((g) => [g.code, g]));
   const rows: { kind: RoleKind; label: string; codes: string[] }[] = [
     { kind: 'leader' as const, label: t.leaderOf, codes: p.leads.filter((l) => l.role === 'leader').map((l) => l.code) },
@@ -49,8 +52,10 @@ export function PersonGroups({ p }: { p: PersonItem }) {
 
   const change = (kind: RoleKind, code: string) => {
     const g = byCode.get(code);
-    if (!g) return null;
+    if (!g || !canChange) return null;
     if (kind === 'leader') return <p className={styles.hint}>{t.leaderStays}</p>;
+    // Соведущего переводит правка группы, а её распределителю не дают.
+    if (kind === 'coLeader' && !canEditGroups) return null;
     const member = kind === 'member' ? g.members.find((m) => m.personKey === p.key) : undefined;
     if (member?.kind === 'placed') {
       // Направлен через сервис: состав держит утверждённая заявка, и менять группу надо там (вернуть в работу).
@@ -93,7 +98,7 @@ export function PersonGroups({ p }: { p: PersonItem }) {
           </div>
         ))
       )}
-      <div className={styles.addRow}>
+      <div className={styles.addRow} hidden={!canChange}>
         <Button
           aria-label={t.addToGroupAria(p.fio)}
           onClick={() => {
@@ -133,9 +138,10 @@ export function PersonHeaderTools({ p }: { p: PersonItem }) {
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
   const path = p.personId === null ? `people/${p.key}/update` : `persons/${p.personId}/update`;
+  const canChange = useCanChange();
   return (
     <>
-      <IconButton
+      {canChange && <IconButton
         label={t.editAria(p.fio)}
         onClick={() => {
           setSaved(false);
@@ -143,7 +149,7 @@ export function PersonHeaderTools({ p }: { p: PersonItem }) {
         }}
       >
         <Pencil />
-      </IconButton>
+      </IconButton>}
       <PhoneTools phone={p.phone} name={p.fio} noPhone={t.noPhone} hiddenHint={p.contactsHidden ? t.phonesHidden : undefined} />
       {saved && (
         <span className={manage.saved} role="status">

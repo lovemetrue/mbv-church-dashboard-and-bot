@@ -40,6 +40,13 @@ export interface TeamAccountRow {
 
 export interface StaffListRow extends StaffRow {
   has_pending_link: boolean;
+  /** Выданный пароль хранится зашифрованным (миграция 063) и его можно открыть. */
+  password_viewable: boolean;
+  /** ФИО человека из «Людей», к которому привязана запись. */
+  person_name: string | null;
+  /** Участник команды: по связи `coordinator_id`, а без неё — по тому же ФИО (как `TEAM_ACCOUNT`). */
+  team_coordinator_id: number | null;
+  team_role: string | null;
 }
 
 export type TokenPurpose = 'invite' | 'reset';
@@ -97,10 +104,38 @@ export class StaffRepo {
   async list(): Promise<StaffListRow[]> {
     const { rows } = await this.db.query<StaffListRow>(
       `SELECT ${COLUMNS},
-              EXISTS (SELECT 1 FROM staff_tokens t WHERE t.staff_id = staff.id AND t.used_at IS NULL AND t.expires_at > now()) AS has_pending_link
-         FROM staff ORDER BY lower(full_name), id`,
+              EXISTS (SELECT 1 FROM staff_tokens t WHERE t.staff_id = staff.id AND t.used_at IS NULL AND t.expires_at > now()) AS has_pending_link,
+              (password_sealed IS NOT NULL AND password_hash IS NOT NULL) AS password_viewable,
+              COALESCE((SELECT NULLIF(btrim(u.full_name), '') FROM users u WHERE u.id = staff.user_id),
+                       (SELECT NULLIF(btrim(p.full_name), '') FROM persons p WHERE p.id = staff.person_id AND p.archived_at IS NULL)) AS person_name,
+              tc.team_cid AS team_coordinator_id, NULLIF(coordinator_role_names(tc.team_cid), '') AS team_role
+         FROM staff
+         LEFT JOIN LATERAL (
+           SELECT c.id::int AS team_cid FROM coordinators c
+            WHERE c.archived_at IS NULL
+              AND (c.id = staff.coordinator_id OR (staff.coordinator_id IS NULL AND person_name_key(c.name) = person_name_key(staff.full_name)))
+            ORDER BY (c.id = staff.coordinator_id) DESC NULLS LAST, c.id LIMIT 1
+         ) tc ON true
+        ORDER BY lower(full_name), id`,
     );
     return rows;
+  }
+
+  /** Выданный пароль в зашифрованном виде; null — не выдан или выдан до миграции 063. */
+  async sealedPassword(id: number): Promise<string | null> {
+    const { rows } = await this.db.query<{ sealed: string | null }>(
+      'SELECT password_sealed AS sealed FROM staff WHERE id = $1 AND password_hash IS NOT NULL',
+      [id],
+    );
+    return rows[0]?.sealed ?? null;
+  }
+
+  /** Кто открыл чужой пароль — в журнал, без самого пароля. */
+  async auditPasswordViewed(actor: string, id: number): Promise<void> {
+    await this.db.query(
+      `INSERT INTO audit_log (actor, service, action, entity_type, entity_id, after) VALUES ($1, 'home-groups', 'staff.password_viewed', 'staff', $2, '{}'::jsonb)`,
+      [actor, id],
+    );
   }
 
   async byId(id: number): Promise<StaffRow | null> {
@@ -134,7 +169,7 @@ export class StaffRepo {
     return (rowCount ?? 0) > 0;
   }
 
-  async create(input: { login: string; fullName: string; email: string; role: Role; person?: StaffPersonRef }, actor: string): Promise<StaffRow> {
+  async create(input: { login: string; fullName: string; email: string | null; role: Role; person?: StaffPersonRef }, actor: string): Promise<StaffRow> {
     return this.tx(async (c) => {
       let id: number;
       try {
@@ -156,7 +191,7 @@ export class StaffRepo {
 
   /** Правка данных. Отключение и смена роли повышают версию сессий: прежние входы человека закрываются. */
   async update(
-    id: number, patch: { fullName?: string; email?: string; role?: Role; active?: boolean; person?: StaffPersonRef }, actor: string,
+    id: number, patch: { fullName?: string; email?: string | null; role?: Role; active?: boolean; person?: StaffPersonRef }, actor: string,
   ): Promise<StaffRow | null> {
     return this.tx(async (c) => {
       const { rows: before } = await c.query<StaffRow>(`SELECT ${COLUMNS} FROM staff WHERE id = $1 FOR UPDATE`, [id]);
@@ -164,7 +199,7 @@ export class StaffRepo {
       if (!old) return null;
       const next = {
         full_name: patch.fullName ?? old.full_name,
-        email: patch.email ?? old.email,
+        email: patch.email !== undefined ? patch.email : old.email,
         role: patch.role ?? old.role,
         active: patch.active ?? old.active,
       };
@@ -238,7 +273,7 @@ export class StaffRepo {
    * Задать пароль по ссылке. Ссылка гасится в той же транзакции, под блокировкой: два нажатия разом
    * не зададут пароль дважды. Все прежние входы человека закрываются (версия сессий растёт).
    */
-  async setPasswordByToken(tokenHash: string, passwordHash: string): Promise<StaffRow | null> {
+  async setPasswordByToken(tokenHash: string, passwordHash: string, sealed: string | null = null): Promise<StaffRow | null> {
     return this.tx(async (c) => {
       const { rows } = await c.query<{ id: number; staff_id: number; purpose: TokenPurpose }>(
         `SELECT t.id::int AS id, t.staff_id::int AS staff_id, t.purpose
@@ -251,8 +286,8 @@ export class StaffRepo {
       if (!token) return null;
       await c.query(`UPDATE staff_tokens SET used_at = now() WHERE staff_id = $1 AND used_at IS NULL`, [token.staff_id]);
       await c.query(
-        `UPDATE staff SET password_hash = $2, password_set_at = now(), session_version = session_version + 1 WHERE id = $1`,
-        [token.staff_id, passwordHash],
+        `UPDATE staff SET password_hash = $2, password_sealed = $3, password_set_at = now(), session_version = session_version + 1 WHERE id = $1`,
+        [token.staff_id, passwordHash, sealed],
       );
       const { rows: staff } = await c.query<StaffRow>(`SELECT ${COLUMNS} FROM staff WHERE id = $1`, [token.staff_id]);
       await StaffRepo.audit(c, staff[0]!.login, 'staff.password_set', token.staff_id, { via: token.purpose });
@@ -347,14 +382,14 @@ export class StaffRepo {
    * Пароль, выданный администратором. Ссылки на пароль гасятся, прежние входы человека закрываются (версия сессий
    * растёт); найденная по ФИО запись заодно связывается с человеком из справочника. В журнал — кто и кому, без пароля.
    */
-  async setPassword(id: number, passwordHash: string, actor: string, coordinatorId: number | null = null): Promise<void> {
+  async setPassword(id: number, passwordHash: string, actor: string, coordinatorId: number | null = null, sealed: string | null = null): Promise<void> {
     await this.tx(async (c) => {
       await c.query(`UPDATE staff_tokens SET used_at = now() WHERE staff_id = $1 AND used_at IS NULL`, [id]);
       await c.query(
-        `UPDATE staff SET password_hash = $2, password_set_at = now(), session_version = session_version + 1,
+        `UPDATE staff SET password_hash = $2, password_sealed = $4, password_set_at = now(), session_version = session_version + 1,
                 coordinator_id = COALESCE(coordinator_id, $3)
           WHERE id = $1`,
-        [id, passwordHash, coordinatorId],
+        [id, passwordHash, coordinatorId, sealed],
       );
       await StaffRepo.audit(c, actor, 'staff.password_generated', id, {});
     });

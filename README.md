@@ -410,6 +410,12 @@ docker compose exec -T db pg_restore -U church -d church40 --clean --if-exists <
 `dashboard`. Бэкап больше не шаг деплоя: это отдельный systemd-таймер (см. «Бэкапы»), который
 `deploy.sh` переустанавливает при каждой выкладке.
 
+`deploy.sh` на сервере идёт **в фоне** (`scripts/deploy-detached.sh`: `setsid nohup`, замок `flock`): сборка образов
+дольше пяти минут, и одна долгая SSH-сессия CI обрывалась («Broken pipe»), хотя сервер доделывал выкладку. CI только
+запускает деплой и раз в 15 секунд опрашивает его коротким SSH (`scripts/deploy-status.sh`), печатая журнал; оборванный
+опрос повторяется, ждёт до 30 минут. Журнал и код завершения каждой выкладки лежат на сервере в
+`deploy-logs/<хеш>.log` и `.status` (хранятся последние 20). Второй деплой, пока идёт первый, не запускается.
+
 Нужны пять секретов репозитория (Settings → Secrets and variables → Actions):
 `SSH_DEPLOY_KEY` (приватный ключ отдельной пары, не личный), `SSH_HOST_IP`,
 `SSH_HOST_PORT`, `SSH_USER`, `SSH_DEPLOY_PATH` (путь вида `/opt/church40bot` — тот,

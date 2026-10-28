@@ -109,11 +109,38 @@ jobs:
       # deploy.sh ещё не лежит на сервере, git pull должен успеть его принести
       # до попытки запуска. Бэкап при деплое больше не делаем — теперь это
       # отдельный systemd-таймер на сервере (см. deploy/systemd/), а не шаг CI.
+      #
+      # Сам деплой идёт на сервере в фоне (scripts/deploy-detached.sh): сборка образов дольше пяти минут, и одна
+      # долгая SSH-сессия обрывалась («Broken pipe») — CI краснел, хотя сервер доделывал выкладку. Теперь сессия
+      # только запускает деплой, а дальше CI коротко опрашивает его (scripts/deploy-status.sh), печатает журнал и
+      # ждёт кода завершения. Оборванный опрос просто повторяется.
       - name: git pull, выкладка bot → dashboard → home-groups
+        env:
+          SSH_PORT: ${{ secrets.SSH_HOST_PORT }}
+          SSH_TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST_IP }}
+          DEPLOY_PATH: ${{ secrets.SSH_DEPLOY_PATH }}
         run: |
-          ssh -p "${{ secrets.SSH_HOST_PORT }}" "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST_IP }}" '
-            set -eu
-            cd "${{ secrets.SSH_DEPLOY_PATH }}"
-            git pull --ff-only origin main
-            ./scripts/deploy.sh
-          '
+          remote() { ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o ConnectTimeout=20 -p "$SSH_PORT" "$SSH_TARGET" "$@"; }
+          SHA="$(remote "set -eu; cd '$DEPLOY_PATH'; git pull --ff-only origin main >&2; ./scripts/deploy-detached.sh")"
+          echo "деплой $SHA запущен на сервере, жду итога"
+          FROM=0
+          # 120 опросов по 15 секунд — полчаса: столько сборка не идёт даже на холодном кэше.
+          for i in $(seq 1 120); do
+            sleep 15
+            if ! OUT="$(remote "cd '$DEPLOY_PATH' && ./scripts/deploy-status.sh '$SHA' $FROM")"; then
+              echo "::warning::нет связи с сервером, опрошу снова"
+              continue
+            fi
+            HEAD="$(printf '%s\n' "$OUT" | head -n 1)"
+            printf '%s\n' "$OUT" | tail -n +2
+            SIZE="$(echo "$HEAD" | cut -d' ' -f2)"
+            CODE="$(echo "$HEAD" | cut -d' ' -f3)"
+            FROM="$SIZE"
+            if [ "$CODE" != "-" ]; then
+              [ "$CODE" = "0" ] && exit 0
+              echo "::error::deploy.sh завершился с кодом $CODE — журнал выше и на сервере в deploy-logs/$SHA.log"
+              exit 1
+            fi
+          done
+          echo "::error::деплой $SHA не закончился за 30 минут — смотрите deploy-logs/$SHA.log на сервере"
+          exit 1

@@ -161,6 +161,19 @@ export function useStaffActions() {
     update: (body: UpdateStaffBody) => changing<ActionOk>('settings/staff/update', body),
     setPersonalMode: (body: PersonalModeBody) => changing<ActionOk>('settings/staff/personal-mode', body),
     generatePassword: (body: GeneratePasswordBody) => changing<GeneratePasswordOk>('settings/staff/generate-password', body),
+    /**
+     * Роли участника команды из окна пользователя: та же правка, что в карточке координатора. После неё перечитываем
+     * всё, где роль видна: список пользователей, справочник команды, «кто вошёл» (от роли зависят отборы) и формы.
+     */
+    setTeamRoles: async (coordinatorId: number, roleIds: number[]) => {
+      const result = await apiPost<ActionOk>(`coordinators/${coordinatorId}/update`, { fields: { roleIds: roleIds.join(', ') } });
+      await Promise.all(
+        [settingsKeys.staff, settingsKeys.teamRoles, queryKeys.coordinators, queryKeys.me, FORM_META_KEY].map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey }),
+        ),
+      );
+      return result;
+    },
     /** «Глазик»: список не меняется, перечитывать нечего. */
     reveal: (body: StaffIdBody) => apiPost<RevealPasswordOk>('settings/staff/password', body),
   };

@@ -43,6 +43,9 @@ describe('«Настройки → Роли команды»', () => {
     expect(within(within(rows[0]!).getByRole('combobox', { name: 'Что значит' })).getAllByRole('option').map((o) => o.textContent))
       .toEqual(['Без особых настроек', 'Катализатор', 'Старший распределитель', 'Распределитель', 'Старший координатор', 'Координатор групп']);
     expect(screen.getByText(/сервис сам раздаёт ему новые заявки/)).toBeInTheDocument();
+    // У каждой роли прямо под ней — что она даёт; у распределителя — что карточки групп он не правит.
+    expect(within(rows[0]!).getByText(/видит свои группы и свои обращения/)).toBeInTheDocument();
+    expect(within(rows[1]!).getByText(/карточки групп не правит/)).toBeInTheDocument();
   });
 
   test('«Сохранить» включается после правки и шлёт название и смысл; потом перечитываются роли и списки форм', async () => {

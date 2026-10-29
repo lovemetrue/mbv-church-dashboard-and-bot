@@ -20,10 +20,11 @@ async function group(over: { status?: string; people?: number | null; doNotRefer
   return rows[0]!.id;
 }
 
-async function request(over: { status?: string; origin?: string } = {}): Promise<number> {
+async function request(over: { status?: string; origin?: string; responsible?: string | null } = {}): Promise<number> {
+  // Ответственный по умолчанию есть: без «В работе у» заявку утвердить нельзя (проверено отдельным тестом).
   const { rows } = await db.query<{ id: number }>(
-    `INSERT INTO requests (type, status, fio, origin) VALUES ('join_group', $1, 'Мария', $2) RETURNING id`,
-    [over.status ?? 'Новая', over.origin ?? 'ui'],
+    `INSERT INTO requests (type, status, fio, origin, responsible) VALUES ('join_group', $1, 'Мария', $2, $3) RETURNING id`,
+    [over.status ?? 'Новая', over.origin ?? 'ui', over.responsible === undefined ? 'Анна' : over.responsible],
   );
   return rows[0]!.id;
 }
@@ -48,6 +49,14 @@ describe('утверждение', () => {
     expect(Number(entry.entity_id)).toBe(r);
     expect(entry.before).toMatchObject({ status: 'Новая', group_id: null });
     expect(entry.after).toMatchObject({ status: 'Исполнена', group_id: g });
+  });
+
+  test.each([null, '', '   '])('без ответственного («В работе у» = %j) утвердить нельзя, и заявка не меняется', async (responsible) => {
+    const g = await group();
+    const r = await request({ responsible });
+    expect(await repo.approve(r, g, 'mbv_admin', OPTS)).toMatchObject({ ok: false, error: 'no_responsible' });
+    expect(await row(r)).toMatchObject({ status: 'Новая', group_id: null });
+    expect(await audits()).toHaveLength(0);
   });
 
   test('повторное утверждение уже закрытой заявки отвечает «уже обработали» и ничего не меняет', async () => {

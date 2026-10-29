@@ -35,7 +35,7 @@ async function group(over: { leaderUserId?: number | null; phones?: string[]; st
 
 async function request(over: { userId?: number | null; phone?: string | null } = {}): Promise<number> {
   const { rows } = await db.query<{ id: number }>(
-    `INSERT INTO requests (type, status, fio, origin, user_id, phone) VALUES ('join_group', 'Новая', 'Никандрова Нина Ивановна', 'бот', $1, $2) RETURNING id`,
+    `INSERT INTO requests (type, status, fio, origin, user_id, phone, responsible) VALUES ('join_group', 'Новая', 'Никандрова Нина Ивановна', 'бот', $1, $2, 'Анна') RETURNING id`,
     [over.userId ?? null, over.phone ?? null],
   );
   return Number(rows[0]!.id);

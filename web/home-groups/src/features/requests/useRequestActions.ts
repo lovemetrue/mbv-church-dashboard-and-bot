@@ -37,6 +37,8 @@ export function actionErrorText(error: unknown): string {
       return `${a.errorClosed}. ${a.errorClosedHint}`;
     case 'group_unavailable':
       return a.errorUnavailable;
+    case 'no_responsible':
+      return a.errorNoResponsible;
     case 'not_found':
       return a.errorNotFound;
     case 'bad_request':

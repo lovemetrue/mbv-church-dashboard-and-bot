@@ -4,7 +4,7 @@ import { useGroupFit, useGroups } from '../../shared/api/queries';
 import { GroupPreviewButton } from '../reference/GroupPreview';
 import { ru } from '../../shared/i18n/ru';
 import { Button, ErrorState, GroupMarks, LoadingState } from '../../shared/ui';
-import { proposalOf } from './model';
+import { needsResponsible, proposalOf } from './model';
 import styles from './Requests.module.css';
 
 const a = ru.requests.act;
@@ -56,6 +56,7 @@ const matches = (g: GroupBrief, q: string): boolean =>
 function OptionRow({
   o,
   fit,
+  canApprove,
   selected,
   pending,
   onPick,
@@ -65,6 +66,8 @@ function OptionRow({
   o: Option;
   /** Насколько группа подходит человеку; нет — оценка ещё грузится или не пришла (окно работает и без неё). */
   fit: GroupFit | undefined;
+  /** Нет ответственного — утвердить нельзя, а «Выбрать» можно: она ничего не утверждает. */
+  canApprove: boolean;
   selected: boolean;
   pending: boolean;
   onPick: () => void;
@@ -96,7 +99,7 @@ function OptionRow({
       <Button size="sm" disabled={o.blocked !== null || pending} aria-label={a.pickChooseAria(g.code)} onClick={onChoose}>
         {a.pickChoose}
       </Button>
-      <Button size="sm" variant="primary" disabled={o.blocked !== null || pending} aria-label={a.pickApproveAria(g.code)} onClick={onApprove}>
+      <Button size="sm" variant="primary" disabled={o.blocked !== null || pending || !canApprove} aria-label={a.pickApproveAria(g.code)} onClick={onApprove}>
         {a.pickApprove}
       </Button>
       {/* Посмотреть группу можно и ту, куда направить нельзя: координатор поймёт, почему. */}
@@ -121,6 +124,7 @@ interface GroupPickerProps {
 export function GroupPicker({ r, pending, notice, onSubmit, onChoose, onCancel }: GroupPickerProps) {
   const query = useGroups();
   const fitQuery = useGroupFit(r.id);
+  const noResp = needsResponsible(r);
   const fitById = useMemo(() => new Map((fitQuery.data?.items ?? []).map((f) => [f.groupId, f])), [fitQuery.data]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
@@ -148,6 +152,7 @@ export function GroupPicker({ r, pending, notice, onSubmit, onChoose, onCancel }
               key={o.group.id}
               o={o}
               fit={fitById.get(o.group.id)}
+              canApprove={!noResp}
               selected={selectedId === o.group.id}
               pending={pending}
               onPick={() => setSelectedId(o.group.id)}
@@ -163,6 +168,7 @@ export function GroupPicker({ r, pending, notice, onSubmit, onChoose, onCancel }
     <div>
       <p className={styles.note}>{a.pickFor(r.fio)}</p>
       <p className={styles.note}>{a.pickHint}</p>
+      {noResp && <p className={styles.needResp}>{a.needResponsible}</p>}
       <input
         type="search"
         className={styles.search}
@@ -179,7 +185,7 @@ export function GroupPicker({ r, pending, notice, onSubmit, onChoose, onCancel }
       {notice}
       <div className={styles.dialogFoot}>
         <Button onClick={onCancel}>{a.cancel}</Button>
-        <Button variant="primary" disabled={!chosen || pending} onClick={() => chosen && onSubmit(chosen)}>
+        <Button variant="primary" disabled={!chosen || pending || noResp} onClick={() => chosen && onSubmit(chosen)}>
           {chosen ? a.pickSubmit(chosen.code) : a.pickSubmitIdle}
         </Button>
       </div>

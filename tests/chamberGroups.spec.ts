@@ -64,7 +64,7 @@ describe('направление и камерная отметка в форм�
 describe('в камерную группу людей не направляют', () => {
   async function joinRequest(): Promise<number> {
     const { rows } = await db.query<{ id: number }>(
-      `INSERT INTO requests (type, status, fio, place, age, origin) VALUES ('join_group', 'Новая', 'Мария', 'Приморский', '30', 'ui') RETURNING id`,
+      `INSERT INTO requests (type, status, fio, place, age, origin, responsible) VALUES ('join_group', 'Новая', 'Мария', 'Приморский', '30', 'ui', 'Анна') RETURNING id`,
     );
     return rows[0]!.id;
   }

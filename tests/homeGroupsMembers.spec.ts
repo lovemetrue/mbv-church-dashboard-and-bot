@@ -22,7 +22,7 @@ const seedUser = async (name = 'Мария Участница') => (await db.que
   `INSERT INTO users (platform, platform_user_id, chat_id, full_name, phone, registration_no, registered_at, complete)
    VALUES ('telegram', 'u' || nextval('users_id_seq'), '', $1, '+79110001122', nextval('registration_no_seq'), now(), true) RETURNING id`, [name])).rows[0]!.id;
 const seedRequestOnly = async () => (await db.query<{ id: number }>(
-  `INSERT INTO requests (type, status, fio, phone, origin) VALUES ('join_group', 'Новая', 'Пётр Из Таблицы', '+79215550011', 'таблица') RETURNING id`)).rows[0]!.id;
+  `INSERT INTO requests (type, status, fio, phone, origin, responsible) VALUES ('join_group', 'Новая', 'Пётр Из Таблицы', '+79215550011', 'таблица', 'Анна') RETURNING id`)).rows[0]!.id;
 const rows = async () => (await db.query('SELECT group_id, user_id, request_id, person_id, joined_on::text AS joined_on, note, archived_at FROM group_members ORDER BY id')).rows;
 const audits = async () => (await db.query(`SELECT action, after::text AS after FROM audit_log ORDER BY id`)).rows;
 
@@ -207,7 +207,7 @@ describe('справочник людей и составы в представ�
   test('после утверждения человек сам в составе группы, и вносить его вручную не нужно', async () => {
     const g = await seedGroup();
     const u = await seedUser();
-    const r = (await db.query<{ id: number }>(`INSERT INTO requests (user_id, type, status, fio, origin) VALUES ($1, 'join_group', 'Новая', 'Мария', 'ui') RETURNING id`, [u])).rows[0]!.id;
+    const r = (await db.query<{ id: number }>(`INSERT INTO requests (user_id, type, status, fio, origin, responsible) VALUES ($1, 'join_group', 'Новая', 'Мария', 'ui', 'Анна') RETURNING id`, [u])).rows[0]!.id;
     const svcc = composeService(db, engine, { defaultCapacity: 10, ttlMs: 0 });
     await svcc.placement.approve(r, g, 'boss', { force: true, defaultCapacity: 10 });
     const views = await svcc.views();

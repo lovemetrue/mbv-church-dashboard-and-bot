@@ -16,7 +16,12 @@ export class ApiError extends Error {
   }
 }
 
-const ACTION_CODES: readonly string[] = ['bad_request', 'not_found', 'already_closed', 'group_unavailable', 'group_full', 'forbidden', 'conflict', 'unavailable'];
+// Запись по всем кодам контракта, а не список: новый код без строки здесь — ошибка типов, а не молча потерянный текст.
+const ACTION_CODE_SET: Record<ActionError['error'], true> = {
+  bad_request: true, not_found: true, already_closed: true, group_unavailable: true, group_full: true,
+  no_responsible: true, forbidden: true, conflict: true, unavailable: true,
+};
+const ACTION_CODES: readonly string[] = Object.keys(ACTION_CODE_SET);
 
 type RedirectFn = (url: string) => void;
 

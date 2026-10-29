@@ -4,7 +4,7 @@ import type { RequestItem } from '@contracts';
 import { ru } from '../../shared/i18n/ru';
 import { Button, Modal } from '../../shared/ui';
 import { GroupPicker } from './GroupPicker';
-import { proposalOf } from './model';
+import { needsResponsible, proposalOf } from './model';
 import { RejectForm } from './RejectForm';
 import styles from './Requests.module.css';
 import type { ActionNotice, RequestActionsState } from './useRequestActions';
@@ -35,6 +35,7 @@ export function ActionNoticeLine({ notice }: { notice: ActionNotice | null }) {
  */
 export function RequestActions({ r, act }: { r: RequestItem; act: RequestActionsState }) {
   const hintId = useId();
+  const respHintId = useId();
   const canChange = useCanChange();
   if (!isActionable(r) || !canChange) return null;
   const proposal = proposalOf(r);
@@ -54,14 +55,21 @@ export function RequestActions({ r, act }: { r: RequestItem; act: RequestActions
       {act.pending && act.pendingKind === 'rematch' ? ru.requests.rematch.running : ru.requests.rematch.button}
     </Button>
   );
+  const noResp = needsResponsible(r);
   return (
     <>
+      {noResp && (
+        <p id={respHintId} className={styles.needResp}>
+          {a.needResponsible}
+        </p>
+      )}
       <div className={styles.actions} role="group" aria-label={a.groupsLabel} aria-busy={act.pending}>
         {stale && rematch}
         {group && (
           <Button
             variant={stale ? 'default' : 'primary'}
-            disabled={act.pending}
+            disabled={act.pending || noResp}
+            aria-describedby={noResp ? respHintId : undefined}
             aria-label={weak ? a.approveAnywayAria(group.code) : a.approveAria(group.code)}
             onClick={() => void act.approve(group)}
           >

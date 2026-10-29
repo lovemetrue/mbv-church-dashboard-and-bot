@@ -784,7 +784,7 @@ describe('действия координатора над заявкой', () =
   });
 
   test.each([
-    ['bad_request', 400], ['not_found', 404], ['already_closed', 409], ['group_unavailable', 409], ['group_full', 409],
+    ['bad_request', 400], ['not_found', 404], ['already_closed', 409], ['group_unavailable', 409], ['group_full', 409], ['no_responsible', 409],
   ] as const)('ошибка %s отвечает кодом %i и текстом, снимок не сбрасывается', async (error, status) => {
     const cookie = await signIn();
     app.setOutcome({ ok: false, error, message: 'Пояснение.' });

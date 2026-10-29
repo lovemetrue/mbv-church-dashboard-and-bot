@@ -135,6 +135,12 @@ export function unavailableReason(
  */
 export const proposalOf = (r: Pick<RequestItem, 'proposal' | 'noPlan'>): Proposal | null => (isStrangeHold(r) ? null : r.proposal);
 
+/**
+ * Утвердить можно только заявку, у которой есть ответственный («В работе у»): дальше человека ведёт он. Тот же запрет
+ * стоит на сервере (`no_responsible`); здесь — чтобы кнопка была неактивной сразу, с подсказкой, а не ошибкой после нажатия.
+ */
+export const needsResponsible = (r: Pick<RequestItem, 'responsible'>): boolean => !r.responsible?.trim();
+
 /** Кандидат без оценки: группу выбрал координатор, а расчёт её не считал. Ноль совпадения тут не показываем. */
 export const isUnscored = (c: Candidate): boolean => c.confidence === null && c.score === 0 && c.reasons.length === 0;
 

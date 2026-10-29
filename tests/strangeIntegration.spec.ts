@@ -17,7 +17,7 @@ async function seed() {
   )).rows[0]!.id;
   let n = 0;
   const mk = async (fio: string) => (await db.query<{ id: number }>(
-    `INSERT INTO requests (type, fio, phone, age, place, status, origin) VALUES ('join_group', $1, $2, '25-40', 'Приморский', 'Новая', 'ui') RETURNING id`, [fio, `+7911000112${++n}`],
+    `INSERT INTO requests (type, fio, phone, age, place, status, origin, responsible) VALUES ('join_group', $1, $2, '25-40', 'Приморский', 'Новая', 'ui', 'Анна') RETURNING id`, [fio, `+7911000112${++n}`],
   )).rows[0]!.id;
   return { g, a: await mk('Обычный Человек'), b: await mk('Отмеченный Человек') };
 }

@@ -174,7 +174,7 @@ describe('утверждение через HTTP на живой базе', () =
        VALUES ('Иван Петров', 'Приморский', group_direction_id('Основная церковь'), 'Функционирует', 3, 'ui') RETURNING id`,
     )).rows[0]!.id;
     const r = (await db.query<{ id: number }>(
-      `INSERT INTO requests (type, status, fio, place, origin) VALUES ('join_group', 'Новая', 'Мария Иванова', 'Приморский', 'ui') RETURNING id`,
+      `INSERT INTO requests (type, status, fio, place, origin, responsible) VALUES ('join_group', 'Новая', 'Мария Иванова', 'Приморский', 'ui', 'Анна') RETURNING id`,
     )).rows[0]!.id;
     return { g, r };
   }
@@ -427,7 +427,7 @@ describe('создание и параметры подбора через HTTP 
 
   test('правка заявки меняет поля из таблицы церкви, но не переносит их в регистрацию; плохая дата отклоняется', async () => {
     const userId = (await db.query<{ id: number }>(`INSERT INTO users (platform, platform_user_id, chat_id, full_name) VALUES ('telegram', '1', '1', 'Мария') RETURNING id`)).rows[0]!.id;
-    const r = (await db.query<{ id: number }>(`INSERT INTO requests (user_id, type, status, fio, note, extra, origin) VALUES ($1, 'join_group', 'Новая', 'Мария', 'звонить вечером', 'старое', 'таблица') RETURNING id`, [userId])).rows[0]!.id;
+    const r = (await db.query<{ id: number }>(`INSERT INTO requests (user_id, type, status, fio, note, extra, origin, responsible) VALUES ($1, 'join_group', 'Новая', 'Мария', 'звонить вечером', 'старое', 'таблица', 'Анна') RETURNING id`, [userId])).rows[0]!.id;
     const app = await startAdmin();
     try {
       const fields = { ministry: 'Колизей 13:00', recommended: 'Иван Петров', recommendedAt: '2026-09-01', attendance: 'ходит', extra: 'новое', source: 'Сайт' };
@@ -510,7 +510,7 @@ describe('создание и параметры подбора через HTTP 
 
   test('улица и время, поправленные координатором, пишутся человеку, меняют понимание заявки сразу и видны в ленте без текста улицы', async () => {
     await db.query(`INSERT INTO groups (leader, district, direction_id, status, people, source) VALUES ('Иван', 'Приморский', group_direction_id('Основная церковь'), 'Функционирует', 3, 'ui')`);
-    const r = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, fio, place, origin) VALUES ('join_group', 'Новая', 'Мария', 'Приморский', 'ui') RETURNING id`)).rows[0]!.id;
+    const r = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, fio, place, origin, responsible) VALUES ('join_group', 'Новая', 'Мария', 'Приморский', 'ui', 'Анна') RETURNING id`)).rows[0]!.id;
     const app = await startAdmin();
     try {
       const before = (await app.get('requests')).items.find((i: { id: number }) => i.id === r);
@@ -530,7 +530,7 @@ describe('создание и параметры подбора через HTTP 
   });
 
   test('правка заявки, «в работе у» и итог звонка видны в ленте и меняют заявку; журнал без значений', async () => {
-    const r = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, fio, phone, place, origin) VALUES ('join_group', 'Новая', 'Мария', '+79110001122', 'Приморский', 'ui') RETURNING id`)).rows[0]!.id;
+    const r = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, fio, phone, place, origin, responsible) VALUES ('join_group', 'Новая', 'Мария', '+79110001122', 'Приморский', 'ui', 'Анна') RETURNING id`)).rows[0]!.id;
     const app = await startAdmin();
     try {
       expect((await app.post(`requests/${r}/edit`, { phone: '8 921 555-00-11', age: '36-45' })).status).toBe(200);
@@ -547,7 +547,7 @@ describe('создание и параметры подбора через HTTP 
   });
 
   test('плохие тела edit/assign/call отвечают 400 и ничего не меняют', async () => {
-    const r = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, fio, origin) VALUES ('join_group', 'Новая', 'Мария', 'ui') RETURNING id`)).rows[0]!.id;
+    const r = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, fio, origin, responsible) VALUES ('join_group', 'Новая', 'Мария', 'ui', 'Анна') RETURNING id`)).rows[0]!.id;
     const app = await startAdmin();
     try {
       for (const [path, body] of [
@@ -562,7 +562,7 @@ describe('создание и параметры подбора через HTTP 
 
   test('после правки района закреплённое предложение помечается «данные изменились»', async () => {
     await db.query(`INSERT INTO groups (leader, district, direction_id, status, people, source) VALUES ('Иван', 'Приморский', group_direction_id('Основная церковь'), 'Функционирует', 3, 'ui')`);
-    const r = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, fio, place, age, origin) VALUES ('join_group', 'Новая', 'Мария', 'Приморский', '30', 'ui') RETURNING id`)).rows[0]!.id;
+    const r = (await db.query<{ id: number }>(`INSERT INTO requests (type, status, fio, place, age, origin, responsible) VALUES ('join_group', 'Новая', 'Мария', 'Приморский', '30', 'ui', 'Анна') RETURNING id`)).rows[0]!.id;
     const app = await startAdmin();
     try {
       await app.post('matching/run', {});

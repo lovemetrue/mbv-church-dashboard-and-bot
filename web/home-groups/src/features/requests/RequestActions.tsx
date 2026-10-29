@@ -39,7 +39,8 @@ export function RequestActions({ r, act }: { r: RequestItem; act: RequestActions
   if (!isActionable(r) || !canChange) return null;
   const proposal = proposalOf(r);
   const group = proposal?.main.group;
-  const weak = r.bucket === 'human';
+  // Группу выбрал координатор: это его решение, а не слабый расчёт — «Утвердить» обычная.
+  const weak = r.bucket === 'human' && !proposal?.chosen;
   // Данные изменились после закрепления: группа считалась по старым, поэтому «Утвердить» —
   // не главное действие, пока предложение не пересчитано.
   const stale = proposal?.dataChanged === true;
@@ -109,7 +110,14 @@ export function ActionDialogs({ r, act }: { r: RequestItem; act: RequestActionsS
   if (dialog.kind === 'pick') {
     return (
       <Modal title={a.pickTitle} onClose={act.close}>
-        <GroupPicker r={r} pending={act.pending} notice={notice} onSubmit={(g) => void act.approve(g)} onCancel={act.close} />
+        <GroupPicker
+          r={r}
+          pending={act.pending}
+          notice={notice}
+          onSubmit={(g) => void act.approve(g)}
+          onChoose={(g) => void act.choose(g)}
+          onCancel={act.close}
+        />
       </Modal>
     );
   }

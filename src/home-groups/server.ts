@@ -137,6 +137,7 @@ export interface HomeGroupsDeps {
     run(actor: string): Promise<MatchingRunOk>;
     rerunAll(actor: string): Promise<MatchingRunOk>;
     setAuto(enabled: boolean, actor: string): Promise<void>;
+    setNotify(enabled: boolean, actor: string): Promise<void>;
   };
   /** Раздел «Настройки»: только для полного входа. */
   settings: Settings;
@@ -206,7 +207,7 @@ const PERSON_PATH = /^\/api\/v1\/people\/(\d{1,15})\/(qr|card)$/;
 /** `GET /api/v1/requests/12/group-draft`: поля формы «Новая группа» по заявке. Любой вход, как и создание группы. */
 const GROUP_DRAFT_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/group-draft$/;
 const LOGO_PATH = '/api/v1/assets/church-logo.png';
-const MATCHING_PATH = /^\/api\/v1\/matching\/(run|auto|rerun-all)$/;
+const MATCHING_PATH = /^\/api\/v1\/matching\/(run|auto|notify|rerun-all)$/;
 /** База знаний: список статей, статья и картинка к ней. Открыта любому входу, в том числе стойке. */
 const HELP_PATH = /^\/api\/v1\/help(?:\/([a-z]{1,20}))?$/;
 const HELP_FILE_PATH = /^\/api\/v1\/help\/files\/([\w.-]{1,80}\.png)$/;
@@ -247,7 +248,7 @@ export function mayEditGroups(viewer: { person: { teamKinds: readonly TeamRoleKi
 const isRegistrationPage = (path: string): boolean => path.replace(/\/+$/, '') === REGISTRATION_PATH;
 
 /** `POST /api/v1/requests/12/approve`: номер заявки — цифры, длиннее пятнадцати не бывает (Number безопасен). */
-const ACTION_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/(approve|reject|need-call|params|rematch|edit|assign|call|delete|close|reopen|reconcile|strange)$/;
+const ACTION_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/(approve|choose|reject|need-call|params|rematch|edit|assign|call|delete|close|reopen|reconcile|strange)$/;
 
 /** Адрес клиента: за nginx настоящий адрес приходит заголовком (как в старом дашборде). */
 function clientIp(req: IncomingMessage): string {
@@ -526,6 +527,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       return;
     }
     const outcome = action === 'approve' ? await deps.actions.approve(requestId, body, actor)
+      : action === 'choose' ? await deps.actions.choose(requestId, body, actor)
       : action === 'reject' ? await deps.actions.reject(requestId, body, actor)
       : action === 'params' ? await deps.actions.setParams(requestId, body, actor)
       : action === 'rematch' ? await deps.actions.rematch(requestId, actor)
@@ -568,12 +570,18 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       return;
     }
     if (role !== 'super') {
-      sendJson(res, 403, { error: 'forbidden', message: 'Автоматический подбор включает только полный вход.' } satisfies ActionError);
+      sendJson(res, 403, { error: 'forbidden', message: 'Автоматический подбор и сообщения в MAX включает только полный вход.' } satisfies ActionError);
       return;
     }
     const enabled = typeof body === 'object' && body !== null ? (body as Record<string, unknown>)['enabled'] : undefined;
     if (typeof enabled !== 'boolean') {
       sendJson(res, 400, { error: 'bad_request', message: 'Нужно указать enabled: true или false.' } satisfies ActionError);
+      return;
+    }
+    if (action === 'notify') {
+      await deps.matching.setNotify(enabled, actor);
+      logger.info({ actor, enabled }, 'домашние группы: сообщения в MAX при утверждении переключены');
+      sendJson(res, 200, { ok: true } satisfies ActionOk);
       return;
     }
     await deps.matching.setAuto(enabled, actor);

@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { createHelp } from './help.js';
 import type { Pool } from 'pg';
 import { AuditRepo } from '../db/repos/audit.repo.js';
+import { PlacementNoticesRepo } from '../db/repos/placementNotices.repo.js';
 import { CoordinatorsRepo } from '../db/repos/coordinators.repo.js';
 import { GroupsRepo } from '../db/repos/groups.repo.js';
 import { StaffRepo } from '../db/repos/staff.repo.js';
@@ -120,6 +121,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     strange: new StrangeRepo(db),
     genders: new GendersRepo(db),
     geocode: new GeocodeRepo(db),
+    notices: new PlacementNoticesRepo(db),
   }, { ...(opts.timeZone ? { timeZone: opts.timeZone } : {}), assistantAvailable: () => assistantAvailable() });
   const viewOptions = { defaultCapacity: opts.defaultCapacity, ...(opts.timeZone ? { timeZone: opts.timeZone } : {}) };
 

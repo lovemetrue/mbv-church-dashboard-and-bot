@@ -122,7 +122,8 @@ describe('помощник: разбор непонятных заявок', () 
     const [e] = (await db.query(`SELECT actor, action, after::text AS after FROM audit_log WHERE action = 'assistant.run'`)).rows;
     expect(e).toMatchObject({ actor: 'boss' });
     expect(JSON.parse(e.after)).toEqual({ ok: true, asked: 1, filled: 1, withQuestions: 1, proposals: 1, unanswered: 0, model: 'fake-model' });
-    expect(JSON.stringify((await db.query('SELECT * FROM audit_log')).rows)).not.toMatch(/дуба|Мария|911/);
+    // Без столбца времени: метка вида «…15.911Z» сама содержит «911» и роняла проверку раз на тысячу запусков.
+    expect(JSON.stringify((await db.query('SELECT actor, action, entity_type, entity_id, before, after, note FROM audit_log')).rows)).not.toMatch(/дуба|Мария|911/);
   });
 
   test('сбой сервиса модели не роняет сервис: понятная ошибка, ошибка записана в журнал ошибок без данных людей', async () => {

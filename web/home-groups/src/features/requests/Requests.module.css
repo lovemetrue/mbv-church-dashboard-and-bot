@@ -236,6 +236,17 @@
 }
 
 /* Карточка заявки */
+/* Сообщения в MAX после «Утвердить»: по строке на человека и ведущего. */
+.botNotices ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.botAttention {
+  color: var(--crit);
+}
 .approved {
   background: var(--ok-soft);
   color: var(--ok);

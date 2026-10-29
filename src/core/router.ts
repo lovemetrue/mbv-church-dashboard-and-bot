@@ -1,3 +1,4 @@
+import { ANSWER_REPLY, NOTICE_ACK, parseNoticeButton, STALE_BUTTON } from './placementNotice.js';
 import { ADMIN_CB, adminMenu, commandByLabel, retiredLabel } from '../admin/menu.js';
 import { AdminNotifier } from '../admin/notify.js';
 import type { Deps } from '../deps.js';
@@ -77,7 +78,9 @@ export class Router {
     // Подтверждаем нажатие сразу: иначе у человека «крутится» кнопка.
     if (incoming.kind === 'callback') {
       try {
-        await platform.ackCallback(incoming.callbackId);
+        // На ответ «подобрали группу» — всплывающее «Ответ принят»: кнопки под сообщением не меняются, и без
+        // подсказки человек не поймёт, что нажатие засчитано (подробный ответ придёт следом сообщением).
+        await platform.ackCallback(incoming.callbackId, parseNoticeButton(incoming.data) ? NOTICE_ACK : undefined);
       } catch (err) {
         this.deps.logger.warn({ err }, 'не удалось подтвердить нажатие кнопки');
       }
@@ -92,6 +95,16 @@ export class Router {
       chatId: update.ctx.chatId,
       username: update.ctx.username,
     });
+
+    // Ответ на «мы подобрали вам группу» или «вам направлен человек». Раньше меню служителя: ведущий бывает служителем.
+    if (update.kind === 'callback') {
+      const press = parseNoticeButton(update.data);
+      if (press) {
+        const done = await this.deps.notices.answer(press.noticeId, user.id, press.answer);
+        await platform.sendMessage(update.ctx.chatId, { text: done ? ANSWER_REPLY[press.answer] : STALE_BUTTON });
+        return;
+      }
+    }
 
     const admin = this.admin.isAdmin(update.ctx.platform, update.ctx.platformUserId);
 

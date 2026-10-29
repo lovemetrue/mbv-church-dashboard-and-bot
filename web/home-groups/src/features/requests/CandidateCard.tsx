@@ -1,6 +1,7 @@
 import type { Candidate } from '@contracts';
 import { groupLabel } from '../../entities/format';
 import { ru } from '../../shared/i18n/ru';
+import { isUnscored } from './model';
 import type { ReactNode } from 'react';
 import { GroupMarks, Meter, Reasons } from '../../shared/ui';
 import { GroupPreviewButton } from '../reference/GroupPreview';
@@ -20,18 +21,21 @@ export function CandidateCard({ candidate, main = false, action }: CandidateCard
   const value = candidate.confidence ?? candidate.score;
   const caption = candidate.confidence != null ? ru.requests.confidence : ru.requests.match;
   const where = [group.district, group.metro, group.whenText].filter(Boolean).join(' · ');
+  const unscored = isUnscored(candidate);
   return (
     <article className={`${styles.cand} ${main ? styles.candTop : ''}`}>
       <div className={styles.candHead}>
         <b>Группа {groupLabel(group)}</b>
         <GroupMarks g={group} />
         <span className={styles.note}>{[group.leader, group.direction].filter(Boolean).join(' · ')}</span>
-        <span className={`${styles.candScore} num`}>
-          {value}
-          <small>{caption}</small>
-        </span>
+        {!unscored && (
+          <span className={`${styles.candScore} num`}>
+            {value}
+            <small>{caption}</small>
+          </span>
+        )}
       </div>
-      <Meter value={value} label={`${caption}: ${value} из 100`} />
+      {!unscored && <Meter value={value} label={`${caption}: ${value} из 100`} />}
       <Reasons items={reasons} />
       <div className={styles.candFoot}>
         <span className={styles.free}>

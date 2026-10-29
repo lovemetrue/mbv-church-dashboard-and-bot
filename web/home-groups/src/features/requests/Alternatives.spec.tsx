@@ -155,16 +155,28 @@ describe('«Заявки»: запасные варианты можно утв�
 });
 
 describe('«Заявки»: окно «Другая группа», явная кнопка у каждой строки', () => {
-  test('«Выбрать и утвердить» у строки сразу утверждает именно эту группу', async () => {
+  test('«Утвердить» у строки сразу утверждает именно эту группу', async () => {
     const fetchMock = stubFetchWithFixtures({ 'requests/1/approve': ok });
     const user = userEvent.setup();
     const card = await openCard(1);
     await user.click(within(card).getByRole('button', { name: 'Выбрать другую группу из списка' }));
     const picker = await screen.findByRole('dialog', { name: 'Другая группа' });
-    await user.click(await within(picker).findByRole('button', { name: 'Выбрать и утвердить ДГ-0035' }));
+    await user.click(await within(picker).findByRole('button', { name: 'Утвердить ДГ-0035' }));
     await within(card).findByText('Утверждено: ДГ-0035');
     expect(posts(fetchMock)).toHaveLength(1);
     expect(posts(fetchMock)[0]).toMatchObject({ path: 'requests/1/approve', body: { groupId: 9 } });
+  });
+
+  test('«Выбрать» у строки не утверждает: просит сервер поднять группу наверх заявки и закрывает окно', async () => {
+    const fetchMock = stubFetchWithFixtures({ 'requests/1/choose': ok });
+    const user = userEvent.setup();
+    const card = await openCard(1);
+    await user.click(within(card).getByRole('button', { name: 'Выбрать другую группу из списка' }));
+    const picker = await screen.findByRole('dialog', { name: 'Другая группа' });
+    await user.click(await within(picker).findByRole('button', { name: 'Выбрать ДГ-0035: поднять наверх заявки, не утверждая' }));
+    await within(card).findByText(/Выбрана ДГ-0035/);
+    expect(posts(fetchMock)).toEqual([expect.objectContaining({ path: 'requests/1/choose', body: { groupId: 9 } })]);
+    expect(screen.queryByRole('dialog', { name: 'Другая группа' })).not.toBeInTheDocument();
   });
 
   test('у группы «Не направлять» кнопка в строке отключена', async () => {
@@ -172,7 +184,7 @@ describe('«Заявки»: окно «Другая группа», явная �
     const card = await openCard(1);
     await user.click(within(card).getByRole('button', { name: 'Выбрать другую группу из списка' }));
     const picker = await screen.findByRole('dialog', { name: 'Другая группа' });
-    expect(await within(picker).findByRole('button', { name: 'Выбрать и утвердить ДГ-0112' })).toBeDisabled();
+    expect(await within(picker).findByRole('button', { name: 'Утвердить ДГ-0112' })).toBeDisabled();
   });
 
   test('«group_full» после кнопки в строке спрашивает подтверждение', async () => {
@@ -184,7 +196,7 @@ describe('«Заявки»: окно «Другая группа», явная �
     const card = await openCard(1);
     await user.click(within(card).getByRole('button', { name: 'Выбрать другую группу из списка' }));
     const picker = await screen.findByRole('dialog', { name: 'Другая группа' });
-    await user.click(await within(picker).findByRole('button', { name: 'Выбрать и утвердить ДГ-0019' }));
+    await user.click(await within(picker).findByRole('button', { name: 'Утвердить ДГ-0019' }));
     const full = await screen.findByRole('dialog', { name: 'Нет мест в группе' });
     await user.click(within(full).getByRole('button', { name: 'Утвердить всё равно' }));
     await within(card).findByText('Утверждено: ДГ-0019');
@@ -218,5 +230,38 @@ describe('«Заявки»: окно «Другая группа», явная �
     // у остальных групп из реестра значка нет
     const other = await within(picker).findByRole('radio', { name: /ДГ-0015/ });
     expect(within(other.closest('li')!).queryByRole('img', { name: 'Новая группа' })).not.toBeInTheDocument();
+  });
+});
+
+describe('«Заявки»: выбранная координатором группа и сообщения в MAX', () => {
+  test('выбранная группа наверху подписана «Выбрал координатор», без оценки совпадения', async () => {
+    const base = fixtureItem(1);
+    const group = base.proposal!.alternatives[0]!.group;
+    stubFetchWithFixtures({
+      requests: () =>
+        json(viewWith(1, { proposal: { ...base.proposal!, chosen: true, main: { group, score: 0, confidence: null, reasons: [] } } })),
+    });
+    const card = await openCard(1);
+    expect(within(card).getByText('Выбрал координатор')).toBeInTheDocument();
+    expect(within(card).queryByText(/из 100/)).not.toBeInTheDocument();
+  });
+
+  test('у утверждённой заявки видно, дошли ли сообщения и что нажали; «нет в боте» и «не подходит» выделены', async () => {
+    const n = { error: null, sentAt: '2026-10-29T10:00:00Z', answeredAt: null };
+    stubFetchWithFixtures({
+      requests: () =>
+        json(viewWith(1, {
+          bucket: 'done', proposal: null, finalGroup: fixtureItem(1).proposal!.alternatives[0]!.group,
+          botNotices: [
+            { ...n, recipient: 'person', status: 'sent', answer: 'not_fit', answeredAt: '2026-10-29T11:00:00Z' },
+            { ...n, recipient: 'leader', status: 'no_chat', answer: null, sentAt: null },
+          ],
+        })),
+    });
+    const card = await openCard(1);
+    const block = (await within(card).findByRole('heading', { name: 'Сообщения в MAX' })).parentElement!;
+    const person = within(block).getByText(/нажал «Группа не подходит»/);
+    expect(person).toHaveTextContent('Человеку: доставлено · нажал «Группа не подходит»');
+    expect(within(block).getByText(/нет в боте MAX — позвоните сами/)).toHaveTextContent('Ведущему:');
   });
 });

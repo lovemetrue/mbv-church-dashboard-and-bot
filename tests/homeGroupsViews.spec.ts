@@ -877,6 +877,47 @@ describe('накопленные предложения и счётчик уча
     expect(sent(9)).toEqual([]);
   });
 
+  test('выбор координатора («Выбрать») — главным предложением, даже если расчёт предлагает другую; прежняя — в запасных', () => {
+    const { views } = build({
+      groups: [group({ id: 1 }), group({ id: 2, district: 'Центральный' })],
+      requests: [request({ id: 7, place: 'Приморский' })],
+      activeProposals: new Map([[7, { groupId: 2, source: 'manual' as const }]]),
+    });
+    const p = views.requests.items[0]!.proposal!;
+    expect(p.chosen).toBe(true);
+    expect(p.main.group.id).toBe(2);
+    expect(p.alternatives.map((c) => c.group.id)).toContain(1);
+  });
+
+  test('выбор координатора есть и там, где расчёт ничего не нашёл: «плана нет» тогда не показывается', () => {
+    const { views } = build({
+      groups: [group({ id: 2, district: 'Центральный' })],
+      requests: [request({ id: 7, place: 'Неизвестно где' })],
+      activeProposals: new Map([[7, { groupId: 2, source: 'manual' as const }]]),
+    });
+    const item = views.requests.items[0]!;
+    expect(item.proposal?.main.group.id).toBe(2);
+    expect(item.noPlan).toBeNull();
+  });
+
+  test('сообщения в MAX показываются по последнему утверждению: по одному на сторону, прежняя группа не в счёт', () => {
+    const n = (over: object) => ({ requestId: 7, groupId: 1, recipient: 'person' as const, status: 'sent' as const, error: null, answer: null, sentAt: null, answeredAt: null, ...over });
+    const { views } = build({
+      groups: [group({ id: 1 }), group({ id: 2 })],
+      requests: [request({ id: 7, place: 'Приморский', status: 'Исполнена', group_id: 1 })],
+      notices: [
+        n({ groupId: 2, answer: 'not_fit' }),
+        n({ status: 'failed', error: 'other' }),
+        n({ answer: 'waiting' }),
+        n({ recipient: 'leader', status: 'no_chat' }),
+      ],
+    });
+    expect(views.requests.items[0]!.botNotices).toEqual([
+      { recipient: 'person', status: 'sent', error: null, answer: 'waiting', sentAt: null, answeredAt: null },
+      { recipient: 'leader', status: 'no_chat', error: null, answer: null, sentAt: null, answeredAt: null },
+    ]);
+  });
+
   test('источник предложения берётся из сохранённого, если показана та же группа', () => {
     const { views } = build({
       groups: [group({ id: 1 })],
@@ -940,9 +981,9 @@ describe('накопленные предложения и счётчик уча
     expect(views.requests.matching).toMatchObject({ auto: true, lastRun });
   });
 
-  test('без настроек подбор выключен и запусков не было', () => {
+  test('без настроек подбор и сообщения в MAX выключены, запусков не было', () => {
     const { views } = build({});
-    expect(views.requests.matching).toEqual({ auto: false, lastRun: null, waiting: 0, saved: 0 });
+    expect(views.requests.matching).toEqual({ auto: false, notify: false, lastRun: null, waiting: 0, saved: 0 });
   });
 });
 

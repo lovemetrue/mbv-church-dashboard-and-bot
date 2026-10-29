@@ -33,7 +33,7 @@ export function useMatching() {
   const queryClient = useQueryClient();
   const me = useMe();
   const inFlight = useRef(false);
-  const [pending, setPending] = useState<'run' | 'auto' | 'rerun' | null>(null);
+  const [pending, setPending] = useState<'run' | 'auto' | 'notify' | 'rerun' | null>(null);
   const [notice, setNotice] = useState<MatchingNotice | null>(null);
 
   const refresh = () =>
@@ -43,7 +43,7 @@ export function useMatching() {
       queryClient.invalidateQueries({ queryKey: queryKeys.groups }),
     ]);
 
-  async function guarded(kind: 'run' | 'auto' | 'rerun', work: () => Promise<void>) {
+  async function guarded(kind: 'run' | 'auto' | 'notify' | 'rerun', work: () => Promise<void>) {
     if (inFlight.current) return;
     inFlight.current = true;
     setPending(kind);
@@ -93,5 +93,17 @@ export function useMatching() {
       }
     });
 
-  return { pending, notice, canToggle: me.data?.role === 'super', run, rerunAll, setAuto };
+  /** «Писать в MAX при утверждении»: как и автоподбор, включает только полный вход, состояние — из ответа сервера. */
+  const setNotify = (enabled: boolean) =>
+    guarded('notify', async () => {
+      try {
+        const body: MatchingAutoBody = { enabled };
+        await apiPost('matching/notify', body);
+        await queryClient.invalidateQueries({ queryKey: queryKeys.requests });
+      } catch (e) {
+        setNotice({ kind: 'error', text: errorText(e, m.errorNotify, m.superOnly) });
+      }
+    });
+
+  return { pending, notice, canToggle: me.data?.role === 'super', run, rerunAll, setAuto, setNotify };
 }

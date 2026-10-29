@@ -17,6 +17,8 @@ export class FakePlatform implements Platform {
   readonly files: { chatId: string; name: string; size: number }[] = [];
   readonly photos: { chatId: string; name: string; size: number; caption?: string }[] = [];
   readonly acked: string[] = [];
+  /** Всплывающие подсказки на нажатие (то, что видно сразу, до ответа сообщением). */
+  readonly toasts: string[] = [];
   readonly actionMenus: { chatId: string; commands: string[] }[] = [];
   readonly contactRequests: string[] = [];
   private readonly script = new Map<string, (SendError | null)[]>();
@@ -89,8 +91,9 @@ export class FakePlatform implements Platform {
     return `https://t.me/church40_test_bot?start=${payload}`;
   }
 
-  async ackCallback(callbackId: string): Promise<void> {
+  async ackCallback(callbackId: string, toast?: string): Promise<void> {
     this.acked.push(callbackId);
+    if (toast) this.toasts.push(toast);
   }
 
   textsTo(chatId: string): string[] {

@@ -1,3 +1,4 @@
+import { SETTING_NOTIFY } from '../../db/repos/placementNotices.repo.js';
 import type { ActionOutcome, PlacementRepo } from '../../db/repos/placement.repo.js';
 import type { SettingsRepo } from '../../db/repos/settings.repo.js';
 import { buildViewsWithPlan, type ViewsInput, type ViewsOptions } from '../api/views.js';
@@ -73,6 +74,12 @@ export function createMatching(deps: MatchingDeps) {
 
     async setAuto(enabled: boolean, actor: string): Promise<void> {
       await deps.settings.set(SETTING_AUTO, enabled, actor);
+      deps.invalidate();
+    },
+
+    /** «Писать в MAX при утверждении»: читает само утверждение (`enqueuePlacementNotices`), здесь только переключатель. */
+    async setNotify(enabled: boolean, actor: string): Promise<void> {
+      await deps.settings.set(SETTING_NOTIFY, enabled, actor);
       deps.invalidate();
     },
 

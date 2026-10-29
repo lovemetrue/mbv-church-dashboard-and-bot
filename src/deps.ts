@@ -14,6 +14,7 @@ import { BroadcastSender } from './broadcast/sender.js';
 import { RateLimiter } from './broadcast/throttle.js';
 import type { ScheduleOptions } from './broadcast/schedule.js';
 import { logger as defaultLogger, type Logger } from './logger.js';
+import { PlacementNoticesRepo } from './db/repos/placementNotices.repo.js';
 
 export interface DepsInput {
   db: Pool;
@@ -44,6 +45,8 @@ export interface Deps {
   groups: GroupsRepo;
   campaign: CampaignRepo;
   deliveries: DeliveriesRepo;
+  /** Сообщения после «Утвердить» в «Домашних группах»: очередь и ответы кнопками. */
+  notices: PlacementNoticesRepo;
   platforms: Map<PlatformName, Platform>;
   admins: Map<PlatformName, string[]>;
   schedule: ScheduleOptions;
@@ -86,6 +89,7 @@ export function createDeps(input: DepsInput): Deps {
     groups,
     campaign: new CampaignRepo(db),
     deliveries,
+    notices: new PlacementNoticesRepo(db),
     platforms,
     admins,
     schedule,

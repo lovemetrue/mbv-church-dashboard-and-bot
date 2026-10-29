@@ -24,7 +24,7 @@ import { CONTACT_LABEL } from '../../core/csv.js';
 import type { GroupDraftView } from '../contracts.js';
 import type {
   Bucket, Candidate, Counters, CoordinatorItem, CoordinatorsView, GroupBrief, GroupItem, GroupsView,
-  GenderInfo, HealthItem, LogEntry, MatchingStatus, NoPlan, StrangeMark, DataChange, OriginalField, ParamInfo, RequestTableFields, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, AssistantReviewItem, GroupMember, OtherItem, OwnGroup, Pairs, PairItem, Prospects, ProspectItem, RequestsView, TeamView, TodayView,
+  BotNotice, GenderInfo, HealthItem, LogEntry, MatchingStatus, NoPlan, StrangeMark, DataChange, OriginalField, ParamInfo, RequestTableFields, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, AssistantReviewItem, GroupMember, OtherItem, OwnGroup, Pairs, PairItem, Prospects, ProspectItem, RequestsView, TeamView, TodayView,
 } from '../contracts.js';
 import type {
   Day, PlanEngineApi, PlanEntry, PlanEntryProposal, PlanGroup, PlanOutput, PlanRequest, ScoredGroup, Slot,
@@ -71,7 +71,9 @@ export interface ViewsInput {
   /** Кэш координат адресов (ключ — `addressKey`); нет записи или null — адрес не геокодирован или не найден. */
   geo?: ReadonlyMap<string, { lat: number; lon: number } | null>;
   /** Настройки подбора: автоматический ли он и когда запускали в последний раз. */
-  matching?: { auto: boolean; lastRun: MatchingStatus['lastRun'] };
+  matching?: { auto: boolean; notify?: boolean; lastRun: MatchingStatus['lastRun'] };
+  /** След сообщений в MAX после «Утвердить» (`placement_notices`), по порядку постановки. */
+  notices?: readonly (BotNotice & { requestId: number; groupId: number })[];
 }
 
 /** Разбор удобного времени человека: что подходит и что нет. */
@@ -704,12 +706,46 @@ export function buildViewsWithPlan(
     }
   }
 
+  // Выбор координатора («Выбрать») — главным предложением, даже если расчёт его не назвал: группа могла не пройти отсев
+  // расчёта (другой район, нет мест), а решение за человеком. Прежняя главная уходит в запасные.
+  const withChosen = (requestId: number, computed: Proposal | null, knownParams: number): Proposal | null => {
+    const stored = input.activeProposals?.get(requestId);
+    if (!stored || stored.source !== 'manual' || stored.groupId === null) return computed;
+    const chosenId = stored.groupId;
+    if (computed?.main.group.id === chosenId) return { ...computed, chosen: true };
+    const group = brief(chosenId);
+    if (!group) return computed;
+    const main: Candidate = computed?.alternatives.find((c) => c.group.id === chosenId) ?? { group, score: 0, confidence: null, reasons: [] };
+    const rest = computed ? [computed.main, ...computed.alternatives].filter((c) => c.group.id !== chosenId) : [];
+    return {
+      changes: null, dataChanged: false, saved: true, source: 'script', main, knownParams: computed?.knownParams ?? knownParams,
+      alternatives: rest.slice(0, 2), displaced: null, chosen: true,
+    };
+  };
+  const noticesByRequest = new Map<number, (BotNotice & { groupId: number })[]>();
+  for (const n of input.notices ?? []) noticesByRequest.set(n.requestId, [...(noticesByRequest.get(n.requestId) ?? []), n]);
+  // По последнему утверждению: та же группа, что в заявке, и по одному сообщению на сторону — последнее.
+  const botNoticesOf = (r: DashboardRequest): BotNotice[] | undefined => {
+    const own = (noticesByRequest.get(r.id) ?? []).filter((n) => n.groupId === r.group_id);
+    if (own.length === 0) return undefined;
+    const last = new Map(own.map((n) => [n.recipient, n]));
+    return (['person', 'leader'] as const).flatMap((k) => {
+      const n = last.get(k);
+      return n ? [{ recipient: n.recipient, status: n.status, error: n.error, answer: n.answer, sentAt: n.sentAt, answeredAt: n.answeredAt }] : [];
+    });
+  };
+
   const requestItems: RequestItem[] = [];
   for (const r of joinRequests) {
     const bucket = bucketById.get(r.id)!;
     if (bucket === 'cancelled') continue;
     const pr = planRequests.get(r.id)!;
-    const { proposal, noPlan } = splitEntry(plan.entries.get(r.id), r.id);
+    const split = splitEntry(plan.entries.get(r.id), r.id);
+    const known = [pr.district !== null, pr.ageRange !== null, pr.days.length > 0 || pr.slot !== null, pr.street !== null].filter(Boolean).length;
+    const proposal = bucket === 'done' ? split.proposal : withChosen(r.id, split.proposal, known);
+    // Выбранная группа — уже план: «плана нет» рядом с ней только путает.
+    const noPlan = proposal?.chosen ? null : split.noPlan;
+    const botNotices = botNoticesOf(r);
     const finalBrief = bucket === 'done' && r.group_id !== null ? brief(r.group_id) : null;
     requestItems.push({
       id: r.id,
@@ -746,6 +782,7 @@ export function buildViewsWithPlan(
       note: joinParts([r.note, r.extra], ' | '),
       table: tableFieldsOf(r),
       log: logOf(r, finalBrief),
+      ...(botNotices ? { botNotices } : {}),
     });
   }
   // ── «Хотят открыть группу»: кого можно направить в будущую группу ───────────
@@ -1215,7 +1252,7 @@ export function buildViewsWithPlan(
     },
     requests: {
       generatedAt,
-      matching: { auto: input.matching?.auto ?? false, lastRun: input.matching?.lastRun ?? null, waiting, saved },
+      matching: { auto: input.matching?.auto ?? false, notify: input.matching?.notify ?? false, lastRun: input.matching?.lastRun ?? null, waiting, saved },
       items: requestItems,
       counters,
       others: [...otherOpen, ...otherClosed],

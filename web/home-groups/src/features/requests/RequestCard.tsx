@@ -1,7 +1,7 @@
 import { useCanChange } from '../../shared/access';
 import { GenderField } from '../gender/GenderField';
 import { useId, useState, type FormEvent } from 'react';
-import type { GroupBrief, GroupItem, LogEntry, RequestItem } from '@contracts';
+import type { BotNotice, GroupBrief, GroupItem, LogEntry, RequestItem } from '@contracts';
 import { BUCKET_LABEL } from '../../entities/buckets';
 import { formatDateShort, formatPhone, groupLabel } from '../../entities/format';
 import { useGroups } from '../../shared/api/queries';
@@ -10,7 +10,7 @@ import { AgeTag, Button, Drawer, DrawerSection, GroupMarks, KeyValue, Pill, Stra
 import { CandidateCard } from './CandidateCard';
 import { DataChanges, useChangesDisclosure } from './DataChanges';
 import { SavedTag } from './SavedTag';
-import { isCreationEntry, knownParams, proposalOf, understoodTime, unavailableReason, type UnavailableReason } from './model';
+import { isCreationEntry, knownParams, noticeNeedsAttention, proposalOf, understoodTime, unavailableReason, type UnavailableReason } from './model';
 import { ActionDialogs, ActionNoticeLine, isActionable, RequestActions } from './RequestActions';
 import styles from './Requests.module.css';
 import { useRequestActions, type RequestActionsState } from './useRequestActions';
@@ -46,7 +46,13 @@ function ProposalSource({ proposal }: { proposal: NonNullable<RequestItem['propo
   return (
     <>
       <p className={styles.source}>
-        <b>{proposal.source === 'agent' ? ru.requests.act.sourceAgent : ru.requests.act.sourceScript}</b>
+        <b>
+          {proposal.chosen
+            ? ru.requests.act.sourceChosen
+            : proposal.source === 'agent'
+              ? ru.requests.act.sourceAgent
+              : ru.requests.act.sourceScript}
+        </b>
         <SavedTag
           saved={proposal.saved}
           dataChanged={proposal.dataChanged}
@@ -161,16 +167,43 @@ function OtherVariants({ r, act }: { r: RequestItem; act: RequestActionsState })
   );
 }
 
+const b = ru.requests.bot;
+
+/** Дошли ли сообщения в MAX после «Утвердить» и что нажали. Требующее внимания — красным. */
+function BotNotices({ notices }: { notices: readonly BotNotice[] }) {
+  return (
+    <div className={styles.botNotices}>
+      <h4 className={styles.h4}>{b.title}</h4>
+      <ul>
+        {notices.map((n) => {
+          const status = n.status === 'failed' && n.error && b.error[n.error] ? `${b.status.failed} (${b.error[n.error]})` : b.status[n.status];
+          const answer = n.status === 'sent' ? (n.answer ? b.answer[n.answer] : b.noAnswer) : null;
+          return (
+            <li key={n.recipient} className={noticeNeedsAttention(n) ? styles.botAttention : undefined}>
+              <b>{b.who[n.recipient]}:</b> {status}
+              {answer && ` · ${answer}`}
+              {n.answeredAt && <span className={styles.note}> · {formatDateShort(n.answeredAt)}</span>}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 function Proposal({ r, act }: { r: RequestItem; act: RequestActionsState }) {
   if (r.bucket === 'done') {
     const text = r.finalGroup
       ? `${groupLabel(r.finalGroup)}, ${r.finalGroup.leader}`
       : (r.finalGroupText ?? ru.reference.notSpecified);
     return (
-      <div className={styles.approved}>
-        ✓ {ru.requests.approvedPrefix} {r.finalGroup ? 'группа ' : ''}
-        {text}
-      </div>
+      <>
+        <div className={styles.approved}>
+          ✓ {ru.requests.approvedPrefix} {r.finalGroup ? 'группа ' : ''}
+          {text}
+        </div>
+        {r.botNotices && <BotNotices notices={r.botNotices} />}
+      </>
     );
   }
 
@@ -186,7 +219,8 @@ function Proposal({ r, act }: { r: RequestItem; act: RequestActionsState }) {
   ) : null;
 
   // Слабый план (нужна помощь, но кандидат всё же есть): показываем его, но не как готовое решение.
-  if (r.bucket === 'human') {
+  // Группа, выбранная координатором, — его решение, а не слабый план: она идёт обычным путём ниже.
+  if (r.bucket === 'human' && !p?.chosen) {
     return (
       <>
         {r.noPlan && (

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { ApproveBody, GroupBrief, NeedCallBody, RejectBody, RejectReason, RequestItem, RequestsView } from '@contracts';
+import type { ApproveBody, ChooseBody, GroupBrief, NeedCallBody, RejectBody, RejectReason, RequestItem, RequestsView } from '@contracts';
 import { ApiError, apiPost } from '../../shared/api/client';
 import { queryKeys } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
@@ -76,8 +76,8 @@ export function useRequestActions(r: RequestItem) {
    * «Подобрать заново», где в подтверждении называется группа, которой ещё нет в старых данных.
    */
   async function run(
-    action: 'approve' | 'reject' | 'need-call' | 'rematch',
-    body: ApproveBody | RejectBody | NeedCallBody | Record<string, never>,
+    action: 'approve' | 'choose' | 'reject' | 'need-call' | 'rematch',
+    body: ApproveBody | ChooseBody | RejectBody | NeedCallBody | Record<string, never>,
     okText: string | (() => string),
   ): Promise<Outcome> {
     if (inFlight.current) return { ok: false, code: null };
@@ -129,6 +129,13 @@ export function useRequestActions(r: RequestItem) {
     else if (out.code === 'group_full') setDialog({ requestId: r.id, kind: 'full', group });
   }
 
+  /** «Выбрать»: группа встаёт наверх карточки основным предложением, окно закрывается — утверждает обычная «Утвердить». */
+  async function choose(group: GroupBrief) {
+    const body: ChooseBody = { groupId: group.id };
+    const out = await run('choose', body, ru.requests.act.chosen(group.code));
+    if (out.ok || out.code === 'already_closed') setDialog(null);
+  }
+
   async function reject(group: GroupBrief, reason: RejectReason, comment: string) {
     const text = comment.trim();
     const body: RejectBody = text ? { groupId: group.id, reason, comment: text } : { groupId: group.id, reason };
@@ -163,6 +170,7 @@ export function useRequestActions(r: RequestItem) {
     open,
     close: () => setDialog(null),
     approve,
+    choose,
     reject,
     setNeedCall,
     rematch,

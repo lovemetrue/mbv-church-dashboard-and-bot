@@ -5,6 +5,8 @@ import type { MembersRepo } from '../db/repos/members.repo.js';
 import type { GeocodeRepo } from '../db/repos/geocode.repo.js';
 import type { GroupsRepo } from '../db/repos/groups.repo.js';
 import type { PlacementRepo } from '../db/repos/placement.repo.js';
+import type { PlacementNoticesRepo } from '../db/repos/placementNotices.repo.js';
+import { SETTING_NOTIFY } from '../db/repos/placementNotices.repo.js';
 import type { SettingsRepo } from '../db/repos/settings.repo.js';
 import type { RequestsRepo } from '../db/repos/requests.repo.js';
 import type { StrangeRepo } from '../db/repos/strange.repo.js';
@@ -28,6 +30,8 @@ export interface LoaderRepos {
   genders?: Pick<GendersRepo, 'all'>;
   /** Кэш координат адресов; без него (в тестах) подбор сравнивает улицы по названию. */
   geocode?: Pick<GeocodeRepo, 'all'>;
+  /** Сообщения в MAX после «Утвердить»; без репозитория (в тестах) их нет. */
+  notices?: Pick<PlacementNoticesRepo, 'traces'>;
 }
 
 /**
@@ -57,10 +61,12 @@ export function createLoader(repos: LoaderRepos, opts: { timeZone?: string; assi
     const strange = repos.strange ? await repos.strange.all() : undefined;
     const geo = repos.geocode ? await repos.geocode.all() : undefined;
     const genders = repos.genders ? await repos.genders.all() : undefined;
+    const notices = repos.notices ? await repos.notices.traces() : undefined;
+    const notify = await repos.settings.get<boolean>(SETTING_NOTIFY);
     return {
-      strange, geo, genders,
+      strange, geo, genders, notices,
       groups, requests, participants, coordinators, rejectedGroups, audit, activity, activeProposals, restorable, placedNew,
-      matching: { auto: auto === true, lastRun: lastRun ?? null },
+      matching: { auto: auto === true, notify: notify === true, lastRun: lastRun ?? null },
       hints,
       members,
       persons,

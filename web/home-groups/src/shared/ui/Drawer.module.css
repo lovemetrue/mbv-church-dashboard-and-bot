@@ -24,6 +24,21 @@
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* Вторая карточка левее первой (её ширина — 440 px, как у .overlay) и выше её по слоям. */
+.beside {
+  right: min(440px, 100%);
+  z-index: 26;
+  border-width: 0 1px;
+}
+@media (max-width: 1000px) {
+  .beside {
+    right: 0;
+    width: 100%;
+    z-index: 30;
+    border-width: 0;
+  }
+}
+
 .docked {
   position: sticky;
   top: 12px;

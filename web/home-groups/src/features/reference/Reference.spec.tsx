@@ -204,6 +204,15 @@ describe('«Справочник»: экран', () => {
     expect(await screen.findByText('Ничего не найдено. Уберите часть условий.')).toBeInTheDocument();
   });
 
+  test('«Здоровье» — последний раздел карточки группы: данные и состав идут раньше', async () => {
+    stubFetchWithFixtures();
+    renderAt(<App />, '/?tab=reference&rec=2');
+    const card = await screen.findByRole('dialog', { name: 'Карточка группы ДГ-0027' });
+    const titles = within(card).getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    expect(titles[0]).toBe('Данные группы');
+    expect(titles.at(-1)).toBe('Здоровье');
+  });
+
   test('клик по строке открывает карточку поверх таблицы с адресом записи, таблица не сжимается', async () => {
     stubFetchWithFixtures();
     const user = userEvent.setup();

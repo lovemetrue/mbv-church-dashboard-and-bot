@@ -2065,6 +2065,8 @@ export const ru = {
     placedOn: (date: string) => `направлен ${date}`,
     joinedOn: (date: string) => `в группе с ${date}`,
     openPerson: 'Открыть карточку человека',
+    peekLoading: 'Карточка человека',
+    peekMissing: 'Этого человека нет в «Людях».',
     openRequest: 'Открыть заявку',
     openRequestAria: (fio: string) => `Открыть заявку: ${fio}`,
     edit: 'Править',

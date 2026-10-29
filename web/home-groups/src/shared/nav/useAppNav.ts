@@ -58,6 +58,8 @@ export function useAppNav() {
       requestId: parseId(params.get('req')),
       entity: parseEntity(params.get('ent')),
       recordKey: params.get('rec'),
+      /** Человек, открытый рядом с карточкой группы (клик по ФИО в составе): ключ «Людей» или null. */
+      peekKey: params.get('pp'),
       /** Раздел «Настроек» как в адресе; разбирает его сам раздел. */
       section: params.get('sec'),
     }),
@@ -135,7 +137,8 @@ export function useAppNav() {
         if (e !== 'groups') next.set('ent', e);
         return next;
       }),
-    openRecord: (key: string) => update({ rec: key }),
+    // Карточка человека рядом с группой принадлежит прежней группе: сменилась или закрылась группа — закрывается и она.
+    openRecord: (key: string) => update({ rec: key, pp: null }),
     /**
      * Карточка человека в «Справочнике → Люди» из любого места (состав группы). Адрес собираем одним
      * вызовом: два подряд («сущность», потом «запись») в react-router 6 затёрли бы друг друга.
@@ -162,7 +165,13 @@ export function useAppNav() {
         next.set('rec', String(id));
         return next;
       }),
-    closeRecord: () => update({ rec: null }),
+    closeRecord: () => update({ rec: null, pp: null }),
+    /**
+     * Карточка человека рядом с карточкой группы, не уходя из неё (клик по ФИО в составе): так человека удобно сверять
+     * с группой. Справочник «Люди» при этом не открывается.
+     */
+    peekPerson: (key: string) => update({ pp: key }),
+    closePeek: () => update({ pp: null }),
   };
 }
 

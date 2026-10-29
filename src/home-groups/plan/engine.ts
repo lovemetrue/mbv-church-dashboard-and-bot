@@ -227,6 +227,20 @@ export function scoreProspect(r: PlanRequest, g: PlanGroup, settings: PlanSettin
   return scoreGroup(r, open, knownParamsOf(r), settings);
 }
 
+/**
+ * Окно «Другая группа»: насколько группа подходит человеку — по той же шкале уверенности, что у главной группы и
+ * запасных. Места, статус и «Не направлять» не учитываются: окно показывает их само, а координатор вправе направить и
+ * сверх мест. Пол, возраст и район отсеивают, как в подборе: тогда вместо числа — причина.
+ */
+export function fitGroup(r: PlanRequest, g: PlanGroup, settings: PlanSettings): { confidence: number; why: null } | { confidence: null; why: string } {
+  const open: PlanGroup = { ...g, status: 'Функционирует', acceptsNew: true, doNotRefer: false, chamber: false, people: 0, capacity: Math.max(g.capacity, 1) };
+  const why = exclusionReason(r, open, settings);
+  if (why !== null) return { confidence: null, why };
+  const known = knownParamsOf(r);
+  const { score } = scoreGroup(r, open, known, settings);
+  return { confidence: Math.round(score * (settings.confidenceFloor + (settings.confidenceSpan * countKnown(known)) / 4)), why: null };
+}
+
 export interface MatchResult {
   /** Подходящие группы: лучшая первой; при равной оценке — с меньшим id, чтобы порядок был однозначным. */
   ranked: ScoredGroup[];

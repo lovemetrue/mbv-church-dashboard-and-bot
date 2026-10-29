@@ -90,6 +90,10 @@ export function createFakeEngine(options: FakeEngineOptions = {}): { engine: Pla
       return args.callback ? 'callback' : 'ready';
     },
 
+    fitGroup(r, g) {
+      return r.district !== null && r.district !== g.district ? { confidence: null, why: `другой район (${g.district})` } : { confidence: 70, why: null };
+    },
+
     scoreProspect(r, g) {
       return r.district !== null && r.district === g.district ? { groupId: g.id, score: 80, reasons: [{ tone: 'good', text: 'тот же район' }] } : null;
     },

@@ -26,7 +26,7 @@ export const VIEWS_PER_SCOPE_MAX = 20;
  * применении возвращал бы умолчание (у групп это скрытие закрытых), и вид показывал бы другое.
  */
 const VIEW_KEYS: Record<ViewScope, readonly string[]> = {
-  requests: ['bucket', 'resp'],
+  requests: ['bucket', 'resp', 'f'],
   reference: ['ent', 'f', 'col', 'gb', 'sort', 'nodef'],
 };
 

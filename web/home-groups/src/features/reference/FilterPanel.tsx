@@ -6,6 +6,7 @@ import {
   opsFor,
   sameFilters,
   type Cell,
+  type Filter,
   type Op,
   type Preset,
   type Row,
@@ -19,14 +20,20 @@ import styles from './Reference.module.css';
 
 export const OP_SYMBOL: Record<Op, string> = ru.reference.ops;
 
+/** Подпись чипа отбора. «≠» читается как «не», потому что «Статус ≠ Закрыта» человеку труднее, чем «Статус: не «Закрыта»». */
+export const filterChipLabel = (fl: Filter): string =>
+  fl.op === 'ne' ? ru.reference.notEqualChip(fl.field, fl.value) : filterLabel(fl, OP_SYMBOL);
+
 interface FilterPanelProps<T> {
-  config: EntityConfig<T>;
+  /** Поля, их порядок и быстрые отборы. Нужна не вся сущность справочника: тем же окном отбирают и заявки. */
+  config: Pick<EntityConfig<T>, 'fields' | 'columns' | 'presets'>;
   /** Все строки сущности (до отборов): из них берутся значения для списка. */
   rows: readonly Row[];
   state: TableState;
   views: readonly SavedView[];
   onChange: (next: TableState) => void;
-  onSaveView: (name: string) => void;
+  /** Нет — сохранять вид здесь нельзя: у «Заявок» для этого общая кнопка «Мои виды». */
+  onSaveView?: (name: string) => void;
   onDeleteView: (name: string) => void;
 }
 
@@ -169,27 +176,31 @@ export function FilterPanel<T>({ config, rows, state, views, onChange, onSaveVie
             ))}
           </ul>
           <div className={styles.builder}>
-            <label className="visually-hidden" htmlFor={`${uid}-name`}>
-              {ru.reference.viewName}
-            </label>
-            <input
-              id={`${uid}-name`}
-              className={styles.input}
-              type="text"
-              placeholder={ru.reference.viewName}
-              value={viewName}
-              onChange={(e) => setViewName(e.target.value)}
-            />
-            <Button
-              size="sm"
-              disabled={!viewName.trim()}
-              onClick={() => {
-                onSaveView(viewName.trim());
-                setViewName('');
-              }}
-            >
-              {ru.reference.saveView}
-            </Button>
+            {onSaveView && (
+              <>
+                <label className="visually-hidden" htmlFor={`${uid}-name`}>
+                  {ru.reference.viewName}
+                </label>
+                <input
+                  id={`${uid}-name`}
+                  className={styles.input}
+                  type="text"
+                  placeholder={ru.reference.viewName}
+                  value={viewName}
+                  onChange={(e) => setViewName(e.target.value)}
+                />
+                <Button
+                  size="sm"
+                  disabled={!viewName.trim()}
+                  onClick={() => {
+                    onSaveView(viewName.trim());
+                    setViewName('');
+                  }}
+                >
+                  {ru.reference.saveView}
+                </Button>
+              </>
+            )}
             <Button size="sm" variant="ghost" onClick={() => onChange({ ...state, filters: [] })}>
               {ru.reference.resetAll}
             </Button>

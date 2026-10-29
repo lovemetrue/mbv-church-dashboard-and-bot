@@ -6,13 +6,11 @@ import { useCoordinators, useGroups, useMe, usePeople } from '../../shared/api/q
 import {
   applyFilters,
   deleteView,
-  filterLabel,
   groupRows,
   loadViews,
   saveView,
   searchRows,
   sortRows,
-  type Filter,
   type Row,
   type SavedView,
   type TableState,
@@ -24,7 +22,7 @@ import { CoordinatorDialog } from '../create/CreateDialog';
 import { Button, Chip, ErrorState, LoadingState, Popover } from '../../shared/ui';
 import { CoordinatorCard, GroupCard, PersonCard } from './Cards';
 import { coordinatorsConfig, groupsConfig, myGroupsPreset, peopleConfig, type EntityConfig } from './config';
-import { FilterPanel, OP_SYMBOL } from './FilterPanel';
+import { FilterPanel, filterChipLabel } from './FilterPanel';
 import { ReferenceTable } from './ReferenceTable';
 import { useTableState } from './useTableState';
 import { ViewPanel } from './ViewPanel';
@@ -36,9 +34,7 @@ const LABELS: Record<EntityId, string> = {
   coordinators: ru.reference.coordinators,
 };
 
-/** Подпись чипа отбора. «≠» читается как «не», потому что «Статус ≠ Закрыта» человеку труднее, чем «Статус: не «Закрыта»». */
-const chipLabel = (fl: Filter): string =>
-  fl.op === 'ne' ? ru.reference.notEqualChip(fl.field, fl.value) : filterLabel(fl, OP_SYMBOL);
+const chipLabel = filterChipLabel;
 
 export function ReferenceScreen() {
   const nav = useAppNav();

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { DEFAULT_SETTINGS, DISTRICT_WEIGHT } from '../src/home-groups/plan/settings.js';
 import { NEIGHBORS } from '../src/home-groups/plan/geo.js';
-import { bucketOf, buildPlan, exclusionReason, match, scoreProspect } from '../src/home-groups/plan/engine.js';
+import { bucketOf, buildPlan, exclusionReason, fitGroup, match, scoreProspect } from '../src/home-groups/plan/engine.js';
 import type {
   PlanEntry,
   PlanEntryProposal,
@@ -923,6 +923,29 @@ describe('кого можно направить в будущую группу 
     const fits = scoreProspect(request({ days: ['Чт'], slot: 'вечер' }), g, SETTINGS)!.score;
     const misses = scoreProspect(request({ days: ['Пн'], slot: 'утро' }), g, SETTINGS)!.score;
     expect(fits).toBeGreaterThan(misses);
+  });
+});
+
+describe('уверенность для окна «Другая группа» (fitGroup)', () => {
+  test('заполненная и закрытая для новых группа всё равно получает число: места окно показывает само', () => {
+    const r = request({ days: ['Чт'], slot: 'вечер' });
+    const full = group({ people: 10, capacity: 10, acceptsNew: false });
+    expect(exclusionReason(r, full, SETTINGS)).not.toBeNull();
+    const fit = fitGroup(r, full, SETTINGS);
+    expect(fit.why).toBeNull();
+    expect(fit.confidence).toBeGreaterThan(0);
+  });
+
+  test('число — то же, что уверенность главной группы в плане', () => {
+    const r = request({ days: ['Чт'], slot: 'вечер' });
+    const g = group();
+    const entry = buildPlan({ requests: [r], groups: [g], settings: SETTINGS }).entries.get(r.id) as PlanEntryProposal;
+    expect(fitGroup(r, g, SETTINGS).confidence).toBe(entry.confidence);
+  });
+
+  test('возраст и далёкий район — причина вместо числа', () => {
+    expect(fitGroup(request({ ageRange: [60, 80] }), group({ ageRange: [18, 25] }), SETTINGS)).toEqual({ confidence: null, why: 'возраст группы не подходит' });
+    expect(fitGroup(request({ district: 'Колпинский' }), group({ district: 'Приморский' }), SETTINGS).why).toBe('другой район (Приморский)');
   });
 });
 

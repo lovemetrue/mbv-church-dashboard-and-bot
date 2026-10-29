@@ -265,3 +265,18 @@ describe('«Заявки»: выбранная координатором гру
     expect(within(block).getByText(/нет в боте MAX — позвоните сами/)).toHaveTextContent('Ведущему:');
   });
 });
+
+describe('«Заявки»: окно «Другая группа», уверенность у каждой группы', () => {
+  test('в строке мелко видна уверенность, а у отсеянной группы — причина вместо числа', async () => {
+    stubFetchWithFixtures({
+      'requests/1/fit': () =>
+        json({ items: [{ groupId: 9, confidence: 73, why: null }, { groupId: 8, confidence: null, why: 'возраст группы не подходит' }] }),
+    });
+    const user = userEvent.setup();
+    const card = await openCard(1);
+    await user.click(within(card).getByRole('button', { name: 'Выбрать другую группу из списка' }));
+    const picker = await screen.findByRole('dialog', { name: 'Другая группа' });
+    expect(await within(picker).findByRole('radio', { name: /ДГ-0035.*уверенность 73%/ })).toBeInTheDocument();
+    expect(within(picker).getByRole('radio', { name: /ДГ-0019.*не подходит: возраст группы не подходит/ })).toBeInTheDocument();
+  });
+});

@@ -1,11 +1,11 @@
-import { bucketOf, buildPlan, scoreProspect } from './engine.js';
+import { bucketOf, buildPlan, fitGroup, scoreProspect } from './engine.js';
 import { buildMetroIndex, resolveDistrict } from './geo.js';
 import { ageColumnOf, formatWhen, parseAgeRange, parseGroupWhen, parseHumanSchedule } from './parse.js';
 import { DEFAULT_SETTINGS } from './settings.js';
 import { buildTodaySummary } from './summary.js';
 import type { PlanEngineApi } from './types.js';
 
-export { bucketOf, buildPlan, exclusionReason, knownParamsOf, match, needsHuman, scoreProspect } from './engine.js';
+export { bucketOf, buildPlan, exclusionReason, fitGroup, knownParamsOf, match, needsHuman, scoreProspect } from './engine.js';
 export type { KnownParams, MatchResult } from './engine.js';
 export { METRO_DISTRICT, NEIGHBORS, buildMetroIndex, normalizeStation, resolveDistrict } from './geo.js';
 export {
@@ -41,4 +41,5 @@ export const engine = {
   formatWhen,
   ageColumnOf,
   scoreProspect,
+  fitGroup,
 } satisfies PlanEngineApi;

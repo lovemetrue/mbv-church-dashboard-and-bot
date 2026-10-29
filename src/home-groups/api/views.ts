@@ -24,7 +24,7 @@ import { CONTACT_LABEL } from '../../core/csv.js';
 import type { GroupDraftView } from '../contracts.js';
 import type {
   Bucket, Candidate, Counters, CoordinatorItem, CoordinatorsView, GroupBrief, GroupItem, GroupsView,
-  BotNotice, GenderInfo, HealthItem, LogEntry, MatchingStatus, NoPlan, StrangeMark, DataChange, OriginalField, ParamInfo, RequestTableFields, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, AssistantReviewItem, GroupMember, OtherItem, OwnGroup, Pairs, PairItem, Prospects, ProspectItem, RequestsView, TeamView, TodayView,
+  BotNotice, GenderInfo, GroupFitView, HealthItem, LogEntry, MatchingStatus, NoPlan, StrangeMark, DataChange, OriginalField, ParamInfo, RequestTableFields, PeopleView, PersonItem, Proposal, RequestItem, AssistantNote, AssistantReviewItem, GroupMember, OtherItem, OwnGroup, Pairs, PairItem, Prospects, ProspectItem, RequestsView, TeamView, TodayView,
 } from '../contracts.js';
 import type {
   Day, PlanEngineApi, PlanEntry, PlanEntryProposal, PlanGroup, PlanOutput, PlanRequest, ScoredGroup, Slot,
@@ -99,6 +99,8 @@ export interface Views {
    * не вместе со списком — открывают их редко, а полей много.
    */
   groupDrafts: Map<number, GroupDraftView>;
+  /** Окно «Другая группа»: оценка каждой группы для заявки «хочу в группу» (`GET /requests/:id/fit`); null — такой заявки нет. */
+  groupFit: (requestId: number) => GroupFitView | null;
 }
 
 const DEFAULT_CAPACITY = 10;
@@ -1262,6 +1264,11 @@ export function buildViewsWithPlan(
     people: { generatedAt, items: people },
     coordinators: { generatedAt, items: coordinatorItems },
     groupDrafts: new Map(input.requests.map((r) => [r.id, groupDraftOf(r)])),
+    groupFit: (requestId) => {
+      const pr = planRequests.get(requestId);
+      if (!pr) return null;
+      return { items: planGroups.map((g) => ({ groupId: g.id, ...engine.fitGroup(pr, g, settings) })) };
+    },
   };
   const openGroupIds = new Set(planGroups.filter(groupTakesPeople).map((g) => g.id));
   return { views, plan, openRequestIds: openRequests.map((r) => r.id), signatures, snapshots, assistantCandidates, openGroupIds };

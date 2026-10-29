@@ -1,4 +1,4 @@
-import type { TeamRoleKind } from '@contracts';
+import type { GroupFitView, TeamRoleKind } from '@contracts';
 import { fillDemoGenderWithAi, setDemoGender } from './gender';
 import { DEMO_TEAM_ROLES } from './raw';
 import {
@@ -50,6 +50,8 @@ function demoPerson(): { login: string; name: string; teamRole: string | null; t
 export function fixtureResponse(path: string): unknown {
   const draft = /^requests\/(\d+)\/group-draft$/.exec(path.replace(/^\/+/, '').replace(/\/+$/, ''));
   if (draft) return demoGroupDraft(Number(draft[1]));
+  const fit = /^requests\/(\d+)\/fit$/.exec(path.replace(/^\/+/, '').replace(/\/+$/, ''));
+  if (fit) return demoGroupFit(Number(fit[1]));
   const help = /^help\/([a-z]+)$/.exec(path.replace(/^\/+/, '').replace(/\/+$/, ''));
   if (help) return buildHelpArticle(help[1]!);
   switch (path.replace(/^\/+/, '').replace(/\/+$/, '')) {
@@ -255,4 +257,18 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
     default:
       return { ok: true };
   }
+}
+
+/**
+ * Оценка групп для окна «Другая группа» в демо: число выводится из номеров, чтобы снимки не менялись от запуска к запуску;
+ * каждая седьмая группа «отсеяна» по возрасту — так видно, как окно показывает причину вместо числа.
+ */
+function demoGroupFit(requestId: number): GroupFitView {
+  return {
+    items: buildGroups().items.map((g) =>
+      (g.id + requestId) % 7 === 0
+        ? { groupId: g.id, confidence: null, why: 'возраст группы не подходит' }
+        : { groupId: g.id, confidence: 40 + ((g.id * 13 + requestId * 7) % 55), why: null },
+    ),
+  };
 }

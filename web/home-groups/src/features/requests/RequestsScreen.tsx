@@ -17,6 +17,8 @@ import { OthersContent } from './others/OthersContent';
 import { openOthersCount } from './others/model';
 import { RequestCard, type RequestNeighbors } from './RequestCard';
 import { RequestList } from './RequestList';
+import { filterRequests } from './filters';
+import { RequestFilterChips, RequestFiltersButton, useRequestFilters } from './RequestFilters';
 import styles from './Requests.module.css';
 import { ResponsibleSelect } from './ResponsibleSelect';
 import { useNewArrivals } from './useNewArrivals';
@@ -58,9 +60,10 @@ function WaitingContent({
   const resp = useResponsible('wait');
   // Поиск и «В работе у» сужают список до чипов: счётчики, очередь обзвона и «Следующая заявка»
   // считаются по одному и тому же найденному.
+  const rf = useRequestFilters();
   const found = useMemo(
-    () => filterByResponsible(searchRequests(data.items, nav.search), resp.value, resp.myName),
-    [data.items, nav.search, resp.value, resp.myName],
+    () => filterRequests(filterByResponsible(searchRequests(data.items, nav.search), resp.value, resp.myName), rf.filters),
+    [data.items, nav.search, resp.value, resp.myName, rf.filters],
   );
   const counts = useMemo(() => countBuckets(found), [found]);
   const visible = useMemo(() => filterByBucket(found, nav.bucket), [found, nav.bucket]);
@@ -85,7 +88,7 @@ function WaitingContent({
 
   const neighbors = useNeighbors(visible, selected?.id ?? null, nav.selectRequest);
   // Выбор для массовых действий принадлежит текущему списку: сменился чип, поиск или «В работе у» — выбор сброшен.
-  const bulk = useBulk(visible, `${nav.bucket}\u0000${nav.search}\u0000${resp.value}`);
+  const bulk = useBulk(visible, `${nav.bucket}\u0000${nav.search}\u0000${resp.value}\u0000${rf.key}`);
   // «Только чтение» ничего не меняет: ни массовых действий, ни флажков выбора у него нет.
   const canChange = useCanChange();
 
@@ -124,8 +127,10 @@ function WaitingContent({
         </div>
         <div className={styles.tools} role="group" aria-label={ru.requests.toolsLabel}>
           <ResponsibleSelect items={data.items} value={resp.value} mine={resp.myName !== null} onChange={resp.set} />
+          <RequestFiltersButton items={data.items} filters={rf.filters} onChange={rf.set} />
           <SavedViewsMenu scope="requests" />
         </div>
+        <RequestFilterChips filters={rf.filters} onChange={rf.set} />
         {canChange && <BulkPanel bulk={bulk} visibleCount={visible.length} />}
         {visible.length ? (
           <RequestList

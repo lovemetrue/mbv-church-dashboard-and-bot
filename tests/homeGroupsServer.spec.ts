@@ -1730,6 +1730,21 @@ describe('пол человека', () => {
   });
 });
 
+describe('оценка групп для окна «Другая группа»', () => {
+  test('без входа 401; вошедший получает уверенность по группам; нет такой заявки — 404', async () => {
+    const fit = { items: [{ groupId: 3, confidence: 72, why: null }, { groupId: 4, confidence: null, why: 'возраст группы не подходит' }] };
+    app.setViews(async () => ({ ...sampleViews(), groupFit: (id: number) => (id === 7 ? fit : null) }));
+    try {
+      expect((await fetch(`${app.base}/api/v1/requests/7/fit`)).status).toBe(401);
+      const cookie = await signIn(REGULAR);
+      const r = await fetch(`${app.base}/api/v1/requests/7/fit`, { headers: { cookie } });
+      expect(r.status).toBe(200);
+      expect(await r.json()).toEqual(fit);
+      expect((await fetch(`${app.base}/api/v1/requests/8/fit`, { headers: { cookie } })).status).toBe(404);
+    } finally { app.setViews(async () => sampleViews()); }
+  });
+});
+
 describe('черновик группы по заявке', () => {
   test('без входа 401; обычный вход получает черновик; нет такой заявки — 404', async () => {
     const draft = { requestId: 7, fio: 'Пётр', fields: { leader: 'Пётр', status: 'Потенциальная' }, ownGroup: null };
@@ -1946,7 +1961,7 @@ describe('вход «Стойка регистрации»', () => {
   test('заявки, группы, справочник, «Настройки», выгрузка и помощник закрыты (403), и ничего не вызывается', async () => {
     const cookie = await signIn(DESK);
     const views = app.viewsCalls();
-    for (const path of [...API_ROUTES.filter((r) => r !== 'me').map((r) => `/api/v1/${r}`), '/api/v1/settings/staff', '/api/v1/export/people.csv', '/api/v1/campaign', '/api/v1/assistant/chat/history', '/api/v1/requests/1/group-draft']) {
+    for (const path of [...API_ROUTES.filter((r) => r !== 'me').map((r) => `/api/v1/${r}`), '/api/v1/settings/staff', '/api/v1/export/people.csv', '/api/v1/campaign', '/api/v1/assistant/chat/history', '/api/v1/requests/1/group-draft', '/api/v1/requests/1/fit']) {
       expect((await get(cookie, path)).status, path).toBe(403);
     }
     const actions = app.actionCalls.length;

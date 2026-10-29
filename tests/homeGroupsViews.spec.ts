@@ -918,6 +918,17 @@ describe('накопленные предложения и счётчик уча
     ]);
   });
 
+  test('оценка для окна «Другая группа»: по каждой группе число или причина; чужой номер — null', () => {
+    const { views } = build({
+      groups: [group({ id: 1 }), group({ id: 2, district: 'Центральный' })],
+      requests: [request({ id: 7, place: 'Приморский' })],
+    });
+    const fit = views.groupFit(7)!.items;
+    expect(fit.map((f) => f.groupId)).toEqual([1, 2]);
+    expect(fit.every((f) => (f.confidence === null) !== (f.why === null))).toBe(true);
+    expect(views.groupFit(999)).toBeNull();
+  });
+
   test('источник предложения берётся из сохранённого, если показана та же группа', () => {
     const { views } = build({
       groups: [group({ id: 1 })],

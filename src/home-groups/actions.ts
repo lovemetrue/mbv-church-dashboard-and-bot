@@ -172,6 +172,7 @@ export const ACTION_STATUS: Record<ActionError['error'], number> = {
   already_closed: 409,
   group_unavailable: 409,
   group_full: 409,
+  no_responsible: 409,
   forbidden: 403,
   conflict: 409,
   unavailable: 503,

@@ -140,7 +140,7 @@ describe('«Заявки»: что именно изменилось, панел
   async function openPanel() {
     stubFetchWithFixtures();
     renderAt(<App />, '/?tab=requests');
-    const block = await screen.findByRole('region', { name: 'Подбор для новых заявок' });
+    const block = await screen.findByRole('group', { name: 'Отбор списка заявок' });
     const n = changedIds().length;
     const button = within(block).getByRole('button', { name: `Данные изменились у ${n} заявок` });
     return { block, button, user: userEvent.setup() };
@@ -186,7 +186,7 @@ describe('«Заявки»: что именно изменилось, панел
     const id = changedIds()[0]!;
     stubFetchWithFixtures({ requests: () => json(viewWith(id, { proposal: withChanges(id, []) })) });
     renderAt(<App />, '/?tab=requests');
-    const block = await screen.findByRole('region', { name: 'Подбор для новых заявок' });
+    const block = await screen.findByRole('group', { name: 'Отбор списка заявок' });
     const user = userEvent.setup();
     await user.click(within(block).getByRole('button', { name: /Данные изменились у/ }));
     expect(within(await screen.findByRole('dialog')).getByText(REVERTED)).toBeInTheDocument();

@@ -31,7 +31,8 @@ beforeEach(() => {
 async function openRequests(overrides: Parameters<typeof stubFetchWithFixtures>[0] = {}, role: 'admin' | 'super' = 'admin') {
   const fetchMock = stubFetchWithFixtures({ me: () => json({ role }), ...overrides });
   renderAt(<App />, '/?tab=requests', client);
-  const block = await screen.findByRole('region', { name: 'Подбор для новых заявок' });
+  // ✦ живёт в строке инструментов «Заявок», рядом с кнопкой «Подбор».
+  const block = await screen.findByRole('group', { name: 'Отбор списка заявок' });
   return { fetchMock, block };
 }
 
@@ -42,7 +43,14 @@ async function openHelper(block: HTMLElement, name: string | RegExp = ICON) {
   const panel = await screen.findByRole('dialog', { name: 'Помощник' });
   return { user, panel };
 }
-const matchButton = (block: HTMLElement) => within(block).getByRole('button', { name: 'Предложить группы новым заявкам' });
+/** Кнопки подбора — в окошке «Подбор»: открываем его, если ещё не открыто. */
+async function matchBlock(): Promise<HTMLElement> {
+  const open = screen.queryByRole('region', { name: 'Подбор для новых заявок' });
+  if (open) return open;
+  await userEvent.setup().click(screen.getByRole('button', { name: /^Подбор/ }));
+  return screen.findByRole('region', { name: 'Подбор для новых заявок' });
+}
+const matchButton = async () => within(await matchBlock()).getByRole('button', { name: 'Предложить группы новым заявкам' });
 const runButton = (panel: HTMLElement) => within(panel).getByRole('button', { name: /^Разобрать \(/ });
 
 describe('«Заявки»: значок ✦ помощника в блоке подбора', () => {
@@ -125,13 +133,13 @@ describe('«Заявки»: значок ✦ помощника в блоке п
     const { user, panel } = await openHelper(block);
     await user.dblClick(runButton(panel));
     expect(within(panel).getByRole('button', { name: 'Разбираю заявки…' })).toBeDisabled();
-    expect(matchButton(block)).toBeDisabled();
-    expect(within(block).getByRole('button', { name: 'Пересчитать все предложения' })).toBeDisabled();
+    expect(await matchButton()).toBeDisabled();
+    expect(within(await matchBlock()).getByRole('button', { name: 'Пересчитать все предложения' })).toBeDisabled();
     expect(posts(fetchMock)).toHaveLength(1);
     release();
     await within(panel).findByText(/^Разобрал 3/);
     expect(posts(fetchMock)).toHaveLength(1);
-    expect(matchButton(block)).toBeEnabled();
+    expect(await matchButton()).toBeEnabled();
   });
 
   test('два нажатия до перерисовки тоже дают один запрос', async () => {
@@ -154,7 +162,7 @@ describe('«Заявки»: значок ✦ помощника в блоке п
     await user.click(runButton(panel));
     await user.click(within(panel).getByRole('button', { name: 'Закрыть помощника' }));
     release();
-    await waitFor(() => expect(matchButton(block)).toBeEnabled());
+    await waitFor(async () => expect(await matchButton()).toBeEnabled());
     const again = await openHelper(block, /^ИИ-разбор заявок/);
     expect(await within(again.panel).findByText(/^Разобрал 3/)).toBeInTheDocument();
   });
@@ -222,7 +230,7 @@ describe('«Заявки»: значок ✦ помощника в блоке п
 
   test('обычному входу при незаданном ключе значка нет: сделать с этим он ничего не может', async () => {
     const { block } = await openRequests({ requests: () => json(viewAssistant({ available: false, enabled: true })) });
-    await screen.findByText(/Автоподбор новых заявок/);
+    await screen.findByRole('button', { name: /^Подбор/ });
     expect(within(block).queryByRole('button', { name: /ИИ-разбор/ })).not.toBeInTheDocument();
   });
 });

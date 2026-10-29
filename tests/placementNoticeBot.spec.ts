@@ -86,7 +86,7 @@ describe('очередь в боте: отправка и ответы', () => {
        VALUES ('Осипова Наталья Евгеньевна', 'Центральный', group_direction_id('Основная церковь'), 'Функционирует', 3, 'ui', $1, '{+79001112233}', 'Вс', '19:00') RETURNING id`,
       [leader])).rows[0]!.id);
     const r = Number((await db.query<{ id: number }>(
-      `INSERT INTO requests (type, status, fio, origin, user_id, phone) VALUES ('join_group', 'Новая', 'Никандрова Нина', 'бот', $1, '+79005556677') RETURNING id`,
+      `INSERT INTO requests (type, status, fio, origin, user_id, phone, responsible) VALUES ('join_group', 'Новая', 'Никандрова Нина', 'бот', $1, '+79005556677', 'Анна') RETURNING id`,
       [person])).rows[0]!.id);
     expect(await new PlacementRepo(db).approve(r, g, 'a', { force: false, defaultCapacity: 10 })).toEqual({ ok: true });
     return { requestId: r };

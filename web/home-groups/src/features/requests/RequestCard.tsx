@@ -10,7 +10,7 @@ import { AgeTag, Button, Drawer, DrawerSection, GroupMarks, KeyValue, Pill, Stra
 import { CandidateCard } from './CandidateCard';
 import { DataChanges, useChangesDisclosure } from './DataChanges';
 import { SavedTag } from './SavedTag';
-import { isCreationEntry, knownParams, noticeNeedsAttention, proposalOf, understoodTime, unavailableReason, type UnavailableReason } from './model';
+import { isCreationEntry, knownParams, needsResponsible, noticeNeedsAttention, proposalOf, understoodTime, unavailableReason, type UnavailableReason } from './model';
 import { ActionDialogs, ActionNoticeLine, isActionable, RequestActions } from './RequestActions';
 import styles from './Requests.module.css';
 import { useRequestActions, type RequestActionsState } from './useRequestActions';
@@ -95,7 +95,7 @@ function VariantAction({
   return (
     <div className={styles.variantAction}>
       <Button
-        disabled={why !== null || act.pending}
+        disabled={why !== null || act.pending || needsResponsible(r)}
         aria-label={ru.requests.alt.approveAria(group.code)}
         aria-describedby={why ? reasonId : undefined}
         onClick={() => act.open({ requestId: r.id, kind: 'confirm', group })}

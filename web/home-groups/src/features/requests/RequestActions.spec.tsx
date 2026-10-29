@@ -380,3 +380,31 @@ describe('«Заявки»: чьё это предложение', () => {
     expect(within(card).queryByText('Предложил расчёт')).not.toBeInTheDocument();
   });
 });
+
+describe('«Заявки»: утвердить можно только с ответственным', () => {
+  test('без «В работе у» кнопка «Утвердить» неактивна и сказано, что сделать; «Выбрать» в «Другой группе» доступна', async () => {
+    stubFetchWithFixtures({ requests: () => json(viewWith(1, { responsible: null })) });
+    const user = userEvent.setup();
+    const card = await openCard(1);
+    const group = fixtureItem(1).proposal!.main.group;
+    expect(within(card).getByRole('button', { name: `Утвердить в группу ${group.code}` })).toBeDisabled();
+    expect(within(card).getByText(/Чтобы утвердить, сначала выберите «В работе у»/)).toBeInTheDocument();
+
+    await user.click(within(card).getByRole('button', { name: 'Выбрать другую группу из списка' }));
+    const picker = await screen.findByRole('dialog', { name: 'Другая группа' });
+    expect(await within(picker).findByRole('button', { name: 'Утвердить ДГ-0035' })).toBeDisabled();
+    expect(within(picker).getByRole('button', { name: /^Выбрать ДГ-0035/ })).toBeEnabled();
+  });
+
+  test('если сервер всё же ответил «нет ответственного», текст понятный', async () => {
+    stubFetchWithFixtures({
+      requests: () => json(viewWith(1, { responsible: 'Анна' })),
+      'requests/1/approve': () => json({ error: 'no_responsible', message: 'служебный текст' }, 409),
+    });
+    const user = userEvent.setup();
+    const card = await openCard(1);
+    const group = fixtureItem(1).proposal!.main.group;
+    await user.click(within(card).getByRole('button', { name: `Утвердить в группу ${group.code}` }));
+    expect(await within(card).findByRole('alert')).toHaveTextContent('Сначала укажите, кто в работе («В работе у»), потом утверждайте.');
+  });
+});

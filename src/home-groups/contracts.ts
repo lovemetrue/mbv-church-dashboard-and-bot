@@ -1155,7 +1155,8 @@ export interface ActionOk {
  * «Не направлять»), `group_full` (мест нет; повторить с `force: true`).
  */
 export interface ActionError {
-  error: 'bad_request' | 'not_found' | 'already_closed' | 'group_unavailable' | 'group_full' | 'forbidden' | 'conflict' | 'unavailable';
+  /** no_responsible — «Утвердить» без «В работе у»: сначала выбирают ответственного. */
+  error: 'bad_request' | 'not_found' | 'already_closed' | 'group_unavailable' | 'group_full' | 'no_responsible' | 'forbidden' | 'conflict' | 'unavailable';
   message: string;
 }
 

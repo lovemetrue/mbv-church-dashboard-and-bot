@@ -56,7 +56,7 @@ export const CANCEL_REASONS = {
 } as const;
 export type CancelReason = keyof typeof CANCEL_REASONS;
 
-export type ActionFailure = 'bad_request' | 'not_found' | 'already_closed' | 'group_unavailable' | 'group_full' | 'conflict';
+export type ActionFailure = 'bad_request' | 'not_found' | 'already_closed' | 'group_unavailable' | 'group_full' | 'no_responsible' | 'conflict';
 export type ActionOutcome = { ok: true } | { ok: false; error: ActionFailure; message: string };
 
 type Failure = Extract<ActionOutcome, { ok: false }>;
@@ -76,6 +76,7 @@ interface RequestState {
   group_id: number | null;
   final_group: string | null;
   callback: boolean;
+  responsible: string | null;
 }
 
 export interface DesiredProposal {
@@ -137,7 +138,7 @@ export class PlacementRepo {
    */
   private async lockOpenRequest(c: PoolClient, id: number): Promise<RequestState | Failure> {
     const { rows } = await c.query<RequestState>(
-      `SELECT status, group_id, final_group, callback FROM requests
+      `SELECT status, group_id, final_group, callback, responsible FROM requests
         WHERE id = $1 AND archived_at IS NULL FOR UPDATE`,
       [id],
     );
@@ -170,6 +171,10 @@ export class PlacementRepo {
     return this.tx(async (c) => {
       const state = await this.lockOpenRequest(c, requestId);
       if (PlacementRepo.isFailure(state)) return state;
+      // Утверждённого человека дальше ведёт ответственный (звонит, отмечает дошёл ли). Без него заявка повисает
+      // ничьей — поэтому сначала «В работе у», потом «Утвердить». Проверка здесь, а не только в интерфейсе: любой путь
+      // к утверждению (основная кнопка, запасной вариант, «Другая группа») сходится сюда.
+      if (!state.responsible?.trim()) return fail('no_responsible', 'Сначала укажите, кто в работе («В работе у»), потом утверждайте.');
 
       const { rows } = await c.query<{
         id: number; leader: string; status: string; open_to_new: string | null; do_not_refer: boolean; chamber: boolean; people: number | null;

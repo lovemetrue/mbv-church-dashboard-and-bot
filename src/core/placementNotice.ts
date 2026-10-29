@@ -59,6 +59,8 @@ export interface NoticeData {
   time: string | null;
   fio: string | null;
   personPhone: string | null;
+  /** Удобные человеку день и время, как он их назвал (или как поправил координатор); null — не заполнено. */
+  personSchedule: string | null;
 }
 
 const line = (label: string, value: string | null): string | null => (value ? `${label}: ${esc(value)}` : null);
@@ -89,6 +91,7 @@ export function noticeMessage(d: NoticeData): OutMessage {
     '',
     line('Имя', d.fio),
     line('Телефон', formatPhone(d.personPhone) || null),
+    line('Удобное время', d.personSchedule?.trim() || null),
     '',
     'Пожалуйста, позвоните в течение 24 часов и расскажите, где проходит встреча.',
   ].filter((s) => s !== null).join('\n');

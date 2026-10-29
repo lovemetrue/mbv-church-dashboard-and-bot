@@ -99,11 +99,12 @@ describe('сообщения после «Утвердить»', () => {
   test('бот берёт очередь с текстом: имя, телефоны, расписание; отправленное больше не берёт', async () => {
     await notifyOn();
     const r = await request({ userId: await user(), phone: '+79005556677' });
+    await db.query(`UPDATE requests SET manual_schedule = 'выходные днём' WHERE id = $1`, [r]);
     await placement.approve(r, await group({ leaderUserId: await user(), phones: ['+79001112233'] }), 'a', OPTS);
     const due = await notices.due(10);
     expect(due).toHaveLength(2);
     expect(due[0]).toMatchObject({ recipient: 'person', leader: 'Осипова Наталья Евгеньевна', leaderPhone: '+79001112233', day: 'Вс', time: '19:00', platform: 'max' });
-    expect(due[1]).toMatchObject({ recipient: 'leader', fio: 'Никандрова Нина Ивановна', personPhone: '+79005556677' });
+    expect(due[1]).toMatchObject({ recipient: 'leader', fio: 'Никандрова Нина Ивановна', personPhone: '+79005556677', personSchedule: 'выходные днём' });
     await notices.markSent(due[0]!.id);
     await notices.markFailed(due[1]!.id, 'blocked');
     expect(await notices.due(10)).toEqual([]);

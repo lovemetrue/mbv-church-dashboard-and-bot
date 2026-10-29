@@ -25,10 +25,10 @@ const BUTTON_TEXT: Readonly<Record<NoticeAnswer, string>> = {
 
 /** Ответ бота на нажатие. На «не подходит» и «нет времени» обещаем только то, что сделает координатор. */
 export const ANSWER_REPLY: Readonly<Record<NoticeAnswer, string>> = {
-  will_call: 'Спасибо! Отметили, что вы позвоните.',
+  will_call: 'Спасибо! Отметили, что Вы позвоните.',
   no_time: 'Поняли, передали координатору. Спасибо, что ответили.',
   waiting: 'Спасибо! Ведущий скоро позвонит.',
-  not_fit: 'Поняли, передали координатору: с вами свяжутся и подберут другую группу.',
+  not_fit: 'Поняли, передали координатору: с Вами свяжутся и подберут другую группу.',
 };
 
 export const STALE_BUTTON = 'Эта кнопка уже не действует.';
@@ -74,18 +74,18 @@ export function noticeMessage(d: NoticeData): OutMessage {
   if (d.recipient === 'person') {
     const name = firstName(d.fio);
     const text = [
-      `${name ? `${esc(name)}, здравствуйте!` : 'Здравствуйте!'} Мы подобрали вам домашнюю группу.`,
+      `${name ? `${esc(name)}, здравствуйте!` : 'Здравствуйте!'} Мы подобрали для Вас домашнюю группу.`,
       '',
       line('Ведущий', d.leader),
       line('Телефон ведущего', formatPhone(d.leaderPhone) || null),
-      line('Когда встречается', when),
+      line('Время встреч', when),
       '',
-      'Ведущий позвонит вам в ближайшие дни и расскажет, где проходит встреча.',
+      'Ведущий позвонит Вам в ближайшие дни и расскажет, где проходит встреча.',
     ].filter((s) => s !== null).join('\n');
     return { text, format: 'html', buttons };
   }
   const text = [
-    `${esc(firstName(d.leader) ?? d.leader)}, здравствуйте! В вашу группу ${esc(d.groupCode)} направлен человек.`,
+    `${esc(firstName(d.leader) ?? d.leader)}, здравствуйте! В Вашу группу ${esc(d.groupCode)} направлен человек.`,
     '',
     line('Имя', d.fio),
     line('Телефон', formatPhone(d.personPhone) || null),

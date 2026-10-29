@@ -19,10 +19,10 @@ const base: NoticeData = {
 describe('текст сообщений', () => {
   test('человеку: ведущий, его телефон и расписание, без адреса; кнопки «Жду звонка» и «Группа не подходит»', () => {
     const m = noticeMessage(base);
-    expect(m.text).toContain('Нина, здравствуйте! Мы подобрали вам домашнюю группу.');
+    expect(m.text).toContain('Нина, здравствуйте! Мы подобрали для Вас домашнюю группу.');
     expect(m.text).toContain('Ведущий: Осипова Наталья Евгеньевна');
     expect(m.text).toContain('Телефон ведущего: +7 900 111-22-33');
-    expect(m.text).toContain('Когда встречается: Вс, 19:00');
+    expect(m.text).toContain('Время встреч: Вс, 19:00');
     expect(m.text).not.toMatch(/адрес|улиц/i);
     expect(m.buttons).toEqual([
       [{ kind: 'callback', text: 'Жду звонка', data: 'pn:7:waiting' }],
@@ -32,7 +32,7 @@ describe('текст сообщений', () => {
 
   test('ведущему: кого направили и телефон; кнопки «Позвоню в течение 24 часов» и «Нет времени»', () => {
     const m = noticeMessage({ ...base, recipient: 'leader' });
-    expect(m.text).toContain('Наталья, здравствуйте! В вашу группу ДГ-0088 направлен человек.');
+    expect(m.text).toContain('Наталья, здравствуйте! В Вашу группу ДГ-0088 направлен человек.');
     expect(m.text).toContain('Имя: Никандрова Нина Ивановна');
     expect(m.text).toContain('Телефон: +7 900 555-66-77');
     expect(m.buttons!.flat().map((b) => b.text)).toEqual(['Позвоню в течение 24 часов', 'Нет времени']);
@@ -114,7 +114,7 @@ describe('очередь в боте: отправка и ответы', () => {
     expect((await statuses()).map((x) => x.answer)).toEqual(['not_fit', 'will_call']);
     expect(max.toasts).toEqual(['Ответ принят ✓', 'Ответ принят ✓']);
     expect(max.textsTo('chat100').at(-1)).toContain('подберут другую группу');
-    expect(max.textsTo('chat200').at(-1)).toContain('вы позвоните');
+    expect(max.textsTo('chat200').at(-1)).toContain('Вы позвоните');
   });
 
   test('чужое нажатие (кнопка из сообщения ведущему, нажатая человеком) не засчитывается', async () => {

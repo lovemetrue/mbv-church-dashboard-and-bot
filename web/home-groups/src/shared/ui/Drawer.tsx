@@ -20,6 +20,11 @@ interface DrawerProps {
    * сжимает таблицу под собой (справочник).
    */
   docked?: boolean;
+  /**
+   * beside — вторая карточка рядом с открытой: на широком экране встаёт левее неё (человек слева от группы, чтобы их
+   * сверять), на узком — поверх всего. Esc закрывает сначала её, а карточку под ней оставляет.
+   */
+  beside?: boolean;
   children: ReactNode;
 }
 
@@ -28,12 +33,13 @@ interface DrawerProps {
  * на другую строку карточка меняется. Esc закрывает; фокус уходит в панель при открытии и
  * возвращается туда, откуда пришёл.
  */
-export function Drawer({ label, title, subtitle, tools, toolsBelow = false, onClose, docked = false, children }: DrawerProps) {
+export function Drawer({ label, title, subtitle, tools, toolsBelow = false, onClose, docked = false, beside = false, children }: DrawerProps) {
   const ref = useRef<HTMLElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   // Ширина выезжающей карточки — как в стилях (.overlay); прикреплённая на узком экране идёт на весь экран.
-  useFitVisualViewport(ref, docked ? undefined : 440);
+  // Вторая карточка на узком экране закрывает собой и первую — во всю ширину.
+  useFitVisualViewport(ref, docked || beside ? undefined : 440);
 
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -48,16 +54,19 @@ export function Drawer({ label, title, subtitle, tools, toolsBelow = false, onCl
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !e.defaultPrevented) closeRef.current();
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      // Вторая карточка слушает на погружении — раньше первой — и гасит Esc, иначе он закрыл бы обе разом.
+      if (beside) e.preventDefault();
+      closeRef.current();
     };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, []);
+    document.addEventListener('keydown', onKey, beside);
+    return () => document.removeEventListener('keydown', onKey, beside);
+  }, [beside]);
 
   return (
     <aside
       ref={ref}
-      className={`${styles.drawer} ${docked ? styles.docked : styles.overlay}`}
+      className={`${styles.drawer} ${docked ? styles.docked : styles.overlay} ${beside ? styles.beside : ''}`}
       role="dialog"
       aria-label={label}
       aria-modal="false"

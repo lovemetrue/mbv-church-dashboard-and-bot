@@ -2,7 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { App } from '../../../app/App';
-import { buildGroups } from '../../../fixtures/build';
+import { buildGroups, buildPeople } from '../../../fixtures/build';
 import { getsOf, json, posts } from '../../../test/calls';
 import { currentSearch, renderAt, stubFetchWithFixtures } from '../../../test/render';
 import { todayIso } from './model';
@@ -75,14 +75,72 @@ describe('карточка группы: состав', () => {
     expect(rowOf(card, 'Нина Воронцова')).not.toHaveTextContent('Есть и в');
   });
 
-  test('имя человека открывает его карточку в «Справочнике → Люди»', async () => {
+  test('имя человека открывает его карточку рядом с группой, не уводя в «Люди»', async () => {
     stubFetchWithFixtures();
     const user = userEvent.setup();
     const card = await groupCard();
     await user.click(within(card).getByRole('button', { name: 'Дарья Ефимова' }));
+    const person = await screen.findByRole('dialog', { name: 'Карточка человека: Дарья Ефимова' });
+    expect(currentSearch().get('pp')).toBe('u1');
+    expect(currentSearch().get('ent')).toBeNull();
+    expect(currentSearch().get('rec')).toBe('1');
+    // Группа остаётся открытой: их и сверяют.
+    expect(screen.getByRole('dialog', { name: /Карточка группы/ })).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: 'Дарья Ефимова' })).toHaveAttribute('aria-pressed', 'true');
+    // В «Люди» — отдельной кнопкой в самой карточке.
+    await user.click(within(person).getByRole('button', { name: 'Открыть в «Людях»: Дарья Ефимова' }));
     expect(currentSearch().get('ent')).toBe('people');
     expect(currentSearch().get('rec')).toBe('u1');
-    expect(await screen.findByRole('dialog', { name: 'Карточка человека: Дарья Ефимова' })).toBeInTheDocument();
+  });
+
+  test('Esc закрывает карточку человека, а карточка группы остаётся', async () => {
+    stubFetchWithFixtures();
+    const user = userEvent.setup();
+    const card = await groupCard();
+    await user.click(within(card).getByRole('button', { name: 'Нина Воронцова' }));
+    await screen.findByRole('dialog', { name: 'Карточка человека: Нина Воронцова' });
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /Карточка человека/ })).not.toBeInTheDocument());
+    expect(screen.getByRole('dialog', { name: /Карточка группы/ })).toBeInTheDocument();
+    expect(currentSearch().get('rec')).toBe('1');
+  });
+
+  test('повторный клик по тому же ФИО закрывает карточку человека', async () => {
+    stubFetchWithFixtures();
+    const user = userEvent.setup();
+    const card = await groupCard();
+    await user.click(within(card).getByRole('button', { name: 'Нина Воронцова' }));
+    await screen.findByRole('dialog', { name: 'Карточка человека: Нина Воронцова' });
+    await user.click(within(card).getByRole('button', { name: 'Нина Воронцова' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /Карточка человека/ })).not.toBeInTheDocument());
+    expect(currentSearch().get('pp')).toBeNull();
+  });
+
+  test('закрыли группу — закрылась и карточка человека рядом с ней', async () => {
+    stubFetchWithFixtures();
+    const user = userEvent.setup();
+    const card = await groupCard();
+    await user.click(within(card).getByRole('button', { name: 'Нина Воронцова' }));
+    await screen.findByRole('dialog', { name: 'Карточка человека: Нина Воронцова' });
+    await user.click(within(card).getByRole('button', { name: 'Закрыть карточку' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /Карточка/ })).not.toBeInTheDocument());
+    expect(currentSearch().get('pp')).toBeNull();
+  });
+
+  test('напротив ФИО — плашка возраста, под телефоном — адрес и район из карточки человека', async () => {
+    const people = buildPeople();
+    stubFetchWithFixtures({
+      people: () => json({ ...people, items: people.items.map((p) => (p.key === 'u1' ? { ...p, address: 'ул. Савушкина, 10' } : p)) }),
+    });
+    const card = await groupCard();
+    const row = rowOf(card, 'Дарья Ефимова');
+    await waitFor(() => expect(row).toHaveTextContent('ул. Савушкина'));
+    expect(within(row.querySelector('div') as HTMLElement).getByText('26–35')).toBeInTheDocument();
+    const lines = [...row.querySelectorAll('p')].map((x) => x.textContent);
+    expect(lines.slice(0, 2)).toEqual(['+7 911 000 40 02 · в группе с 1 сентября 2026', 'ул. Савушкина, 10 · Приморский']);
+    // Без адреса — один район.
+    expect(rowOf(card, 'Нина Воронцова')).toHaveTextContent('46+');
+    expect([...rowOf(card, 'Нина Воронцова').querySelectorAll('p')].map((x) => x.textContent)).toContain('Приморский');
   });
 
   test('без участников: в составе только ведущий, «Добавить человека» на месте', async () => {

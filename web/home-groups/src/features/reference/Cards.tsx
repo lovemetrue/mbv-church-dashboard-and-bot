@@ -3,7 +3,7 @@ import { GenderField } from '../gender/GenderField';
 import type { CoordinatorItem, GroupItem, PersonItem } from '@contracts';
 import { formatDateFull, formatPhone, groupLabel, healthTone } from '../../entities/format';
 import { registrationCardUrl, registrationQrUrl } from '../../shared/api/base';
-import { useGroups } from '../../shared/api/queries';
+import { useGroups, usePeople } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
 import { useAppNav } from '../../shared/nav';
 import { Button, Drawer, DrawerSection, KeyValue, LoadingState, GroupMarks, Meter, Pill, StrangeBadge, StrangeBanner, type KvRow } from '../../shared/ui';
@@ -115,79 +115,100 @@ export function GroupCard({ g, onClose }: { g: GroupItem; onClose: () => void })
   const tone = healthTone(g.health.score);
   const rows = groupDataRows(g, nav.openPerson);
   return (
-    <Drawer
-      label={`Карточка группы ${groupLabel(g)}`}
-      title={
-        <>
-          {`Группа ${groupLabel(g)}`}
-          {(g.isNew || g.empty) && (
-            <>
-              {' '}
-              <GroupMarks g={g} />
-            </>
+    <>
+      <Drawer
+        label={`Карточка группы ${groupLabel(g)}`}
+        title={
+          <>
+            {`Группа ${groupLabel(g)}`}
+            {(g.isNew || g.empty) && (
+              <>
+                {' '}
+                <GroupMarks g={g} />
+              </>
+            )}
+          </>
+        }
+        subtitle={[g.leader, g.district, g.metro].filter(Boolean).join(' · ')}
+        tools={<GroupHeaderTools key={g.id} g={g} />}
+        toolsBelow
+        onClose={onClose}
+      >
+        <DrawerSection title={ru.reference.groupData}>
+          <KeyValue rows={rows} />
+          <GroupActions key={g.id} g={g} onDeleted={onClose} />
+        </DrawerSection>
+        <MembersSection key={g.id} g={g} />
+        <DrawerSection title={ru.reference.plannedTitle}>
+          {g.plannedRequests.length ? (
+            <ul className={styles.planned}>
+              {g.plannedRequests.map((r) => (
+                <li key={r.id} className={styles.plannedRow}>
+                  <div className={styles.plannedMain}>
+                    <b>{r.fio}</b>
+                    <span>
+                      {[r.ageLabel, r.place].filter(Boolean).join(' · ')} · {ru.requests.confidence} {r.confidence}
+                    </span>
+                  </div>
+                  <Button size="sm" onClick={() => nav.openRequest(r.id)} aria-label={`${ru.reference.openPlanned} заявку: ${r.fio}`}>
+                    {ru.reference.openPlanned}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className={styles.note}>{ru.reference.plannedNone}</p>
           )}
-        </>
-      }
-      subtitle={[g.leader, g.district, g.metro].filter(Boolean).join(' · ')}
-      tools={<GroupHeaderTools key={g.id} g={g} />}
-      toolsBelow
-      onClose={onClose}
-    >
-      <DrawerSection title={ru.reference.health}>
-        <div className={styles.healthHead}>
-          <Meter value={g.health.score} tone={tone} width={120} label={`${ru.reference.health}: ${ru.reference.healthOf(g.health.score)}`} />
-          <b className="num">{ru.reference.healthOf(g.health.score)}</b>
-        </div>
-        <ul className={styles.checks}>
-          {g.health.items.map((i) => (
-            <li key={i.label} className={i.ok ? styles.checkOk : styles.checkBad}>
-              <span className={styles.checkIcon} aria-hidden="true">
-                {i.ok ? '✓' : '✕'}
-              </span>
-              <span>
-                <span className="visually-hidden">{i.ok ? 'Есть: ' : 'Нет: '}</span>
-                {i.label}
-              </span>
-              <em className="num">{i.ok ? `+${i.points}` : `0 из ${i.points}`}</em>
-            </li>
-          ))}
-        </ul>
-        <div className={styles.cardActions}>
-          <Button variant="primary" soon>
-            {ru.reference.askLeader}
-          </Button>
-          <Button soon>{ru.reference.verifyManually}</Button>
-        </div>
-        <p className={styles.note}>{ru.reference.verifyNote}</p>
-      </DrawerSection>
-      <DrawerSection title={ru.reference.groupData}>
-        <KeyValue rows={rows} />
-        <GroupActions key={g.id} g={g} onDeleted={onClose} />
-      </DrawerSection>
-      <MembersSection key={g.id} g={g} />
-      <DrawerSection title={ru.reference.plannedTitle}>
-        {g.plannedRequests.length ? (
-          <ul className={styles.planned}>
-            {g.plannedRequests.map((r) => (
-              <li key={r.id} className={styles.plannedRow}>
-                <div className={styles.plannedMain}>
-                  <b>{r.fio}</b>
-                  <span>
-                    {[r.ageLabel, r.place].filter(Boolean).join(' · ')} · {ru.requests.confidence} {r.confidence}
-                  </span>
-                </div>
-                <Button size="sm" onClick={() => nav.openRequest(r.id)} aria-label={`${ru.reference.openPlanned} заявку: ${r.fio}`}>
-                  {ru.reference.openPlanned}
-                </Button>
+        </DrawerSection>
+        {/* Здоровье — в самом конце: данные и состав нужны чаще, а оценка мешала их обзору. */}
+        <DrawerSection title={ru.reference.health}>
+          <div className={styles.healthHead}>
+            <Meter value={g.health.score} tone={tone} width={120} label={`${ru.reference.health}: ${ru.reference.healthOf(g.health.score)}`} />
+            <b className="num">{ru.reference.healthOf(g.health.score)}</b>
+          </div>
+          <ul className={styles.checks}>
+            {g.health.items.map((i) => (
+              <li key={i.label} className={i.ok ? styles.checkOk : styles.checkBad}>
+                <span className={styles.checkIcon} aria-hidden="true">
+                  {i.ok ? '✓' : '✕'}
+                </span>
+                <span>
+                  <span className="visually-hidden">{i.ok ? 'Есть: ' : 'Нет: '}</span>
+                  {i.label}
+                </span>
+                <em className="num">{i.ok ? `+${i.points}` : `0 из ${i.points}`}</em>
               </li>
             ))}
           </ul>
-        ) : (
-          <p className={styles.note}>{ru.reference.plannedNone}</p>
-        )}
-      </DrawerSection>
-    </Drawer>
+          <div className={styles.cardActions}>
+            <Button variant="primary" soon>
+              {ru.reference.askLeader}
+            </Button>
+            <Button soon>{ru.reference.verifyManually}</Button>
+          </div>
+          <p className={styles.note}>{ru.reference.verifyNote}</p>
+        </DrawerSection>
+      </Drawer>
+      {nav.peekKey && <PersonPeek personKey={nav.peekKey} onClose={nav.closePeek} />}
+    </>
   );
+}
+
+/**
+ * Карточка человека рядом с карточкой группы (клик по ФИО в составе): на широком экране левее группы, чтобы их сверять,
+ * на телефоне — поверх. Человека берём из справочника «Люди»: там контакты уже скрыты сервером по вошедшему.
+ */
+function PersonPeek({ personKey, onClose }: { personKey: string; onClose: () => void }) {
+  const people = usePeople();
+  const p = people.data?.items.find((x) => x.key === personKey);
+  if (!p) {
+    return (
+      <Drawer label={ru.members.peekLoading} title={ru.members.peekLoading} beside onClose={onClose}>
+        <DrawerSection>{people.isPending ? <LoadingState lines={4} /> : <p className={styles.note}>{ru.members.peekMissing}</p>}</DrawerSection>
+      </Drawer>
+    );
+  }
+  return <PersonCard p={p} onClose={onClose} beside />;
 }
 
 /**
@@ -223,7 +244,7 @@ function PersonRequests({ p }: { p: PersonItem }) {
   );
 }
 
-export function PersonCard({ p, onClose }: { p: PersonItem; onClose: () => void }) {
+export function PersonCard({ p, onClose, beside = false }: { p: PersonItem; onClose: () => void; beside?: boolean }) {
   const nav = useAppNav();
   const rows: KvRow[] = [
     { label: 'ФИО', value: p.fio },
@@ -277,8 +298,19 @@ export function PersonCard({ p, onClose }: { p: PersonItem; onClose: () => void 
           <StrangeBadge mark={p.strange} size={18} />
         </>
       }
-      tools={<PersonHeaderTools key={p.key} p={p} />}
+      tools={
+        <>
+          <PersonHeaderTools key={p.key} p={p} />
+          {/* Рядом с группой — короткая карточка для сверки; полный справочник открывается отдельно. */}
+          {beside && (
+            <Button size="sm" variant="ghost" aria-label={ru.reference.openInPeopleAria(p.fio)} onClick={() => nav.openPerson(p.key)}>
+              {ru.reference.openInPeople}
+            </Button>
+          )}
+        </>
+      }
       toolsBelow
+      beside={beside}
       onClose={onClose}
     >
       <StrangeBanner mark={p.strange} />

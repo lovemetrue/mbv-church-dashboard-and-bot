@@ -43,6 +43,15 @@
 .row:first-child {
   border-top: 0;
 }
+/* Чья карточка открыта рядом с группой: строку видно, пока их сверяют. */
+.row[data-active] {
+  margin: 0 -8px;
+  padding-left: 8px;
+  padding-right: 8px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
 .who {
   display: flex;
   flex-wrap: wrap;

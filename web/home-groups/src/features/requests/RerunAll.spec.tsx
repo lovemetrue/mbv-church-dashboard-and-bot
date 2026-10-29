@@ -14,6 +14,8 @@ const rerunOk = () => json({ ok: true, created: 2, replaced: 3, unchanged: 5 });
 async function openRequests(overrides: Parameters<typeof stubFetchWithFixtures>[0] = {}, client = makeClient()) {
   const fetchMock = stubFetchWithFixtures(overrides);
   renderAt(<App />, '/?tab=requests', client);
+  // Сводка и запуск подбора — в окошке кнопки «Подбор» (большой плашки над списком больше нет).
+  await userEvent.setup().click(await screen.findByRole('button', { name: /^Подбор/ }));
   const block = await screen.findByRole('region', { name: 'Подбор для новых заявок' });
   return { fetchMock, block, client };
 }
@@ -29,7 +31,7 @@ describe('«Заявки»: пересчитать все предложения
   test('нажатие не шлёт запрос сразу, а спрашивает подтверждение с предупреждением', async () => {
     const { fetchMock, block } = await openRequests({ 'matching/rerun-all': rerunOk });
     await userEvent.setup().click(within(block).getByRole('button', { name: RERUN }));
-    const dialog = await screen.findByRole('dialog');
+    const dialog = await screen.findByRole('dialog', { name: 'Пересчитать все предложения?' });
     expect(dialog).toHaveTextContent(
       'Пересчитать предложения всех открытых заявок заново? Утверждённые заявки не меняются, отклонённые вами группы не вернутся. Некоторые предложения могут измениться',
     );
@@ -40,7 +42,7 @@ describe('«Заявки»: пересчитать все предложения
     const { fetchMock, block } = await openRequests({ 'matching/rerun-all': rerunOk });
     const user = userEvent.setup();
     await user.click(within(block).getByRole('button', { name: RERUN }));
-    const dialog = await screen.findByRole('dialog');
+    const dialog = await screen.findByRole('dialog', { name: 'Пересчитать все предложения?' });
     await user.click(within(dialog).getByRole('button', { name: 'Отмена' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(posts(fetchMock)).toHaveLength(0);
@@ -52,9 +54,9 @@ describe('«Заявки»: пересчитать все предложения
     const { fetchMock, block } = await openRequests({ 'matching/rerun-all': rerunOk }, client);
     const user = userEvent.setup();
     await user.click(within(block).getByRole('button', { name: RERUN }));
-    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Да, пересчитать' }));
+    await user.click(within(await screen.findByRole('dialog', { name: 'Пересчитать все предложения?' })).getByRole('button', { name: 'Да, пересчитать' }));
 
-    expect(await within(block).findByText('Готово: предложений создано 2, заменено 3, без изменений 5')).toBeInTheDocument();
+    expect(await screen.findByText('Готово: предложений создано 2, заменено 3, без изменений 5')).toBeInTheDocument();
     expect(posts(fetchMock).map((p) => ({ path: p.path, body: p.body }))).toEqual([{ path: 'matching/rerun-all', body: {} }]);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     await waitFor(() => expect(getsOf(fetchMock, 'requests')).toBe(2));
@@ -73,7 +75,7 @@ describe('«Заявки»: пересчитать все предложения
     });
     const user = userEvent.setup();
     await user.click(within(block).getByRole('button', { name: RERUN }));
-    const confirm = within(await screen.findByRole('dialog')).getByRole('button', { name: 'Да, пересчитать' });
+    const confirm = within(await screen.findByRole('dialog', { name: 'Пересчитать все предложения?' })).getByRole('button', { name: 'Да, пересчитать' });
     act(() => {
       confirm.click();
       confirm.click();
@@ -83,7 +85,7 @@ describe('«Заявки»: пересчитать все предложения
     expect(within(block).getByRole('button', { name: 'Пересчитываем…' })).toBeDisabled();
     expect(within(block).getByRole('button', { name: 'Предложить группы новым заявкам' })).toBeDisabled();
     release();
-    await within(block).findByText(/^Готово: предложений создано/);
+    await screen.findByText(/^Готово: предложений создано/);
     expect(posts(fetchMock)).toHaveLength(1);
   });
 
@@ -93,8 +95,8 @@ describe('«Заявки»: пересчитать все предложения
     });
     const user = userEvent.setup();
     await user.click(within(block).getByRole('button', { name: RERUN }));
-    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Да, пересчитать' }));
-    const alert = await within(block).findByRole('alert');
+    await user.click(within(await screen.findByRole('dialog', { name: 'Пересчитать все предложения?' })).getByRole('button', { name: 'Да, пересчитать' }));
+    const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('Не получилось пересчитать предложения');
     expect(alert).not.toHaveTextContent('служебный текст сервера');
     expect(within(block).getByRole('button', { name: RERUN })).toBeEnabled();
@@ -106,7 +108,7 @@ describe('«Заявки»: сводка про изменившиеся дан�
     const expected = buildRequests().items.filter((r) => r.proposal?.dataChanged).length;
     expect(expected).toBeGreaterThan(0);
     const { block } = await openRequests();
-    expect(within(block).getByText(`Данные изменились у ${expected} заявок`)).toBeInTheDocument();
+    expect(screen.getByText(`Данные изменились у ${expected} заявок`)).toBeInTheDocument();
   });
 
   test('для одной заявки склоняет: «у 1 заявки»', async () => {
@@ -114,7 +116,7 @@ describe('«Заявки»: сводка про изменившиеся дан�
     const only = view.items.find((r) => r.proposal?.dataChanged)!;
     const items = view.items.map((r) => (r.proposal && r.id !== only.id ? { ...r, proposal: { ...r.proposal, dataChanged: false } } : r));
     const { block } = await openRequests({ requests: () => json({ ...view, items }) });
-    expect(within(block).getByText('Данные изменились у 1 заявки')).toBeInTheDocument();
+    expect(screen.getByText('Данные изменились у 1 заявки')).toBeInTheDocument();
   });
 
   test('если изменившихся данных нет, строки в сводке нет', async () => {
@@ -130,7 +132,7 @@ describe('«Заявки»: сводка про изменившиеся дан�
     const items = view.items.map((r) => (r.id === done.id ? { ...r, proposal: { ...fixtureProposal(), dataChanged: true } } : r));
     const base = view.items.filter((r) => r.proposal?.dataChanged).length;
     const { block } = await openRequests({ requests: () => json({ ...view, items }) });
-    expect(within(block).getByText(`Данные изменились у ${base} заявок`)).toBeInTheDocument();
+    expect(screen.getByText(`Данные изменились у ${base} заявок`)).toBeInTheDocument();
   });
 });
 

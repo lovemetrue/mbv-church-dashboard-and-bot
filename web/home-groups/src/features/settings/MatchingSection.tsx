@@ -1,7 +1,8 @@
-import { useId } from 'react';
+import { useId, useState } from 'react';
 import { useRequests } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
 import { useMatching } from '../requests/useMatching';
+import { MatchingBlock, RerunConfirm } from '../requests/MatchingPanel';
 import { QueryBoundary } from './QueryBoundary';
 import { SectionHead } from './SectionHead';
 import styles from './Settings.module.css';
@@ -9,15 +10,17 @@ import styles from './Settings.module.css';
 const t = ru.settings.matching;
 
 /**
- * «Подбор»: переключатель автоподбора новых заявок. Раньше он стоял в шапке «Заявок» и занимал там строку, хотя
- * меняют его редко; в «Заявках» осталась строка о том, включён ли он. Срабатывает сразу, как и прежде: значение
- * берём из ответа сервера (оно приходит с заявками), а не угадываем.
+ * «Подбор»: переключатели автоподбора и сообщений в MAX, а под ними — сводка и запуск общего подбора. Переключатель
+ * автоподбора раньше стоял в шапке «Заявок» и занимал там строку, хотя меняют его редко; в «Заявках» подбор теперь
+ * под кнопкой «Подбор». Переключатели срабатывают сразу: значение берём из ответа сервера (оно приходит с заявками),
+ * а не угадываем.
  */
 export function MatchingSection() {
   const query = useRequests();
   const act = useMatching();
   const titleId = useId();
   const hintId = useId();
+  const [confirming, setConfirming] = useState(false);
   const notifyHintId = useId();
   return (
     <section aria-labelledby={titleId}>
@@ -59,6 +62,11 @@ export function MatchingSection() {
                 {act.notice.text}
               </p>
             )}
+            {/* Общий подбор: в «Заявках» он спрятан под кнопку «Подбор», здесь — рядом с его настройками. */}
+            <div className={styles.stackTop}>
+              <MatchingBlock matching={data.matching} act={act} busy={act.pending !== null} onRerun={() => setConfirming(true)} />
+            </div>
+            {confirming && <RerunConfirm act={act} busy={act.pending !== null} onClose={() => setConfirming(false)} />}
           </div>
         )}
       </QueryBoundary>

@@ -890,6 +890,19 @@
 .matching .noticeError {
   margin: 0;
 }
+/* Ссылка «Данные изменились у N заявок» в строке инструментов: заметная, но в одну строку с кнопками. */
+.matchingWarn {
+  color: var(--warn);
+  font-weight: 600;
+  font-size: 13px;
+}
+/* Итог запуска подбора — отдельной строкой под инструментами, во всю ширину. */
+.matchingNoticeLine {
+  flex-basis: 100%;
+}
+.matchingNoticeLine p {
+  margin: 0;
+}
 
 /* Переключатель: кнопка с role="switch", вся строка нажимается (≥44 px). */
 

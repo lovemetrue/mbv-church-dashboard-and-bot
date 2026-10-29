@@ -12,7 +12,7 @@ import { useResponsible } from './useResponsible';
 import { BulkPanel } from './bulk/BulkPanel';
 import { useBulk } from './bulk/useBulk';
 import { ClosedNote } from './ClosedNote';
-import { MatchingPanel } from './MatchingPanel';
+import { MatchingBar } from './MatchingPanel';
 import { OthersContent } from './others/OthersContent';
 import { openOthersCount } from './others/model';
 import { RequestCard, type RequestNeighbors } from './RequestCard';
@@ -97,7 +97,6 @@ function WaitingContent({
       <div className={styles.main}>
         <ViewSwitch view="wait" others={data.others} items={data.items} onChange={nav.setView} />
         <ClosedNote note={note} onHide={onHideNote} />
-        <MatchingPanel matching={data.matching} assistant={data.assistant} changed={changed} />
         {/* Область живая и есть всегда: скринридер читает только то, что в неё добавили. */}
         <div role="status" className={arrivals.count > 0 ? styles.arrived : undefined}>
           {arrivals.count > 0 && (
@@ -129,6 +128,7 @@ function WaitingContent({
           <ResponsibleSelect items={data.items} value={resp.value} mine={resp.myName !== null} onChange={resp.set} />
           <RequestFiltersButton items={data.items} filters={rf.filters} onChange={rf.set} />
           <SavedViewsMenu scope="requests" />
+          <MatchingBar matching={data.matching} assistant={data.assistant} changed={changed} />
         </div>
         <RequestFilterChips filters={rf.filters} onChange={rf.set} />
         {canChange && <BulkPanel bulk={bulk} visibleCount={visible.length} />}

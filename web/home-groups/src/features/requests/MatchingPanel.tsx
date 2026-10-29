@@ -5,7 +5,7 @@ import { canChange } from '../../shared/access';
 import { useMe } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
 import { useAppNav } from '../../shared/nav';
-import { Button, Modal } from '../../shared/ui';
+import { Button, Modal, Popover } from '../../shared/ui';
 import { useAssistantDock } from '../assistant-chat/AssistantChat';
 import styles from './Requests.module.css';
 import { ChangedRequests } from './ChangedRequests';
@@ -13,14 +13,101 @@ import { useMatching } from './useMatching';
 
 const m = ru.requests.matching;
 
+type MatchingActions = ReturnType<typeof useMatching>;
+
 /**
- * «Подбор для новых заявок»: сводка, кнопка закрепления и значок ✦ помощника. Переключатель автоподбора живёт в
- * «Настройки → Подбор» (его меняют редко, а шапку он раздувал), здесь — только строка о том, включён ли он.
- * Расчёт показывается и без кнопки; кнопка лишь закрепляет его, чтобы выбранные группы не менялись сами.
- * Предложение остаётся предложением: человек распределён только после «Утвердить»,
- * поэтому здесь ничего не утверждается.
+ * Сводка подбора и кнопки «Предложить группы новым заявкам» / «Пересчитать все предложения». Живёт в двух местах: в
+ * окошке кнопки «Подбор» в «Заявках» и в «Настройки → Подбор». Общий подбор запускают редко (обычно работает
+ * автоподбор), поэтому большой плашкой над списком он больше не стоит — место отдано заявкам.
+ *
+ * `act` и окно подтверждения пересчёта держит вызывающий: окошко «Подбор» при закрытии размонтируется, а итог запуска
+ * и вопрос «Пересчитать?» должны его пережить (вопрос — ещё и потому, что клик по нему закрыл бы окошко).
+ * Предложение остаётся предложением: человек распределён только после «Утвердить», здесь ничего не утверждается.
  */
-export function MatchingPanel({
+export function MatchingBlock({ matching, act, onRerun, busy }: { matching: MatchingStatus; act: MatchingActions; onRerun: () => void; busy: boolean }) {
+  const nav = useAppNav();
+  const me = useMe();
+  const titleId = useId();
+  const { lastRun } = matching;
+  return (
+    <section className={styles.matching} aria-labelledby={titleId} aria-busy={busy}>
+      <h3 id={titleId} className={styles.matchingTitle}>
+        {m.title}
+      </h3>
+      <div className={styles.matchingStats}>
+        <p>{m.saved(matching.saved, matching.waiting)}</p>
+        <p>{lastRun ? m.lastRun(formatDateTime(lastRun.at), lastRun.created, lastRun.replaced) : m.neverRun}</p>
+        <p>
+          {matching.auto ? m.autoOn : m.autoOff}
+          {me.data?.role === 'super' && nav.tab !== 'settings' && (
+            <>
+              {' · '}
+              <button type="button" className={styles.linkInline} onClick={() => nav.goSettingsSection('matching')}>
+                {m.autoSettings}
+              </button>
+            </>
+          )}
+        </p>
+      </div>
+      {/* «Только чтение» видит, как идёт подбор, но не запускает его. */}
+      {canChange(me.data) && (
+        <div className={styles.matchingControls}>
+          <Button variant="primary" disabled={busy} onClick={() => void act.run()}>
+            {act.pending === 'run' ? m.running : m.run}
+          </Button>
+          {/* Второго уровня: пересчёт трогает уже закреплённые предложения, поэтому он за подтверждением. */}
+          <Button disabled={busy} onClick={onRerun}>
+            {act.pending === 'rerun' ? m.rerunning : m.rerun}
+          </Button>
+        </div>
+      )}
+      <p className={styles.matchingHint}>{m.hint}</p>
+    </section>
+  );
+}
+
+/** Вопрос перед «Пересчитать все предложения». */
+export function RerunConfirm({ act, busy, onClose }: { act: MatchingActions; busy: boolean; onClose: () => void }) {
+  return (
+    <Modal title={m.rerunTitle} onClose={onClose}>
+      <p>{m.rerunQuestion}</p>
+      <div className={styles.dialogFoot}>
+        <Button onClick={onClose}>{ru.requests.act.cancel}</Button>
+        <Button
+          variant="primary"
+          disabled={busy}
+          onClick={() => {
+            // Окно закрываем сразу: итог и ошибка видны рядом с кнопкой «Подбор», а не под ним.
+            onClose();
+            void act.rerunAll();
+          }}
+        >
+          {m.rerunConfirm}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+export function MatchingNotice({ act }: { act: MatchingActions }) {
+  if (!act.notice) return null;
+  return act.notice.kind === 'error' ? (
+    <p className={styles.noticeError} role="alert">
+      {act.notice.text}
+    </p>
+  ) : (
+    <p className={styles.noticeOk} role="status">
+      {act.notice.text}
+    </p>
+  );
+}
+
+/**
+ * Подбор в «Заявках» — в одну строку с «Фильтрами»: кнопка «Подбор» (число — сколько заявок ещё без предложения)
+ * с окошком сводки, значок ✦ помощника (его открывают каждый день) и, только когда есть, ссылка «Данные изменились
+ * у N заявок». Итог запуска — строкой под ними.
+ */
+export function MatchingBar({
   matching,
   assistant,
   changed = [],
@@ -36,8 +123,6 @@ export function MatchingPanel({
   const dock = useAssistantDock();
   const [confirming, setConfirming] = useState(false);
   const [listing, setListing] = useState(false);
-  const titleId = useId();
-  const { lastRun } = matching;
   // Подбор, пересчёт и помощник трогают одни и те же предложения: пока идёт любой из них, остальные не запускаем.
   const busy = act.pending !== null || dock?.review.pending === true;
   // Значок помощника: обычному входу при незаданном ключе он ни к чему — сделать с этим он ничего не может.
@@ -45,72 +130,38 @@ export function MatchingPanel({
   const helperLabel = ru.requests.assistant.icon(assistant.available && assistant.enabled ? assistant.review.length : 0);
 
   return (
-    <section className={styles.matching} aria-labelledby={titleId} aria-busy={busy}>
-      <h3 id={titleId} className={styles.matchingTitle}>
-        {m.title}
-      </h3>
-      <div className={styles.matchingStats}>
-        <p>{m.saved(matching.saved, matching.waiting)}</p>
-        <p>{lastRun ? m.lastRun(formatDateTime(lastRun.at), lastRun.created, lastRun.replaced) : m.neverRun}</p>
-        <p>
-          {matching.auto ? m.autoOn : m.autoOff}
-          {me.data?.role === 'super' && (
-            <>
-              {' · '}
-              <button type="button" className={styles.linkInline} onClick={() => nav.goSettingsSection('matching')}>
-                {m.autoSettings}
-              </button>
-            </>
+    <>
+      <Popover label={m.button} badge={matching.waiting || undefined} title={m.title}>
+        <MatchingBlock matching={matching} act={act} busy={busy} onRerun={() => setConfirming(true)} />
+      </Popover>
+      {showHelper && dock && canChange(me.data) && (
+        <button
+          type="button"
+          className={styles.helperIcon}
+          title={helperLabel}
+          aria-label={helperLabel}
+          aria-busy={dock.review.pending}
+          onClick={() => dock.open('review')}
+        >
+          <span aria-hidden="true">✦</span>
+          {assistant.available && assistant.enabled && assistant.review.length > 0 && (
+            <span aria-hidden="true" className={styles.helperBadge}>
+              {assistant.review.length}
+            </span>
           )}
-        </p>
-        {/* Заявки, чьи данные поправили после закрепления: их предложения устарели, но молча не меняются. */}
-        {changed.length > 0 && (
-          <p className={styles.matchingWarn}>
-            <button type="button" className={styles.matchingWarnLink} title={m.dataChangedHint} onClick={() => setListing(true)}>
-              {m.dataChanged(changed.length)}
-            </button>
-          </p>
-        )}
-      </div>
-
-      {/* «Только чтение» видит, как идёт подбор, но не запускает его. */}
-      {canChange(me.data) && <div className={styles.matchingControls}>
-        <Button variant="primary" size="big" disabled={busy} onClick={() => void act.run()}>
-          {act.pending === 'run' ? m.running : m.run}
-        </Button>
-        {/* Второго уровня: пересчёт трогает уже закреплённые предложения, поэтому он за подтверждением. */}
-        <Button disabled={busy} onClick={() => setConfirming(true)}>
-          {act.pending === 'rerun' ? m.rerunning : m.rerun}
-        </Button>
-        {showHelper && dock && (
-          <button
-            type="button"
-            className={styles.helperIcon}
-            title={helperLabel}
-            aria-label={helperLabel}
-            aria-busy={dock.review.pending}
-            onClick={() => dock.open('review')}
-          >
-            <span aria-hidden="true">✦</span>
-            {assistant.available && assistant.enabled && assistant.review.length > 0 && (
-              <span aria-hidden="true" className={styles.helperBadge}>
-                {assistant.review.length}
-              </span>
-            )}
-          </button>
-        )}
-      </div>}
-      {act.notice &&
-        (act.notice.kind === 'error' ? (
-          <p className={styles.noticeError} role="alert">
-            {act.notice.text}
-          </p>
-        ) : (
-          <p className={styles.noticeOk} role="status">
-            {act.notice.text}
-          </p>
-        ))}
-      <p className={styles.matchingHint}>{m.hint}</p>
+        </button>
+      )}
+      {/* Заявки, чьи данные поправили после закрепления: их предложения устарели, но молча не меняются. */}
+      {changed.length > 0 && (
+        <button type="button" className={`${styles.matchingWarnLink} ${styles.matchingWarn}`} title={m.dataChangedHint} onClick={() => setListing(true)}>
+          {m.dataChanged(changed.length)}
+        </button>
+      )}
+      {act.notice && (
+        <div className={styles.matchingNoticeLine}>
+          <MatchingNotice act={act} />
+        </div>
+      )}
       {listing && (
         <ChangedRequests
           items={changed}
@@ -122,25 +173,7 @@ export function MatchingPanel({
           }}
         />
       )}
-      {confirming && (
-        <Modal title={m.rerunTitle} onClose={() => setConfirming(false)}>
-          <p>{m.rerunQuestion}</p>
-          <div className={styles.dialogFoot}>
-            <Button onClick={() => setConfirming(false)}>{ru.requests.act.cancel}</Button>
-            <Button
-              variant="primary"
-              disabled={busy}
-              onClick={() => {
-                // Окно закрываем сразу: итог и ошибка видны в панели, а не под ним.
-                setConfirming(false);
-                void act.rerunAll();
-              }}
-            >
-              {m.rerunConfirm}
-            </Button>
-          </div>
-        </Modal>
-      )}
-    </section>
+      {confirming && <RerunConfirm act={act} busy={busy} onClose={() => setConfirming(false)} />}
+    </>
   );
 }

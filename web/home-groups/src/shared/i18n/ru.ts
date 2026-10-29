@@ -735,6 +735,8 @@ export const ru = {
 
     /** Блок «Подбор для новых заявок» над списком. */
     matching: {
+      /** Кнопка в строке инструментов «Заявок»; число на ней — сколько заявок ещё без предложения. */
+      button: 'Подбор',
       title: 'Подбор для новых заявок',
       saved: (saved: number, waiting: number) => `Предложено автоматически: ${saved} · ещё без предложения: ${waiting}`,
       lastRun: (when: string, created: number, replaced: number) =>

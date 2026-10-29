@@ -46,6 +46,8 @@ const getsOf = (fetchMock: FetchMock, path: string) =>
 async function openRequests(overrides: Parameters<typeof stubFetchWithFixtures>[0] = {}, role: 'admin' | 'super' = 'admin') {
   const fetchMock = stubFetchWithFixtures({ me: () => json({ role }), ...overrides });
   renderAt(<App />, '/?tab=requests', client);
+  // Сводка и запуск подбора — в окошке кнопки «Подбор» (большой плашки над списком больше нет).
+  await userEvent.setup().click(await screen.findByRole('button', { name: /^Подбор/ }));
   const block = await screen.findByRole('region', { name: 'Подбор для новых заявок' });
   return { fetchMock, block };
 }
@@ -77,7 +79,7 @@ describe('«Заявки»: подбор для новых заявок', () => 
     await user.click(within(block).getByRole('button', { name: 'Предложить группы новым заявкам' }));
 
     expect(
-      await within(block).findByText(
+      await screen.findByText(
         'Готово: группы предложены для 3 заявок, заменено 1, без изменений 7. Заявки по-прежнему ждут вашего «Утвердить» — теперь выбранные группы не меняются сами.',
       ),
     ).toBeInTheDocument();
@@ -104,7 +106,7 @@ describe('«Заявки»: подбор для новых заявок', () => 
     expect(posts(fetchMock)).toHaveLength(1);
     expect(btn).toBeDisabled();
     release();
-    await within(block).findByText(/^Готово: /);
+    await screen.findByText(/^Готово: /);
     expect(posts(fetchMock)).toHaveLength(1);
   });
 
@@ -115,7 +117,7 @@ describe('«Заявки»: подбор для новых заявок', () => 
       btn.click();
       btn.click();
     });
-    await within(block).findByText(/^Готово: /);
+    await screen.findByText(/^Готово: /);
     expect(posts(fetchMock)).toHaveLength(1);
   });
 
@@ -124,7 +126,7 @@ describe('«Заявки»: подбор для новых заявок', () => 
     const user = userEvent.setup();
     const btn = within(block).getByRole('button', { name: 'Предложить группы новым заявкам' });
     await user.click(btn);
-    await within(block).findByText(/^Готово: /);
+    await screen.findByText(/^Готово: /);
     await waitFor(() => expect(btn).toBeEnabled());
     await user.click(btn);
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(2));
@@ -136,7 +138,7 @@ describe('«Заявки»: подбор для новых заявок', () => 
     });
     const user = userEvent.setup();
     await user.click(within(block).getByRole('button', { name: 'Предложить группы новым заявкам' }));
-    const alert = await within(block).findByRole('alert');
+    const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('Не получилось запустить подбор');
     expect(alert).not.toHaveTextContent('служебный текст сервера');
     expect(within(block).getByRole('button', { name: 'Предложить группы новым заявкам' })).toBeEnabled();
@@ -155,6 +157,28 @@ describe('«Заявки»: подбор для новых заявок', () => 
     expect(within(block).getByText(/Автоподбор новых заявок выключен/)).toBeInTheDocument();
     await userEvent.setup().click(await within(block).findByRole('button', { name: 'Настройки → Подбор' }));
     await waitFor(() => expect(document.querySelector('[data-testid="location"]')!.textContent).toContain('sec=matching'));
+  });
+});
+
+describe('«Заявки»: подбор не занимает место над списком', () => {
+  test('сводки не видно, пока не нажата кнопка «Подбор»; на кнопке — сколько заявок ещё без предложения', async () => {
+    stubFetchWithFixtures({ me: () => json({ role: 'admin' }), requests: () => json(requestsWith({ waiting: 5 })) });
+    renderAt(<App />, '/?tab=requests', client);
+    const button = await screen.findByRole('button', { name: /^Подбор/ });
+    expect(button).toHaveTextContent('5');
+    expect(screen.queryByRole('region', { name: 'Подбор для новых заявок' })).not.toBeInTheDocument();
+    await userEvent.setup().click(button);
+    expect(await screen.findByRole('region', { name: 'Подбор для новых заявок' })).toBeInTheDocument();
+  });
+
+  test('в «Настройки → Подбор» под переключателями — сводка и запуск подбора', async () => {
+    const fetchMock = stubFetchWithFixtures({ me: () => json({ role: 'super' }), 'matching/run': () => json({ ok: true, created: 1, replaced: 0, unchanged: 2 }) });
+    renderAt(<App />, '/?tab=settings&sec=matching', client);
+    const block = await screen.findByRole('region', { name: 'Подбор для новых заявок' });
+    expect(within(block).queryByRole('button', { name: 'Настройки → Подбор' })).not.toBeInTheDocument();
+    await userEvent.setup().click(within(block).getByRole('button', { name: 'Предложить группы новым заявкам' }));
+    expect(await screen.findByText(/^Готово: группы предложены для 1 заявок/)).toBeInTheDocument();
+    expect(posts(fetchMock).map((p) => p.path)).toContain('matching/run');
   });
 });
 

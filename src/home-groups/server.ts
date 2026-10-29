@@ -206,6 +206,8 @@ const EXPORT_PATH = /^\/api\/v1\/export\/(requests|people)\.csv$/;
 const PERSON_PATH = /^\/api\/v1\/people\/(\d{1,15})\/(qr|card)$/;
 /** `GET /api/v1/requests/12/group-draft`: поля формы «Новая группа» по заявке. Любой вход, как и создание группы. */
 const GROUP_DRAFT_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/group-draft$/;
+/** `GET /api/v1/requests/12/fit`: уверенность по каждой группе для окна «Другая группа». Личных данных в ответе нет. */
+const GROUP_FIT_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/fit$/;
 const LOGO_PATH = '/api/v1/assets/church-logo.png';
 const MATCHING_PATH = /^\/api\/v1\/matching\/(run|auto|notify|rerun-all)$/;
 /** База знаний: список статей, статья и картинка к ней. Открыта любому входу, в том числе стойке. */
@@ -1058,6 +1060,13 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       const viewer = await viewerOf(sid);
       if (!viewer) { sendJson(res, 401, { error: 'unauthorized' }); return; }
       sendJson(res, 200, draftFor(found, viewer, views.requests));
+      return;
+    }
+    const fit = GROUP_FIT_PATH.exec(path);
+    if (fit) {
+      const found = (await deps.views()).groupFit?.(Number(fit[1]));
+      if (!found) { sendJson(res, 404, { error: 'not_found', message: 'Заявка не найдена.' }); return; }
+      sendJson(res, 200, found);
       return;
     }
     const person = PERSON_PATH.exec(path);

@@ -216,4 +216,6 @@ export interface PlanEngineApi {
   ageColumnOf(range: AgeRange): string | null;
   /** Насколько человек подходит будущей группе (без проверки статуса и мест); null — не подходит. */
   scoreProspect(r: PlanRequest, g: PlanGroup, settings: PlanSettings): ScoredGroup | null;
+  /** Окно «Другая группа»: уверенность для любой группы (без мест и статуса) или почему она отсеяна (пол, возраст, район). */
+  fitGroup(r: PlanRequest, g: PlanGroup, settings: PlanSettings): { confidence: number; why: null } | { confidence: null; why: string };
 }

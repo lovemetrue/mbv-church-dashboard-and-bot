@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type UseMutationResult, type UseQueryResult } from '@tanstack/react-query';
 import type {
+  GroupFitView,
   BulkBody,
   BulkOk,
   CoordinatorsView,
@@ -53,6 +54,10 @@ export function useRequests(): UseQueryResult<RequestsView> {
 }
 export function useGroups(): UseQueryResult<GroupsView> {
   return useQuery({ queryKey: queryKeys.groups, queryFn: ({ signal }) => apiGet<GroupsView>('groups', signal), ...common });
+}
+/** Уверенность по каждой группе для окна «Другая группа»: считается по запросу, только пока окно открыто. */
+export function useGroupFit(requestId: number): UseQueryResult<GroupFitView> {
+  return useQuery({ queryKey: ['group-fit', requestId], queryFn: ({ signal }) => apiGet<GroupFitView>(`requests/${requestId}/fit`, signal), ...common });
 }
 export function usePeople(): UseQueryResult<PeopleView> {
   return useQuery({ queryKey: queryKeys.people, queryFn: ({ signal }) => apiGet<PeopleView>('people', signal), ...common });

@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import type { GroupBrief, GroupItem, RequestItem } from '@contracts';
-import { useGroups } from '../../shared/api/queries';
+import type { GroupBrief, GroupFit, GroupItem, RequestItem } from '@contracts';
+import { useGroupFit, useGroups } from '../../shared/api/queries';
 import { GroupPreviewButton } from '../reference/GroupPreview';
 import { ru } from '../../shared/i18n/ru';
 import { Button, ErrorState, GroupMarks, LoadingState } from '../../shared/ui';
@@ -55,6 +55,7 @@ const matches = (g: GroupBrief, q: string): boolean =>
 
 function OptionRow({
   o,
+  fit,
   selected,
   pending,
   onPick,
@@ -62,6 +63,8 @@ function OptionRow({
   onApprove,
 }: {
   o: Option;
+  /** Насколько группа подходит человеку; нет — оценка ещё грузится или не пришла (окно работает и без неё). */
+  fit: GroupFit | undefined;
   selected: boolean;
   pending: boolean;
   onPick: () => void;
@@ -81,6 +84,12 @@ function OptionRow({
           <span className={g.free > 0 ? styles.note : styles.noSeats}>
             {o.blocked ?? (g.free > 0 ? a.pickSeats(g.free, g.capacity) : a.pickNoSeats)}
           </span>
+          {fit && (
+            <span className={`${styles.fitNote} ${fit.why ? styles.fitOff : ''}`}>
+              {' · '}
+              {fit.why ? a.pickFitOff(fit.why) : a.pickFit(fit.confidence ?? 0)}
+            </span>
+          )}
         </span>
       </label>
       {/* «Выбрать» только поднимает группу наверх заявки; «Утвердить» записывает человека и пишет ему и ведущему. */}
@@ -111,6 +120,8 @@ interface GroupPickerProps {
 /** Выбор другой группы для заявки: у каждой строки «Выбрать» (наверх заявки) и «Утвердить» (сразу решение). */
 export function GroupPicker({ r, pending, notice, onSubmit, onChoose, onCancel }: GroupPickerProps) {
   const query = useGroups();
+  const fitQuery = useGroupFit(r.id);
+  const fitById = useMemo(() => new Map((fitQuery.data?.items ?? []).map((f) => [f.groupId, f])), [fitQuery.data]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
 
@@ -136,6 +147,7 @@ export function GroupPicker({ r, pending, notice, onSubmit, onChoose, onCancel }
             <OptionRow
               key={o.group.id}
               o={o}
+              fit={fitById.get(o.group.id)}
               selected={selectedId === o.group.id}
               pending={pending}
               onPick={() => setSelectedId(o.group.id)}

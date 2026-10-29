@@ -304,6 +304,32 @@ export const ru = {
     approve: 'Утвердить',
     approveAnyway: 'Всё равно утвердить',
     approvedPrefix: 'Утверждено:',
+    /** Отборы списка «Хотят в группу» — тот же конструктор, что в справочниках. Подписи полей — и ключи в адресе. */
+    filters: {
+      button: 'Фильтры',
+      fields: {
+        age: 'Возраст',
+        gender: 'Пол',
+        district: 'Район',
+        place: 'Место (как написал)',
+        days: 'День',
+        slot: 'Время',
+        waiting: 'Ждёт, дн.',
+        callback: 'Нужен звонок',
+        group: 'Группа',
+        responsible: 'В работе у',
+        source: 'Источник',
+      },
+      male: 'Мужской',
+      female: 'Женский',
+      presets: {
+        noGender: 'Пол не указан',
+        noDistrict: 'Район не определён',
+        noDays: 'Дни не указаны',
+        longWait: 'Ждут неделю и дольше',
+      },
+      shown: (n: number, total: number) => `Показано ${n} из ${total}`,
+    },
     /** Сообщения в MAX после «Утвердить»: дошли ли и что нажали. */
     bot: {
       title: 'Сообщения в MAX',

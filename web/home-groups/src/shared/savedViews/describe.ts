@@ -27,6 +27,8 @@ export function describeView(scope: ViewScope, query: string): string {
     if (resp && resp !== RESP_ALL) {
       parts.push(resp === RESP_NOBODY ? ru.savedViews.summary.respNobody : resp === RESP_MINE ? ru.requests.respFilterMine : ru.savedViews.summary.resp(resp));
     }
+    const filters = q.getAll('f').length;
+    if (filters) parts.push(ru.savedViews.summary.filters(filters));
     const text = q.get('q');
     if (text) parts.push(ru.savedViews.summary.search(text));
   } else {

@@ -6,7 +6,7 @@ import { AgeTag, ConfidenceDots, Pill, StrangeBadge } from '../../shared/ui';
 import { DataChanges, useChangesDisclosure } from './DataChanges';
 import { SavedTag } from './SavedTag';
 import { AssistantTag } from './assistant/AssistantTag';
-import { proposalOf } from './model';
+import { isUnscored, noticeNeedsAttention, proposalOf } from './model';
 import styles from './Requests.module.css';
 
 function proposalText(r: RequestItem) {
@@ -72,7 +72,7 @@ export function RequestList({ items, selectedId, onSelect, selection }: RequestL
         {items.map((r) => {
           const text = proposalText(r);
           const proposal = proposalOf(r);
-          const confidence = proposal && r.bucket !== 'done' ? (proposal.main.confidence ?? proposal.main.score) : null;
+          const confidence = proposal && r.bucket !== 'done' && !isUnscored(proposal.main) ? (proposal.main.confidence ?? proposal.main.score) : null;
           const picked = selection?.isPicked(r.id) ?? false;
           return (
             <li
@@ -109,6 +109,7 @@ export function RequestList({ items, selectedId, onSelect, selection }: RequestL
                 <StrangeBadge mark={r.strange} />
                 {/* Закрытым незачем: пол нужен для подбора. */}
                 {r.gender.value === null && r.bucket !== 'done' && r.bucket !== 'cancelled' && <Pill tone="warn">{ru.gender.filterMissing}</Pill>}
+                {r.botNotices?.some(noticeNeedsAttention) && <Pill tone="warn">{ru.requests.bot.attention}</Pill>}
                 {r.ageLabel && <AgeTag>{r.ageLabel}</AgeTag>}
                 <span className={styles.place}>{r.place ?? ru.common.placeUnknown}</span>
                 <AssistantTag note={r.assistant} />

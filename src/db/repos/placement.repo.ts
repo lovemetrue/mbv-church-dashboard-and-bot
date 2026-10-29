@@ -2,6 +2,7 @@ import type { Pool, PoolClient } from 'pg';
 import { groupCode } from '../../core/groups.js';
 import { PASSING_STATUSES } from '../../core/matching.js';
 import { normalizePhone } from '../../core/phone.js';
+import { cancelQueuedNotices, enqueuePlacementNotices } from './placementNotices.repo.js';
 import { humanOfRequest, readHuman, writeToHuman, type ContactPatch } from './contacts.repo.js';
 import { diffSnapshots, parseSnapshot, type InputSnapshot } from '../../home-groups/plan/signature.js';
 
@@ -227,6 +228,7 @@ export class PlacementRepo {
         { status: 'Исполнена', group_id: g.id, final_group: finalGroup, callback: false },
         opts.force && g.people !== null && g.people >= opts.defaultCapacity ? 'утверждено без свободных мест' : null,
       );
+      await enqueuePlacementNotices(c, requestId, g.id, actor);
       return { ok: true } as const;
     });
   }
@@ -261,6 +263,41 @@ export class PlacementRepo {
         );
       }
       await this.audit(c, actor, 'request.reject', requestId, { group_id: groupId }, { rejected_group_id: groupId, reason }, note);
+      return { ok: true } as const;
+    });
+  }
+
+  /**
+   * «Выбрать» в окне «Другая группа»: группа становится основным предложением заявки (в рамке наверху карточки),
+   * утверждает её потом обычная «Утвердить». Это решение человека: автоподбор его не заменяет (`syncProposals`),
+   * снимает только «Подобрать заново». Отпечаток данных не пишем — выбор не зависит от того, что считал расчёт.
+   */
+  async choose(requestId: number, groupId: number, actor: string): Promise<ActionOutcome> {
+    return this.tx(async (c) => {
+      // Та же блокировка, что у запуска подбора: иначе он, прочитав предложения до выбора, упрётся в «одно действующее».
+      await c.query(`SELECT pg_advisory_xact_lock(hashtext('hg_matching'))`);
+      const state = await this.lockOpenRequest(c, requestId);
+      if (PlacementRepo.isFailure(state)) return state;
+      const { rows } = await c.query<{ id: number; status: string; do_not_refer: boolean; chamber: boolean }>(
+        `SELECT id, status, do_not_refer, chamber FROM groups WHERE id = $1 AND archived_at IS NULL`,
+        [groupId],
+      );
+      const g = rows[0];
+      if (!g) return fail('group_unavailable', 'Группа не найдена или в архиве.');
+      // Те же запреты, что у «Утвердить»: выбрать то, что потом нельзя утвердить, — тупик. Места проверит утверждение.
+      if (g.do_not_refer) return fail('group_unavailable', 'В эту группу направлять нельзя («Не направлять»).');
+      if (g.chamber) return fail('group_unavailable', 'В эту группу направлять нельзя: она камерная (служителей или отдельного служения).');
+      if (!PASSING_STATUSES.has(g.status)) return fail('group_unavailable', `Группа не принимает людей: статус «${g.status}».`);
+      await c.query(
+        `UPDATE placement_proposals SET status = 'superseded', decided_by = $2, decided_at = now()
+          WHERE request_id = $1 AND status = 'proposed'`,
+        [requestId, actor],
+      );
+      await c.query(
+        `INSERT INTO placement_proposals (request_id, group_id, source, status) VALUES ($1, $2, 'manual', 'proposed')`,
+        [requestId, groupId],
+      );
+      await this.audit(c, actor, 'request.choose', requestId, null, { chosen_group_id: groupId }, null);
       return { ok: true } as const;
     });
   }
@@ -520,6 +557,7 @@ export class PlacementRepo {
           WHERE id = $1`,
         [requestId],
       );
+      await cancelQueuedNotices(c, requestId);
       await this.audit(c, actor, 'request.reopen', requestId,
         { status: row.status, group_id: row.group_id, cancel_reason: row.cancel_reason }, { status: 'В работе' }, null);
       return { ok: true } as const;
@@ -691,11 +729,13 @@ export class PlacementRepo {
   async syncProposals(desired: readonly DesiredProposal[], actor: string, scope?: ReadonlySet<number>, context?: SyncContext): Promise<SyncResult> {
     return this.tx(async (c) => {
       await c.query(`SELECT pg_advisory_xact_lock(hashtext('hg_matching'))`);
-      const { rows } = await c.query<{ id: number; request_id: number; group_id: number; input_hash: string | null; input_snapshot: unknown }>(
-        `SELECT id, request_id, group_id, input_hash, input_snapshot FROM placement_proposals WHERE status = 'proposed' AND group_id IS NOT NULL`,
+      const { rows } = await c.query<{ id: number; request_id: number; group_id: number; source: string; input_hash: string | null; input_snapshot: unknown }>(
+        `SELECT id, request_id, group_id, source, input_hash, input_snapshot FROM placement_proposals WHERE status = 'proposed' AND group_id IS NOT NULL`,
       );
+      // Выбор координатора («Выбрать») расчёт не заменяет и не снимает: группа могла и не пройти отсев расчёта.
+      const chosen = new Set(rows.filter((r) => r.source === 'manual').map((r) => Number(r.request_id)));
       // scope — «подобрать заново» для одной заявки: остальные закреплённые предложения не трогаем.
-      const current = new Map(rows.filter((r) => !scope || scope.has(Number(r.request_id))).map((r) => [Number(r.request_id), r]));
+      const current = new Map(rows.filter((r) => (!scope || scope.has(Number(r.request_id))) && !chosen.has(Number(r.request_id))).map((r) => [Number(r.request_id), r]));
       const wanted = new Set(desired.map((d) => d.requestId));
       const result: SyncResult = { created: 0, replaced: 0, unchanged: 0 };
 
@@ -729,6 +769,7 @@ export class PlacementRepo {
         );
 
       for (const d of desired) {
+        if (chosen.has(d.requestId)) continue;
         const had = current.get(d.requestId);
         if (!had) { await insert(d); result.created += 1; continue; }
         if (Number(had.group_id) === d.groupId) {

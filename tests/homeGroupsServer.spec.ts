@@ -123,11 +123,12 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
   };
   let views: () => Promise<ReturnType<typeof sampleViews>> = async () => sampleViews();
   const server = createHomeGroupsServer({
-    actions: { approve: record('approve'), reject: record('reject'), setNeedCall: record('need-call'), setParams: record('params'), rematch: async (id: number, actor: string) => { actionCalls.push({ name: 'rematch', id, body: undefined, actor }); return outcome; }, edit: record('edit'), assign: record('assign'), call: record('call'), close: record('close'), reopen: async (id: number, actor: string) => { actionCalls.push({ name: 'reopen', id, body: undefined, actor }); return outcome; }, bulk: async (body: unknown, actor: string) => { actionCalls.push({ name: 'bulk', id: 0, body, actor }); return { ok: true as const, done: 2, skipped: 1 }; } },
+    actions: { approve: record('approve'), choose: record('choose'), reject: record('reject'), setNeedCall: record('need-call'), setParams: record('params'), rematch: async (id: number, actor: string) => { actionCalls.push({ name: 'rematch', id, body: undefined, actor }); return outcome; }, edit: record('edit'), assign: record('assign'), call: record('call'), close: record('close'), reopen: async (id: number, actor: string) => { actionCalls.push({ name: 'reopen', id, body: undefined, actor }); return outcome; }, bulk: async (body: unknown, actor: string) => { actionCalls.push({ name: 'bulk', id: 0, body, actor }); return { ok: true as const, done: 2, skipped: 1 }; } },
     matching: {
       run: async (actor) => { matchingCalls.push({ name: 'run', actor }); return { ok: true, created: 2, replaced: 1, unchanged: 3 }; },
       rerunAll: async (actor) => { matchingCalls.push({ name: 'rerun-all', actor }); return { ok: true, created: 5, replaced: 0, unchanged: 0 }; },
       setAuto: async (enabled, actor) => { matchingCalls.push({ name: 'auto', actor, enabled }); },
+      setNotify: async (enabled, actor) => { matchingCalls.push({ name: 'notify', actor, enabled }); },
     },
     creator: {
       request: async (body: unknown, actor: string) => { createCalls.push({ what: 'request', body, actor }); return createOutcome; },
@@ -762,7 +763,7 @@ describe('действия координатора над заявкой', () =
     expect(app.actionCalls.length).toBe(before);
   });
 
-  test.each([['approve', { groupId: 3, force: true }], ['reject', { groupId: 3, reason: 'far' }], ['need-call', { value: true }]])(
+  test.each([['approve', { groupId: 3, force: true }], ['choose', { groupId: 3 }], ['reject', { groupId: 3, reason: 'far' }], ['need-call', { value: true }]])(
     '%s передаёт заявку, тело и автора (логин входа) и сбрасывает снимок',
     async (name, body) => {
       const cookie = await signIn(SUPER);
@@ -862,6 +863,15 @@ describe('подбор для новых заявок', () => {
     const r = await call(cookie, 'auto', { enabled });
     expect(r.status).toBe(200);
     expect(app.matchingCalls.at(-1)).toEqual({ name: 'auto', actor: SUPER.login, enabled });
+  });
+
+  test('сообщения в MAX при утверждении включает только полный вход', async () => {
+    const before = app.matchingCalls.length;
+    expect((await call(await signIn(REGULAR), 'notify', { enabled: true })).status).toBe(403);
+    expect(app.matchingCalls.length).toBe(before);
+    const r = await call(await signIn(SUPER), 'notify', { enabled: true });
+    expect(r.status).toBe(200);
+    expect(app.matchingCalls.at(-1)).toEqual({ name: 'notify', actor: SUPER.login, enabled: true });
   });
 
   test.each([{}, { enabled: 'да' }, { enabled: 1 }, null, []])('переключатель с телом %j — 400', async (body) => {

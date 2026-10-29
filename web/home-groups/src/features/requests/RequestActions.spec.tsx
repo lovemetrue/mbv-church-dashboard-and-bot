@@ -176,7 +176,7 @@ describe('«Заявки»: другая группа', () => {
     expect(radio).toHaveAccessibleName(/Дмитрий В\./);
     expect(radio).toHaveAccessibleName(/Приморский/);
     expect(radio).toHaveAccessibleName(/мест: 8/);
-    const submit = within(picker).getByRole('button', { name: /^Утвердить/ });
+    const submit = within(picker).getByRole('button', { name: 'Утвердить' });
     expect(submit).toBeDisabled();
     await user.click(radio);
     await user.click(submit);

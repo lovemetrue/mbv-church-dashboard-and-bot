@@ -59,12 +59,14 @@ function OptionRow({
   pending,
   onPick,
   onChoose,
+  onApprove,
 }: {
   o: Option;
   selected: boolean;
   pending: boolean;
   onPick: () => void;
   onChoose: () => void;
+  onApprove: () => void;
 }) {
   const { group: g } = o;
   const where = [g.district, g.metro, g.whenText].filter(Boolean).join(' · ');
@@ -81,8 +83,12 @@ function OptionRow({
           </span>
         </span>
       </label>
+      {/* «Выбрать» только поднимает группу наверх заявки; «Утвердить» записывает человека и пишет ему и ведущему. */}
       <Button size="sm" disabled={o.blocked !== null || pending} aria-label={a.pickChooseAria(g.code)} onClick={onChoose}>
         {a.pickChoose}
+      </Button>
+      <Button size="sm" variant="primary" disabled={o.blocked !== null || pending} aria-label={a.pickApproveAria(g.code)} onClick={onApprove}>
+        {a.pickApprove}
       </Button>
       {/* Посмотреть группу можно и ту, куда направить нельзя: координатор поймёт, почему. */}
       <GroupPreviewButton groupId={g.id} code={g.code} compact />
@@ -95,12 +101,15 @@ interface GroupPickerProps {
   pending: boolean;
   /** Ошибка последнего запроса, если была. */
   notice: ReactNode;
+  /** «Утвердить»: человек записан в группу. */
   onSubmit: (group: GroupBrief) => void;
+  /** «Выбрать»: группа становится основным предложением заявки, утверждают её потом. */
+  onChoose: (group: GroupBrief) => void;
   onCancel: () => void;
 }
 
-/** Выбор другой группы для заявки. Выбор ещё не решение: утверждает кнопка внизу. */
-export function GroupPicker({ r, pending, notice, onSubmit, onCancel }: GroupPickerProps) {
+/** Выбор другой группы для заявки: у каждой строки «Выбрать» (наверх заявки) и «Утвердить» (сразу решение). */
+export function GroupPicker({ r, pending, notice, onSubmit, onChoose, onCancel }: GroupPickerProps) {
   const query = useGroups();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
@@ -130,7 +139,8 @@ export function GroupPicker({ r, pending, notice, onSubmit, onCancel }: GroupPic
               selected={selectedId === o.group.id}
               pending={pending}
               onPick={() => setSelectedId(o.group.id)}
-              onChoose={() => onSubmit(o.group)}
+              onChoose={() => onChoose(o.group)}
+              onApprove={() => onSubmit(o.group)}
             />
           ))}
         </ul>
@@ -140,6 +150,7 @@ export function GroupPicker({ r, pending, notice, onSubmit, onCancel }: GroupPic
   return (
     <div>
       <p className={styles.note}>{a.pickFor(r.fio)}</p>
+      <p className={styles.note}>{a.pickHint}</p>
       <input
         type="search"
         className={styles.search}

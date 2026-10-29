@@ -2,6 +2,7 @@ import { dashboardLink, requestLinkBuilder } from './admin/links.js';
 import { MaxAdapter } from './adapters/max.adapter.js';
 import { TelegramAdapter } from './adapters/telegram.adapter.js';
 import { CampaignScheduler } from './broadcast/scheduler.js';
+import { PlacementNoticeSender } from './broadcast/placementNotices.js';
 import { splitAdminIds } from './admin/access.js';
 import { adminIds, loadConfig } from './config.js';
 import { Router } from './core/router.js';
@@ -87,6 +88,9 @@ async function main(): Promise<void> {
 
   const scheduler = new CampaignScheduler(deps);
   scheduler.start();
+  // Сообщения после «Утвердить» в «Домашних группах»: их ставит в очередь другой сервис, отправляет бот.
+  const placementNotices = new PlacementNoticeSender({ notices: deps.notices, platforms, logger });
+  placementNotices.start();
 
   logger.info(
     {
@@ -103,6 +107,7 @@ async function main(): Promise<void> {
     stopping = true;
     logger.info({ signal }, 'останавливаюсь');
     scheduler.stop();
+    await placementNotices.stop();
     for (const platform of platforms.values()) {
       await platform.stop().catch((err) => logger.warn({ err }, 'ошибка остановки адаптера'));
     }

@@ -9,6 +9,7 @@ import type { ActionOutcome, PlacementRepo } from '../db/repos/placement.repo.js
  */
 export interface RequestActions {
   approve(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
+  choose(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
   reject(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
   setNeedCall(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
   setParams(requestId: number, body: unknown, actor: string): Promise<ActionOutcome>;
@@ -46,6 +47,11 @@ export function createActions(
       return placement.approve(requestId, input.groupId, actor, {
         force: input.force === true, defaultCapacity: opts.defaultCapacity,
       });
+    },
+
+    async choose(requestId, body, actor) {
+      if (!isRecord(body) || !isId(body['groupId'])) return bad('Нужно указать группу.');
+      return placement.choose(requestId, body['groupId'], actor);
     },
 
     async reject(requestId, body, actor) {

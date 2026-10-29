@@ -18,6 +18,7 @@ export function MatchingSection() {
   const act = useMatching();
   const titleId = useId();
   const hintId = useId();
+  const notifyHintId = useId();
   return (
     <section aria-labelledby={titleId}>
       <SectionHead id={titleId} title={ru.settings.sections.matching} />
@@ -38,6 +39,20 @@ export function MatchingSection() {
             </label>
             <p id={hintId} className={`${styles.muted} ${styles.hintLine}`}>
               {t.autoHint}
+            </p>
+            <label className={`${styles.radio} ${styles.stackTop}`}>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={data.matching.notify === true}
+                disabled={act.pending !== null || !act.canToggle}
+                aria-describedby={notifyHintId}
+                onChange={() => void act.setNotify(data.matching.notify !== true)}
+              />
+              <span>{t.notify}</span>
+            </label>
+            <p id={notifyHintId} className={`${styles.muted} ${styles.hintLine}`}>
+              {t.notifyHint}
             </p>
             {act.notice && (
               <p className={act.notice.kind === 'ok' ? styles.noticeOk : styles.noticeError} role={act.notice.kind === 'ok' ? 'status' : 'alert'}>

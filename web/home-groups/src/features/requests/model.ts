@@ -1,4 +1,4 @@
-import type { GroupBrief, GroupItem, Proposal, RequestItem } from '@contracts';
+import type { BotNotice, Candidate, GroupBrief, GroupItem, Proposal, RequestItem } from '@contracts';
 import type { BucketFilter } from '../../entities/buckets';
 import { phoneDigits } from '../../entities/format';
 import { isStrangeHold } from '../../entities/strange';
@@ -134,3 +134,10 @@ export function unavailableReason(
  * принесли, обычную группу такому человеку предлагать нельзя: показываем только причину, а группу ищут вручную.
  */
 export const proposalOf = (r: Pick<RequestItem, 'proposal' | 'noPlan'>): Proposal | null => (isStrangeHold(r) ? null : r.proposal);
+
+/** Кандидат без оценки: группу выбрал координатор, а расчёт её не считал. Ноль совпадения тут не показываем. */
+export const isUnscored = (c: Candidate): boolean => c.confidence === null && c.score === 0 && c.reasons.length === 0;
+
+/** Сообщение в MAX требует внимания координатора: не дошло, писать некуда или ответили «нет». */
+export const noticeNeedsAttention = (n: BotNotice): boolean =>
+  n.status === 'failed' || n.status === 'no_chat' || n.answer === 'no_time' || n.answer === 'not_fit';

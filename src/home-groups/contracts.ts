@@ -18,6 +18,7 @@
  *   GET /api/v1/coordinators  → CoordinatorsView
  *
  *   POST /api/v1/requests/:id/approve   ApproveBody   → ActionOk | ActionError
+ *   POST /api/v1/requests/:id/choose    ChooseBody    → ActionOk | ActionError («Выбрать»: группа — основным предложением)
  *   POST /api/v1/requests/:id/reject    RejectBody    → ActionOk | ActionError
  *   POST /api/v1/requests/:id/need-call NeedCallBody  → ActionOk | ActionError
  *
@@ -229,6 +230,22 @@ export interface Proposal {
   alternatives: Candidate[];
   /** Лучшая группа, место в которой отдано другой заявке: объясняется в карточке. */
   displaced: { group: GroupBrief; takenBy: string[] } | null;
+  /** Главную группу выбрал координатор («Выбрать» в окне «Другая группа»), а не расчёт. */
+  chosen?: true;
+}
+
+/**
+ * Сообщение в MAX после «Утвердить» и ответ кнопкой. queued — ждёт бота, sent — дошло до платформы, failed — не
+ * доставить (error: blocked — заблокировал бота, not_found — чата нет, other), no_chat — человека нет в боте, звонить самим.
+ */
+export interface BotNotice {
+  recipient: 'person' | 'leader';
+  status: 'queued' | 'sent' | 'failed' | 'no_chat';
+  error: string | null;
+  /** Ведущий: will_call — «Позвоню в течение 24 часов», no_time — «Нет времени». Человек: waiting — «Жду звонка», not_fit — «Группа не подходит». */
+  answer: 'will_call' | 'no_time' | 'waiting' | 'not_fit' | null;
+  sentAt: string | null;
+  answeredAt: string | null;
 }
 
 /** Почему плана нет. place — район не определён; taken — места разобраны; nogroup — в районе нет групп. */
@@ -449,6 +466,8 @@ export interface RequestItem {
   note: string | null;
   table: RequestTableFields;
   log: LogEntry[];
+  /** Сообщения в MAX по последнему утверждению: человеку и ведущему, по одному на сторону. Нет — не писали. */
+  botNotices?: BotNotice[];
 }
 
 /**
@@ -693,6 +712,8 @@ export interface SettingsAssistantView {
 export interface MatchingStatus {
   /** Включён ли автоматический подбор новых заявок (каждые пару минут). */
   auto: boolean;
+  /** Пишет ли «Утвердить» человеку и ведущему в MAX. Нет поля — выключено. */
+  notify?: boolean;
   /** Последний запуск (по кнопке или автоматически); null — ещё не запускали. */
   lastRun: { at: string; created: number; replaced: number; actor: string } | null;
   /** Сколько открытых заявок сейчас без закреплённого предложения, хотя группа для них находится. */
@@ -1106,6 +1127,11 @@ export interface ApproveBody {
   groupId: number;
   /** Утвердить, даже если в группе нет свободных мест (интерфейс спрашивает подтверждение). */
   force?: boolean;
+}
+
+/** «Выбрать»: группа становится основным предложением заявки; утверждает её обычная «Утвердить». */
+export interface ChooseBody {
+  groupId: number;
 }
 
 export interface RejectBody {

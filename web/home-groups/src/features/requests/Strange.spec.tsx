@@ -124,9 +124,9 @@ describe('Заявки: подтверждение при утверждении
   async function chooseOtherGroup(user: ReturnType<typeof userEvent.setup>, card: HTMLElement) {
     await user.click(within(card).getByRole('button', { name: 'Выбрать другую группу из списка' }));
     const picker = await screen.findByRole('dialog', { name: 'Другая группа' });
-    const choose = (await within(picker).findAllByRole('button', { name: /^Выбрать и утвердить/ })).find((b) => !(b as HTMLButtonElement).disabled)!;
+    const choose = (await within(picker).findAllByRole('button', { name: /^Утвердить ДГ-/ })).find((b) => !(b as HTMLButtonElement).disabled)!;
     await user.click(choose);
-    return choose.getAttribute('aria-label')!.replace('Выбрать и утвердить ', '');
+    return choose.getAttribute('aria-label')!.replace('Утвердить ', '');
   }
 
   test('перед утверждением в любую группу спрашиваем ещё раз, и без ответа запроса нет', async () => {

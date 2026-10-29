@@ -33,6 +33,9 @@ export const ANSWER_REPLY: Readonly<Record<NoticeAnswer, string>> = {
 
 export const STALE_BUTTON = 'Эта кнопка уже не действует.';
 
+/** Всплывающая подсказка на само нажатие: в MAX без текста подтверждение и не принимается. */
+export const NOTICE_ACK = 'Ответ принят ✓';
+
 /** Префикс данных кнопки. Короткий: у платформ лимит на длину payload. */
 export const NOTICE_CB = 'pn';
 

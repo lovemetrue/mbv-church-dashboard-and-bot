@@ -112,6 +112,7 @@ describe('очередь в боте: отправка и ответы', () => {
     await router.handle(tap('100', (toPerson!.buttons![1]![0] as { data: string }).data));
     await router.handle(tap('200', (toLeader!.buttons![0]![0] as { data: string }).data));
     expect((await statuses()).map((x) => x.answer)).toEqual(['not_fit', 'will_call']);
+    expect(max.toasts).toEqual(['Ответ принят ✓', 'Ответ принят ✓']);
     expect(max.textsTo('chat100').at(-1)).toContain('подберут другую группу');
     expect(max.textsTo('chat200').at(-1)).toContain('вы позвоните');
   });

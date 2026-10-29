@@ -476,3 +476,22 @@
   padding-left: 18px;
   columns: 2 220px;
 }
+
+/* «=» у текстовых полей: флажки, можно отметить несколько значений. Список прокручивается, чтобы окно не росло. */
+.checkList {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  margin: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  min-width: 180px;
+  display: grid;
+  gap: 2px;
+}
+.checkItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+}

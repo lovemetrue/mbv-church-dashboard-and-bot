@@ -1145,6 +1145,7 @@ export const ru = {
     notEqualChip: (field: string, value: string) => `${field}: не «${value}»`,
     ops: {
       eq: '=',
+      in: '=',
       ne: '≠',
       ge: '≥',
       le: '≤',

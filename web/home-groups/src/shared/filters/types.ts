@@ -16,7 +16,11 @@ export interface FieldDef {
   groupable?: boolean;
 }
 
-export type Op = 'eq' | 'ne' | 'ge' | 'le' | 'empty' | 'filled';
+/** in — «любое из отмеченных»: значения через `IN_SEP`; у текстовых полей это и есть «=» (одно отмеченное — равенство). */
+export type Op = 'eq' | 'in' | 'ne' | 'ge' | 'le' | 'empty' | 'filled';
+
+/** Разделитель значений условия «in». В адресе экранировать не нужно; значение с «|» в справочниках не встречается. */
+export const IN_SEP = '|';
 
 export interface Filter {
   field: string;

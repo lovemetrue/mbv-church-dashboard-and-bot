@@ -37,11 +37,41 @@ export const REQUEST_PRESETS: Preset[] = [
 
 const GENDER: Record<'м' | 'ж', string> = { м: t.male, ж: t.female };
 
+/**
+ * Возрастные категории анкеты бота — те же, что `AGE_GROUPS` в `src/core/texts.ts` (интерфейс код бота не импортирует,
+ * поэтому список продублирован: меняя один, меняйте оба). Порядок — по возрасту, для границ.
+ */
+const AGE_CATEGORIES: readonly { label: string; upTo: number }[] = [
+  { label: 'подростки (до 18 лет)', upTo: 17 },
+  { label: '18-25', upTo: 25 },
+  { label: '25-40', upTo: 40 },
+  { label: '40-55', upTo: 55 },
+  { label: '55-65', upTo: 65 },
+  { label: '65+', upTo: Number.POSITIVE_INFINITY },
+];
+
+/**
+ * Возраст для отбора — всегда категория. В заявках он записан по-разному: кнопкой анкеты («25-40»), точным числом
+ * («42» — так бывает у ручной регистрации и старых анкет) или диапазоном из таблицы («35-45 лет»). Число кладём в его
+ * категорию (на границе — в младшую: 25 → «18-25»), диапазон — по середине; иначе в списке были бы «42» и «61».
+ * Непонятное («взрослый») остаётся как записано.
+ */
+export function ageCategory(label: string | null): string | null {
+  const text = label?.trim();
+  if (!text) return null;
+  const known = AGE_CATEGORIES.find((c) => c.label === text);
+  if (known) return known.label;
+  const nums = (text.match(/\d+/g) ?? []).map(Number);
+  if (nums.length === 0) return text;
+  const age = nums.length >= 2 ? (nums[0]! + nums[1]!) / 2 : nums[0]!;
+  return AGE_CATEGORIES.find((c) => age <= c.upTo)!.label;
+}
+
 /** Строка для движка отборов: только то, по чему отбирают, без телефонов. */
 export function requestRow(r: RequestItem): Row {
   const group = r.bucket === 'done' ? r.finalGroup?.code : proposalOf(r)?.main.group.code;
   return {
-    [t.fields.age]: r.ageLabel,
+    [t.fields.age]: ageCategory(r.ageLabel),
     [t.fields.gender]: r.gender.value ? GENDER[r.gender.value] : null,
     [t.fields.district]: r.district,
     [t.fields.place]: r.place,

@@ -36,6 +36,12 @@ describe('движок отборов: условия', () => {
     expect(names(applyFilters(rows, [f('Район', 'eq', 'Приморский')], defs))).toEqual(['Ольга К.', 'Анна С.']);
   });
 
+  test('«=» с несколькими отмеченными значениями — любое из них; у поля-списка — любое вхождение', () => {
+    expect(names(applyFilters(rows, [f('Район', 'in', 'Невский|Приморский')], defs))).toEqual(['Ольга К.', 'Павел Д.', 'Анна С.']);
+    expect(names(applyFilters(rows, [f('Возраст', 'in', '46+|18–25')], defs))).toEqual(['Ольга К.', 'Анна С.']);
+    expect(names(applyFilters(rows, [f('Район', 'in', 'Невский')], defs))).toEqual(['Павел Д.']);
+  });
+
   test('«≠» оставляет и строки с пустым значением', () => {
     expect(names(applyFilters(rows, [f('Район', 'ne', 'Приморский')], defs))).toEqual(['Павел Д.', '']);
   });
@@ -78,7 +84,7 @@ describe('движок отборов: условия', () => {
   });
 
   test('для текстовых полей нет «больше/меньше», для чисел и дат есть', () => {
-    expect(opsFor(defs[0])).toEqual(['eq', 'ne', 'empty', 'filled']);
+    expect(opsFor(defs[0])).toEqual(['in', 'ne', 'empty', 'filled']);
     expect(opsFor(defs[2])).toContain('ge');
     expect(opsFor(defs[3])).toContain('le');
   });

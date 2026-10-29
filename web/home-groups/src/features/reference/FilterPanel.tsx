@@ -3,6 +3,7 @@ import {
   distinctValues,
   filterLabel,
   needsValue,
+  IN_SEP,
   opsFor,
   sameFilters,
   type Cell,
@@ -41,8 +42,10 @@ interface FilterPanelProps<T> {
 export function FilterPanel<T>({ config, rows, state, views, onChange, onSaveView, onDeleteView }: FilterPanelProps<T>) {
   const uid = useId();
   const [field, setField] = useState('');
-  const [op, setOp] = useState<Op>('eq');
+  const [op, setOp] = useState<Op>('in');
   const [value, setValue] = useState('');
+  // Отмеченные значения для «=» у текста: можно несколько (условие «in»).
+  const [picked, setPicked] = useState<string[]>([]);
   const [viewName, setViewName] = useState('');
 
   const def = config.fields.find((d) => d.key === field);
@@ -50,7 +53,7 @@ export function FilterPanel<T>({ config, rows, state, views, onChange, onSaveVie
   const isNumeric = def?.kind === 'number';
   const isDate = def?.kind === 'date';
   const options = def && !isNumeric && !isDate ? distinctValues(rows, def) : [];
-  const canAdd = !!def && (!needsValue(op) || value.trim() !== '');
+  const canAdd = !!def && (!needsValue(op) || (op === 'in' ? picked.length > 0 : value.trim() !== ''));
 
   const applyPreset = (p: Preset) => onChange({ ...state, filters: p.filters.map((x) => ({ ...x })) });
   const applyView = (v: SavedView) =>
@@ -68,12 +71,15 @@ export function FilterPanel<T>({ config, rows, state, views, onChange, onSaveVie
     // Условие, которого у нового поля нет (например, «≥» у текста), заменяем на первое доступное.
     if (!nextOps.includes(op)) setOp(nextOps[0] ?? 'eq');
     setValue('');
+    setPicked([]);
   };
 
   const add = () => {
     if (!canAdd) return;
-    onChange({ ...state, filters: [...state.filters, { field, op, value: needsValue(op) ? value.trim() : '' }] });
+    const v = op === 'in' ? picked.join(IN_SEP) : needsValue(op) ? value.trim() : '';
+    onChange({ ...state, filters: [...state.filters, { field, op, value: v }] });
     setValue('');
+    setPicked([]);
   };
 
   return (
@@ -148,6 +154,23 @@ export function FilterPanel<T>({ config, rows, state, views, onChange, onSaveVie
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
               />
+            ) : op === 'in' ? (
+              <fieldset id={`${uid}-val`} className={styles.checkList}>
+                <legend className="visually-hidden">{ru.reference.value}</legend>
+                {options.map((v: Cell) => {
+                  const text = String(v);
+                  return (
+                    <label key={text} className={styles.checkItem}>
+                      <input
+                        type="checkbox"
+                        checked={picked.includes(text)}
+                        onChange={() => setPicked((cur) => (cur.includes(text) ? cur.filter((x) => x !== text) : [...cur, text]))}
+                      />
+                      <span>{text}</span>
+                    </label>
+                  );
+                })}
+              </fieldset>
             ) : isDate ? (
               <input id={`${uid}-val`} className={styles.input} type="date" value={value} onChange={(e) => setValue(e.target.value)} />
             ) : (

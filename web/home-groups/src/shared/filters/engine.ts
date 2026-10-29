@@ -1,5 +1,5 @@
 import type { Cell, FieldDef, Filter, Op, Row, SortState } from './types';
-import { NO_VALUE_OPS } from './types';
+import { IN_SEP, NO_VALUE_OPS } from './types';
 
 const collator = new Intl.Collator('ru', { numeric: true, sensitivity: 'base' });
 
@@ -8,7 +8,8 @@ export const isBlank = (v: Cell | undefined): boolean => v === null || v === und
 /** Условия, доступные для поля: у чисел и дат есть «больше/меньше», у текста — нет. */
 export function opsFor(def: FieldDef | undefined): Op[] {
   const kind = def?.kind ?? 'text';
-  if (kind === 'text') return ['eq', 'ne', 'empty', 'filled'];
+  // У текста «=» — список флажков (in): отметить можно несколько значений сразу. Старое «eq» в адресе по-прежнему работает.
+  if (kind === 'text') return ['in', 'ne', 'empty', 'filled'];
   return ['ge', 'le', 'eq', 'ne', 'empty', 'filled'];
 }
 
@@ -51,11 +52,13 @@ export function matchesFilter(row: Row, f: Filter, defs: readonly FieldDef[]): b
     return f.op === 'ge' ? a >= f.value : a <= f.value;
   }
 
-  let equal: boolean;
-  if (def?.multi) equal = splitMulti(v ?? null).includes(f.value);
-  else if (kind === 'number') equal = !isBlank(v) && f.value !== '' && Number(v) === Number(f.value);
-  else equal = !isBlank(v) && String(v) === f.value;
-  return f.op === 'ne' ? !equal : equal;
+  const equals = (value: string): boolean => {
+    if (def?.multi) return splitMulti(v ?? null).includes(value);
+    if (kind === 'number') return !isBlank(v) && value !== '' && Number(v) === Number(value);
+    return !isBlank(v) && String(v) === value;
+  };
+  if (f.op === 'in') return f.value.split(IN_SEP).some(equals);
+  return f.op === 'ne' ? !equals(f.value) : equals(f.value);
 }
 
 export function applyFilters(rows: readonly Row[], filters: readonly Filter[], defs: readonly FieldDef[]): Row[] {
@@ -130,6 +133,7 @@ export function distinctValues(rows: readonly Row[], def: FieldDef): string[] {
 
 /** Короткая подпись отбора для чипа: «Район = Приморский». */
 export function filterLabel(f: Filter, opSymbol: Record<Op, string>): string {
+  if (f.op === 'in') return `${f.field} ${opSymbol.in} ${f.value.split(IN_SEP).join(' или ')}`;
   return needsValue(f.op) ? `${f.field} ${opSymbol[f.op]} ${f.value}` : `${f.field} ${opSymbol[f.op]}`;
 }
 

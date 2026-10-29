@@ -14,7 +14,7 @@ import { needsValue } from './engine';
  */
 export const TABLE_PARAMS = ['f', 'rq', 'col', 'sort', 'gb'] as const;
 
-const OPS: readonly Op[] = ['eq', 'ne', 'ge', 'le', 'empty', 'filled'];
+const OPS: readonly Op[] = ['eq', 'in', 'ne', 'ge', 'le', 'empty', 'filled'];
 
 const esc = (s: string): string => s.replace(/%/g, '%25').replace(/:/g, '%3A');
 const unesc = (s: string): string => s.replace(/%(25|3A)/g, (_, c: string) => (c === '25' ? '%' : ':'));

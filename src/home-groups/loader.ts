@@ -31,7 +31,7 @@ export interface LoaderRepos {
   /** Кэш координат адресов; без него (в тестах) подбор сравнивает улицы по названию. */
   geocode?: Pick<GeocodeRepo, 'all'>;
   /** Сообщения в MAX после «Утвердить»; без репозитория (в тестах) их нет. */
-  notices?: Pick<PlacementNoticesRepo, 'traces'>;
+  notices?: Pick<PlacementNoticesRepo, 'traces' | 'fioResendPending'>;
 }
 
 /**
@@ -62,11 +62,12 @@ export function createLoader(repos: LoaderRepos, opts: { timeZone?: string; assi
     const geo = repos.geocode ? await repos.geocode.all() : undefined;
     const genders = repos.genders ? await repos.genders.all() : undefined;
     const notices = repos.notices ? await repos.notices.traces() : undefined;
+    const fioResend = repos.notices ? await repos.notices.fioResendPending() : 0;
     const notify = await repos.settings.get<boolean>(SETTING_NOTIFY);
     return {
       strange, geo, genders, notices,
       groups, requests, participants, coordinators, rejectedGroups, audit, activity, activeProposals, restorable, placedNew,
-      matching: { auto: auto === true, notify: notify === true, lastRun: lastRun ?? null },
+      matching: { auto: auto === true, notify: notify === true, fioResend, lastRun: lastRun ?? null },
       hints,
       members,
       persons,

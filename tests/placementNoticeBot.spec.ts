@@ -46,6 +46,13 @@ describe('текст сообщений', () => {
     expect(noticeMessage({ ...base, recipient: 'leader', personSchedule: null }).text).not.toContain('Удобное время');
   });
 
+  test('повтор ведущему начинается с извинения, дальше — то же сообщение с кнопками', () => {
+    const m = noticeMessage({ ...base, recipient: 'leader', resend: true });
+    expect(m.text.startsWith('Извините, отправляем повторно: в прошлом сообщении не было имени человека.')).toBe(true);
+    expect(m.text).toContain('Имя: Никандрова Нина Ивановна');
+    expect(m.buttons!.flat().map((b) => b.text)).toEqual(['Позвоню в течение 24 часов', 'Нет времени']);
+  });
+
   test('имя с разметкой экранируется: сообщение уходит как HTML', () => {
     expect(noticeMessage({ ...base, recipient: 'leader', fio: 'Иванов <b>Пётр</b>' }).text).toContain('Иванов &lt;b&gt;Пётр&lt;/b&gt;');
   });

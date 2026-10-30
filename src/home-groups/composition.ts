@@ -108,6 +108,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     if (llm === null) return false;
     return 'current' in llm ? (await llm.current()) !== null : true;
   };
+  const noticesRepo = new PlacementNoticesRepo(db);
   const load = createLoader({
     groups: new GroupsRepo(db),
     requests: new RequestsRepo(db),
@@ -121,7 +122,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     strange: new StrangeRepo(db),
     genders: new GendersRepo(db),
     geocode: new GeocodeRepo(db),
-    notices: new PlacementNoticesRepo(db),
+    notices: noticesRepo,
   }, { ...(opts.timeZone ? { timeZone: opts.timeZone } : {}), assistantAvailable: () => assistantAvailable() });
   const viewOptions = { defaultCapacity: opts.defaultCapacity, ...(opts.timeZone ? { timeZone: opts.timeZone } : {}) };
 
@@ -144,6 +145,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   };
   const matching = createMatching({
     load, engine, placement, settings: appSettings, options: viewOptions, invalidate: () => views.invalidate(),
+    notices: noticesRepo,
   });
   const errors = new ErrorsRepo(db);
   const assistant = createAssistant({

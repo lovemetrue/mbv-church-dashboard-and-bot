@@ -280,3 +280,18 @@ describe('«Заявки»: окно «Другая группа», уверен
     expect(within(picker).getByRole('radio', { name: /ДГ-0019.*не подходит: возраст группы не подходит/ })).toBeInTheDocument();
   });
 });
+
+describe('«Заявки»: вернувшаяся в работу по «Группа не подходит»', () => {
+  test('в карточке открытой заявки видно, что человек нажал, и про какую группу', async () => {
+    stubFetchWithFixtures({
+      requests: () =>
+        json(viewWith(1, {
+          callback: true,
+          botNotices: [{ recipient: 'person', groupCode: 'ДГ-0163', status: 'sent', error: null, answer: 'not_fit', sentAt: '2026-10-29T10:36:00Z', answeredAt: '2026-10-29T11:00:00Z' }],
+        })),
+    });
+    const card = await openCard(1);
+    const block = (await within(card).findByRole('heading', { name: 'Сообщения в MAX — ДГ-0163' })).parentElement!;
+    expect(within(block).getByText(/нажал «Группа не подходит»/)).toBeInTheDocument();
+  });
+});

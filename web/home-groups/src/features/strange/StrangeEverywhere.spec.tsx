@@ -163,3 +163,24 @@ describe('«Сегодня»: метка в очереди ожидающих', 
     }
   });
 });
+
+describe('«Люди»: сообщения в MAX у заявки человека', () => {
+  test('в «Заявках и обращениях» под заявкой — что ушло в MAX и что нажали', async () => {
+    const people = buildPeople();
+    const p = people.items.find((x) => x.requests.some((r) => r.kind === 'join'))!;
+    const withNotices = {
+      ...people,
+      items: people.items.map((x) => (x.key !== p.key ? x : {
+        ...x,
+        requests: x.requests.map((r, i) => (i !== 0 ? r : { ...r, botNotices: [
+          { recipient: 'leader' as const, groupCode: 'ДГ-0163', status: 'sent' as const, error: null, answer: 'will_call' as const, sentAt: null, answeredAt: null },
+        ] })),
+      })),
+    };
+    stubFetchWithFixtures({ people: () => new Response(JSON.stringify(withNotices), { headers: { 'Content-Type': 'application/json' } }) });
+    renderAt(<App />, `/?tab=reference&ent=people&rec=${p.key}`);
+    const section = (await screen.findByRole('heading', { name: 'Заявки и обращения' })).closest('section')!;
+    expect(within(section).getByText(/MAX ведущему \(ДГ-0163\):/)).toBeInTheDocument();
+    expect(within(section).getByText(/нажал «Позвоню в течение 24 часов»/)).toBeInTheDocument();
+  });
+});

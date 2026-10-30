@@ -1,16 +1,17 @@
 import { useCanChange } from '../../shared/access';
 import { GenderField } from '../gender/GenderField';
 import { useId, useState, type FormEvent } from 'react';
-import type { BotNotice, GroupBrief, GroupItem, LogEntry, RequestItem } from '@contracts';
+import type { GroupBrief, GroupItem, LogEntry, RequestItem } from '@contracts';
 import { BUCKET_LABEL } from '../../entities/buckets';
 import { formatDateShort, formatPhone, groupLabel } from '../../entities/format';
 import { useGroups } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
 import { AgeTag, Button, Drawer, DrawerSection, GroupMarks, KeyValue, Pill, StrangeBadge, StrangeBanner, type KvRow } from '../../shared/ui';
+import { BotNotices } from './BotNotices';
 import { CandidateCard } from './CandidateCard';
 import { DataChanges, useChangesDisclosure } from './DataChanges';
 import { SavedTag } from './SavedTag';
-import { isCreationEntry, knownParams, needsResponsible, noticeNeedsAttention, proposalOf, understoodTime, unavailableReason, type UnavailableReason } from './model';
+import { isCreationEntry, knownParams, needsResponsible, proposalOf, understoodTime, unavailableReason, type UnavailableReason } from './model';
 import { ActionDialogs, ActionNoticeLine, isActionable, RequestActions } from './RequestActions';
 import styles from './Requests.module.css';
 import { useRequestActions, type RequestActionsState } from './useRequestActions';
@@ -167,30 +168,6 @@ function OtherVariants({ r, act }: { r: RequestItem; act: RequestActionsState })
   );
 }
 
-const b = ru.requests.bot;
-
-/** Дошли ли сообщения в MAX после «Утвердить» и что нажали. Требующее внимания — красным. */
-function BotNotices({ notices }: { notices: readonly BotNotice[] }) {
-  return (
-    <div className={styles.botNotices}>
-      <h4 className={styles.h4}>{b.title}</h4>
-      <ul>
-        {notices.map((n) => {
-          const status = n.status === 'failed' && n.error && b.error[n.error] ? `${b.status.failed} (${b.error[n.error]})` : b.status[n.status];
-          const answer = n.status === 'sent' ? (n.answer ? b.answer[n.answer] : b.noAnswer) : null;
-          return (
-            <li key={n.recipient} className={noticeNeedsAttention(n) ? styles.botAttention : undefined}>
-              <b>{b.who[n.recipient]}:</b> {status}
-              {answer && ` · ${answer}`}
-              {n.answeredAt && <span className={styles.note}> · {formatDateShort(n.answeredAt)}</span>}
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
-
 function Proposal({ r, act }: { r: RequestItem; act: RequestActionsState }) {
   if (r.bucket === 'done') {
     const text = r.finalGroup
@@ -202,7 +179,6 @@ function Proposal({ r, act }: { r: RequestItem; act: RequestActionsState }) {
           ✓ {ru.requests.approvedPrefix} {r.finalGroup ? 'группа ' : ''}
           {text}
         </div>
-        {r.botNotices && <BotNotices notices={r.botNotices} />}
       </>
     );
   }
@@ -582,6 +558,8 @@ export function RequestCard({
         {!act.dialog && <ActionNoticeLine notice={act.notice} />}
         {r.callback && isActionable(r) && <div className={styles.callout}>{ru.requests.act.callbackMark}</div>}
         <Proposal r={r} act={act} />
+        {/* И у утверждённой, и у вернувшейся в работу по «Группа не подходит»: координатору видно, что нажали. */}
+        {r.botNotices && <BotNotices notices={r.botNotices} />}
       </DrawerSection>
       <ActionDialogs r={r} act={act} />
       <DrawerSection title={ru.requests.contacts}>

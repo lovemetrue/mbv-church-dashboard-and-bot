@@ -9,6 +9,7 @@ import { useAppNav } from '../../shared/nav';
 import { Button, Drawer, DrawerSection, KeyValue, LoadingState, GroupMarks, Meter, Pill, StrangeBadge, StrangeBanner, type KvRow } from '../../shared/ui';
 import { LinkButton } from '../create';
 import { StrangeSection } from '../strange';
+import { BotNotices } from '../requests/BotNotices';
 import { CoordinatorActions, DeletePersonSection, GroupActions, GroupHeaderTools, MembersSection, PersonActions, PersonGroups, PersonHeaderTools } from '../manage';
 import styles from './Reference.module.css';
 
@@ -229,6 +230,7 @@ function PersonRequests({ p }: { p: PersonItem }) {
                 {r.label} №{r.id}
               </b>
               <span>{t.requestState[r.state]}</span>
+              {r.botNotices && <BotNotices notices={r.botNotices} compact />}
             </div>
             <Button
               size="sm"

@@ -129,6 +129,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
       rerunAll: async (actor) => { matchingCalls.push({ name: 'rerun-all', actor }); return { ok: true, created: 5, replaced: 0, unchanged: 0 }; },
       setAuto: async (enabled, actor) => { matchingCalls.push({ name: 'auto', actor, enabled }); },
       setNotify: async (enabled, actor) => { matchingCalls.push({ name: 'notify', actor, enabled }); },
+      resendFio: async (actor) => { matchingCalls.push({ name: 'resend-fio', actor }); return 3; },
     },
     creator: {
       request: async (body: unknown, actor: string) => { createCalls.push({ what: 'request', body, actor }); return createOutcome; },
@@ -872,6 +873,16 @@ describe('подбор для новых заявок', () => {
     const r = await call(await signIn(SUPER), 'notify', { enabled: true });
     expect(r.status).toBe(200);
     expect(app.matchingCalls.at(-1)).toEqual({ name: 'notify', actor: SUPER.login, enabled: true });
+  });
+
+  test('переотправку ведущим с ФИО запускает только полный вход; ответ — сколько поставлено в очередь', async () => {
+    const before = app.matchingCalls.length;
+    expect((await call(await signIn(REGULAR), 'resend-fio', {})).status).toBe(403);
+    expect(app.matchingCalls.length).toBe(before);
+    const r = await call(await signIn(SUPER), 'resend-fio', {});
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, queued: 3 });
+    expect(app.matchingCalls.at(-1)).toEqual({ name: 'resend-fio', actor: SUPER.login });
   });
 
   test.each([{}, { enabled: 'да' }, { enabled: 1 }, null, []])('переключатель с телом %j — 400', async (body) => {

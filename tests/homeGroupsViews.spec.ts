@@ -913,9 +913,27 @@ describe('накопленные предложения и счётчик уча
       ],
     });
     expect(views.requests.items[0]!.botNotices).toEqual([
-      { recipient: 'person', status: 'sent', error: null, answer: 'waiting', sentAt: null, answeredAt: null },
-      { recipient: 'leader', status: 'no_chat', error: null, answer: null, sentAt: null, answeredAt: null },
+      { recipient: 'person', groupCode: 'ДГ-0001', status: 'sent', error: null, answer: 'waiting', sentAt: null, answeredAt: null },
+      { recipient: 'leader', groupCode: 'ДГ-0001', status: 'no_chat', error: null, answer: null, sentAt: null, answeredAt: null },
     ]);
+  });
+
+  test('заявка, вернувшаяся в работу по «Группа не подходит», показывает тот ответ с кодом группы; события — в журнале', () => {
+    const n = (over: object) => ({ requestId: 7, groupId: 2, recipient: 'person' as const, status: 'sent' as const, error: null, answer: null, sentAt: '2026-10-29T10:36:00Z', answeredAt: null, ...over });
+    const { views } = build({
+      groups: [group({ id: 1 }), group({ id: 2 })],
+      requests: [request({ id: 7, place: 'Приморский', status: 'В работе', group_id: null })],
+      notices: [n({ answer: 'not_fit', answeredAt: '2026-10-29T11:00:00Z' }), n({ recipient: 'leader' })],
+    });
+    const item = views.requests.items[0]!;
+    expect(item.botNotices?.[0]).toMatchObject({ recipient: 'person', groupCode: 'ДГ-0002', answer: 'not_fit' });
+    const log = item.log.map((l) => l.text);
+    expect(log).toContain('Сообщение в MAX человеку (ДГ-0002): доставлено');
+    expect(log).toContain('Человек нажал «Группа не подходит» (MAX)');
+    expect(log).toContain('Сообщение в MAX ведущему (ДГ-0002): доставлено');
+    // В карточке человека в «Людях» у этой заявки те же отметки.
+    const person = views.people.items.find((p) => p.requests.some((r) => r.id === 7))!;
+    expect(person.requests.find((r) => r.id === 7)!.botNotices?.[0]).toMatchObject({ answer: 'not_fit', groupCode: 'ДГ-0002' });
   });
 
   test('оценка для окна «Другая группа»: по каждой группе число или причина; чужой номер — null', () => {
@@ -994,7 +1012,7 @@ describe('накопленные предложения и счётчик уча
 
   test('без настроек подбор и сообщения в MAX выключены, запусков не было', () => {
     const { views } = build({});
-    expect(views.requests.matching).toEqual({ auto: false, notify: false, lastRun: null, waiting: 0, saved: 0 });
+    expect(views.requests.matching).toEqual({ auto: false, notify: false, fioResend: 0, lastRun: null, waiting: 0, saved: 0 });
   });
 });
 

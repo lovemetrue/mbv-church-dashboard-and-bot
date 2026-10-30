@@ -1,4 +1,4 @@
-import { SETTING_NOTIFY } from '../../db/repos/placementNotices.repo.js';
+import { SETTING_NOTIFY, type PlacementNoticesRepo } from '../../db/repos/placementNotices.repo.js';
 import type { ActionOutcome, PlacementRepo } from '../../db/repos/placement.repo.js';
 import type { SettingsRepo } from '../../db/repos/settings.repo.js';
 import { buildViewsWithPlan, type ViewsInput, type ViewsOptions } from '../api/views.js';
@@ -18,6 +18,8 @@ export interface MatchingDeps {
   now?: () => Date;
   /** Сбросить общий снимок: после запуска список должен показать новые предложения сразу. */
   invalidate: () => void;
+  /** Переотправка ведущим сообщений без ФИО; без неё (в тестах) кнопка ничего не делает. */
+  notices?: Pick<PlacementNoticesRepo, 'resendWithoutFio'>;
 }
 
 /**
@@ -81,6 +83,13 @@ export function createMatching(deps: MatchingDeps) {
     async setNotify(enabled: boolean, actor: string): Promise<void> {
       await deps.settings.set(SETTING_NOTIFY, enabled, actor);
       deps.invalidate();
+    },
+
+    /** «Переотправить ведущим с ФИО»: ставит повторы в очередь бота, сколько — возвращает. */
+    async resendFio(actor: string): Promise<number> {
+      const queued = deps.notices ? await deps.notices.resendWithoutFio(actor) : 0;
+      deps.invalidate();
+      return queued;
     },
 
     async isAuto(): Promise<boolean> {

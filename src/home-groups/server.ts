@@ -28,7 +28,7 @@ import { draftFor, groupsFor, kitPersonFor, peopleFor, requestsFor, type Viewer 
 import type { Reconciler } from './reconcile/service.js';
 import { registrationCardPage } from '../dashboard/registrationCard.js';
 import type { Settings } from '../platform/settings/service.js';
-import type { ActionError, ActionOk, MatchingRunOk, Me, Role, TeamRoleKind } from './contracts.js';
+import type { ActionError, ActionOk, MatchingRunOk, Me, ResendFioOk, Role, TeamRoleKind } from './contracts.js';
 import type { Views } from './api/views.js';
 import type { Help } from './help.js';
 import type { ChatAccess } from './assistant/chat.js';
@@ -138,6 +138,7 @@ export interface HomeGroupsDeps {
     rerunAll(actor: string): Promise<MatchingRunOk>;
     setAuto(enabled: boolean, actor: string): Promise<void>;
     setNotify(enabled: boolean, actor: string): Promise<void>;
+    resendFio(actor: string): Promise<number>;
   };
   /** Раздел «Настройки»: только для полного входа. */
   settings: Settings;
@@ -209,7 +210,7 @@ const GROUP_DRAFT_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/group-draft$/;
 /** `GET /api/v1/requests/12/fit`: уверенность по каждой группе для окна «Другая группа». Личных данных в ответе нет. */
 const GROUP_FIT_PATH = /^\/api\/v1\/requests\/(\d{1,15})\/fit$/;
 const LOGO_PATH = '/api/v1/assets/church-logo.png';
-const MATCHING_PATH = /^\/api\/v1\/matching\/(run|auto|notify|rerun-all)$/;
+const MATCHING_PATH = /^\/api\/v1\/matching\/(run|auto|notify|resend-fio|rerun-all)$/;
 /** База знаний: список статей, статья и картинка к ней. Открыта любому входу, в том числе стойке. */
 const HELP_PATH = /^\/api\/v1\/help(?:\/([a-z]{1,20}))?$/;
 const HELP_FILE_PATH = /^\/api\/v1\/help\/files\/([\w.-]{1,80}\.png)$/;
@@ -573,6 +574,12 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     }
     if (role !== 'super') {
       sendJson(res, 403, { error: 'forbidden', message: 'Автоматический подбор и сообщения в MAX включает только полный вход.' } satisfies ActionError);
+      return;
+    }
+    if (action === 'resend-fio') {
+      const queued = await deps.matching.resendFio(actor);
+      logger.info({ actor, queued }, 'домашние группы: переотправка ведущим сообщений с ФИО');
+      sendJson(res, 200, { ok: true, queued } satisfies ResendFioOk);
       return;
     }
     const enabled = typeof body === 'object' && body !== null ? (body as Record<string, unknown>)['enabled'] : undefined;

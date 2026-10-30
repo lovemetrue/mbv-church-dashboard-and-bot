@@ -71,9 +71,9 @@ export interface ViewsInput {
   /** Кэш координат адресов (ключ — `addressKey`); нет записи или null — адрес не геокодирован или не найден. */
   geo?: ReadonlyMap<string, { lat: number; lon: number } | null>;
   /** Настройки подбора: автоматический ли он и когда запускали в последний раз. */
-  matching?: { auto: boolean; notify?: boolean; lastRun: MatchingStatus['lastRun'] };
+  matching?: { auto: boolean; notify?: boolean; fioResend?: number; lastRun: MatchingStatus['lastRun'] };
   /** След сообщений в MAX после «Утвердить» (`placement_notices`), по порядку постановки. */
-  notices?: readonly (BotNotice & { requestId: number; groupId: number })[];
+  notices?: readonly (BotNotice & { requestId: number; groupId: number; createdAt?: string })[];
 }
 
 /** Разбор удобного времени человека: что подходит и что нет. */
@@ -287,6 +287,23 @@ function sourceOfProposal(
 ): 'script' | 'agent' {
   // «manual» — выбор координатора; в интерфейсе он такой же «не расчёт»: показываем как расчёт, а не как модель.
   return stored && stored.groupId === shownGroupId && stored.source === 'agent' ? 'agent' : 'script';
+}
+
+const NOTICE_TO = { person: 'человеку', leader: 'ведущему' } as const;
+const NOTICE_WHO = { person: 'Человек', leader: 'Ведущий' } as const;
+const NOTICE_ANSWER = {
+  will_call: '«Позвоню в течение 24 часов»', no_time: '«Нет времени»', waiting: '«Жду звонка»', not_fit: '«Группа не подходит»',
+} as const;
+
+/** Строки журнала заявки по одному сообщению в MAX: дошло или нет и что нажали. Время — ISO, дату журнал берёт сам. */
+function noticeLog(n: BotNotice & { groupId: number; createdAt?: string }): { at: string | null; text: string }[] {
+  const to = `${NOTICE_TO[n.recipient]} (${groupCode(n.groupId)})`;
+  const out: { at: string | null; text: string }[] = [];
+  if (n.status === 'sent') out.push({ at: n.sentAt, text: `Сообщение в MAX ${to}: доставлено` });
+  else if (n.status === 'failed') out.push({ at: n.createdAt ?? null, text: `Сообщение в MAX ${to}: не дошло` });
+  else if (n.status === 'no_chat') out.push({ at: n.createdAt ?? null, text: `Сообщение в MAX ${to} не ушло: нет в боте MAX` });
+  if (n.answer) out.push({ at: n.answeredAt, text: `${NOTICE_WHO[n.recipient]} нажал ${NOTICE_ANSWER[n.answer]} (MAX)` });
+  return out;
 }
 
 const nonBlank = (s: string | null | undefined): string | null => {
@@ -669,6 +686,10 @@ export function buildViewsWithPlan(
       const text = auditText(a);
       if (text) log.push({ at: a.at ? localIsoDate(a.at, timeZone) : null, text });
     }
+    // Сообщения в MAX — в журнал все, по всем утверждениям: блок в карточке показывает только последнее, а история нужна.
+    for (const n of noticesByRequest.get(r.id) ?? []) {
+      for (const e of noticeLog(n)) log.push({ at: e.at ? localIsoDate(new Date(e.at), timeZone) : null, text: e.text });
+    }
     const cancelReason = nonBlank(r.cancel_reason);
     if (cancelReason) log.push({ at: null, text: `Причина аннулирования: ${cancelReason}` });
     const attendance = nonBlank(r.attendance);
@@ -724,18 +745,25 @@ export function buildViewsWithPlan(
       alternatives: rest.slice(0, 2), displaced: null, chosen: true,
     };
   };
-  const noticesByRequest = new Map<number, (BotNotice & { groupId: number })[]>();
+  const noticesByRequest = new Map<number, (BotNotice & { groupId: number; createdAt?: string })[]>();
   for (const n of input.notices ?? []) noticesByRequest.set(n.requestId, [...(noticesByRequest.get(n.requestId) ?? []), n]);
-  // По последнему утверждению: та же группа, что в заявке, и по одному сообщению на сторону — последнее.
-  const botNoticesOf = (r: DashboardRequest): BotNotice[] | undefined => {
-    const own = (noticesByRequest.get(r.id) ?? []).filter((n) => n.groupId === r.group_id);
-    if (own.length === 0) return undefined;
-    const last = new Map(own.map((n) => [n.recipient, n]));
+  // По последнему утверждению: группа самого свежего сообщения и по одному сообщению на сторону — последнее. Не «группа
+  // заявки»: заявка, которую человек вернул кнопкой «Группа не подходит», уже без группы, а координатору как раз нужно
+  // видеть, что он нажал. Переутвердили в другую группу — свежее сообщение уже про неё, старые уходят в журнал.
+  const botNoticesOfId = (requestId: number): BotNotice[] | undefined => {
+    const all = noticesByRequest.get(requestId) ?? [];
+    const latest = all.at(-1);
+    if (!latest) return undefined;
+    const last = new Map(all.filter((n) => n.groupId === latest.groupId).map((n) => [n.recipient, n]));
     return (['person', 'leader'] as const).flatMap((k) => {
       const n = last.get(k);
-      return n ? [{ recipient: n.recipient, status: n.status, error: n.error, answer: n.answer, sentAt: n.sentAt, answeredAt: n.answeredAt }] : [];
+      return n ? [{
+        recipient: n.recipient, groupCode: groupCode(n.groupId), status: n.status, error: n.error, answer: n.answer,
+        sentAt: n.sentAt, answeredAt: n.answeredAt,
+      }] : [];
     });
   };
+  const botNoticesOf = (r: DashboardRequest): BotNotice[] | undefined => botNoticesOfId(r.id);
 
   const requestItems: RequestItem[] = [];
   for (const r of joinRequests) {
@@ -1007,6 +1035,7 @@ export function buildViewsWithPlan(
     kind: r.type === 'join_group' ? 'join' : r.type === 'lead_group' ? 'lead' : 'other',
     label: r.type === 'join_group' ? 'Заявка в группу' : (TYPE_LABEL[r.type as OtherItem['type']] ?? 'Обращение'),
     state: otherState(r),
+    ...(botNoticesOfId(r.id) ? { botNotices: botNoticesOfId(r.id)! } : {}),
   });
   // Заявки человека по его ключу (регистрация или карточка), свежие первыми.
   const requestsByKey = new Map<string, PersonItem['requests']>();
@@ -1254,7 +1283,7 @@ export function buildViewsWithPlan(
     },
     requests: {
       generatedAt,
-      matching: { auto: input.matching?.auto ?? false, notify: input.matching?.notify ?? false, lastRun: input.matching?.lastRun ?? null, waiting, saved },
+      matching: { auto: input.matching?.auto ?? false, notify: input.matching?.notify ?? false, fioResend: input.matching?.fioResend ?? 0, lastRun: input.matching?.lastRun ?? null, waiting, saved },
       items: requestItems,
       counters,
       others: [...otherOpen, ...otherClosed],

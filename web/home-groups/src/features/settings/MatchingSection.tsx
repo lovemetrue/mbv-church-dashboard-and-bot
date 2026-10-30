@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import { useRequests } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
+import { Button } from '../../shared/ui';
 import { useMatching } from '../requests/useMatching';
 import { MatchingBlock, RerunConfirm } from '../requests/MatchingPanel';
 import { QueryBoundary } from './QueryBoundary';
@@ -57,6 +58,16 @@ export function MatchingSection() {
             <p id={notifyHintId} className={`${styles.muted} ${styles.hintLine}`}>
               {t.notifyHint}
             </p>
+            {/* Только пока есть что переотправлять: после повтора строка исчезает сама (счётчик приходит с заявками). */}
+            {(data.matching.fioResend ?? 0) > 0 && act.canToggle && (
+              <div className={styles.stackTop}>
+                <p>{t.fioResendText(data.matching.fioResend!)}</p>
+                <p className={`${styles.muted} ${styles.hintLine}`}>{t.fioResendHint}</p>
+                <Button disabled={act.pending !== null} onClick={() => void act.resendFio()}>
+                  {t.fioResendButton(data.matching.fioResend!)}
+                </Button>
+              </div>
+            )}
             {act.notice && (
               <p className={act.notice.kind === 'ok' ? styles.noticeOk : styles.noticeError} role={act.notice.kind === 'ok' ? 'status' : 'alert'}>
                 {act.notice.text}

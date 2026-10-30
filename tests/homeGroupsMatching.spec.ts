@@ -106,7 +106,7 @@ describe('запуск подбора', () => {
     await request();
     const s = service();
     const before = (await s.views()).requests.matching;
-    expect(before).toEqual({ auto: false, notify: false, lastRun: null, waiting: 1, saved: 0 });
+    expect(before).toEqual({ auto: false, notify: false, fioResend: 0, lastRun: null, waiting: 1, saved: 0 });
     await s.matching.run('mbv_admin');
     const after = (await s.views()).requests.matching;
     expect(after.waiting).toBe(0);

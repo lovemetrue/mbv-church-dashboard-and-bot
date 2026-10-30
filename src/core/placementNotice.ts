@@ -59,6 +59,8 @@ export interface NoticeData {
   time: string | null;
   fio: string | null;
   personPhone: string | null;
+  /** Повторная отправка ведущему: первое сообщение ушло без ФИО (до исправления), этот текст начинается с извинения. */
+  resend?: boolean;
   /** Возраст человека, как записан («25-40»); null — не заполнен. */
   personAge: string | null;
   /** Удобные человеку день и время, как он их назвал (или как поправил координатор); null — не заполнено. */
@@ -89,6 +91,7 @@ export function noticeMessage(d: NoticeData): OutMessage {
     return { text, format: 'html', buttons };
   }
   const text = [
+    d.resend ? 'Извините, отправляем повторно: в прошлом сообщении не было имени человека.\n' : null,
     `${esc(firstName(d.leader) ?? d.leader)}, здравствуйте! В Вашу группу ${esc(d.groupCode)} направлен человек.`,
     '',
     line('Имя', d.fio),

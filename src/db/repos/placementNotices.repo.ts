@@ -75,6 +75,39 @@ export async function cancelQueuedNotices(c: PoolClient, requestId: number): Pro
   await c.query(`UPDATE placement_notices SET status = 'cancelled' WHERE request_id = $1 AND status = 'queued'`, [requestId]);
 }
 
+/**
+ * Человек нажал «Группа не подходит»: заявка снова «В работе» с отметкой «нужен звонок» (в «Перезвонить» её увидят), а
+ * группа записана отклонённой — заново её не предложат. Ответственный остаётся: он и перезвонит. То же, что ручной
+ * «Вернуть в работу» (`PlacementRepo.reopen`) плюс отказ от группы; та же логика — в бэкфилле (миграция 067).
+ * Только если заявка всё ещё утверждена именно в эту группу: переутверждённую в другую или уже возвращённую не трогаем.
+ */
+async function reopenDeclined(c: PoolClient, requestId: number, groupId: number): Promise<boolean> {
+  const { rows } = await c.query<{ group_id: number; final_group: string | null }>(
+    `SELECT group_id, final_group FROM requests
+      WHERE id = $1 AND status = 'Исполнена' AND group_id = $2 AND archived_at IS NULL FOR UPDATE`,
+    [requestId, groupId],
+  );
+  const r = rows[0];
+  if (!r) return false;
+  await c.query(
+    `UPDATE requests SET status = 'В работе', group_id = NULL, final_group = NULL, cancel_reason = NULL, callback = true,
+            origin = CASE WHEN origin = 'таблица' THEN 'ui' ELSE origin END
+      WHERE id = $1`,
+    [requestId],
+  );
+  await c.query(
+    `INSERT INTO placement_proposals (request_id, group_id, source, status, reject_reason, reject_comment, decided_by, decided_at)
+     VALUES ($1, $2, 'manual', 'rejected', 'declined', 'Человек нажал «Группа не подходит» в MAX', 'бот', now())`,
+    [requestId, groupId],
+  );
+  await c.query(
+    `INSERT INTO audit_log (actor, service, action, entity_type, entity_id, before, after, note)
+     VALUES ('бот', 'bot', 'request.reopen', 'request', $1, $2::jsonb, $3::jsonb, 'человек нажал «Группа не подходит» в MAX')`,
+    [requestId, JSON.stringify({ status: 'Исполнена', group_id: groupId, final_group: r.final_group }), JSON.stringify({ status: 'В работе', callback: true })],
+  );
+  return true;
+}
+
 /** Сообщение к отправке: что писать и куда. */
 export interface DueNotice extends NoticeData {
   platform: string;
@@ -104,9 +137,9 @@ export class PlacementNoticesRepo {
     const { rows } = await this.db.query<{
       id: number; recipient: NoticeRecipient; group_id: number; leader: string | null; leader_phone: string | null;
       day: string | null; time: string | null; fio: string | null; person_phone: string | null; person_age: string | null; person_schedule: string | null;
-      platform: string; chat_id: string; attempts: number;
+      platform: string; chat_id: string; attempts: number; resend: boolean;
     }>(
-      `SELECT n.id, n.recipient, n.group_id, g.leader, g.day, g.time, n.attempts, u.platform, u.chat_id,
+      `SELECT n.id, n.recipient, n.group_id, g.leader, g.day, g.time, n.attempts, n.resend, u.platform, u.chat_id,
               coalesce(g.phones[1], lp.phone, lu.phone) AS leader_phone,
               -- Данные человека — из его записи, как в карточке заявки (forDashboard, миграция 057): регистрации или
               -- карточки. Поля самой заявки — снимок «как пришла»; у заявок из бота ФИО и время там пустые, и ведущему
@@ -131,7 +164,7 @@ export class PlacementNoticesRepo {
     return rows.map((x) => ({
       id: Number(x.id), recipient: x.recipient, groupCode: groupCode(Number(x.group_id)), leader: x.leader ?? '',
       leaderPhone: x.leader_phone, day: x.day, time: x.time, fio: x.fio, personPhone: x.person_phone, personAge: x.person_age, personSchedule: x.person_schedule,
-      platform: x.platform, chatId: x.chat_id, attempts: x.attempts,
+      platform: x.platform, chatId: x.chat_id, attempts: x.attempts, resend: x.resend,
     }));
   }
 
@@ -155,25 +188,79 @@ export class PlacementNoticesRepo {
   /**
    * Ответ кнопкой. Засчитывается только тому, кому сообщение ушло, и только ответом его стороны: данные кнопки
    * может прислать кто угодно. Повторное нажатие переписывает ответ (передумал), каждое — строкой в журнале заявки.
-   * null — кнопка чужая или сообщение не отправлялось.
+   * «Группа не подходит» от человека возвращает заявку в работу (`reopenDeclined`): иначе она оставалась «Исполнена»,
+   * и о ней никто не узнавал. null — кнопка чужая или сообщение не отправлялось.
    */
-  async answer(noticeId: number, userId: number, answer: NoticeAnswer): Promise<{ requestId: number } | null> {
+  async answer(noticeId: number, userId: number, answer: NoticeAnswer): Promise<{ requestId: number; reopened: boolean } | null> {
     const allowed = (Object.keys(ANSWERS_OF) as NoticeRecipient[]).filter((k) => ANSWERS_OF[k].includes(answer));
-    const { rows } = await this.db.query<{ request_id: number; recipient: NoticeRecipient }>(
-      `UPDATE placement_notices SET answer = $3, answered_at = now()
-        WHERE id = $1 AND user_id = $2 AND status = 'sent' AND recipient = ANY($4::text[])
-        RETURNING request_id, recipient`,
-      [noticeId, userId, answer, allowed],
+    const c = await this.db.connect();
+    try {
+      await c.query('BEGIN');
+      const { rows } = await c.query<{ request_id: number; group_id: number; recipient: NoticeRecipient }>(
+        `UPDATE placement_notices SET answer = $3, answered_at = now()
+          WHERE id = $1 AND user_id = $2 AND status = 'sent' AND recipient = ANY($4::text[])
+          RETURNING request_id, group_id, recipient`,
+        [noticeId, userId, answer, allowed],
+      );
+      const row = rows[0];
+      if (!row) { await c.query('ROLLBACK'); return null; }
+      // В журнал — кто и что нажал, без имён и телефонов: журнал читают все входы.
+      await c.query(
+        `INSERT INTO audit_log (actor, service, action, entity_type, entity_id, after)
+         VALUES ('бот', 'bot', 'request.bot_answer', 'request', $1, $2::jsonb)`,
+        [row.request_id, JSON.stringify({ recipient: row.recipient, answer })],
+      );
+      const reopened = answer === 'not_fit' ? await reopenDeclined(c, Number(row.request_id), Number(row.group_id)) : false;
+      await c.query('COMMIT');
+      return { requestId: Number(row.request_id), reopened };
+    } catch (err) {
+      await c.query('ROLLBACK').catch(() => undefined);
+      throw err;
+    } finally {
+      c.release();
+    }
+  }
+
+  /** Сколько сообщений ведущим ушло без ФИО (до исправления) и ещё не переотправлено — для кнопки в «Настройки → Подбор». */
+  async fioResendPending(): Promise<number> {
+    const { rows } = await this.db.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM placement_notices n JOIN requests r ON r.id = n.request_id
+        WHERE n.needs_fio_resend AND r.status = 'Исполнена' AND r.group_id = n.group_id AND r.archived_at IS NULL`,
     );
-    const row = rows[0];
-    if (!row) return null;
-    // В журнал — кто и что нажал, без имён и телефонов: журнал читают все входы.
-    await this.db.query(
-      `INSERT INTO audit_log (actor, service, action, entity_type, entity_id, after)
-       VALUES ('бот', 'bot', 'request.bot_answer', 'request', $1, $2::jsonb)`,
-      [row.request_id, JSON.stringify({ recipient: row.recipient, answer })],
-    );
-    return { requestId: Number(row.request_id) };
+    return rows[0]?.n ?? 0;
+  }
+
+  /**
+   * Переотправить ведущим сообщения, ушедшие без ФИО: новое сообщение в очередь (с пометкой «повторно» и своими кнопками),
+   * старая пометка снимается. Только по заявкам, которые всё ещё утверждены в ту же группу: вернутую в работу или
+   * переутверждённую незачем — о ней ведущему уже сказали иначе. Возвращает, сколько поставлено в очередь.
+   */
+  async resendWithoutFio(actor: string): Promise<number> {
+    const c = await this.db.connect();
+    try {
+      await c.query('BEGIN');
+      const { rows } = await c.query<{ id: number }>(
+        `INSERT INTO placement_notices (request_id, group_id, recipient, user_id, status, resend, created_by)
+         SELECT n.request_id, n.group_id, 'leader', n.user_id, 'queued', true, $1
+           FROM placement_notices n JOIN requests r ON r.id = n.request_id
+          WHERE n.needs_fio_resend AND r.status = 'Исполнена' AND r.group_id = n.group_id AND r.archived_at IS NULL
+         RETURNING id`,
+        [actor],
+      );
+      // Снимаем со всех: и с переотправленных, и с тех, где повтор уже не нужен (заявку вернули или переутвердили).
+      await c.query('UPDATE placement_notices SET needs_fio_resend = false WHERE needs_fio_resend');
+      await c.query(
+        `INSERT INTO audit_log (actor, service, action, entity_type, after) VALUES ($1, 'home-groups', 'notices.resend_fio', 'notices', $2::jsonb)`,
+        [actor, JSON.stringify({ queued: rows.length })],
+      );
+      await c.query('COMMIT');
+      return rows.length;
+    } catch (err) {
+      await c.query('ROLLBACK').catch(() => undefined);
+      throw err;
+    } finally {
+      c.release();
+    }
   }
 
   /** След по заявкам для карточек: последние сообщения каждой стороны идут последними. */

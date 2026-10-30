@@ -1,4 +1,5 @@
 import type { Pool } from 'pg';
+import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { PlacementRepo } from '../src/db/repos/placement.repo.js';
 import { PlacementNoticesRepo, SETTING_NOTIFY } from '../src/db/repos/placementNotices.repo.js';
@@ -151,8 +152,8 @@ describe('сообщения после «Утвердить»', () => {
 
     expect(await notices.answer(toPerson!.id, leader, 'waiting')).toBeNull();
     expect(await notices.answer(toPerson!.id, person, 'will_call')).toBeNull();
-    expect(await notices.answer(toPerson!.id, person, 'not_fit')).toEqual({ requestId: r });
-    expect(await notices.answer(toLeader!.id, leader, 'will_call')).toEqual({ requestId: r });
+    expect(await notices.answer(toPerson!.id, person, 'not_fit')).toEqual({ requestId: r, reopened: true });
+    expect(await notices.answer(toLeader!.id, leader, 'will_call')).toEqual({ requestId: r, reopened: false });
     expect((await rows()).map((x) => x.answer)).toEqual(['not_fit', 'will_call']);
 
     const audit = (await db.query(`SELECT action, after FROM audit_log WHERE action = 'request.bot_answer' ORDER BY id`)).rows;
@@ -205,5 +206,83 @@ describe('«Выбрать» в окне «Другая группа»', () => {
     await placement.choose(r, await group(), 'a');
     await placement.resetProposals(r, 'a');
     expect(await active()).toEqual([]);
+  });
+});
+
+describe('«Группа не подходит» возвращает заявку в работу', () => {
+  /** Утверждённая заявка с отправленными сообщениями; отдаёт номера, чтобы нажимать кнопки. */
+  async function approvedAndSent() {
+    await notifyOn();
+    const person = await user();
+    const leader = await user();
+    const r = await request({ userId: person });
+    const g = await group({ leaderUserId: leader });
+    await placement.approve(r, g, 'a', OPTS);
+    const [toPerson, toLeader] = await notices.due(10);
+    await notices.markSent(toPerson!.id);
+    await notices.markSent(toLeader!.id);
+    return { r, g, person, leader, toPerson: toPerson!.id, toLeader: toLeader!.id };
+  }
+  const req = async (id: number) =>
+    (await db.query('SELECT status, group_id, final_group, callback, responsible FROM requests WHERE id = $1', [id])).rows[0];
+
+  test('заявка снова «В работе» с «нужен звонок», ответственный остаётся, группа отклонена, в журнале — бот', async () => {
+    const { r, g, person, toPerson } = await approvedAndSent();
+    expect(await notices.answer(toPerson, person, 'not_fit')).toEqual({ requestId: r, reopened: true });
+    expect(await req(r)).toMatchObject({ status: 'В работе', group_id: null, final_group: null, callback: true, responsible: 'Анна' });
+    expect((await placement.rejectedGroups()).get(r)).toContain(g);
+    const reopen = (await db.query(`SELECT actor, note FROM audit_log WHERE action = 'request.reopen' AND entity_id = $1`, [r])).rows;
+    expect(reopen).toEqual([{ actor: 'бот', note: 'человек нажал «Группа не подходит» в MAX' }]);
+  });
+
+  test('«Жду звонка» и «Нет времени» заявку не трогают', async () => {
+    const { r, person, leader, toPerson, toLeader } = await approvedAndSent();
+    await notices.answer(toPerson, person, 'waiting');
+    await notices.answer(toLeader, leader, 'no_time');
+    expect(await req(r)).toMatchObject({ status: 'Исполнена' });
+  });
+
+  test('если заявку уже переутвердили в другую группу, старое «не подходит» её не возвращает', async () => {
+    const { r, person, toPerson } = await approvedAndSent();
+    await placement.reopen(r, 'a');
+    await placement.approve(r, await group(), 'a', OPTS);
+    expect(await notices.answer(toPerson, person, 'not_fit')).toEqual({ requestId: r, reopened: false });
+    expect(await req(r)).toMatchObject({ status: 'Исполнена' });
+  });
+
+  test('бэкфилл (миграция 067): нажатое раньше «не подходит» возвращает застрявшие заявки; повторный прогон ничего не меняет', async () => {
+    const { r, person, toPerson } = await approvedAndSent();
+    // Ответ записан старой версией бота — без возврата в работу.
+    await db.query(`UPDATE placement_notices SET answer = 'not_fit', answered_at = now() WHERE id = $1`, [toPerson]);
+    void person;
+    const sql = readFileSync(new URL('../migrations/067_reopen_declined_placements.sql', import.meta.url), 'utf8');
+    await db.query(sql);
+    expect(await req(r)).toMatchObject({ status: 'В работе', group_id: null, callback: true });
+    await db.query(sql);
+    expect((await db.query(`SELECT count(*)::int AS n FROM audit_log WHERE action = 'request.reopen'`)).rows[0].n).toBe(1);
+  });
+});
+
+describe('переотправка ведущим сообщений без ФИО', () => {
+  test('помеченные уходят повторно с пометкой; вернувшиеся в работу — нет; пометки снимаются', async () => {
+    await notifyOn();
+    const mk = async () => {
+      const r = await request({ userId: await user() });
+      await placement.approve(r, await group({ leaderUserId: await user() }), 'a', OPTS);
+      return r;
+    };
+    const [still, reopened] = [await mk(), await mk()];
+    for (const n of await notices.due(10)) await notices.markSent(n.id);
+    await db.query(`UPDATE placement_notices SET needs_fio_resend = true WHERE recipient = 'leader'`);
+    await placement.reopen(reopened, 'a');
+    expect(await notices.fioResendPending()).toBe(1);
+
+    expect(await notices.resendWithoutFio('boss')).toBe(1);
+    const due = await notices.due(10);
+    expect(due).toHaveLength(1);
+    expect(due[0]).toMatchObject({ recipient: 'leader', resend: true });
+    expect((await db.query('SELECT request_id FROM placement_notices WHERE resend')).rows.map((x) => Number(x.request_id))).toEqual([still]);
+    expect(await notices.fioResendPending()).toBe(0);
+    expect(await notices.resendWithoutFio('boss')).toBe(0);
   });
 });

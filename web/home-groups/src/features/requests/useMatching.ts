@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { MatchingAutoBody, MatchingRunOk } from '@contracts';
+import type { MatchingAutoBody, MatchingRunOk, ResendFioOk } from '@contracts';
 import { ApiError, apiPost } from '../../shared/api/client';
 import { queryKeys, useMe } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
@@ -33,7 +33,7 @@ export function useMatching() {
   const queryClient = useQueryClient();
   const me = useMe();
   const inFlight = useRef(false);
-  const [pending, setPending] = useState<'run' | 'auto' | 'notify' | 'rerun' | null>(null);
+  const [pending, setPending] = useState<'run' | 'auto' | 'notify' | 'resend' | 'rerun' | null>(null);
   const [notice, setNotice] = useState<MatchingNotice | null>(null);
 
   const refresh = () =>
@@ -43,7 +43,7 @@ export function useMatching() {
       queryClient.invalidateQueries({ queryKey: queryKeys.groups }),
     ]);
 
-  async function guarded(kind: 'run' | 'auto' | 'notify' | 'rerun', work: () => Promise<void>) {
+  async function guarded(kind: 'run' | 'auto' | 'notify' | 'resend' | 'rerun', work: () => Promise<void>) {
     if (inFlight.current) return;
     inFlight.current = true;
     setPending(kind);
@@ -105,5 +105,17 @@ export function useMatching() {
       }
     });
 
-  return { pending, notice, canToggle: me.data?.role === 'super', run, rerunAll, setAuto, setNotify };
+  /** Повтор ведущим, которым сообщение ушло без ФИО (до исправления). Итог — сколько поставлено в очередь бота. */
+  const resendFio = () =>
+    guarded('resend', async () => {
+      try {
+        const out = await apiPost<ResendFioOk>('matching/resend-fio', {});
+        setNotice({ kind: 'ok', text: m.resendDone(out.queued) });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.requests });
+      } catch (e) {
+        setNotice({ kind: 'error', text: errorText(e, m.errorResend, m.superOnly) });
+      }
+    });
+
+  return { pending, notice, canToggle: me.data?.role === 'super', run, rerunAll, setAuto, setNotify, resendFio };
 }

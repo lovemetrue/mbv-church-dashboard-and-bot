@@ -255,3 +255,26 @@ describe('«Справочник»: пометка «утверждено пос
     expect(screen.getAllByTitle(/утверждено после обратной связи/)).toHaveLength(1);
   });
 });
+
+describe('«Настройки → Подбор»: переотправка ведущим сообщений без ФИО', () => {
+  test('есть что переотправить — видно сколько; кнопка шлёт POST и пишет итог', async () => {
+    const fetchMock = stubFetchWithFixtures({
+      me: () => json({ role: 'super' }),
+      requests: () => json(requestsWith({ fioResend: 3 })),
+      'matching/resend-fio': () => json({ ok: true, queued: 3 }),
+    });
+    renderAt(<App />, '/?tab=settings&sec=matching', client);
+    const button = await screen.findByRole('button', { name: 'Переотправить с ФИО (3)' });
+    expect(screen.getByText(/До исправления 3 ведущим пришёл только телефон/)).toBeInTheDocument();
+    await userEvent.setup().click(button);
+    expect(await screen.findByText(/Поставлено в очередь: 3/)).toBeInTheDocument();
+    expect(posts(fetchMock)).toEqual([{ path: 'matching/resend-fio', body: {} }]);
+  });
+
+  test('переотправлять нечего — кнопки нет', async () => {
+    stubFetchWithFixtures({ me: () => json({ role: 'super' }), requests: () => json(requestsWith({ fioResend: 0 })) });
+    renderAt(<App />, '/?tab=settings&sec=matching', client);
+    await screen.findByRole('switch', { name: 'Подбирать новые заявки автоматически' });
+    expect(screen.queryByRole('button', { name: /Переотправить с ФИО/ })).not.toBeInTheDocument();
+  });
+});

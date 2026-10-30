@@ -240,6 +240,8 @@ export interface Proposal {
  */
 export interface BotNotice {
   recipient: 'person' | 'leader';
+  /** Группа, о которой было сообщение («ДГ-0163»): у заявки, вернувшейся в работу, её больше нет в самой заявке. */
+  groupCode?: string;
   status: 'queued' | 'sent' | 'failed' | 'no_chat';
   error: string | null;
   /** Ведущий: will_call — «Позвоню в течение 24 часов», no_time — «Нет времени». Человек: waiting — «Жду звонка», not_fit — «Группа не подходит». */
@@ -714,6 +716,8 @@ export interface MatchingStatus {
   auto: boolean;
   /** Пишет ли «Утвердить» человеку и ведущему в MAX. Нет поля — выключено. */
   notify?: boolean;
+  /** Сколько ведущим ушло без ФИО (до исправления) и ещё можно переотправить; нет поля — 0. */
+  fioResend?: number;
   /** Последний запуск (по кнопке или автоматически); null — ещё не запускали. */
   lastRun: { at: string; created: number; replaced: number; actor: string } | null;
   /** Сколько открытых заявок сейчас без закреплённого предложения, хотя группа для них находится. */
@@ -1129,6 +1133,12 @@ export interface ApproveBody {
   force?: boolean;
 }
 
+/** `POST /api/v1/matching/resend-fio` (полный вход): сколько повторов ведущим поставлено в очередь бота. */
+export interface ResendFioOk {
+  ok: true;
+  queued: number;
+}
+
 /** «Выбрать»: группа становится основным предложением заявки; утверждает её обычная «Утвердить». */
 export interface ChooseBody {
   groupId: number;
@@ -1361,7 +1371,8 @@ export interface PersonItem {
    * она сама. kind — в каком списке «Заявок» она живёт: «join» — «Хотят в группу», «lead» — «Хотят открыть группу»,
    * «other» — «Другие обращения».
    */
-  requests: { id: number; kind: 'join' | 'lead' | 'other'; label: string; state: 'open' | 'done' | 'cancelled' }[];
+  /** botNotices — сообщения в MAX по последнему утверждению заявки (как в её карточке); нет — не писали. */
+  requests: { id: number; kind: 'join' | 'lead' | 'other'; label: string; state: 'open' | 'done' | 'cancelled'; botNotices?: BotNotice[] }[];
   /** Человек в команде служения («Координаторы»): строка справочника команды и его роли; null — не в команде. */
   team: { coordinatorId: number; role: string } | null;
   /** Группы, где человек ведущий или соведущий (ссылка из группы на него, миграции 030 и 054). */

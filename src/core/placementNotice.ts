@@ -59,6 +59,8 @@ export interface NoticeData {
   time: string | null;
   fio: string | null;
   personPhone: string | null;
+  /** Возраст человека, как записан («25-40»); null — не заполнен. */
+  personAge: string | null;
   /** Удобные человеку день и время, как он их назвал (или как поправил координатор); null — не заполнено. */
   personSchedule: string | null;
 }
@@ -91,6 +93,7 @@ export function noticeMessage(d: NoticeData): OutMessage {
     '',
     line('Имя', d.fio),
     line('Телефон', formatPhone(d.personPhone) || null),
+    line('Возраст', d.personAge?.trim() || null),
     line('Удобное время', d.personSchedule?.trim() || null),
     '',
     'Пожалуйста, позвоните в течение 24 часов и расскажите, где проходит встреча.',

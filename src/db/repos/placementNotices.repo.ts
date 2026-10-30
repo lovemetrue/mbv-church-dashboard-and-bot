@@ -103,16 +103,19 @@ export class PlacementNoticesRepo {
   async due(limit: number): Promise<DueNotice[]> {
     const { rows } = await this.db.query<{
       id: number; recipient: NoticeRecipient; group_id: number; leader: string | null; leader_phone: string | null;
-      day: string | null; time: string | null; fio: string | null; person_phone: string | null; person_schedule: string | null;
+      day: string | null; time: string | null; fio: string | null; person_phone: string | null; person_age: string | null; person_schedule: string | null;
       platform: string; chat_id: string; attempts: number;
     }>(
       `SELECT n.id, n.recipient, n.group_id, g.leader, g.day, g.time, n.attempts, u.platform, u.chat_id,
               coalesce(g.phones[1], lp.phone, lu.phone) AS leader_phone,
-              coalesce(nullif(btrim(r.fio), ''), rp.full_name) AS fio,
-              coalesce(r.phones[1], r.phone, rp.phone, ru.phone) AS person_phone,
-              -- Удобное время — как в карточке заявки: правка координатора важнее ответа анкеты человека.
-              coalesce(nullif(btrim(r.manual_schedule), ''),
-                       CASE WHEN ru.id IS NOT NULL THEN ru.schedule_raw WHEN rp.id IS NOT NULL THEN rp.schedule END) AS person_schedule
+              -- Данные человека — из его записи, как в карточке заявки (forDashboard, миграция 057): регистрации или
+              -- карточки. Поля самой заявки — снимок «как пришла»; у заявок из бота ФИО и время там пустые, и ведущему
+              -- уходило «направлен человек» с одним телефоном. Только у заявки без человека берём её собственные поля.
+              CASE WHEN ru.id IS NOT NULL THEN ru.full_name WHEN rp.id IS NOT NULL THEN rp.full_name ELSE r.fio END AS fio,
+              CASE WHEN ru.id IS NOT NULL THEN ru.phone WHEN rp.id IS NOT NULL THEN rp.phone
+                   ELSE coalesce(r.phones[1], r.phone) END AS person_phone,
+              CASE WHEN ru.id IS NOT NULL THEN ru.age WHEN rp.id IS NOT NULL THEN rp.age ELSE r.age END AS person_age,
+              CASE WHEN ru.id IS NOT NULL THEN ru.schedule_raw WHEN rp.id IS NOT NULL THEN rp.schedule ELSE r.manual_schedule END AS person_schedule
          FROM placement_notices n
          JOIN users u    ON u.id = n.user_id
          JOIN groups g   ON g.id = n.group_id
@@ -127,7 +130,7 @@ export class PlacementNoticesRepo {
     );
     return rows.map((x) => ({
       id: Number(x.id), recipient: x.recipient, groupCode: groupCode(Number(x.group_id)), leader: x.leader ?? '',
-      leaderPhone: x.leader_phone, day: x.day, time: x.time, fio: x.fio, personPhone: x.person_phone, personSchedule: x.person_schedule,
+      leaderPhone: x.leader_phone, day: x.day, time: x.time, fio: x.fio, personPhone: x.person_phone, personAge: x.person_age, personSchedule: x.person_schedule,
       platform: x.platform, chatId: x.chat_id, attempts: x.attempts,
     }));
   }

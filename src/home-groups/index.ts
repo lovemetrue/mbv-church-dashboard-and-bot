@@ -12,6 +12,8 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { serviceFromEnv } from '../admin/notifierFromEnv.js';
 import { createExtraInvites } from '../core/extraInvites.js';
+import { createCoordinatorContacts } from '../core/coordinatorContacts.js';
+import { CoordinatorContactsRepo } from '../db/repos/coordinatorContacts.repo.js';
 import { startAutoMatching } from './matching/scheduler.js';
 import { createHomeGroupsServer } from './server.js';
 import { startGeocoding } from './geocodeJob.js';
@@ -80,6 +82,7 @@ async function main(): Promise<void> {
     notify: bots.notify,
     // Без подключённых ботов слать приглашения нечем: кнопка в «Настройках» покажет, что недоступна.
     ...(bots.deps.platforms.size > 0 ? { invites: createExtraInvites(bots.deps) } : {}),
+    ...(bots.deps.platforms.size > 0 ? { coordinatorContacts: createCoordinatorContacts({ ...bots.deps, contacts: new CoordinatorContactsRepo(db) }) } : {}),
     defaultCapacity, ttlMs: 10_000, timeZone: env('TIMEZONE', 'Europe/Moscow'),
     store,
     // Почта и публичный адрес необязательны: без них ссылки на пароль показываются администратору на экране.

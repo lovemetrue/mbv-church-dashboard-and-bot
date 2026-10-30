@@ -71,6 +71,7 @@
  *   GET  /api/v1/settings/bot           → SettingsBotView (только super)
  *   POST /api/v1/settings/bot/extra-questions ExtraQuestionsBody → ActionOk | ActionError (только super)
  *   POST /api/v1/settings/bot/send-extra-questions SendExtraInvitesBody → SendExtraInvitesOk | ActionError (только super; пишет живым людям)
+ *   POST /api/v1/settings/bot/send-coordinator-contacts SendCoordinatorContactsBody → SendExtraInvitesOk | ActionError (только super; ведущим — контакт координатора)
  *   POST /api/v1/requests/:id/close     CloseBody       → ActionOk | ActionError (обработано или аннулировать с причиной)
  *   POST /api/v1/requests/:id/reopen    (тело {})       → ActionOk | ActionError (вернуть закрытую заявку в работу)
  *   POST /api/v1/people/:id/delete      (тело {})       → ActionOk | ActionError (только super; стирает регистрацию с заявками)
@@ -882,6 +883,27 @@ export interface SettingsBotView {
   };
   /** Досылка двух новых вопросов тем, кто уже зарегистрирован (кнопка в «Настройках»). */
   invites: ExtraInvitesView;
+  /** Рассылка ведущим контакта их координатора (кнопка в «Настройках»). Нет поля — старый сервер. */
+  coordinatorContacts?: CoordinatorContactsView;
+}
+
+/**
+ * Рассылка ведущим «кто ваш координатор и его телефон». total — скольким уйдёт; списки — коды групп, где не уйдёт:
+ * ведущего нет в боте, координатор не закреплён, у координатора нет телефона. Личных данных здесь нет, только коды.
+ */
+export interface CoordinatorContactsView {
+  available: boolean;
+  total: number;
+  /** Скольким это же сообщение уже доставлено — повторно не уйдёт (сменится координатор или телефон — уйдёт новое). */
+  alreadySent: number;
+  noChat: string[];
+  noCoordinator: string[];
+  noPhone: string[];
+}
+
+/** `POST /api/v1/settings/bot/send-coordinator-contacts` (только super): подтверждённое число получателей. */
+export interface SendCoordinatorContactsBody {
+  expectedTotal: number;
 }
 
 export interface ExtraInvitesView {

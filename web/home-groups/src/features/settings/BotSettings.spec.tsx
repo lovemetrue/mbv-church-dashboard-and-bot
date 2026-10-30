@@ -575,3 +575,38 @@ describe('«Настройки»: бот — дослать вопросы те�
     expect(within(b).queryByRole('alert')).not.toBeInTheDocument();
   });
 });
+
+describe('«Настройки → Бот»: ведущим — контакт координатора', () => {
+  const withContacts = (): SettingsBotView => ({
+    ...view(),
+    coordinatorContacts: { available: true, total: 3, alreadySent: 4, noChat: ['ДГ-0005'], noCoordinator: ['ДГ-0007', 'ДГ-0008'], noPhone: [] },
+  });
+
+  test('видно, скольким уйдёт и у каких групп не уйдёт; после подтверждения уходит подтверждённое число', async () => {
+    let body: unknown = null;
+    const { fetchMock } = openBot({
+      'settings/bot': () => json(withContacts()),
+      'settings/bot/send-coordinator-contacts': () => json({ ok: true, sent: 3, failed: 0, blocked: 0 }),
+    });
+    const group = await screen.findByRole('group', { name: 'Ведущим — контакт координатора' });
+    expect(within(group).getByText(/Ведущего нет в боте/)).toHaveTextContent('ДГ-0005');
+    expect(within(group).getByText(/не закреплён координатор/)).toHaveTextContent('2');
+    expect(within(group).getByText(/Уже получили — повторно не придёт/)).toHaveTextContent('4');
+    const user = userEvent.setup();
+    await user.click(within(group).getByRole('button', { name: 'Разослать ведущим (3)' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Разослать ведущим контакт координатора?' });
+    expect(dialog).toHaveTextContent('Сообщение уйдёт 3 ведущим.');
+    await user.click(within(dialog).getByRole('button', { name: 'Да, разослать' }));
+    expect(await within(group).findByRole('status')).toHaveTextContent('Готово: доставлено 3.');
+    const call = fetchMock.mock.calls.find(([u]) => String(u).endsWith('settings/bot/send-coordinator-contacts'))!;
+    body = JSON.parse(String((call as unknown as [unknown, RequestInit])[1].body));
+    expect(body).toEqual({ expectedTotal: 3 });
+  });
+
+  test('некому отправлять — кнопки нет, сказано почему', async () => {
+    openBot({ 'settings/bot': () => json({ ...view(), coordinatorContacts: { available: true, total: 0, alreadySent: 5, noChat: [], noCoordinator: ['ДГ-0007'], noPhone: [] } }) });
+    const group = await screen.findByRole('group', { name: 'Ведущим — контакт координатора' });
+    expect(within(group).queryByRole('button', { name: /Разослать ведущим/ })).not.toBeInTheDocument();
+    expect(within(group).getByText(/Некому отправлять/)).toBeInTheDocument();
+  });
+});

@@ -21,4 +21,6 @@ export const FORMS = {
   request: ['заявка', 'заявки', 'заявок'],
   person: ['человек', 'человека', 'человек'],
   day: ['день', 'дня', 'дней'],
+  // Дательный: «уйдёт 1 ведущему», «уйдёт 5 ведущим».
+  leaderTo: ['ведущему', 'ведущим', 'ведущим'],
 } as const satisfies Record<string, readonly [string, string, string]>;

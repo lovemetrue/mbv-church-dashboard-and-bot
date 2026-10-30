@@ -17,6 +17,7 @@ import type {
   GeneratePasswordOk,
   RevealPasswordOk,
   SavePromptBody,
+  SendCoordinatorContactsBody,
   SendExtraInvitesBody,
   SendExtraInvitesOk,
   AssistantEnabledBody,
@@ -209,6 +210,17 @@ export function useBotActions() {
      * (число изменилось, человек должен увидеть новое). При обрыве связи не перечитываем: сервер, скорее всего, недоступен,
      * а о том, ушла ли рассылка, скажет человек, обновив обзор сам.
      */
+    /** Ведущим — контакт координатора. Как и доп. вопросы: без повторов, обзор перечитываем после успеха и после `conflict`. */
+    async sendCoordinatorContacts(body: SendCoordinatorContactsBody): Promise<SendExtraInvitesOk> {
+      try {
+        const result = await apiPost<SendExtraInvitesOk>('settings/bot/send-coordinator-contacts', body);
+        await queryClient.invalidateQueries({ queryKey: settingsKeys.bot });
+        return result;
+      } catch (e) {
+        if (e instanceof ApiError && e.code === 'conflict') await queryClient.invalidateQueries({ queryKey: settingsKeys.bot });
+        throw e;
+      }
+    },
     async sendExtraQuestions(body: SendExtraInvitesBody): Promise<SendExtraInvitesOk> {
       try {
         const result = await apiPost<SendExtraInvitesOk>('settings/bot/send-extra-questions', body);

@@ -63,6 +63,7 @@ import { createLoader } from './loader.js';
 import { createMatching } from './matching/run.js';
 import type { PlanEngineApi } from './plan/types.js';
 import type { ExtraInvites } from '../core/extraInvites.js';
+import type { CoordinatorContacts } from '../core/coordinatorContacts.js';
 
 export interface ComposeOptions { defaultCapacity: number; ttlMs: number; timeZone?: string }
 
@@ -91,6 +92,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     notify?: (request: RequestWithUser) => Promise<void>;
     /** Досылка новых вопросов зарегистрированным; нет её (боты не подключены) — кнопка в «Настройках» недоступна. */
     invites?: ExtraInvites;
+    coordinatorContacts?: CoordinatorContacts;
     /** Сбросить кэш входа после изменения людей и режима. */
     onStaffChange?: () => void;
     /** Каталоги с файлами базы знаний (по порядку: первый найденный файл). По умолчанию — каталоги репозитория. */
@@ -212,6 +214,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   };
   const botSettings = createBotSettings({
     settings: appSettings, audit: new AuditRepo(db), envValue: opts.extraQuestionsEnv ?? 'off', ...(opts.invites ? { invites: opts.invites } : {}),
+    ...(opts.coordinatorContacts ? { coordinatorContacts: opts.coordinatorContacts } : {}),
   });
   const auditRepo = new AuditRepo(db);
   const audit = (actor: string, action: string, after: unknown) => auditRepo.write(actor, action, 'export', null, after);

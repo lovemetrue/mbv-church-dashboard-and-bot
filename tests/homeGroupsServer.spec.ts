@@ -233,6 +233,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
       view: async () => { settingsCalls.push({ name: 'bot.view' }); return { generatedAt: 'g', extraQuestions: { mode: 'off', ids: '', source: 'env', envValue: 'off' } }; },
       setExtraQuestions: async (body: unknown, actor: string) => { settingsCalls.push({ name: 'bot.save', actor, body }); return settingsOutcome; },
       sendExtraInvites: async (body: unknown, actor: string) => { settingsCalls.push({ name: 'bot.invites', actor, body }); return { ok: true, sent: 2, failed: 0, blocked: 0 }; },
+      sendCoordinatorContacts: async (body: unknown, actor: string) => { settingsCalls.push({ name: 'bot.coordinators', actor, body }); return { ok: true, sent: 5, failed: 1, blocked: 0 }; },
     } as never,
     exporter: { requests: async () => '\uFEFF№;ФИО\r\n1;Мария\r\n', people: async () => '\uFEFFномер\r\n' },
     audit: async (actor: string, action: string, after: unknown) => { auditCalls.push({ actor, action, after }); },
@@ -1681,6 +1682,18 @@ describe('досылка новых вопросов из «Настроек»',
     expect(r.status).toBe(200);
     expect(await r.json()).toEqual({ ok: true, sent: 2, failed: 0, blocked: 0 });
     expect(app.settingsCalls.slice(before)).toEqual([{ name: 'bot.invites', actor: SUPER.login, body: { expectedTotal: 2 } }]);
+  });
+
+  test('контакты координаторов ведущим: только полный вход; тело и автор доходят до сервиса', async () => {
+    const post = (cookie: string | null) => fetch(`${app.base}/api/v1/settings/bot/send-coordinator-contacts`, {
+      method: 'POST', headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify({ expectedTotal: 6 }),
+    });
+    const before = app.settingsCalls.length;
+    expect((await post(await signIn(REGULAR))).status).toBe(403);
+    expect(app.settingsCalls.length).toBe(before);
+    const r = await post(await signIn(SUPER));
+    expect(await r.json()).toEqual({ ok: true, sent: 5, failed: 1, blocked: 0 });
+    expect(app.settingsCalls.slice(before)).toEqual([{ name: 'bot.coordinators', actor: SUPER.login, body: { expectedTotal: 6 } }]);
   });
 
   test('рассылку нельзя вызвать запросом GET: изменяющие адреса отвечают 404', async () => {

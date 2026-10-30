@@ -61,7 +61,7 @@ describe('кому разослать контакт координатора', 
     });
     const p = await c.preview();
     const code = (n: number) => `ДГ-${String(n).padStart(4, '0')}`;
-    expect(p).toEqual({ total: 1, noChat: [code(noChat)], noCoordinator: [code(noCoord)], noPhone: [code(noPhone)] });
+    expect(p).toEqual({ total: 1, alreadySent: 0, noChat: [code(noChat)], noCoordinator: [code(noCoord)], noPhone: [code(noPhone)] });
     expect(await c.send(2)).toEqual({ status: 'changed', actual: 1 });
     expect(sent).toEqual([]);
     expect(await c.send(1)).toEqual({ status: 'sent', sent: 1, failed: 0, blocked: 0 });
@@ -80,4 +80,33 @@ test('рассылка без отметки «приглашён на новы�
   await new DeliveriesRepo(db).openFor('coordinator:t:1', 'текст', [], [u], { markInvited: false });
   expect((await db.query('SELECT extra_invited_at FROM users WHERE id = $1', [u])).rows[0].extra_invited_at).toBeNull();
   expect((await db.query(`SELECT buttons FROM broadcasts WHERE key = 'coordinator:t:1'`)).rows[0].buttons).toBeNull();
+});
+
+test('кому это же сообщение уже доставлено, второй раз не уходит; сменился телефон координатора — уходит новое', async () => {
+  const coordUser = await user('max', '+79001110000', 'Петрова Анна');
+  await coordinator('Анна', coordUser);
+  const leader = await user('max', '+79005550000');
+  await group({ coordinator: 'Анна', leaderUserId: leader });
+  const c = createCoordinatorContacts({
+    contacts: repo, platforms: new Map([['max', {} as never]]), deliveries: {} as never, sender: {} as never,
+  });
+  // Доставлено раньше: та же запись, что оставляет рассыльщик.
+  const [t] = await repo.targets(['max']);
+  await db.query(`INSERT INTO broadcasts (key, body) VALUES ('coordinator:old:1', $1)`, [coordinatorContactText(t!)]);
+  await db.query(`INSERT INTO deliveries (broadcast_key, user_id, status, sent_at) VALUES ('coordinator:old:1', $1, 'sent', now())`, [leader]);
+  expect(await c.preview()).toMatchObject({ total: 0, alreadySent: 1 });
+  expect(await c.send(0)).toEqual({ status: 'none' });
+
+  await db.query(`UPDATE users SET phone = '+79009990000' WHERE id = $1`, [coordUser]);
+  expect(await c.preview()).toMatchObject({ total: 1, alreadySent: 0 });
+});
+
+test('не дошло в прошлый раз (failed) — не считается отправленным', async () => {
+  await coordinator('Анна', await user('max', '+79001110000'));
+  const leader = await user('max', '+79005550000');
+  await group({ coordinator: 'Анна', leaderUserId: leader });
+  const [t] = await repo.targets(['max']);
+  await db.query(`INSERT INTO broadcasts (key, body) VALUES ('coordinator:old:1', $1)`, [coordinatorContactText(t!)]);
+  await db.query(`INSERT INTO deliveries (broadcast_key, user_id, status) VALUES ('coordinator:old:1', $1, 'failed')`, [leader]);
+  expect(await repo.alreadySent()).toEqual(new Set());
 });

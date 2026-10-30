@@ -894,6 +894,8 @@ export interface SettingsBotView {
 export interface CoordinatorContactsView {
   available: boolean;
   total: number;
+  /** Скольким это же сообщение уже доставлено — повторно не уйдёт (сменится координатор или телефон — уйдёт новое). */
+  alreadySent: number;
   noChat: string[];
   noCoordinator: string[];
   noPhone: string[];

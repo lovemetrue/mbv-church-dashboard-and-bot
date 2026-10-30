@@ -13,6 +13,9 @@ export interface CoordinatorContactTarget {
   leaderUserId: number | null;
 }
 
+/** Ключ учёта «кому что ушло». */
+export const sentKey = (userId: number, text: string): string => `${userId}\u0000${text}`;
+
 /** Последние десять цифр: так одинаково выглядят +7…, 8… и номер без кода страны. */
 const phoneKey = (raw: string | null | undefined): string | null => {
   const digits = (raw ?? '').replace(/\D/g, '');
@@ -28,6 +31,19 @@ const phoneKey = (raw: string | null | undefined): string | null => {
  */
 export class CoordinatorContactsRepo {
   constructor(private readonly db: Pool) {}
+
+  /**
+   * Что уже доставлено ведущим этой рассылкой: «регистрация + текст». Повтор не уходит, пока текст тот же; сменился
+   * координатор или его телефон — текст другой, и ведущий получит новый контакт. Учёт — в той же `deliveries`, что ведёт
+   * рассыльщик: «доставлено» он ставит только после ответа платформы.
+   */
+  async alreadySent(): Promise<Set<string>> {
+    const { rows } = await this.db.query<{ user_id: number; body: string }>(
+      `SELECT d.user_id, b.body FROM deliveries d JOIN broadcasts b ON b.key = d.broadcast_key
+        WHERE b.key LIKE 'coordinator:%' AND d.status = 'sent'`,
+    );
+    return new Set(rows.map((r) => sentKey(Number(r.user_id), r.body)));
+  }
 
   async targets(platforms: readonly string[]): Promise<CoordinatorContactTarget[]> {
     const { rows } = await this.db.query<{

@@ -373,6 +373,11 @@ function CoordinatorContacts({ view }: { view: CoordinatorContactsView }) {
           <li>
             {c.willSend}: <b>{view.total}</b>
           </li>
+          {view.alreadySent > 0 && (
+            <li>
+              {c.alreadySent}: <b>{view.alreadySent}</b>
+            </li>
+          )}
           {missing.map((m) => (
             <li key={m.label}>
               {m.label}: <b>{m.codes.length}</b> <span className={styles.muted}>({m.codes.join(', ')})</span>

@@ -579,7 +579,7 @@ describe('«Настройки»: бот — дослать вопросы те�
 describe('«Настройки → Бот»: ведущим — контакт координатора', () => {
   const withContacts = (): SettingsBotView => ({
     ...view(),
-    coordinatorContacts: { available: true, total: 3, noChat: ['ДГ-0005'], noCoordinator: ['ДГ-0007', 'ДГ-0008'], noPhone: [] },
+    coordinatorContacts: { available: true, total: 3, alreadySent: 4, noChat: ['ДГ-0005'], noCoordinator: ['ДГ-0007', 'ДГ-0008'], noPhone: [] },
   });
 
   test('видно, скольким уйдёт и у каких групп не уйдёт; после подтверждения уходит подтверждённое число', async () => {
@@ -591,6 +591,7 @@ describe('«Настройки → Бот»: ведущим — контакт �
     const group = await screen.findByRole('group', { name: 'Ведущим — контакт координатора' });
     expect(within(group).getByText(/Ведущего нет в боте/)).toHaveTextContent('ДГ-0005');
     expect(within(group).getByText(/не закреплён координатор/)).toHaveTextContent('2');
+    expect(within(group).getByText(/Уже получили — повторно не придёт/)).toHaveTextContent('4');
     const user = userEvent.setup();
     await user.click(within(group).getByRole('button', { name: 'Разослать ведущим (3)' }));
     const dialog = await screen.findByRole('dialog', { name: 'Разослать ведущим контакт координатора?' });
@@ -603,7 +604,7 @@ describe('«Настройки → Бот»: ведущим — контакт �
   });
 
   test('некому отправлять — кнопки нет, сказано почему', async () => {
-    openBot({ 'settings/bot': () => json({ ...view(), coordinatorContacts: { available: true, total: 0, noChat: [], noCoordinator: ['ДГ-0007'], noPhone: [] } }) });
+    openBot({ 'settings/bot': () => json({ ...view(), coordinatorContacts: { available: true, total: 0, alreadySent: 5, noChat: [], noCoordinator: ['ДГ-0007'], noPhone: [] } }) });
     const group = await screen.findByRole('group', { name: 'Ведущим — контакт координатора' });
     expect(within(group).queryByRole('button', { name: /Разослать ведущим/ })).not.toBeInTheDocument();
     expect(within(group).getByText(/Некому отправлять/)).toBeInTheDocument();

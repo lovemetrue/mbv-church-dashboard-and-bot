@@ -38,7 +38,7 @@ export function createBotSettings(deps: {
   coordinatorContacts?: CoordinatorContacts;
 }) {
   async function contactsView(): Promise<CoordinatorContactsView> {
-    if (!deps.coordinatorContacts) return { available: false, total: 0, noChat: [], noCoordinator: [], noPhone: [] };
+    if (!deps.coordinatorContacts) return { available: false, total: 0, alreadySent: 0, noChat: [], noCoordinator: [], noPhone: [] };
     return { available: true, ...(await deps.coordinatorContacts.preview()) };
   }
 
@@ -70,7 +70,7 @@ export function createBotSettings(deps: {
       if (result.status === 'changed') {
         return { ok: false, error: 'conflict', message: `Список изменился: теперь ведущих ${result.actual}, а вы подтверждали ${expected}. Обновите и подтвердите ещё раз.` };
       }
-      if (result.status === 'none') return refuse('Некому отправлять: ни у одной группы нет и координатора с телефоном, и ведущего в боте.');
+      if (result.status === 'none') return refuse('Некому отправлять: все ведущие, кому можно написать, этот контакт уже получили.');
       // В журнале числа; кому ушло — это люди, их в журнал не кладём.
       await deps.audit.write(actor, 'settings.coordinator_contacts', 'settings', null, { sent: result.sent, failed: result.failed, blocked: result.blocked });
       return { ok: true, sent: result.sent, failed: result.failed, blocked: result.blocked };

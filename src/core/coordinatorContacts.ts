@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Deps } from '../deps.js';
-import type { CoordinatorContactsRepo, CoordinatorContactTarget } from '../db/repos/coordinatorContacts.repo.js';
+import { sentKey, type CoordinatorContactsRepo, type CoordinatorContactTarget } from '../db/repos/coordinatorContacts.repo.js';
 import { formatPhone } from './phone.js';
 
 /**
@@ -30,6 +30,8 @@ export function coordinatorContactText(t: Pick<CoordinatorContactTarget, 'leader
 export interface CoordinatorContactsPreview {
   /** Скольким ведущим уйдёт. */
   total: number;
+  /** Скольким это же сообщение уже доставлено: повторно не уйдёт. */
+  alreadySent: number;
   /** Коды групп, где сообщение не уйдёт, и почему: ведущего нет в боте, координатор не закреплён, у координатора нет телефона. */
   noChat: string[];
   noCoordinator: string[];
@@ -41,16 +43,19 @@ export type CoordinatorContactsResult =
   | { status: 'none' }
   | { status: 'changed'; actual: number };
 
-type ContactDeps = Pick<Deps, 'platforms' | 'deliveries' | 'sender'> & { contacts: Pick<CoordinatorContactsRepo, 'targets'> };
+type ContactDeps = Pick<Deps, 'platforms' | 'deliveries' | 'sender'> & { contacts: Pick<CoordinatorContactsRepo, 'targets' | 'alreadySent'> };
 
 export function createCoordinatorContacts(deps: ContactDeps) {
   async function split() {
-    const all = await deps.contacts.targets([...deps.platforms.keys()]);
+    const [all, sent] = await Promise.all([deps.contacts.targets([...deps.platforms.keys()]), deps.contacts.alreadySent()]);
     const noCoordinator = all.filter((t) => t.coordinator === null);
     const noPhone = all.filter((t) => t.coordinator !== null && !t.coordinatorPhone);
     const reachable = all.filter((t) => t.coordinator !== null && t.coordinatorPhone);
+    const inBot = reachable.filter((t) => t.leaderUserId !== null);
+    const done = (t: CoordinatorContactTarget) => sent.has(sentKey(t.leaderUserId!, coordinatorContactText(t)));
     return {
-      ready: reachable.filter((t) => t.leaderUserId !== null),
+      ready: inBot.filter((t) => !done(t)),
+      alreadySent: inBot.filter(done),
       noChat: reachable.filter((t) => t.leaderUserId === null),
       noCoordinator,
       noPhone,
@@ -61,12 +66,16 @@ export function createCoordinatorContacts(deps: ContactDeps) {
   return {
     async preview(): Promise<CoordinatorContactsPreview> {
       const s = await split();
-      return { total: s.ready.length, noChat: codes(s.noChat), noCoordinator: codes(s.noCoordinator), noPhone: codes(s.noPhone) };
+      return {
+        total: s.ready.length, alreadySent: s.alreadySent.length,
+        noChat: codes(s.noChat), noCoordinator: codes(s.noCoordinator), noPhone: codes(s.noPhone),
+      };
     },
 
     /**
      * Рассылает. `expectedTotal` — число, которое человек видел и подтвердил: изменилось (закрепили координатора, ведущий
-     * написал боту) — ничего не уходит, пусть посмотрит ещё раз. Повторное нажатие шлёт заново: ключи рассылок разные.
+     * написал боту) — ничего не уходит, пусть посмотрит ещё раз. Кому это же сообщение уже доставлено, второй раз не уходит:
+     * повтор только тем, у кого сменился координатор или его телефон, и тем, кому в прошлый раз не дошло.
      */
     async send(expectedTotal: number): Promise<CoordinatorContactsResult> {
       const s = await split();

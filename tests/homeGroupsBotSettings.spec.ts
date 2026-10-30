@@ -95,7 +95,7 @@ describe('досылка новых вопросов из «Настроек»',
     expect((await s.view()).invites).toMatchObject({ available: false, total: 0 });
     expect(await s.sendExtraInvites({ expectedTotal: 1 }, 'boss')).toMatchObject({ ok: false, error: 'unavailable' });
     expect(await s.sendCoordinatorContacts({ expectedTotal: 1 }, 'boss')).toMatchObject({ ok: false, error: 'unavailable' });
-    expect((await s.view()).coordinatorContacts).toEqual({ available: false, total: 0, noChat: [], noCoordinator: [], noPhone: [] });
+    expect((await s.view()).coordinatorContacts).toEqual({ available: false, total: 0, alreadySent: 0, noChat: [], noCoordinator: [], noPhone: [] });
   });
 
   test('отправка шлёт приглашения подтверждённому числу людей, в журнал идут числа, а не люди', async () => {
@@ -143,14 +143,14 @@ describe('контакты координаторов ведущим', () => {
   const withContacts = (send: () => Promise<unknown>) => createBotSettings({
     settings: new SettingsRepo(db), audit: new AuditRepo(db), envValue: 'off',
     coordinatorContacts: {
-      preview: async () => ({ total: 2, noChat: ['ДГ-0005'], noCoordinator: ['ДГ-0007'], noPhone: [] }),
+      preview: async () => ({ total: 2, alreadySent: 4, noChat: ['ДГ-0005'], noCoordinator: ['ДГ-0007'], noPhone: [] }),
       send: send as never,
     },
   });
 
   test('предпросмотр — в виде «Настроек»: сколько уйдёт и коды групп, где не уйдёт', async () => {
     const s = withContacts(async () => ({ status: 'none' }));
-    expect((await s.view()).coordinatorContacts).toEqual({ available: true, total: 2, noChat: ['ДГ-0005'], noCoordinator: ['ДГ-0007'], noPhone: [] });
+    expect((await s.view()).coordinatorContacts).toEqual({ available: true, total: 2, alreadySent: 4, noChat: ['ДГ-0005'], noCoordinator: ['ДГ-0007'], noPhone: [] });
   });
 
   test('число изменилось — конфликт с пояснением; некому — отказ; без подтверждённого числа — отказ', async () => {

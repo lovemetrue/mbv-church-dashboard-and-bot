@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import type { SendExtraInvitesBody, SettingsBotView } from '@contracts';
+import type { CoordinatorContactsView, SendExtraInvitesBody, SettingsBotView } from '@contracts';
 import { FORMS, plural } from '../../entities/plural';
 import { ru } from '../../shared/i18n/ru';
 import { Button, Modal } from '../../shared/ui';
@@ -316,10 +316,107 @@ export function BotSection() {
           <>
             <ExtraQuestionsForm current={data.extraQuestions} onUnsavedChange={setUnsaved} />
             <ExtraInvites invites={data.invites} unsaved={unsaved} />
+            {data.coordinatorContacts && <CoordinatorContacts view={data.coordinatorContacts} />}
             <p className={`${styles.muted} ${styles.hintBelow}`}>{t.resendHint}</p>
           </>
         )}
       </QueryBoundary>
     </section>
+  );
+}
+
+/**
+ * «Ведущим — контакт координатора»: сколько уйдёт и у каких групп не уйдёт (кодами — без имён), пример текста, кнопка с
+ * подтверждением. Уходит живым людям, поэтому подтверждается число, которое человек видел: изменилось — сервер
+ * отказывает (`conflict`), ничего не уходит вслепую.
+ */
+function CoordinatorContacts({ view }: { view: CoordinatorContactsView }) {
+  const c = t.coordinators;
+  const actions = useBotActions();
+  const titleId = useId();
+  const [confirming, setConfirming] = useState<number | null>(null);
+  const [pending, setPending] = useState(false);
+  const inFlight = useRef(false);
+  const [notice, setNotice] = useState<Notice | null>(null);
+
+  async function send(expectedTotal: number) {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setPending(true);
+    setNotice(null);
+    try {
+      const r = await actions.sendCoordinatorContacts({ expectedTotal });
+      setNotice({ kind: 'ok', text: c.done(r.sent, r.failed, r.blocked) });
+    } catch (e) {
+      setNotice({ kind: 'error', text: inviteErrorText(e) });
+    } finally {
+      inFlight.current = false;
+      setPending(false);
+    }
+  }
+
+  const reason = !view.available ? c.notConnected : view.total === 0 ? c.nobody : null;
+  const missing = [
+    { label: c.noChat, codes: view.noChat },
+    { label: c.noCoordinator, codes: view.noCoordinator },
+    { label: c.noPhone, codes: view.noPhone },
+  ].filter((m) => m.codes.length > 0);
+
+  return (
+    <div className={styles.block} role="group" aria-labelledby={titleId}>
+      <h3 id={titleId} className={styles.blockTitle}>
+        {c.title}
+      </h3>
+      <p>{c.intro}</p>
+      {view.available && (
+        <ul className={styles.recipients}>
+          <li>
+            {c.willSend}: <b>{view.total}</b>
+          </li>
+          {missing.map((m) => (
+            <li key={m.label}>
+              {m.label}: <b>{m.codes.length}</b> <span className={styles.muted}>({m.codes.join(', ')})</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <details className={styles.texts}>
+        <summary>{c.sample}</summary>
+        <p className={styles.inviteText}>{c.sampleText}</p>
+      </details>
+      {notice && (
+        <p className={notice.kind === 'ok' ? styles.noticeOk : styles.noticeError} role={notice.kind === 'ok' ? 'status' : 'alert'}>
+          {notice.text}
+        </p>
+      )}
+      {reason ? (
+        <p className={styles.muted}>{reason}</p>
+      ) : (
+        <div className={styles.actionsRow}>
+          <Button variant="primary" disabled={pending} onClick={() => setConfirming(view.total)}>
+            {pending ? c.sending : c.send(view.total)}
+          </Button>
+        </div>
+      )}
+      {confirming !== null && (
+        <Modal title={c.confirmTitle} onClose={() => setConfirming(null)}>
+          <p>{c.confirmQuestion(plural(confirming, FORMS.leaderTo))}</p>
+          <div className={styles.dialogFoot}>
+            <Button onClick={() => setConfirming(null)}>{c.cancel}</Button>
+            <Button
+              variant="primary"
+              disabled={pending}
+              onClick={() => {
+                const expected = confirming;
+                setConfirming(null);
+                void send(expected);
+              }}
+            >
+              {c.confirmYes}
+            </Button>
+          </div>
+        </Modal>
+      )}
+    </div>
   );
 }

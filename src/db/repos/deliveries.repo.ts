@@ -63,13 +63,16 @@ export class DeliveriesRepo {
     body: string,
     buttons: Button[][],
     userIds: number[],
+    // Отметка «приглашён на новые вопросы» нужна только той рассылке; контакты координатора её ставить не должны.
+    opts: { markInvited: boolean } = { markInvited: true },
   ): Promise<{ created: boolean; queued: number }> {
     const client = await this.db.connect();
     try {
       await client.query('BEGIN');
       const inserted = await client.query(
         'INSERT INTO broadcasts (key, body, buttons) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
-        [key, body, JSON.stringify(buttons)],
+        // Без кнопок — NULL, а не «[]»: рассыльщик шлёт клавиатуру, если она есть, а пустая платформе не нравится.
+        [key, body, buttons.length > 0 ? JSON.stringify(buttons) : null],
       );
       const queued = await client.query(
         `INSERT INTO deliveries (broadcast_key, user_id)
@@ -77,7 +80,7 @@ export class DeliveriesRepo {
          ON CONFLICT (broadcast_key, user_id) DO NOTHING`,
         [key, userIds],
       );
-      await client.query('UPDATE users SET extra_invited_at = now() WHERE id = ANY($1)', [userIds]);
+      if (opts.markInvited) await client.query('UPDATE users SET extra_invited_at = now() WHERE id = ANY($1)', [userIds]);
       await client.query('COMMIT');
       return { created: inserted.rowCount === 1, queued: queued.rowCount ?? 0 };
     } catch (err) {

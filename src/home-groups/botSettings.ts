@@ -2,7 +2,8 @@ import type { AuditRepo } from '../db/repos/audit.repo.js';
 import type { SettingsRepo } from '../db/repos/settings.repo.js';
 import { EXTRA_QUESTIONS_KEY } from '../core/rollout.js';
 import { EXTRA_INVITE_TEXTS, type ExtraInvites } from '../core/extraInvites.js';
-import type { ActionError, SettingsBotView } from './contracts.js';
+import type { ActionError, CoordinatorContactsView, SettingsBotView } from './contracts.js';
+import type { CoordinatorContacts } from '../core/coordinatorContacts.js';
 
 /**
  * Настройка бота из интерфейса: кому задавать новые вопросы анкеты (время и адрес).
@@ -33,7 +34,14 @@ export function createBotSettings(deps: {
   envValue: string;
   /** Досылка приглашений. Нет её (платформы в сервисе не подключены) — кнопка в интерфейсе недоступна. */
   invites?: ExtraInvites;
+  /** Рассылка ведущим контакта координатора; нет — тоже нечем слать. */
+  coordinatorContacts?: CoordinatorContacts;
 }) {
+  async function contactsView(): Promise<CoordinatorContactsView> {
+    if (!deps.coordinatorContacts) return { available: false, total: 0, noChat: [], noCoordinator: [], noPhone: [] };
+    return { available: true, ...(await deps.coordinatorContacts.preview()) };
+  }
+
   async function invitesView(): Promise<SettingsBotView['invites']> {
     const texts = { textJoin: EXTRA_INVITE_TEXTS.join, textLead: EXTRA_INVITE_TEXTS.lead, textLeader: EXTRA_INVITE_TEXTS.leader };
     if (!deps.invites) return { available: false, join: 0, lead: 0, leaders: 0, total: 0, off: false, ...texts };
@@ -49,7 +57,23 @@ export function createBotSettings(deps: {
         generatedAt: new Date().toISOString(),
         extraQuestions: { ...modeOf(fromSettings ? stored : deps.envValue), source: fromSettings ? 'settings' : 'env', envValue: deps.envValue },
         invites: await invitesView(),
+        coordinatorContacts: await contactsView(),
       };
+    },
+
+    /** Разослать ведущим контакт координатора; как и приглашения — только подтверждённому числу получателей. */
+    async sendCoordinatorContacts(body: unknown, actor: string): Promise<SendOutcome> {
+      if (!deps.coordinatorContacts) return { ok: false, error: 'unavailable', message: 'В сервисе не подключён ни один бот: отправить нечем.' };
+      const expected = typeof body === 'object' && body !== null ? (body as Record<string, unknown>)['expectedTotal'] : undefined;
+      if (typeof expected !== 'number' || !Number.isInteger(expected) || expected < 0) return refuse('Нужно подтвердить число получателей.');
+      const result = await deps.coordinatorContacts.send(expected);
+      if (result.status === 'changed') {
+        return { ok: false, error: 'conflict', message: `Список изменился: теперь ведущих ${result.actual}, а вы подтверждали ${expected}. Обновите и подтвердите ещё раз.` };
+      }
+      if (result.status === 'none') return refuse('Некому отправлять: ни у одной группы нет и координатора с телефоном, и ведущего в боте.');
+      // В журнале числа; кому ушло — это люди, их в журнал не кладём.
+      await deps.audit.write(actor, 'settings.coordinator_contacts', 'settings', null, { sent: result.sent, failed: result.failed, blocked: result.blocked });
+      return { ok: true, sent: result.sent, failed: result.failed, blocked: result.blocked };
     },
 
     /**

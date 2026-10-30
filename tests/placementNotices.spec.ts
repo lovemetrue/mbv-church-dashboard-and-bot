@@ -98,8 +98,10 @@ describe('сообщения после «Утвердить»', () => {
 
   test('бот берёт очередь с текстом: имя, телефоны, расписание; отправленное больше не берёт', async () => {
     await notifyOn();
-    const r = await request({ userId: await user(), phone: '+79005556677' });
-    await db.query(`UPDATE requests SET manual_schedule = 'выходные днём' WHERE id = $1`, [r]);
+    // Данные человека — в его регистрации (так их правит и интерфейс), поля заявки — только снимок.
+    const person = await user({ phone: '+79005556677' });
+    await db.query(`UPDATE users SET full_name = 'Никандрова Нина Ивановна', schedule_raw = 'выходные днём' WHERE id = $1`, [person]);
+    const r = await request({ userId: person });
     await placement.approve(r, await group({ leaderUserId: await user(), phones: ['+79001112233'] }), 'a', OPTS);
     const due = await notices.due(10);
     expect(due).toHaveLength(2);
@@ -109,6 +111,32 @@ describe('сообщения после «Утвердить»', () => {
     await notices.markFailed(due[1]!.id, 'blocked');
     expect(await notices.due(10)).toEqual([]);
     expect((await rows()).map((x) => x.status)).toEqual(['sent', 'failed']);
+  });
+
+  test('ведущему — ФИО, телефон, возраст и удобное время человека из его записи (регистрации), а не пустых полей заявки', async () => {
+    await notifyOn();
+    // Так приходят заявки из бота: ФИО и время — в регистрации человека, в самой заявке пусто (миграция 057).
+    const person = Number((await db.query<{ id: number }>(
+      `INSERT INTO users (platform, platform_user_id, chat_id, phone, full_name, age, schedule_raw, registered_at)
+       VALUES ('max', 'p1', 'chat-p1', '+79005556677', 'Виктор Петров', '25-40', 'будни вечером', now()) RETURNING id`)).rows[0]!.id);
+    const r = Number((await db.query<{ id: number }>(
+      `INSERT INTO requests (type, status, origin, user_id, responsible) VALUES ('join_group', 'Новая', 'бот', $1, 'Анна') RETURNING id`, [person])).rows[0]!.id);
+    await placement.approve(r, await group({ leaderUserId: await user() }), 'a', OPTS);
+    const [toPerson, toLeader] = await notices.due(10);
+    expect(toLeader).toMatchObject({ recipient: 'leader', fio: 'Виктор Петров', personPhone: '+79005556677', personAge: '25-40', personSchedule: 'будни вечером' });
+    // Человеку — обращение по имени из той же записи.
+    expect(toPerson).toMatchObject({ recipient: 'person', fio: 'Виктор Петров' });
+  });
+
+  test('карточка человека без регистрации: данные — из карточки', async () => {
+    await notifyOn();
+    const card = Number((await db.query<{ id: number }>(
+      `INSERT INTO persons (full_name, phone, age, schedule) VALUES ('Ольга Смирнова', '+79007778899', '40-55', 'выходные') RETURNING id`)).rows[0]!.id);
+    const r = Number((await db.query<{ id: number }>(
+      `INSERT INTO requests (type, status, origin, person_id, fio, responsible) VALUES ('join_group', 'Новая', 'ui', $1, 'старое имя', 'Анна') RETURNING id`, [card])).rows[0]!.id);
+    await placement.approve(r, await group({ leaderUserId: await user() }), 'a', OPTS);
+    const leader = (await notices.due(10)).find((n) => n.recipient === 'leader')!;
+    expect(leader).toMatchObject({ fio: 'Ольга Смирнова', personPhone: '+79007778899', personAge: '40-55', personSchedule: 'выходные' });
   });
 
   test('ответ кнопкой засчитывается только адресату и только кнопкой его стороны; пишется в журнал', async () => {

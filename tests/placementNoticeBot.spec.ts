@@ -14,6 +14,7 @@ import { setupTestDb, truncateAll } from './helpers/testDb.js';
 const base: NoticeData = {
   id: 7, recipient: 'person', groupCode: 'ДГ-0088', leader: 'Осипова Наталья Евгеньевна', leaderPhone: '+79001112233',
   day: 'Вс', time: '19:00', fio: 'Никандрова Нина Ивановна', personPhone: '+79005556677',
+  personAge: '25-40',
   personSchedule: 'будни вечером',
 };
 
@@ -36,6 +37,7 @@ describe('текст сообщений', () => {
     expect(m.text).toContain('Наталья, здравствуйте! В Вашу группу ДГ-0088 направлен человек.');
     expect(m.text).toContain('Имя: Никандрова Нина Ивановна');
     expect(m.text).toContain('Телефон: +7 900 555-66-77');
+    expect(m.text).toContain('Возраст: 25-40');
     expect(m.text).toContain('Удобное время: будни вечером');
     expect(m.buttons!.flat().map((b) => b.text)).toEqual(['Позвоню в течение 24 часов', 'Нет времени']);
   });

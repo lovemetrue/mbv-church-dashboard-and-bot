@@ -98,6 +98,8 @@ export const groupsConfig: EntityConfig<GroupItem> = {
     // Онлайн-группа — район «Онлайн»: быстрые отборы вместо конструктора «Район ≠ Онлайн».
     { name: ru.reference.noOnlinePreset, filters: [{ field: 'Район', op: 'ne', value: 'Онлайн' }] },
     { name: ru.reference.onlyOnlinePreset, filters: [{ field: 'Район', op: 'eq', value: 'Онлайн' }] },
+    // Адреса собираем постепенно: по нему сами ставятся район и метро. Онлайн-группам адрес не нужен.
+    { name: ru.reference.noAddressPreset, filters: [{ field: 'Адрес', op: 'empty', value: '' }, { field: 'Район', op: 'ne', value: 'Онлайн' }] },
     { name: 'Нет дня и времени', filters: [{ field: 'День', op: 'empty', value: '' }] },
     { name: 'Не подтверждались > 30 дн.', filters: [{ field: 'Проверена, дн.', op: 'ge', value: '31' }] },
     { name: 'Ни разу не подтверждались', filters: [{ field: 'Проверена, дн.', op: 'empty', value: '' }] },

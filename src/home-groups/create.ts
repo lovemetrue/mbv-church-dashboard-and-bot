@@ -1,4 +1,5 @@
 import { SCHEDULE_DAYS, SCHEDULE_TIMES, parseGroupForm, parseRequestForm } from '../dashboard/forms.js';
+import { autoPlace, type Locate } from './locate.js';
 import { ALL_DISTRICTS, ALL_GROUP_STATUSES, COMPOSITIONS, groupCode } from '../core/groups.js';
 import { allChurchOptions } from '../core/churches.js';
 import { AGE_GROUPS } from '../core/texts.js';
@@ -63,6 +64,8 @@ export function createRecordCreator(deps: {
   audit: Pick<AuditRepo, 'write'>;
   /** Уведомление служителю о новой заявке; не должно бросать (см. `notifierFromEnv`). */
   notify?: (request: RequestWithUser) => Promise<void>;
+  /** Район и метро по адресу новой группы (`locate.ts`). */
+  locate?: Locate;
 }) {
   /**
    * Ведущий и соведущий новой группы — люди из «Людей», как и при правке. Выбранный поиском (`leaderKey`) — ссылка на
@@ -132,8 +135,10 @@ export function createRecordCreator(deps: {
         Object.assign(parsed.value, { leader: name, phone, phones: phone ? [phone] : [] });
       }
       // source='ui': видно, откуда запись, и повторный перенос таблицы её не затирает.
+      // Адрес задан — район и метро берём по нему: выбранный в форме район остаётся, только если адрес не нашёлся.
+      const auto = await autoPlace(deps.locate, parsed.value.address, parsed.value.district);
       const created = await deps.groups.create(
-        { ...parsed.value, direction, doNotRefer: flag(form, 'doNotRefer'), chamber: flag(form, 'chamber') }, 'ui',
+        { ...parsed.value, ...auto, direction, doNotRefer: flag(form, 'doNotRefer'), chamber: flag(form, 'chamber') }, 'ui',
       );
       if (requestId !== null && !(await deps.groups.linkToRequest(created.id, requestId))) {
         // Пока заполняли форму, по той же заявке завели другую группу: эту убираем, чтобы не было двух.

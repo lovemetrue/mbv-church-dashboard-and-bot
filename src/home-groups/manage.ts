@@ -8,6 +8,7 @@ import type { RequestsRepo } from '../db/repos/requests.repo.js';
 import type { UsersRepo } from '../db/repos/users.repo.js';
 import type { ActionOutcome } from '../db/repos/placement.repo.js';
 import { UNKNOWN_DIRECTION, fieldsToForm, knownDirection } from './create.js';
+import { autoPlace, type Locate } from './locate.js';
 
 /**
  * Правка и удаление записей справочника из нового интерфейса: группы, координаторы, заявки.
@@ -92,6 +93,8 @@ export function createManager(deps: {
   requests: Pick<RequestsRepo, 'archive'>;
   users: Pick<UsersRepo, 'findById' | 'delete'>;
   audit: Pick<AuditRepo, 'write'>;
+  /** Район и метро по новому адресу (`locate.ts`); без ключа геокодера их просто не будет. */
+  locate?: Locate;
 }) {
   /** Роли из списка должны быть в справочнике: иначе база откажет ссылкой, а человек увидит «ошибку сервера». */
   const checkRoles = async (roles: readonly RoleRef[]): Promise<Extract<ActionOutcome, { ok: false }> | null> => {
@@ -220,9 +223,12 @@ export function createManager(deps: {
         // Отвязанный соведущий уходит целиком — с именем и телефоном, записанными в группе.
         ...(names.coLeader === null ? { coLeader: null, coLeaderPhone: null } : names.coLeader ? { coLeader: names.coLeader } : {}),
       };
-      const updated = await deps.groups.update(id, input);
+      // Район и метро ищем, только когда адрес поменяли: правку района или метро руками при прежнем адресе не перетираем.
+      const addressChanged = given.has('address') && (input.address ?? '') !== (current.address ?? '');
+      const auto = addressChanged ? await autoPlace(deps.locate, input.address, input.district) : {};
+      const updated = await deps.groups.update(id, { ...input, ...auto });
       if (!updated) return fail('not_found', 'Группа не найдена.');
-      await deps.audit.write(actor, 'group.update', 'group', id, { fields: [...given.keys()] });
+      await deps.audit.write(actor, 'group.update', 'group', id, { fields: [...given.keys()], ...(Object.keys(auto).length ? { auto: Object.keys(auto) } : {}) });
       return { ok: true };
     },
 

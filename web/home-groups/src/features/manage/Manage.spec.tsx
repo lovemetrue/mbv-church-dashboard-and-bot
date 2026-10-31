@@ -426,16 +426,47 @@ describe('правка группы', () => {
     expect(posts(fetchMock)[1]).toEqual({ path: 'groups/1/update', body: { fields: { coLeaderKey: 'p55' } } });
   });
 
-  test('адрес и метро показаны как есть, с подсказками про автоподбор', async () => {
+  test('адрес наверху, район и метро ниже, с подсказкой, что они ставятся по адресу сами', async () => {
     stubFetchWithFixtures();
     const user = userEvent.setup();
     const { dialog } = await openGroupEdit(user);
-    // Адрес — обычное поле с текущим значением; подсказка говорит, что подбор идёт по нему, а при пустом — по метро.
     const address = within(dialog).getByRole('textbox', { name: 'Адрес' });
     expect(address).toHaveValue('Комендантский пр.');
-    expect(address).toHaveAccessibleDescription(/Автоподбор сопоставляет группу с адресом человека сначала по этому полю/);
-    expect(within(dialog).getByRole('textbox', { name: 'Метро или ориентир' })).toHaveAccessibleDescription(/Если адрес пуст/);
+    expect(address).toHaveAccessibleDescription(/сами ставятся район и метро/);
+    const district = within(dialog).getByRole('combobox', { name: 'Район' });
+    expect(district).toHaveAccessibleDescription(/Ставится сам по адресу/);
+    expect(within(dialog).getByRole('textbox', { name: 'Метро или ориентир' })).toHaveAccessibleDescription(/Пока адреса нет/);
+    // Порядок: адрес — среди первых полей, район — после него, внизу основных данных.
+    expect(address.compareDocumentPosition(district) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(dialog).queryByText(/дашборд/i)).not.toBeInTheDocument();
+  });
+
+  test('галочка «Онлайн-группа» прячет адрес, район и метро и уходит на сервер районом «Онлайн»', async () => {
+    const fetchMock = stubFetchWithFixtures({ 'groups/1/update': () => json({ ok: true }) });
+    const user = userEvent.setup();
+    const { dialog } = await openGroupEdit(user);
+    const online = within(dialog).getByRole('checkbox', { name: 'Онлайн-группа' });
+    expect(online).not.toBeChecked();
+    // «Онлайн» больше не пункт списка районов: онлайн-группу отмечают только галочкой.
+    expect(within(within(dialog).getByRole('combobox', { name: 'Район' })).queryByRole('option', { name: 'Онлайн' })).not.toBeInTheDocument();
+    await user.click(online);
+    expect(within(dialog).queryByRole('textbox', { name: 'Адрес' })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('combobox', { name: 'Район' })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('textbox', { name: 'Метро или ориентир' })).not.toBeInTheDocument();
+    await user.click(saveButton(dialog));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect((posts(fetchMock)[0]!.body as { fields: Record<string, string> }).fields).toEqual({ district: 'Онлайн' });
+  });
+
+  test('сняли «Онлайн-группа», не сохранив, — район возвращается прежний и на сервер ничего не уходит', async () => {
+    stubFetchWithFixtures();
+    const user = userEvent.setup();
+    const { dialog } = await openGroupEdit(user);
+    const online = within(dialog).getByRole('checkbox', { name: 'Онлайн-группа' });
+    await user.click(online);
+    await user.click(online);
+    expect(within(dialog).getByRole('combobox', { name: 'Район' })).toHaveValue('Приморский');
+    expect(saveButton(dialog)).toBeDisabled();
   });
 
   test('нетронутые телефоны и адрес в запрос не попадают: на сервере остаётся как было', async () => {

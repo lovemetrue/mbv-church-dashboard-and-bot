@@ -18,6 +18,8 @@ import type {
   RevealPasswordOk,
   SavePromptBody,
   SendCoordinatorContactsBody,
+  SendLeaderMessageBody,
+  SendLeaderMessageOk,
   SendExtraInvitesBody,
   SendExtraInvitesOk,
   AssistantEnabledBody,
@@ -214,6 +216,17 @@ export function useBotActions() {
     async sendCoordinatorContacts(body: SendCoordinatorContactsBody): Promise<SendExtraInvitesOk> {
       try {
         const result = await apiPost<SendExtraInvitesOk>('settings/bot/send-coordinator-contacts', body);
+        await queryClient.invalidateQueries({ queryKey: settingsKeys.bot });
+        return result;
+      } catch (e) {
+        if (e instanceof ApiError && e.code === 'conflict') await queryClient.invalidateQueries({ queryKey: settingsKeys.bot });
+        throw e;
+      }
+    },
+    /** Свой текст ведущим действующих групп. Без повторов, как остальные рассылки. */
+    async sendLeaderMessage(body: SendLeaderMessageBody): Promise<SendLeaderMessageOk> {
+      try {
+        const result = await apiPost<SendLeaderMessageOk>('settings/bot/send-leader-message', body);
         await queryClient.invalidateQueries({ queryKey: settingsKeys.bot });
         return result;
       } catch (e) {

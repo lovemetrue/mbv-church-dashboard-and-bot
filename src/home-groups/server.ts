@@ -174,7 +174,7 @@ const CONTENT_TYPES: Record<string, string> = {
 
 class BodyTooLarge extends Error {}
 
-const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode|staff\/generate-password|staff\/password|team-roles\/create|team-roles\/update|team-roles\/delete|directions\/create|directions\/update|directions\/delete|bot\/extra-questions|bot\/send-extra-questions|bot\/send-coordinator-contacts|assistant\/enabled|assistant\/llm|assistant\/llm-test|geocoder|geocoder-test|geocoder-retry|geocoder-reject|map)$/;
+const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode|staff\/generate-password|staff\/password|team-roles\/create|team-roles\/update|team-roles\/delete|directions\/create|directions\/update|directions\/delete|bot\/extra-questions|bot\/send-extra-questions|bot\/send-coordinator-contacts|bot\/send-leader-message|assistant\/enabled|assistant\/llm|assistant\/llm-test|geocoder|geocoder-test|geocoder-retry|geocoder-reject|map)$/;
 const MAP_LOADED_PATH = '/api/v1/map/loaded';
 const CREATE_PATH = /^\/api\/v1\/(requests|groups|people|coordinators)\/create$/;
 /** `POST /api/v1/groups/5/update`: правка и удаление записей справочника. */
@@ -940,6 +940,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       'bot/extra-questions': () => deps.botSettings.setExtraQuestions(call.body, call.actor),
       'bot/send-extra-questions': () => deps.botSettings.sendExtraInvites(call.body, call.actor),
       'bot/send-coordinator-contacts': () => deps.botSettings.sendCoordinatorContacts(call.body, call.actor),
+      'bot/send-leader-message': () => deps.botSettings.sendLeaderMessage(call.body, call.actor),
       'assistant/llm': () => deps.llmConfig.save(call.body, call.actor),
       'assistant/enabled': async () => {
         const b = call.body as { enabled?: unknown } | null;

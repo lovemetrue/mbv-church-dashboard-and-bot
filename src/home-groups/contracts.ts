@@ -72,6 +72,7 @@
  *   POST /api/v1/settings/bot/extra-questions ExtraQuestionsBody → ActionOk | ActionError (только super)
  *   POST /api/v1/settings/bot/send-extra-questions SendExtraInvitesBody → SendExtraInvitesOk | ActionError (только super; пишет живым людям)
  *   POST /api/v1/settings/bot/send-coordinator-contacts SendCoordinatorContactsBody → SendExtraInvitesOk | ActionError (только super; ведущим — контакт координатора)
+ *   POST /api/v1/settings/bot/send-leader-message SendLeaderMessageBody → SendLeaderMessageOk | ActionError (только super; свой текст ведущим действующих групп)
  *   POST /api/v1/requests/:id/close     CloseBody       → ActionOk | ActionError (обработано или аннулировать с причиной)
  *   POST /api/v1/requests/:id/reopen    (тело {})       → ActionOk | ActionError (вернуть закрытую заявку в работу)
  *   POST /api/v1/people/:id/delete      (тело {})       → ActionOk | ActionError (только super; стирает регистрацию с заявками)
@@ -885,6 +886,33 @@ export interface SettingsBotView {
   invites: ExtraInvitesView;
   /** Рассылка ведущим контакта их координатора (кнопка в «Настройках»). Нет поля — старый сервер. */
   coordinatorContacts?: CoordinatorContactsView;
+  /** «Сообщение ведущим» действующих групп (свой текст). Нет поля — старый сервер. */
+  leaderMessage?: LeaderMessageView;
+}
+
+/** Кому уйдёт «сообщение ведущим»: total — ведущих (людей) в боте; noChat — коды действующих групп, чьего ведущего в боте нет. */
+export interface LeaderMessageView {
+  available: boolean;
+  total: number;
+  noChat: string[];
+  /** Сколько знаков можно: больше — сервер откажет. */
+  maxLength: number;
+}
+
+/** `POST /api/v1/settings/bot/send-leader-message` (только super). */
+export interface SendLeaderMessageBody {
+  text: string;
+  /** Число ведущих, которое человек видел и подтвердил. */
+  expectedTotal: number;
+}
+
+export interface SendLeaderMessageOk {
+  ok: true;
+  sent: number;
+  failed: number;
+  blocked: number;
+  /** Этот же текст уже был доставлен раньше — второй раз не ушёл. */
+  alreadySent: number;
 }
 
 /**

@@ -2,8 +2,9 @@ import type { AuditRepo } from '../db/repos/audit.repo.js';
 import type { SettingsRepo } from '../db/repos/settings.repo.js';
 import { EXTRA_QUESTIONS_KEY } from '../core/rollout.js';
 import { EXTRA_INVITE_TEXTS, type ExtraInvites } from '../core/extraInvites.js';
-import type { ActionError, CoordinatorContactsView, SettingsBotView } from './contracts.js';
+import type { ActionError, CoordinatorContactsView, LeaderMessageView, SettingsBotView } from './contracts.js';
 import type { CoordinatorContacts } from '../core/coordinatorContacts.js';
+import { LEADER_MESSAGE_MAX, type LeaderMessage } from '../core/leaderMessage.js';
 
 /**
  * Настройка бота из интерфейса: кому задавать новые вопросы анкеты (время и адрес).
@@ -36,7 +37,14 @@ export function createBotSettings(deps: {
   invites?: ExtraInvites;
   /** Рассылка ведущим контакта координатора; нет — тоже нечем слать. */
   coordinatorContacts?: CoordinatorContacts;
+  /** «Сообщение ведущим» действующих групп; нет — нечем слать. */
+  leaderMessage?: LeaderMessage;
 }) {
+  async function leaderView(): Promise<LeaderMessageView> {
+    if (!deps.leaderMessage) return { available: false, total: 0, noChat: [], maxLength: LEADER_MESSAGE_MAX };
+    return { available: true, maxLength: LEADER_MESSAGE_MAX, ...(await deps.leaderMessage.preview()) };
+  }
+
   async function contactsView(): Promise<CoordinatorContactsView> {
     if (!deps.coordinatorContacts) return { available: false, total: 0, alreadySent: 0, noChat: [], noCoordinator: [], noPhone: [] };
     return { available: true, ...(await deps.coordinatorContacts.preview()) };
@@ -58,6 +66,7 @@ export function createBotSettings(deps: {
         extraQuestions: { ...modeOf(fromSettings ? stored : deps.envValue), source: fromSettings ? 'settings' : 'env', envValue: deps.envValue },
         invites: await invitesView(),
         coordinatorContacts: await contactsView(),
+        leaderMessage: await leaderView(),
       };
     },
 
@@ -74,6 +83,31 @@ export function createBotSettings(deps: {
       // В журнале числа; кому ушло — это люди, их в журнал не кладём.
       await deps.audit.write(actor, 'settings.coordinator_contacts', 'settings', null, { sent: result.sent, failed: result.failed, blocked: result.blocked });
       return { ok: true, sent: result.sent, failed: result.failed, blocked: result.blocked };
+    },
+
+    /**
+     * Свой текст всем ведущим действующих групп. Текст уходит как есть, без разметки: ссылки MAX и Telegram сами делают
+     * нажимаемыми. Подтверждается число ведущих, как у остальных рассылок.
+     */
+    async sendLeaderMessage(body: unknown, actor: string): Promise<SendOutcome | (SendOutcome & { alreadySent: number })> {
+      if (!deps.leaderMessage) return { ok: false, error: 'unavailable', message: 'В сервисе не подключён ни один бот: отправить нечем.' };
+      const fields = typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
+      const expected = fields['expectedTotal'];
+      if (typeof expected !== 'number' || !Number.isInteger(expected) || expected < 0) return refuse('Нужно подтвердить число получателей.');
+      // Пробелы по краям срезаем, переносы строк внутри — как набрали: в них вся вёрстка сообщения.
+      const text = typeof fields['text'] === 'string' ? fields['text'].replace(/\r\n?/g, '\n').trim() : '';
+      if (text === '') return refuse('Напишите текст сообщения.');
+      if (text.length > LEADER_MESSAGE_MAX) return refuse(`Сообщение длиннее ${LEADER_MESSAGE_MAX} знаков: сократите его.`);
+      const result = await deps.leaderMessage.send(text, expected);
+      if (result.status === 'changed') {
+        return { ok: false, error: 'conflict', message: `Список изменился: теперь ведущих ${result.actual}, а вы подтверждали ${expected}. Обновите и подтвердите ещё раз.` };
+      }
+      if (result.status === 'none') return refuse('Некому отправлять: все ведущие, кому можно написать, это сообщение уже получили.');
+      // В журнале числа и длина текста; кому ушло — это люди, их в журнал не кладём.
+      await deps.audit.write(actor, 'settings.leader_message', 'settings', null, {
+        length: text.length, sent: result.sent, failed: result.failed, blocked: result.blocked, alreadySent: result.alreadySent,
+      });
+      return { ok: true, sent: result.sent, failed: result.failed, blocked: result.blocked, alreadySent: result.alreadySent };
     },
 
     /**

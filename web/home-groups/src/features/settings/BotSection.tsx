@@ -481,6 +481,20 @@ function LeaderMessage({ view }: { view: LeaderMessageView }) {
           )}
         </ul>
       )}
+      {view.failures && view.failures.length > 0 && (
+        <details className={styles.texts}>
+          <summary>{c.failures(view.failures.length)}</summary>
+          <p className={styles.muted}>{c.failuresHint}</p>
+          <ul className={styles.recipients}>
+            {view.failures.map((f, i) => (
+              <li key={i}>
+                <b>{f.name || c.noName}</b>
+                {f.groupCodes.length > 0 && <span className={styles.muted}> ({f.groupCodes.join(', ')})</span>} — {f.reason}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {!reason && (
         <>
           <label htmlFor={textId}>{c.label}</label>

@@ -639,6 +639,15 @@ describe('«Настройки → Бот»: сообщение ведущим',
     expect(JSON.parse(String((call as unknown as [unknown, RequestInit])[1].body))).toEqual({ text: TEXT, expectedTotal: 2 });
   });
 
+  test('кому последнее сообщение не дошло — видно имя, группу и причину', async () => {
+    openBot({
+      'settings/bot': () => json(withLeaders({ failures: [{ name: 'Петров Иван', groupCodes: ['ДГ-0012'], reason: 'Заблокировал бота или удалил чат с ним. Сообщите сами.' }] })),
+    });
+    const group = await screen.findByRole('group', { name: 'Сообщение ведущим' });
+    expect(within(group).getByText('Последнее сообщение не дошло: 1')).toBeInTheDocument();
+    expect(within(group).getByText('Петров Иван').closest('li')).toHaveTextContent('Петров Иван (ДГ-0012) — Заблокировал бота');
+  });
+
   test('ведущих в боте нет — ни поля, ни кнопки, сказано почему', async () => {
     openBot({ 'settings/bot': () => json(withLeaders({ total: 0 })) });
     const group = await screen.findByRole('group', { name: 'Сообщение ведущим' });

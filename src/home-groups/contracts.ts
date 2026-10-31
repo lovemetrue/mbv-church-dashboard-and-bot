@@ -895,6 +895,8 @@ export interface LeaderMessageView {
   available: boolean;
   total: number;
   noChat: string[];
+  /** Кому последнее сообщение не дошло и почему (имя из регистрации, коды групп, причина). Видит только полный вход. */
+  failures?: { name: string; groupCodes: string[]; reason: string }[];
   /** Сколько знаков можно: больше — сервер откажет. */
   maxLength: number;
 }

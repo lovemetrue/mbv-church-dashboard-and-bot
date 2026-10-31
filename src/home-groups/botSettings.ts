@@ -41,7 +41,7 @@ export function createBotSettings(deps: {
   leaderMessage?: LeaderMessage;
 }) {
   async function leaderView(): Promise<LeaderMessageView> {
-    if (!deps.leaderMessage) return { available: false, total: 0, noChat: [], maxLength: LEADER_MESSAGE_MAX };
+    if (!deps.leaderMessage) return { available: false, total: 0, noChat: [], failures: [], maxLength: LEADER_MESSAGE_MAX };
     return { available: true, maxLength: LEADER_MESSAGE_MAX, ...(await deps.leaderMessage.preview()) };
   }
 

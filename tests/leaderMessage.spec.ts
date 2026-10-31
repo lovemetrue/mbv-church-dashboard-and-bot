@@ -49,9 +49,23 @@ describe('сообщение ведущим действующих групп', 
     await group({ leaderUserId: await user('max', '400'), status: 'Потенциальная' });
     const noChat = await group({});
     const s = make();
-    expect((await s.view()).leaderMessage).toEqual({ available: true, total: 2, noChat: [`ДГ-${String(noChat).padStart(4, '0')}`], maxLength: LEADER_MESSAGE_MAX });
+    expect((await s.view()).leaderMessage).toEqual({ available: true, total: 2, noChat: [`ДГ-${String(noChat).padStart(4, '0')}`], failures: [], maxLength: LEADER_MESSAGE_MAX });
     expect(await s.sendLeaderMessage({ text: TEXT, expectedTotal: 2 }, 'boss')).toEqual({ ok: true, sent: 2, failed: 0, blocked: 0, alreadySent: 0 });
     expect(max.sent.map((m) => m.chatId).sort()).toEqual(['100', '200']);
+  });
+
+  test('заведённый вручную (без чата с ботом) — «нет в боте», а не «не дошло»; настоящая регистрация с тем же телефоном важнее', async () => {
+    const manual = (phone: string) =>
+      id(`INSERT INTO users (platform, platform_user_id, chat_id, phone, registered_at)
+          VALUES ('max', 'manual:' || gen_random_uuid()::text, '', $1, now()) RETURNING id`, [phone]);
+    const onlyManual = await group({ leaderUserId: await manual('+79001110000') });
+    await user('max', '200', '+79002220000');
+    await manual('+79002220000');
+    await group({ phones: ['+79002220000'] });
+    const s = make();
+    expect((await s.view()).leaderMessage).toMatchObject({ total: 1, noChat: [`ДГ-${String(onlyManual).padStart(4, '0')}`] });
+    expect(await s.sendLeaderMessage({ text: TEXT, expectedTotal: 1 }, 'boss')).toMatchObject({ ok: true, sent: 1, failed: 0 });
+    expect(max.sent.map((m) => m.chatId)).toEqual(['200']);
   });
 
   test('текст доходит как набран: со ссылкой целиком, без разметки и без кнопок', async () => {
@@ -78,6 +92,34 @@ describe('сообщение ведущим действующих групп', 
     expect(await s.sendLeaderMessage({ text: 'я'.repeat(LEADER_MESSAGE_MAX + 1), expectedTotal: 1 }, 'boss')).toMatchObject({ ok: false, error: 'bad_request' });
     expect(await s.sendLeaderMessage({ text: TEXT }, 'boss')).toMatchObject({ ok: false, error: 'bad_request' });
     expect(max.sent).toEqual([]);
+  });
+
+  test('кому последнее сообщение не дошло — имя, группа и причина; дошло позже — из списка уходит', async () => {
+    const failed = await user('max', '100');
+    await db.query(`UPDATE users SET full_name = 'Петров Иван' WHERE id = $1`, [failed]);
+    const g = await group({ leaderUserId: failed });
+    const blocked = await user('max', '300');
+    const manual = await id(`INSERT INTO users (platform, platform_user_id, chat_id, full_name, registered_at)
+      VALUES ('max', 'manual:1', '', 'Сидорова Анна', now()) RETURNING id`);
+    const put = async (key: string, body: string, userId: number, status: string, error: string | null) => {
+      await db.query(`INSERT INTO broadcasts (key, body) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [key, body]);
+      await db.query(`INSERT INTO deliveries (broadcast_key, user_id, status, last_error) VALUES ($1, $2, $3, $4)`, [key, userId, status, error]);
+    };
+    await put('leaders:старое', 'Старый текст', blocked, 'failed', 'x');
+    await db.query(`UPDATE broadcasts SET created_at = now() - interval '1 day' WHERE key = 'leaders:старое'`);
+    await put('leaders:1', TEXT, failed, 'failed', '500: Internal error');
+    await put('leaders:1', TEXT, blocked, 'blocked', '403');
+    await put('leaders:1', TEXT, manual, 'failed', 'chat_id пустой');
+    const s = make();
+    const failures = (await s.view()).leaderMessage!.failures;
+    expect(failures).toEqual([
+      { name: 'Петров Иван', groupCodes: [`ДГ-${String(g).padStart(4, '0')}`], reason: 'Ошибка при отправке: 500: Internal error' },
+      { name: '', groupCodes: [], reason: expect.stringContaining('Заблокировал бота') },
+      { name: 'Сидорова Анна', groupCodes: [], reason: expect.stringContaining('Записан вручную') },
+    ]);
+    // Повтор тем же текстом дошёл — человек из списка уходит.
+    await put('leaders:2', TEXT, failed, 'sent', null);
+    expect((await s.view()).leaderMessage!.failures!.map((f) => f.name)).toEqual(['', 'Сидорова Анна']);
   });
 
   test('в журнале — числа и длина, но не текст', async () => {

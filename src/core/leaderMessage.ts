@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Deps } from '../deps.js';
-import { sentKey, type CoordinatorContactsRepo, type CoordinatorContactTarget } from '../db/repos/coordinatorContacts.repo.js';
+import { sentKey, type CoordinatorContactsRepo, type CoordinatorContactTarget, type LeaderMessageFailureRow } from '../db/repos/coordinatorContacts.repo.js';
+import { groupCode } from './groups.js';
 
 /**
  * «Сообщение ведущим» из «Настройки → Бот»: свой текст всем ведущим действующих групп (статус «Функционирует») — например,
@@ -18,6 +19,21 @@ export interface LeaderMessagePreview {
   total: number;
   /** Коды действующих групп, ведущего которых нет в боте: им не уйдёт. */
   noChat: string[];
+  /** Кому последнее сообщение так и не дошло и почему. */
+  failures: LeaderMessageFailure[];
+}
+
+export interface LeaderMessageFailure {
+  name: string;
+  groupCodes: string[];
+  reason: string;
+}
+
+/** Причина словами служителя: ошибку платформы показываем как есть — по ней видно, что случилось. */
+export function failureReason(r: Pick<LeaderMessageFailureRow, 'status' | 'error' | 'manual'>): string {
+  if (r.manual) return 'Записан вручную, боту сам не писал — в боте его нет. Сообщите сами.';
+  if (r.status === 'blocked') return 'Заблокировал бота или удалил чат с ним. Сообщите сами.';
+  return r.error ? `Ошибка при отправке: ${r.error}` : 'Ошибка при отправке.';
 }
 
 export type LeaderMessageResult =
@@ -25,7 +41,7 @@ export type LeaderMessageResult =
   | { status: 'none'; alreadySent: number }
   | { status: 'changed'; actual: number };
 
-type MessageDeps = Pick<Deps, 'platforms' | 'deliveries' | 'sender'> & { contacts: Pick<CoordinatorContactsRepo, 'targets' | 'alreadySent'> };
+type MessageDeps = Pick<Deps, 'platforms' | 'deliveries' | 'sender'> & { contacts: Pick<CoordinatorContactsRepo, 'targets' | 'alreadySent' | 'leaderMessageFailures'> };
 
 export function createLeaderMessage(deps: MessageDeps) {
   async function split() {
@@ -37,8 +53,9 @@ export function createLeaderMessage(deps: MessageDeps) {
 
   return {
     async preview(): Promise<LeaderMessagePreview> {
-      const s = await split();
-      return { total: s.users.length, noChat: s.noChat };
+      const [s, failed] = await Promise.all([split(), deps.contacts.leaderMessageFailures()]);
+      const failures = failed.map((r) => ({ name: r.name, groupCodes: r.groupIds.map(groupCode), reason: failureReason(r) }));
+      return { total: s.users.length, noChat: s.noChat, failures };
     },
 
     /**

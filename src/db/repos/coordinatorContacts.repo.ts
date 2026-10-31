@@ -13,6 +13,16 @@ export interface CoordinatorContactTarget {
   leaderUserId: number | null;
 }
 
+export interface LeaderMessageFailureRow {
+  userId: number;
+  name: string;
+  status: 'failed' | 'blocked';
+  error: string;
+  /** Заведён вручную: чата с ботом нет. */
+  manual: boolean;
+  groupIds: number[];
+}
+
 /** Ключ учёта «кому что ушло». */
 export const sentKey = (userId: number, text: string): string => `${userId}\u0000${text}`;
 
@@ -48,14 +58,37 @@ export class CoordinatorContactsRepo {
   }
 
   /** `statuses` — какие группы брать: контакт координатора — действующим и на паузе, «сообщение ведущим» — только действующим. */
+  /**
+   * Кому не дошло последнее «сообщение ведущим» (тот же текст ни одной рассылкой так и не доставлен). Имя — из регистрации,
+   * группы — те, где этот человек записан ведущим напрямую; причина — как её записал рассыльщик.
+   */
+  async leaderMessageFailures(): Promise<LeaderMessageFailureRow[]> {
+    const { rows } = await this.db.query<LeaderMessageFailureRow>(
+      `WITH last AS (SELECT body FROM broadcasts WHERE key LIKE 'leaders:%' ORDER BY created_at DESC, key LIMIT 1)
+       SELECT DISTINCT ON (u.id) u.id::int AS "userId", coalesce(nullif(btrim(u.full_name), ''), '') AS name,
+              d.status, coalesce(d.last_error, '') AS error, u.chat_id = '' AS manual,
+              coalesce((SELECT array_agg(g.id ORDER BY g.id) FROM groups g
+                         WHERE g.leader_user_id = u.id AND g.archived_at IS NULL), '{}')::int[] AS "groupIds"
+         FROM deliveries d
+         JOIN broadcasts b ON b.key = d.broadcast_key AND b.key LIKE 'leaders:%'
+         JOIN last ON last.body = b.body
+         JOIN users u ON u.id = d.user_id
+        WHERE d.status IN ('failed', 'blocked')
+          AND NOT EXISTS (SELECT 1 FROM deliveries s JOIN broadcasts sb ON sb.key = s.broadcast_key
+                           WHERE s.user_id = d.user_id AND s.status = 'sent' AND sb.key LIKE 'leaders:%' AND sb.body = b.body)
+        ORDER BY u.id, b.created_at DESC`,
+    );
+    return rows.map((r) => ({ ...r, userId: Number(r.userId), groupIds: (r.groupIds ?? []).map(Number) }));
+  }
+
   async targets(platforms: readonly string[], statuses: readonly string[] = ['Функционирует', 'На паузе']): Promise<CoordinatorContactTarget[]> {
     const { rows } = await this.db.query<{
       id: number; leader: string | null; coordinator: string | null; coord_fio: string | null; coord_phone: string | null;
-      leader_user_id: number | null; leader_user_platform: string | null; leader_user_blocked: boolean | null;
+      leader_user_id: number | null; leader_user_platform: string | null; leader_user_blocked: boolean | null; leader_user_chat: boolean | null;
       leader_person_phone: string | null; leader_user_phone: string | null; phones: string[] | null;
     }>(
       `SELECT g.id, g.leader, nullif(btrim(g.coordinator), '') AS coordinator, g.phones,
-              g.leader_user_id, lu.platform AS leader_user_platform, lu.blocked_at IS NOT NULL AS leader_user_blocked,
+              g.leader_user_id, lu.platform AS leader_user_platform, lu.blocked_at IS NOT NULL AS leader_user_blocked, lu.chat_id <> '' AS leader_user_chat,
               lu.phone AS leader_user_phone, lp.phone AS leader_person_phone,
               CASE WHEN cu.id IS NOT NULL THEN cu.full_name WHEN cp.id IS NOT NULL THEN cp.full_name END AS coord_fio,
               CASE WHEN cu.id IS NOT NULL THEN cu.phone WHEN cp.id IS NOT NULL THEN cp.phone END AS coord_phone
@@ -73,11 +106,13 @@ export class CoordinatorContactsRepo {
         ORDER BY g.id`,
       [statuses],
     );
-    // Регистрации на подключённых платформах — по последним цифрам телефона, свежая первой.
+    // Регистрации на подключённых платформах — по последним цифрам телефона, свежая первой. Заведённых вручную
+    // (регистрация в интерфейсе, `createManual`) не берём: платформа у них записана, а чата с ботом нет (`chat_id` пустой),
+    // и рассыльщик трижды писал в пустой чат — так 31.10 часть ведущих попала в «не дошло». Такой ведущий — «нет в боте».
     const byPhone = new Map<string, number>();
     const { rows: users } = await this.db.query<{ id: number; phone: string | null }>(
       `SELECT id, phone FROM users
-        WHERE platform = ANY($1::text[]) AND blocked_at IS NULL AND phone IS NOT NULL
+        WHERE platform = ANY($1::text[]) AND blocked_at IS NULL AND phone IS NOT NULL AND chat_id <> ''
         ORDER BY registered_at DESC NULLS LAST, id DESC`,
       [platforms],
     );
@@ -87,6 +122,7 @@ export class CoordinatorContactsRepo {
     }
     return rows.map((g) => {
       const direct = g.leader_user_id !== null && g.leader_user_platform !== null && platforms.includes(g.leader_user_platform) && !g.leader_user_blocked
+        && g.leader_user_chat
         ? Number(g.leader_user_id) : null;
       const viaPhone = [g.leader_user_phone, g.leader_person_phone, ...(g.phones ?? [])]
         .map(phoneKey).map((k) => (k ? byPhone.get(k) ?? null : null)).find((x) => x !== null) ?? null;

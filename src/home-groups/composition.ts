@@ -46,6 +46,7 @@ import { loadPseudonyms } from './assistant/pseudonyms.js';
 import { HintsRepo } from '../db/repos/hints.repo.js';
 import type { LlmClient, LlmSource } from '../platform/llm/deepseek.js';
 import { createGeocoderConfig } from './geocoderConfig.js';
+import { createLocator } from './locate.js';
 import { buildAddressTable, createAddressReject, createAddressRetry } from './geocodeAddresses.js';
 import { createYandexGeocoder } from './geocode.js';
 import { createMapConfig } from './mapConfig.js';
@@ -192,7 +193,9 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   });
   const requestsRepo = new RequestsRepo(db);
   const notify = opts.notify ?? (async () => undefined);
-  const creator = createRecordCreator({ requests: requestsRepo, groups: new GroupsRepo(db), persons: new MembersRepo(db), directions: new GroupDirectionsRepo(db), audit: new AuditRepo(db), notify });
+  // Район и метро группы по адресу при сохранении — тем же ключом и в тот же кэш координат, что фоновое заполнение.
+  const locate = createLocator({ currentKey: () => geocoderConfig.currentKey(), store: geocodeCache, invalidate: () => views.invalidate() });
+  const creator = createRecordCreator({ requests: requestsRepo, groups: new GroupsRepo(db), persons: new MembersRepo(db), directions: new GroupDirectionsRepo(db), audit: new AuditRepo(db), notify, locate });
   const registrar = createRegistrar({ users: new UsersRepo(db), requests: requestsRepo, audit: new AuditRepo(db), notify });
   const reconciler = createReconciler({ load, placement });
   const strange = createStrange({ repo: new StrangeRepo(db) });
@@ -205,7 +208,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   const contacts = createContacts({ contacts: new ContactsRepo(db) });
   const usersRepo = new UsersRepo(db);
   const manager = createManager({
-    groups: new GroupsRepo(db), coordinators: new CoordinatorsRepo(db), teamRoles: new TeamRolesRepo(db), directions: new GroupDirectionsRepo(db), requests: requestsRepo, users: usersRepo, audit: new AuditRepo(db),
+    groups: new GroupsRepo(db), coordinators: new CoordinatorsRepo(db), teamRoles: new TeamRolesRepo(db), directions: new GroupDirectionsRepo(db), requests: requestsRepo, users: usersRepo, audit: new AuditRepo(db), locate,
   });
   // Кампания «40 дней» (только чтение): те же репозитории и тот же расчёт, что у бота и старого дашборда.
   const campaign = async (): Promise<CampaignView | null> => opts.campaignSchedule

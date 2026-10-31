@@ -34,6 +34,12 @@ export interface EditField {
   allowUnlink?: boolean;
   /** Для person: имя, записанное в группе текстом, пока человек не выбран (группа из таблицы церкви). */
   legacyName?: string | null;
+  /** Поле только формы: на сервер не уходит, а меняет другие поля через `onSet` (галочка «Онлайн-группа» → район). */
+  virtual?: boolean;
+  /** Что ещё поменять в форме вместе с этим полем. */
+  onSet?: (value: string) => Record<string, string>;
+  /** Скрыть поле при таких значениях формы (у онлайн-группы — адрес, район и метро). */
+  hiddenWhen?: (values: Record<string, string>) => boolean;
 }
 
 export interface EditSpec {
@@ -53,6 +59,7 @@ export interface EditSpec {
 export function changedFields(spec: EditSpec, values: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
   for (const f of spec.fields) {
+    if (f.virtual) continue;
     const now = (values[f.name] ?? '').trim();
     const was = (spec.initial[f.name] ?? '').trim();
     if (now === was) continue;
@@ -98,6 +105,10 @@ export function groupEditSpec(g: GroupItem, meta: FormMeta): EditSpec {
 
 const CHAMBER_FIELDS: ReadonlySet<string> = new Set(['address']);
 
+/** Онлайн-группа — район «Онлайн» (так её знает подбор); в форме это галочка, а не пункт списка районов. */
+export const ONLINE = 'Онлайн';
+const isOnline = (v: Record<string, string>): boolean => v['district'] === ONLINE;
+
 /** Подсказка под выбором человека: откуда телефон, а без выбора — какой номер показывается сейчас. */
 function personHint(key: string | null, phone: string | null): string {
   return key || !phone ? m.group.personHint : `${m.group.personHint} ${m.group.personHintUnlinked(formatPhone(phone))}`;
@@ -126,10 +137,26 @@ function groupEditFields(g: GroupItem, meta: FormMeta): EditSpec {
         legacyName: g.coLeaderKey ? null : g.coLeader,
         hint: personHint(g.coLeaderKey, g.coLeaderPhone),
       },
-      { name: 'district', label: t.district, kind: 'select', required: true, options: withCurrent(meta.districts, g.district) },
-      // Подбор сопоставляет сначала по адресу, а если он пуст — по метро или ориентиру: оба поля видны и правятся здесь.
-      { name: 'address', label: t.address, kind: 'text', wide: true, hint: m.group.addressHint },
-      { name: 'metro', label: t.metro, kind: 'text', wide: true, hint: m.group.metroHint },
+      // Онлайн — галочкой сверху: так видно сразу, и адрес, район и метро у такой группы прячутся.
+      {
+        name: 'online',
+        label: m.group.online,
+        kind: 'checkbox',
+        wide: true,
+        virtual: true,
+        hint: m.group.onlineHint,
+        // Сняли галочку — возвращаем район, какой был до «Онлайн»; у группы, что была онлайн с самого начала, — выбрать.
+        onSet: (v) => ({ district: v ? ONLINE : g.district === ONLINE ? '' : g.district }),
+      },
+      // Адрес — главное место группы: по нему при сохранении сервер сам ставит район и метро (`locate.ts`).
+      {
+        name: 'address',
+        label: t.address,
+        kind: 'text',
+        wide: true,
+        hint: g.address ? m.group.addressHint : m.group.addressMissing,
+        hiddenWhen: isOnline,
+      },
       { name: 'direction', label: t.direction, kind: 'select', required: true, options: withCurrent(meta.groupDirections, g.direction) },
       { name: 'status', label: t.status, kind: 'select', required: true, options: withCurrent(meta.groupStatuses, g.status) },
       { name: 'people', label: t.people, kind: 'text', inputMode: 'numeric', placeholder: m.group.peoplePlaceholder },
@@ -155,6 +182,17 @@ function groupEditFields(g: GroupItem, meta: FormMeta): EditSpec {
       { name: 'feedbackAt', label: t.feedbackAt, kind: 'date', hint: `${feedbackNow(g.verifiedDaysAgo)} ${keep}` },
       { name: 'openedOn', label: t.openedOn, kind: 'date', hint: m.group.openedOnHint },
       { name: 'training', label: t.training, kind: 'text' },
+      // Внизу основных данных: обычно их ставит адрес, а руками правят, только если определилось неверно или адреса пока нет.
+      {
+        name: 'district',
+        label: t.district,
+        kind: 'select',
+        required: true,
+        options: withCurrent(meta.districts.filter((d) => d !== ONLINE), g.district === ONLINE ? null : g.district),
+        hint: m.group.districtHint,
+        hiddenWhen: isOnline,
+      },
+      { name: 'metro', label: t.metro, kind: 'text', wide: true, hint: m.group.metroHint, hiddenWhen: isOnline },
       { name: 'comment', label: t.comment, kind: 'textarea', wide: true },
       { name: 'checked', label: t.checked, kind: 'checkbox', wide: true },
       { name: 'campaignRegistered', label: t.campaignRegistered, kind: 'checkbox', wide: true },
@@ -163,6 +201,7 @@ function groupEditFields(g: GroupItem, meta: FormMeta): EditSpec {
       { name: 'chamber', label: m.group.chamber, kind: 'checkbox', wide: true, hint: m.group.chamberHint },
     ],
     initial: {
+      online: g.district === ONLINE ? '1' : '',
       district: g.district,
       metro: g.metro ?? '',
       direction: g.direction,

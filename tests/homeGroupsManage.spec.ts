@@ -436,3 +436,29 @@ describe('«Работает только в кампанию» и «40 дней
     expect((await repo.create({ ...base, status: 'Функционирует' }, 'бот')).campaign_registered).toBe(false);
   });
 });
+
+describe('район и метро по адресу при сохранении группы', () => {
+  const located = () => createManager({
+    groups: new GroupsRepo(db), coordinators: new CoordinatorsRepo(db), teamRoles: new TeamRolesRepo(db), directions: new GroupDirectionsRepo(db), requests: new RequestsRepo(db), users: new UsersRepo(db), audit: new AuditRepo(db),
+    locate: async () => ({ district: 'Выборгский', metro: 'Озерки' }),
+  });
+
+  test('новый адрес сразу записывает район и метро, в журнале видно, что их подставили', async () => {
+    const id = await group();
+    expect(await located().updateGroup(id, { fields: { address: 'пр. Энгельса 100' } }, 'a')).toEqual({ ok: true });
+    expect(await g(id)).toMatchObject({ address: 'пр. Энгельса 100', district: 'Выборгский', metro: 'Озерки' });
+    expect((await audits()).at(-1)!.after).toContain('"auto"');
+  });
+
+  test('адрес не меняли — район и метро, поправленные руками, остаются как ввели', async () => {
+    const id = await group();
+    await located().updateGroup(id, { fields: { district: 'Невский', metro: 'Ломоносовская', address: 'ул. Секретная 1' } }, 'a');
+    expect(await g(id)).toMatchObject({ district: 'Невский', metro: 'Ломоносовская' });
+  });
+
+  test('онлайн-группа остаётся онлайн, даже если у неё есть адрес', async () => {
+    const id = await group();
+    await located().updateGroup(id, { fields: { district: 'Онлайн', address: 'пр. Энгельса 100' } }, 'a');
+    expect((await g(id)).district).toBe('Онлайн');
+  });
+});

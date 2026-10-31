@@ -5,6 +5,8 @@ import { App } from '../../app/App';
 import { json, posts } from '../../test/calls';
 import { currentSearch, renderAt, stubFetchWithFixtures } from '../../test/render';
 import type { YMaps } from '../../shared/yandexMaps';
+import type { GroupItem } from '@contracts';
+import { fixtureResponse } from '../../fixtures';
 
 /** Подставная Яндекс.Карта: запоминает метки и отдаёт их тесту, чтобы нажать на метку и проверить переключатели. */
 const placed: { coords: [number, number]; props: Record<string, unknown>; options: Record<string, unknown>; click: () => void }[] = [];
@@ -87,6 +89,23 @@ describe('«Сегодня»: карта групп', () => {
     await waitFor(() => expect(placed).toHaveLength(0));
     expect(posts(fetchMock).filter((p) => p.path === 'map/loaded')).toHaveLength(1);
     expect(loadMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('«Без онлайн-групп» отмечена сразу: онлайн-группы на карту не ставятся, а сняв галочку, их видно', async () => {
+    const user = userEvent.setup();
+    // У онлайн-группы бывает адрес (например, ведущего), и координаты у неё есть, но направлять туда «по карте» незачем.
+    const base = fixtureResponse('groups') as { items: GroupItem[] };
+    const online = base.items.find((g) => g.coords !== null && g.status !== 'Закрыта' && g.status !== 'Аннулирована')!;
+    const items = base.items.map((g) => (g.id === online.id ? { ...g, district: 'Онлайн' } : g));
+    const { box } = await openMap({ groups: () => json({ ...base, items }) });
+    const checkbox = within(box).getByRole('checkbox', { name: 'Без онлайн-групп' });
+    expect(checkbox).toBeChecked();
+    await user.click(await within(box).findByRole('button', { name: /Показать карту/ }));
+    await waitFor(() => expect(placed.length).toBeGreaterThan(0));
+    const hasOnline = () => placed.some((p) => String(p.props.hintContent).startsWith(`${online.code},`));
+    expect(hasOnline()).toBe(false);
+    await user.click(checkbox);
+    await waitFor(() => expect(hasOnline()).toBe(true));
   });
 
   test('фильтры как в справочнике: отбор по полю группы оставляет на карте только подходящие метки, чип отбора снимает его', async () => {

@@ -23,6 +23,9 @@ type Kind = 'active' | 'potential';
 const OFF_MAP: ReadonlySet<string> = new Set(['Закрыта', 'Аннулирована']);
 const kindOf = (g: GroupItem): Kind | null => (OFF_MAP.has(g.status) ? null : g.status === 'Потенциальная' ? 'potential' : 'active');
 const label = (g: GroupItem): string => `${g.code}, ${g.leader}`;
+/** Онлайн-группа помечена районом «Онлайн» (как в подборе, `plan/engine.ts`): своего поля «формат» у группы нет. */
+export const ONLINE_DISTRICT = 'Онлайн';
+const isOnline = (g: GroupItem): boolean => g.district === ONLINE_DISTRICT;
 
 /**
  * Карта групп под таблицей «Справочника → Группы». Яндекс.Карты грузятся только по кнопке: у бесплатного ключа лимит открытий
@@ -38,6 +41,8 @@ export function GroupsMap({ groups }: { groups: readonly GroupItem[] }) {
   const config = useQuery({ queryKey: MAP_KEY, queryFn: ({ signal }) => apiGet<MapBootstrap>('map/config', signal), staleTime: 60_000 });
   const [state, setState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [kinds, setKinds] = useState<Record<Kind, boolean>>({ active: true, potential: true });
+  // Карта нужна, чтобы смотреть, где группы есть физически: онлайн-группу (у неё бывает адрес ведущего) по умолчанию прячем.
+  const [noOnline, setNoOnline] = useState(true);
   // Отбор карты — свой, не таблицы «Справочника»: по умолчанию на карте все группы, а не только «Принимает новых».
   // Сохранённые виды общие с таблицей групп (их только применяют здесь), поэтому настроенный там вид годится и для карты.
   const [filter, setFilter] = useState<TableState>(EMPTY_TABLE_STATE);
@@ -59,8 +64,8 @@ export function GroupsMap({ groups }: { groups: readonly GroupItem[] }) {
   const rows = useMemo(() => onMap.map(groupsConfig.toRow), [onMap]);
   const visible = useMemo(() => {
     const keep = new Set(applyFilters(rows, filter.filters, groupsConfig.fields).map((r) => r._key));
-    return onMap.filter((g) => keep.has(String(g.id)) && kinds[kindOf(g)!]);
-  }, [onMap, rows, filter.filters, kinds]);
+    return onMap.filter((g) => keep.has(String(g.id)) && kinds[kindOf(g)!] && !(noOnline && isOnline(g)));
+  }, [onMap, rows, filter.filters, kinds, noOnline]);
   const withCoords = useMemo(() => visible.filter((g) => g.coords !== null), [visible]);
 
   // Карта создаётся, когда скрипт загружен и контейнер уже на странице; при скрытии уничтожается.
@@ -130,6 +135,9 @@ export function GroupsMap({ groups }: { groups: readonly GroupItem[] }) {
           </label>
           <label>
             <input type="checkbox" checked={kinds.potential} onChange={(e) => setKinds({ ...kinds, potential: e.target.checked })} /> {t.potential}
+          </label>
+          <label>
+            <input type="checkbox" checked={noOnline} onChange={(e) => setNoOnline(e.target.checked)} /> {t.noOnline}
           </label>
         </div>
         <Popover label={ru.reference.filters} badge={filter.filters.length || undefined} title={ru.reference.filters}>

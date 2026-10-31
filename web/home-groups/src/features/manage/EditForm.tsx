@@ -58,7 +58,8 @@ export function EditForm({ spec: given, path, onClose, onSaved, onBusyChange, re
   const canSave = Object.keys(changes).length > 0 && blank.length === 0;
 
   const change = (name: string, value: string) => {
-    setValues((v) => ({ ...v, [name]: value }));
+    const extra = spec.fields.find((f) => f.name === name)?.onSet?.(value) ?? {};
+    setValues((v) => ({ ...v, [name]: value, ...extra }));
     setError(null);
   };
 
@@ -129,6 +130,7 @@ export function EditForm({ spec: given, path, onClose, onSaved, onBusyChange, re
   }
 
   const renderField = (f: EditField) => {
+    if (f.hiddenWhen?.(values)) return null;
     const id = `${uid}-${f.name}`;
     const problem = blank.includes(f.name) ? (f.kind === 'select' ? ru.manage.requiredChoose(f.label) : ru.manage.required(f.label)) : null;
     const describedBy = [problem ? `${id}-err` : null, f.hint ? `${id}-hint` : null].filter(Boolean).join(' ') || undefined;

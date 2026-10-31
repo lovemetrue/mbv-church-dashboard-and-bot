@@ -89,6 +89,28 @@ describe('«Сегодня»: карта групп', () => {
     expect(loadMock).toHaveBeenCalledTimes(1);
   });
 
+  test('фильтры как в справочнике: отбор по полю группы оставляет на карте только подходящие метки, чип отбора снимает его', async () => {
+    const user = userEvent.setup();
+    const { box, fetchMock } = await openMap();
+    await user.click(await within(box).findByRole('button', { name: /Показать карту/ }));
+    await waitFor(() => expect(placed.length).toBeGreaterThan(1));
+    const all = placed.length;
+    const code = String(placed[0]!.props.hintContent).split(',')[0]!;
+    await user.click(within(box).getByRole('button', { name: /^Фильтры/ }));
+    const dlg = screen.getByRole('dialog', { name: 'Фильтры' });
+    await user.selectOptions(within(dlg).getByLabelText('Поле'), 'Код');
+    await user.click(within(dlg).getByRole('checkbox', { name: code }));
+    await user.click(within(dlg).getByRole('button', { name: 'Добавить' }));
+    await waitFor(() => expect(placed).toHaveLength(1));
+    expect(String(placed[0]!.props.hintContent)).toMatch(new RegExp(`^${code},`));
+    expect(within(box).getByText(/На карте групп: 1\./)).toBeInTheDocument();
+    await user.click(within(box).getByRole('button', { name: new RegExp(`^Убрать отбор: Код`) }));
+    await waitFor(() => expect(placed).toHaveLength(all));
+    // Отбор меняет только метки: карта не перезагружается и открытие не считается заново.
+    expect(posts(fetchMock).filter((p) => p.path === 'map/loaded')).toHaveLength(1);
+    expect(loadMock).toHaveBeenCalledTimes(1);
+  });
+
   test('«Скрыть карту» уничтожает карту; без ключа кнопка неактивна и есть ссылка на настройки', async () => {
     const user = userEvent.setup();
     const { box } = await openMap();

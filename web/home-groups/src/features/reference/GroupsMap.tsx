@@ -4,8 +4,11 @@ import type { GroupItem, MapBootstrap } from '@contracts';
 import { apiGet, apiPost } from '../../shared/api/client';
 import { useMe } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
+import { applyFilters, deleteView, EMPTY_TABLE_STATE, loadViews, type SavedView, type TableState } from '../../shared/filters';
 import { useAppNav } from '../../shared/nav';
-import { Button } from '../../shared/ui';
+import { Button, Popover } from '../../shared/ui';
+import { groupsConfig, myGroupsPreset } from './config';
+import { FilterPanel, filterChipLabel } from './FilterPanel';
 import { loadYandexMaps, type YMap, type YMaps, type YPlacemark } from '../../shared/yandexMaps';
 import styles from './Reference.module.css';
 
@@ -25,7 +28,8 @@ const label = (g: GroupItem): string => `${g.code}, ${g.leader}`;
  * Карта групп под таблицей «Справочника → Группы». Яндекс.Карты грузятся только по кнопке: у бесплатного ключа лимит открытий
  * в месяц, поэтому скрипт не тянется при каждом заходе на страницу, а открытия считаются на сервере и показаны на кнопке.
  * Метки берутся из координат адресов групп, которые уже лежат в базе (запросов к Яндексу ради меток нет); клик по метке
- * открывает карточку группы. Переключатели «Действующие» / «Потенциальные» меняют метки без перезагрузки карты.
+ * открывает карточку группы. Переключатели «Действующие» / «Потенциальные» (они же цвет метки) и окно «Фильтры» с теми же
+ * полями и быстрыми отборами, что у таблицы групп (возраст, состав, день, район…), меняют метки без перезагрузки карты.
  */
 export function GroupsMap({ groups }: { groups: readonly GroupItem[] }) {
   const nav = useAppNav();
@@ -34,6 +38,15 @@ export function GroupsMap({ groups }: { groups: readonly GroupItem[] }) {
   const config = useQuery({ queryKey: MAP_KEY, queryFn: ({ signal }) => apiGet<MapBootstrap>('map/config', signal), staleTime: 60_000 });
   const [state, setState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [kinds, setKinds] = useState<Record<Kind, boolean>>({ active: true, potential: true });
+  // Отбор карты — свой, не таблицы «Справочника»: по умолчанию на карте все группы, а не только «Принимает новых».
+  // Сохранённые виды общие с таблицей групп (их только применяют здесь), поэтому настроенный там вид годится и для карты.
+  const [filter, setFilter] = useState<TableState>(EMPTY_TABLE_STATE);
+  const [views, setViews] = useState<SavedView[]>(() => loadViews(groupsConfig.id));
+  const myName = me.data?.person?.name ?? null;
+  const filterConfig = useMemo(
+    () => (myName ? { ...groupsConfig, presets: [myGroupsPreset(myName), ...groupsConfig.presets] } : groupsConfig),
+    [myName],
+  );
   const [ymaps, setYmaps] = useState<YMaps | null>(null);
   const [map, setMap] = useState<YMap | null>(null);
   const container = useRef<HTMLDivElement>(null);
@@ -41,7 +54,13 @@ export function GroupsMap({ groups }: { groups: readonly GroupItem[] }) {
   const openRef = useRef(nav.openGroup);
   openRef.current = nav.openGroup;
 
-  const visible = useMemo(() => groups.filter((g) => { const k = kindOf(g); return k !== null && kinds[k]; }), [groups, kinds]);
+  const onMap = useMemo(() => groups.filter((g) => kindOf(g) !== null), [groups]);
+  // Строки те же, что в таблице групп: значит, и поля, и значения в окне «Фильтры» совпадают со справочником.
+  const rows = useMemo(() => onMap.map(groupsConfig.toRow), [onMap]);
+  const visible = useMemo(() => {
+    const keep = new Set(applyFilters(rows, filter.filters, groupsConfig.fields).map((r) => r._key));
+    return onMap.filter((g) => keep.has(String(g.id)) && kinds[kindOf(g)!]);
+  }, [onMap, rows, filter.filters, kinds]);
   const withCoords = useMemo(() => visible.filter((g) => g.coords !== null), [visible]);
 
   // Карта создаётся, когда скрипт загружен и контейнер уже на странице; при скрытии уничтожается.
@@ -113,6 +132,16 @@ export function GroupsMap({ groups }: { groups: readonly GroupItem[] }) {
             <input type="checkbox" checked={kinds.potential} onChange={(e) => setKinds({ ...kinds, potential: e.target.checked })} /> {t.potential}
           </label>
         </div>
+        <Popover label={ru.reference.filters} badge={filter.filters.length || undefined} title={ru.reference.filters}>
+          <FilterPanel
+            config={filterConfig}
+            rows={rows}
+            state={filter}
+            views={views}
+            onChange={setFilter}
+            onDeleteView={(name) => setViews(deleteView(groupsConfig.id, name))}
+          />
+        </Popover>
         {state === 'ready' ? (
           <Button size="sm" onClick={hide}>
             {t.hide}
@@ -123,6 +152,22 @@ export function GroupsMap({ groups }: { groups: readonly GroupItem[] }) {
           </Button>
         )}
       </div>
+      {filter.filters.length > 0 && (
+        <ul className={styles.fchips} aria-label={ru.reference.currentFilter}>
+          {filter.filters.map((fl, i) => (
+            <li key={`${fl.field}-${fl.op}-${fl.value}-${i}`} className={styles.fchip}>
+              {filterChipLabel(fl)}
+              <button
+                type="button"
+                aria-label={`${ru.reference.removeFilter}: ${filterChipLabel(fl)}`}
+                onClick={() => setFilter({ ...filter, filters: filter.filters.filter((_, j) => j !== i) })}
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       {noKey && (
         <p className={styles.mapNote} role="note">
           {t.noKey}{' '}

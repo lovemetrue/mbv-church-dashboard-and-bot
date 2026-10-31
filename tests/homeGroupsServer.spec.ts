@@ -234,6 +234,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
       setExtraQuestions: async (body: unknown, actor: string) => { settingsCalls.push({ name: 'bot.save', actor, body }); return settingsOutcome; },
       sendExtraInvites: async (body: unknown, actor: string) => { settingsCalls.push({ name: 'bot.invites', actor, body }); return { ok: true, sent: 2, failed: 0, blocked: 0 }; },
       sendCoordinatorContacts: async (body: unknown, actor: string) => { settingsCalls.push({ name: 'bot.coordinators', actor, body }); return { ok: true, sent: 5, failed: 1, blocked: 0 }; },
+      sendLeaderMessage: async (body: unknown, actor: string) => { settingsCalls.push({ name: 'bot.leaders', actor, body }); return { ok: true, sent: 3, failed: 0, blocked: 0, alreadySent: 1 }; },
     } as never,
     exporter: { requests: async () => '\uFEFF№;ФИО\r\n1;Мария\r\n', people: async () => '\uFEFFномер\r\n' },
     audit: async (actor: string, action: string, after: unknown) => { auditCalls.push({ actor, action, after }); },
@@ -1694,6 +1695,19 @@ describe('досылка новых вопросов из «Настроек»',
     const r = await post(await signIn(SUPER));
     expect(await r.json()).toEqual({ ok: true, sent: 5, failed: 1, blocked: 0 });
     expect(app.settingsCalls.slice(before)).toEqual([{ name: 'bot.coordinators', actor: SUPER.login, body: { expectedTotal: 6 } }]);
+  });
+
+  test('сообщение ведущим: только полный вход; текст и автор доходят до сервиса', async () => {
+    const body = { text: 'Урок 1\nhttps://rutube.ru/video/x/', expectedTotal: 4 };
+    const post = (cookie: string | null) => fetch(`${app.base}/api/v1/settings/bot/send-leader-message`, {
+      method: 'POST', headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body),
+    });
+    const before = app.settingsCalls.length;
+    expect((await post(await signIn(REGULAR))).status).toBe(403);
+    expect(app.settingsCalls.length).toBe(before);
+    const r = await post(await signIn(SUPER));
+    expect(await r.json()).toEqual({ ok: true, sent: 3, failed: 0, blocked: 0, alreadySent: 1 });
+    expect(app.settingsCalls.slice(before)).toEqual([{ name: 'bot.leaders', actor: SUPER.login, body }]);
   });
 
   test('рассылку нельзя вызвать запросом GET: изменяющие адреса отвечают 404', async () => {

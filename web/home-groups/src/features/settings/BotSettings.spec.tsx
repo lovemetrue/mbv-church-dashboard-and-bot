@@ -610,3 +610,39 @@ describe('«Настройки → Бот»: ведущим — контакт �
     expect(within(group).getByText(/Некому отправлять/)).toBeInTheDocument();
   });
 });
+
+describe('«Настройки → Бот»: сообщение ведущим', () => {
+  const withLeaders = (extra: Partial<NonNullable<SettingsBotView['leaderMessage']>> = {}): SettingsBotView => ({
+    ...view(),
+    leaderMessage: { available: true, total: 2, noChat: ['ДГ-0005'], maxLength: 4000, ...extra },
+  });
+  const TEXT = 'Урок 1\n\nhttps://rutube.ru/video/private/4b871d891cfec6728ef939f7fd5defc4/?p=LGXH98a36a53DLzN5HsHXQ';
+
+  test('текст набирают здесь, в подтверждении он виден целиком; уходит текст и подтверждённое число', async () => {
+    const { fetchMock } = openBot({
+      'settings/bot': () => json(withLeaders()),
+      'settings/bot/send-leader-message': () => json({ ok: true, sent: 2, failed: 0, blocked: 0, alreadySent: 0 }),
+    });
+    const group = await screen.findByRole('group', { name: 'Сообщение ведущим' });
+    expect(within(group).getByText(/Ведущего нет в боте — сообщите сами/)).toHaveTextContent('ДГ-0005');
+    const button = within(group).getByRole('button', { name: 'Отправить ведущим (2)' });
+    expect(button).toBeDisabled();
+    const user = userEvent.setup();
+    await user.type(within(group).getByLabelText('Текст сообщения'), TEXT.replace(/\n/g, '{Enter}'));
+    await user.click(button);
+    const dialog = await screen.findByRole('dialog', { name: 'Отправить сообщение ведущим?' });
+    expect(dialog).toHaveTextContent('Сообщение уйдёт 2 ведущим.');
+    expect(dialog).toHaveTextContent('https://rutube.ru/video/private/4b871d891cfec6728ef939f7fd5defc4/?p=LGXH98a36a53DLzN5HsHXQ');
+    await user.click(within(dialog).getByRole('button', { name: 'Да, отправить' }));
+    expect(await within(group).findByRole('status')).toHaveTextContent('Готово: доставлено 2.');
+    const call = fetchMock.mock.calls.find(([u]) => String(u).endsWith('settings/bot/send-leader-message'))!;
+    expect(JSON.parse(String((call as unknown as [unknown, RequestInit])[1].body))).toEqual({ text: TEXT, expectedTotal: 2 });
+  });
+
+  test('ведущих в боте нет — ни поля, ни кнопки, сказано почему', async () => {
+    openBot({ 'settings/bot': () => json(withLeaders({ total: 0 })) });
+    const group = await screen.findByRole('group', { name: 'Сообщение ведущим' });
+    expect(within(group).queryByRole('button', { name: /Отправить ведущим/ })).not.toBeInTheDocument();
+    expect(within(group).getByText(/Некому отправлять/)).toBeInTheDocument();
+  });
+});

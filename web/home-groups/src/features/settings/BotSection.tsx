@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import type { CoordinatorContactsView, SendExtraInvitesBody, SettingsBotView } from '@contracts';
+import type { CoordinatorContactsView, LeaderMessageView, SendExtraInvitesBody, SettingsBotView } from '@contracts';
 import { FORMS, plural } from '../../entities/plural';
 import { ru } from '../../shared/i18n/ru';
 import { Button, Modal } from '../../shared/ui';
@@ -316,6 +316,7 @@ export function BotSection() {
           <>
             <ExtraQuestionsForm current={data.extraQuestions} onUnsavedChange={setUnsaved} />
             <ExtraInvites invites={data.invites} unsaved={unsaved} />
+            {data.leaderMessage && <LeaderMessage view={data.leaderMessage} />}
             {data.coordinatorContacts && <CoordinatorContacts view={data.coordinatorContacts} />}
             <p className={`${styles.muted} ${styles.hintBelow}`}>{t.resendHint}</p>
           </>
@@ -406,6 +407,105 @@ function CoordinatorContacts({ view }: { view: CoordinatorContactsView }) {
       {confirming !== null && (
         <Modal title={c.confirmTitle} onClose={() => setConfirming(null)}>
           <p>{c.confirmQuestion(plural(confirming, FORMS.leaderTo))}</p>
+          <div className={styles.dialogFoot}>
+            <Button onClick={() => setConfirming(null)}>{c.cancel}</Button>
+            <Button
+              variant="primary"
+              disabled={pending}
+              onClick={() => {
+                const expected = confirming;
+                setConfirming(null);
+                void send(expected);
+              }}
+            >
+              {c.confirmYes}
+            </Button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+/**
+ * «Сообщение ведущим»: свой текст ведущим действующих групп. Текст набирают здесь же, перед отправкой — подтверждение с
+ * числом получателей, как у остальных рассылок. Набранное не стирается перечитыванием обзора: текст живёт в состоянии
+ * компонента, а после успешной отправки остаётся на экране — видно, что именно ушло.
+ */
+function LeaderMessage({ view }: { view: LeaderMessageView }) {
+  const c = t.leaderMessage;
+  const actions = useBotActions();
+  const titleId = useId();
+  const textId = useId();
+  const [text, setText] = useState('');
+  const [confirming, setConfirming] = useState<number | null>(null);
+  const [pending, setPending] = useState(false);
+  const inFlight = useRef(false);
+  const [notice, setNotice] = useState<Notice | null>(null);
+
+  async function send(expectedTotal: number) {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setPending(true);
+    setNotice(null);
+    try {
+      const r = await actions.sendLeaderMessage({ text, expectedTotal });
+      setNotice({ kind: 'ok', text: c.done(r.sent, r.failed, r.blocked, r.alreadySent) });
+    } catch (e) {
+      setNotice({ kind: 'error', text: inviteErrorText(e) });
+    } finally {
+      inFlight.current = false;
+      setPending(false);
+    }
+  }
+
+  const trimmed = text.trim();
+  const tooLong = trimmed.length > view.maxLength;
+  const reason = !view.available ? c.notConnected : view.total === 0 ? c.nobody : null;
+
+  return (
+    <div className={styles.block} role="group" aria-labelledby={titleId}>
+      <h3 id={titleId} className={styles.blockTitle}>
+        {c.title}
+      </h3>
+      <p>{c.intro}</p>
+      {view.available && (
+        <ul className={styles.recipients}>
+          <li>
+            {c.willSend}: <b>{view.total}</b>
+          </li>
+          {view.noChat.length > 0 && (
+            <li>
+              {c.noChat}: <b>{view.noChat.length}</b> <span className={styles.muted}>({view.noChat.join(', ')})</span>
+            </li>
+          )}
+        </ul>
+      )}
+      {!reason && (
+        <>
+          <label htmlFor={textId}>{c.label}</label>
+          <textarea id={textId} className={styles.textarea} rows={8} value={text} onChange={(e) => setText(e.target.value)} />
+          <p className={tooLong ? styles.noticeError : styles.muted}>{tooLong ? c.tooLong : c.length(trimmed.length, view.maxLength)}</p>
+        </>
+      )}
+      {notice && (
+        <p className={notice.kind === 'ok' ? styles.noticeOk : styles.noticeError} role={notice.kind === 'ok' ? 'status' : 'alert'}>
+          {notice.text}
+        </p>
+      )}
+      {reason ? (
+        <p className={styles.muted}>{reason}</p>
+      ) : (
+        <div className={styles.actionsRow}>
+          <Button variant="primary" disabled={pending || trimmed === '' || tooLong} onClick={() => setConfirming(view.total)}>
+            {pending ? c.sending : c.send(view.total)}
+          </Button>
+        </div>
+      )}
+      {confirming !== null && (
+        <Modal title={c.confirmTitle} onClose={() => setConfirming(null)}>
+          <p>{c.confirmQuestion(plural(confirming, FORMS.leaderTo))}</p>
+          <p className={styles.inviteText}>{trimmed}</p>
           <div className={styles.dialogFoot}>
             <Button onClick={() => setConfirming(null)}>{c.cancel}</Button>
             <Button

@@ -37,15 +37,18 @@ export class CoordinatorContactsRepo {
    * координатор или его телефон — текст другой, и ведущий получит новый контакт. Учёт — в той же `deliveries`, что ведёт
    * рассыльщик: «доставлено» он ставит только после ответа платформы.
    */
-  async alreadySent(): Promise<Set<string>> {
+  async alreadySent(prefix: 'coordinator' | 'leaders' = 'coordinator'): Promise<Set<string>> {
+    // Префикс — своя рассылка: «сообщение ведущим» (`leaders:`) ведёт тот же учёт, но отдельно от контактов координатора.
     const { rows } = await this.db.query<{ user_id: number; body: string }>(
       `SELECT d.user_id, b.body FROM deliveries d JOIN broadcasts b ON b.key = d.broadcast_key
-        WHERE b.key LIKE 'coordinator:%' AND d.status = 'sent'`,
+        WHERE b.key LIKE $1 AND d.status = 'sent'`,
+      [`${prefix}:%`],
     );
     return new Set(rows.map((r) => sentKey(Number(r.user_id), r.body)));
   }
 
-  async targets(platforms: readonly string[]): Promise<CoordinatorContactTarget[]> {
+  /** `statuses` — какие группы брать: контакт координатора — действующим и на паузе, «сообщение ведущим» — только действующим. */
+  async targets(platforms: readonly string[], statuses: readonly string[] = ['Функционирует', 'На паузе']): Promise<CoordinatorContactTarget[]> {
     const { rows } = await this.db.query<{
       id: number; leader: string | null; coordinator: string | null; coord_fio: string | null; coord_phone: string | null;
       leader_user_id: number | null; leader_user_platform: string | null; leader_user_blocked: boolean | null;
@@ -66,8 +69,9 @@ export class CoordinatorContactsRepo {
          ) c ON true
          LEFT JOIN users cu   ON cu.id = c.user_id
          LEFT JOIN persons cp ON cp.id = c.person_id
-        WHERE g.archived_at IS NULL AND g.status IN ('Функционирует', 'На паузе')
+        WHERE g.archived_at IS NULL AND g.status = ANY($1::text[])
         ORDER BY g.id`,
+      [statuses],
     );
     // Регистрации на подключённых платформах — по последним цифрам телефона, свежая первой.
     const byPhone = new Map<string, number>();

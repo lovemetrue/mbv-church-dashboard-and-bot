@@ -32,6 +32,9 @@ export const REQUEST_PRESETS: Preset[] = [
   { name: t.presets.noGender, filters: [{ field: t.fields.gender, op: 'empty', value: '' }] },
   { name: t.presets.noDistrict, filters: [{ field: t.fields.district, op: 'empty', value: '' }] },
   { name: t.presets.noDays, filters: [{ field: t.fields.days, op: 'empty', value: '' }] },
+  // Просили онлайн-группу — в заявке район «Онлайн» (так его кладёт анкета и `matching.ts`).
+  { name: t.presets.noOnline, filters: [{ field: t.fields.district, op: 'ne', value: 'Онлайн' }] },
+  { name: t.presets.onlyOnline, filters: [{ field: t.fields.district, op: 'eq', value: 'Онлайн' }] },
   { name: t.presets.longWait, filters: [{ field: t.fields.waiting, op: 'ge', value: '7' }] },
 ];
 

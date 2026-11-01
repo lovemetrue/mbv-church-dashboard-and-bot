@@ -55,6 +55,9 @@ export function fieldsToForm(body: unknown): URLSearchParams | string {
 /** Карточка человека из ФИО и телефона, вписанных в форму группы. */
 const cardOf = (fio: string, phone: string | null | undefined): PersonInput => ({ fio, phone: phone ?? null, age: null, place: null, note: null });
 
+/** Район группы, у которой есть только адрес, а он не нашёлся на карте (тот же, что у групп из таблицы без района). */
+const NO_DISTRICT = 'Не указан';
+
 export function createRecordCreator(deps: {
   requests: Pick<RequestsRepo, 'createFromDashboard' | 'findById'>;
   groups: Pick<GroupsRepo, 'create' | 'requestLinkState' | 'linkToRequest' | 'archive' | 'personName' | 'setLinksIfEmpty' | 'hasLeaderLink' | 'personFromRequest' | 'personPhone'>;
@@ -113,6 +116,14 @@ export function createRecordCreator(deps: {
       if (picked && picked.kind !== 'request' && (await deps.groups.personName(picked)) === null) return bad(PERSON_GONE);
       // Проверка формы требует ФИО ведущего; у выбранного оно из карточки и подставится ниже.
       if (picked && !form.get('leader')?.trim()) form.set('leader', '—');
+      // Где группа: галочка «Онлайн-группа» — район «Онлайн»; иначе хватает адреса — район по нему поставит `autoPlace`
+      // ниже, а не нашёлся — «Не указан» (служитель увидит и поправит). Без адреса и района группу не заводим.
+      if (form.get('online') === '1') form.set('district', 'Онлайн');
+      form.delete('online');
+      if (!form.get('district')?.trim()) {
+        if (!form.get('address')?.trim()) return bad('Впишите адрес (район и метро определятся по нему), выберите район или отметьте «Онлайн-группа».');
+        form.set('district', NO_DISTRICT);
+      }
       const parsed = parseGroupForm(form);
       if (!parsed.ok) return bad(parsed.error);
       const direction = await knownDirection(deps.directions, parsed.value.direction);
@@ -135,7 +146,7 @@ export function createRecordCreator(deps: {
         Object.assign(parsed.value, { leader: name, phone, phones: phone ? [phone] : [] });
       }
       // source='ui': видно, откуда запись, и повторный перенос таблицы её не затирает.
-      // Адрес задан — район и метро берём по нему: выбранный в форме район остаётся, только если адрес не нашёлся.
+      // Адрес задан — район и метро берём по нему: выбранный в форме район (или «Не указан») остаётся, только если адрес не нашёлся.
       const auto = await autoPlace(deps.locate, parsed.value.address, parsed.value.district);
       const created = await deps.groups.create(
         { ...parsed.value, ...auto, direction, doNotRefer: flag(form, 'doNotRefer'), chamber: flag(form, 'chamber') }, 'ui',

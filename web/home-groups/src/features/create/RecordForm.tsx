@@ -71,6 +71,8 @@ export function RecordForm({ spec, path, submitLabel, busyLabel, onClose, onCrea
         next[f.name] = f.kind === 'select' || f.kind === 'person' ? ru.create.requiredChoose(f.label) : f.kind === 'multi' ? ru.create.requiredPick(f.label) : ru.create.required(f.label);
       }
     }
+    const combined = Object.keys(next).length === 0 ? spec.check?.(values) : null;
+    if (combined) next[combined.field] = combined.message;
     setProblems(next);
     const first = all.find((f) => next[f.name]);
     if (first) {

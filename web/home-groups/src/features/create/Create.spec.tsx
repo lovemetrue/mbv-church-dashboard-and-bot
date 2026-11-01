@@ -341,7 +341,7 @@ describe('«+ Создать»: заявка', () => {
 });
 
 describe('«+ Создать»: группа', () => {
-  test('форма группы шлёт нужные имена полей, а адрес лежит в отдельном блоке внизу', async () => {
+  test('форма группы шлёт нужные имена полей; хватает адреса — район и метро не выбирают', async () => {
     const fetchMock = stubFetchWithFixtures({
       me: meOf(null),
       'groups/create': () => json({ ok: true, id: 13 }),
@@ -350,15 +350,16 @@ describe('«+ Создать»: группа', () => {
     renderAt(<App />, REFERENCE);
     const dialog = await ready(await openForm(user, 'Группа'));
 
-    const addressBlock = within(dialog).getByRole('group', { name: 'Адрес (виден только здесь)' });
-    const address = within(addressBlock).getByRole('textbox', { name: 'Адрес' });
+    const address = within(dialog).getByRole('textbox', { name: 'Адрес' });
     expect(within(dialog).getAllByRole('textbox', { name: 'Адрес' })).toHaveLength(1);
-    // Блок адреса идёт после всех остальных полей, прямо перед кнопками.
-    const comment = within(dialog).getByRole('textbox', { name: 'Комментарий' });
-    expect(comment.compareDocumentPosition(addressBlock) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(address).toHaveAccessibleDescription(/Район и метро по нему определятся сами/);
+    // Адрес — наверху, у ведущего; район — внизу и необязательный.
+    const district = within(dialog).getByRole('combobox', { name: 'Район' });
+    expect(address.compareDocumentPosition(district) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(district).not.toBeRequired();
+    expect(district).toHaveAccessibleDescription(/определится по адресу/);
 
     await user.type(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' }), 'Ольга Крылова');
-    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Район' }), 'Приморский');
     await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Направление' }), 'Молодёжное служение');
     await user.selectOptions(within(dialog).getByRole('combobox', { name: 'День' }), 'Вт');
     await user.type(within(dialog).getByRole('textbox', { name: 'Время' }), '19:00');
@@ -374,7 +375,6 @@ describe('«+ Создать»: группа', () => {
       body: {
         fields: {
           leader: 'Ольга Крылова',
-          district: 'Приморский',
           direction: 'Молодёжное служение',
           status: 'Функционирует',
           day: 'Вт',
@@ -475,16 +475,38 @@ describe('«+ Создать»: группа', () => {
     expect(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' })).toBeInTheDocument();
   });
 
-  test('группа не отправляется, пока не выбраны район и формат', async () => {
-    const fetchMock = stubFetchWithFixtures({ me: meOf(null) });
+  test('группа не отправляется, пока нет ни адреса, ни района: просят вписать адрес', async () => {
+    const fetchMock = stubFetchWithFixtures({ me: meOf(null), 'groups/create': () => json({ ok: true, id: 17 }) });
     const user = userEvent.setup();
     renderAt(<App />, REFERENCE);
     const dialog = await ready(await openForm(user, 'Группа'));
     await user.type(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' }), 'Ольга Крылова');
     await user.click(within(dialog).getByRole('button', { name: 'Создать группу' }));
-    expect(within(dialog).getByText('Выберите значение в поле «Район».')).toBeInTheDocument();
-    expect(within(dialog).getByRole('combobox', { name: 'Район' })).toHaveFocus();
+    expect(within(dialog).getByText(/Впишите адрес/)).toBeInTheDocument();
+    expect(within(dialog).getByRole('textbox', { name: 'Адрес' })).toHaveFocus();
     expect(posts(fetchMock)).toHaveLength(0);
+    // Адреса пока нет — хватает района.
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Район' }), 'Приморский');
+    await user.click(within(dialog).getByRole('button', { name: 'Создать группу' }));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect((posts(fetchMock)[0]!.body as { fields: Record<string, string> }).fields).toMatchObject({ district: 'Приморский' });
+  });
+
+  test('«Онлайн-группа» прячет адрес, район и метро; уходит отметкой online', async () => {
+    const fetchMock = stubFetchWithFixtures({ me: meOf(null), 'groups/create': () => json({ ok: true, id: 18 }) });
+    const user = userEvent.setup();
+    renderAt(<App />, REFERENCE);
+    const dialog = await ready(await openForm(user, 'Группа'));
+    await user.type(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' }), 'Ольга Крылова');
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Онлайн-группа' }));
+    expect(within(dialog).queryByRole('textbox', { name: 'Адрес' })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('combobox', { name: 'Район' })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('textbox', { name: 'Метро' })).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Создать группу' }));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    const fields = (posts(fetchMock)[0]!.body as { fields: Record<string, string> }).fields;
+    expect(fields).toMatchObject({ online: '1' });
+    expect(fields).not.toHaveProperty('district');
   });
 });
 

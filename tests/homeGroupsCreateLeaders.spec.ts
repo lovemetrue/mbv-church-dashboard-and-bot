@@ -80,3 +80,41 @@ describe('создание группы: ведущий и соведущий с
     expect((await db.query('SELECT 1 FROM groups')).rowCount).toBe(0);
   });
 });
+
+describe('создание группы: хватает адреса', () => {
+  const withLocate = (found: { district: string | null; metro: string | null } | null) => createRecordCreator({
+    requests: new RequestsRepo(db), groups: new GroupsRepo(db), persons: new MembersRepo(db), directions: new GroupDirectionsRepo(db), audit: new AuditRepo(db),
+    locate: async () => found,
+  });
+  const noPlace = { leader: 'Иван', direction: 'Основное служение', status: 'Функционирует' };
+  const row = async (id: number) => (await db.query('SELECT district, metro, address FROM groups WHERE id = $1', [id])).rows[0];
+
+  test('только адрес — район и метро определяются по нему', async () => {
+    const out = await withLocate({ district: 'Выборгский', metro: 'Озерки' }).group({ fields: { ...noPlace, address: 'пр. Энгельса 100' } }, 'a');
+    if (!out.ok) throw new Error(out.message);
+    expect(await row(out.id)).toEqual({ district: 'Выборгский', metro: 'Озерки', address: 'пр. Энгельса 100' });
+  });
+
+  test('адрес не нашёлся — группа заводится с районом «Не указан»', async () => {
+    const out = await withLocate(null).group({ fields: { ...noPlace, address: 'где-то' } }, 'a');
+    if (!out.ok) throw new Error(out.message);
+    expect((await row(out.id)).district).toBe('Не указан');
+  });
+
+  test('«Онлайн-группа» — район «Онлайн», адрес не ищется', async () => {
+    let asked = false;
+    const c = createRecordCreator({
+      requests: new RequestsRepo(db), groups: new GroupsRepo(db), persons: new MembersRepo(db), directions: new GroupDirectionsRepo(db), audit: new AuditRepo(db),
+      locate: async () => { asked = true; return { district: 'Выборгский', metro: 'Озерки' }; },
+    });
+    const out = await c.group({ fields: { ...noPlace, online: '1' } }, 'a');
+    if (!out.ok) throw new Error(out.message);
+    expect((await row(out.id)).district).toBe('Онлайн');
+    expect(asked).toBe(false);
+  });
+
+  test('нет ни адреса, ни района — понятный отказ', async () => {
+    const out = await withLocate(null).group({ fields: noPlace }, 'a');
+    expect(out).toMatchObject({ ok: false, message: expect.stringContaining('Впишите адрес') });
+  });
+});

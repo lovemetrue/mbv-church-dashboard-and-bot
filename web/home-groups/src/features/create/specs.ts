@@ -48,6 +48,8 @@ export interface FormSpec {
   initial: Record<string, string>;
   /** Поля, которых в форме не видно, но которые уходят всегда: например, номер заявки, по которой заводят группу. */
   hidden?: Record<string, string>;
+  /** Проверка нескольких полей разом (одно из двух заполнить): поле, на котором показать ошибку, или null. */
+  check?: (values: Record<string, string>) => { field: string; message: string } | null;
 }
 
 /** Статус заявки, при котором человек уже в группе (как `DONE` на сервере). */
@@ -150,6 +152,8 @@ const uniqueLeaders = (groups: FormMeta['groups']): string[] => [...new Set(grou
 
 /** Ведущий выбран из «Людей» — его ФИО и телефон берутся из карточки, вписывать их незачем. */
 const noLeaderPicked = (values: Record<string, string>): boolean => !values['leaderKey'];
+/** Онлайн-группе адрес, район и метро не нужны: галочка их прячет, а сервер ставит району «Онлайн». */
+const notOnline = (values: Record<string, string>): boolean => !values['online'];
 
 export function groupSpec(meta: FormMeta): FormSpec {
   const t = ru.create.groupFields;
@@ -158,7 +162,9 @@ export function groupSpec(meta: FormMeta): FormSpec {
     // сервер ставит ссылкой, и имя группы берёт из его карточки; ФИО и телефон от руки — только для нового человека.
     { name: 'leaderKey', label: t.leaderKey, kind: 'person', wide: true, hint: ru.create.leaderKeyHint },
     { name: 'leader', label: t.leader, kind: 'text', required: true, wide: true, autoComplete: 'off', showWhen: noLeaderPicked },
-    { name: 'district', label: t.district, kind: 'select', required: true, options: opts(meta.districts) },
+    // Место группы — сначала онлайн или адрес: район и метро по адресу ставит сервер (`locate.ts`), вписывать их не нужно.
+    { name: 'online', label: ru.create.groupOnline, kind: 'checkbox', hint: ru.create.groupOnlineHint },
+    { name: 'address', label: t.address, kind: 'text', wide: true, autoComplete: 'off', hint: ru.create.groupAddressHint, showWhen: notOnline },
     { name: 'direction', label: t.direction, kind: 'select', required: true, options: opts(meta.groupDirections) },
     {
       name: 'status',
@@ -174,7 +180,6 @@ export function groupSpec(meta: FormMeta): FormSpec {
     { name: 'coLeaderPhone', label: t.coLeaderPhone, kind: 'text', inputMode: 'tel', autoComplete: 'off' },
     { name: 'age', label: t.age, kind: 'select', options: opts(meta.ageGroups) },
     { name: 'composition', label: t.composition, kind: 'multi', wide: true, options: opts(meta.compositions) },
-    { name: 'metro', label: t.metro, kind: 'text', autoComplete: 'off' },
     { name: 'day', label: t.day, kind: 'select', options: opts(ru.create.days) },
     { name: 'time', label: t.time, kind: 'text', placeholder: ru.create.timePlaceholder, autoComplete: 'off' },
     { name: 'people', label: t.people, kind: 'text', inputMode: 'numeric', placeholder: ru.create.peoplePlaceholder, autoComplete: 'off' },
@@ -190,6 +195,17 @@ export function groupSpec(meta: FormMeta): FormSpec {
     { name: 'coordinator', label: t.coordinator, kind: 'select', options: opts(meta.coordinators) },
     { name: 'training', label: t.training, kind: 'text', autoComplete: 'off' },
     { name: 'feedbackAt', label: t.feedbackAt, kind: 'date' },
+    // Внизу и необязательно: нужны, только если адреса пока нет (или чтобы поправить определённое).
+    {
+      name: 'district',
+      label: t.district,
+      kind: 'select',
+      options: opts(meta.districts.filter((d) => d !== 'Онлайн')),
+      emptyLabel: ru.create.groupDistrictAuto,
+      hint: ru.create.groupDistrictHint,
+      showWhen: notOnline,
+    },
+    { name: 'metro', label: t.metro, kind: 'text', autoComplete: 'off', hint: ru.create.groupMetroHint, showWhen: notOnline },
     { name: 'comment', label: t.comment, kind: 'textarea', wide: true },
     { name: 'checked', label: t.checked, kind: 'checkbox' },
     { name: 'campaignRegistered', label: t.campaignRegistered, kind: 'checkbox' },
@@ -199,7 +215,9 @@ export function groupSpec(meta: FormMeta): FormSpec {
   ];
   return {
     fields,
-    address: { name: 'address', label: t.address, kind: 'text', wide: true, autoComplete: 'off' },
+    // Без адреса и района сервер не узнал бы, где группа: просим одно из двух (онлайн-группе — ничего).
+    check: (v) =>
+      v['online'] || (v['address'] ?? '').trim() || (v['district'] ?? '').trim() ? null : { field: 'address', message: ru.create.groupPlaceMissing },
     // Направление по умолчанию — первое в справочнике (основное служение), как у групп, заведённых без него.
     initial: { status: known(meta.groupStatuses, 'Функционирует'), direction: meta.groupDirections[0] ?? '' },
   };

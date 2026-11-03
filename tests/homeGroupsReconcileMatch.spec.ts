@@ -194,6 +194,21 @@ describe('ведущий записан не так, как назвал чел�
     expect(findGroups({ name: 'Измуратова Лилия', phones: [] }, [REF[2]!])).toEqual([{ groupId: 52, tier: 'likely', by: 'name', role: 'leader' }]);
   });
 
+  test('опечатка в фамилии и инициалы («Холеменко А. С.» вместо «Холименко») — вероятное совпадение, а не «группа не найдена»', () => {
+    const ref = [g(60, 'Холименко Александр Сергеевич')];
+    expect(findGroups({ name: 'Холеменко А. С.', phones: [] }, ref)).toEqual([{ groupId: 60, tier: 'likely', by: 'name', role: 'leader' }]);
+    expect(findGroups({ name: 'Холеменко А.', phones: [] }, ref)).toEqual([{ groupId: 60, tier: 'likely', by: 'name', role: 'leader' }]);
+    expect(planReconcile({ name: 'Холеменко А. С.', phones: [] }, ref).status).toBe('choose');
+    // Инициал не подошёл ни к имени, ни к отчеству — это другой человек.
+    expect(findGroups({ name: 'Холеменко П.', phones: [] }, ref)).toEqual([]);
+  });
+
+  test('в справочнике инициал, а человек назвал полное имя с опечаткой в фамилии — вероятное совпадение; имя на другую букву — не он', () => {
+    const ref = [g(61, 'Холименко А.')];
+    expect(findGroups({ name: 'Холеменко Александр', phones: [] }, ref)).toEqual([{ groupId: 61, tier: 'likely', by: 'name', role: 'leader' }]);
+    expect(findGroups({ name: 'Холеменко Павел', phones: [] }, ref)).toEqual([]);
+  });
+
   test('одинаковое имя без общей фамилии не подходит: «Мария Петрова» — не группа Марии Сидоровой', () => {
     expect(findGroups({ name: 'Мария Петрова', phones: [] }, REF)).toEqual([]);
     expect(planReconcile({ name: 'Мария Петрова', phones: [] }, REF).status).toBe('none');

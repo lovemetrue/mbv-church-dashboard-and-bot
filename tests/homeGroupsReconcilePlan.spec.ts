@@ -40,6 +40,12 @@ describe('«уже состою в группе»: группа ищется п�
     expect(reconcileOf(req({ leader_name: null }), GROUPS)).toMatchObject({ status: 'noleader' });
   });
 
+  test('ведущий не нашёлся — подсказка не зовёт заводить группу: ведущим новой стал бы сам участник, а группа обычно есть под другим написанием', () => {
+    const r = reconcileOf(req({ leader_name: 'Кто-то Неизвестный' }), GROUPS)!;
+    expect(r.text).not.toMatch(/Создать|заведите/);
+    expect(r.text).toMatch(/уточните/);
+  });
+
   test('у обращения без регистрации человека разобрать нечего: в справочник его вносят руками', () => {
     const r = reconcileOf(req({ user_id: null, leader_name: 'Павел Малявин' }), GROUPS)!;
     expect(r.status).toBe('nouser');

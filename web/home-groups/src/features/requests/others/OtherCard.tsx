@@ -114,7 +114,10 @@ export function OtherCard({ item, onClose, onClosed }: { item: OtherItem; onClos
         <PersonLink personKey={item.personKey} fio={item.fio} />
       </DrawerSection>
       <WorkPlace key={`work-${item.id}`} subject={subjectOfOther(item)} onClosed={onClosed} />
-      <GroupFromRequestSection key={`own-group-${item.id}`} requestId={item.id} ownGroup={item.ownGroup} />
+      {/* «Уже состою»: ведущим группы по заявке стал бы сам участник (сервер такое и не примет). Заведённую до запрета — показываем. */}
+      {(item.type !== 'already_member' || item.ownGroup) && (
+        <GroupFromRequestSection key={`own-group-${item.id}`} requestId={item.id} ownGroup={item.ownGroup} />
+      )}
       <DrawerSection title={o.original}>
         {item.original.length ? (
           <KeyValue rows={item.original.map((f) => ({ label: f.label, value: f.value }))} />

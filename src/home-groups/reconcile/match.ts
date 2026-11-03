@@ -121,10 +121,14 @@ function matchName(subject: readonly string[], leader: readonly string[]): Tier 
     const rest = full.filter((t) => !named.includes(t));
     if (named.length >= 1 && rest.every((t) => leaderInitials.includes(t[0]!))) return 'exact';
   }
-  if (full.length === 1 && full[0]!.length >= 4 && hasToken(leader, full[0]!) && initials.length > 0) {
-    // «Малявин П.»: фамилия нашлась, а инициал должен подойти к другому слову ведущего.
-    const rest = leader.filter((t) => !sameToken(t, full[0]!));
-    if (rest.some((t) => initials.some((i) => t.startsWith(i)))) return 'likely';
+  if (full.length === 1 && full[0]!.length >= 4 && initials.length > 0) {
+    // «Малявин П.»: фамилия нашлась, а инициал должен подойти к другому слову ведущего. Опечатку в длинной фамилии
+    // прощаем и здесь: «Холеменко А. С.» вместо «Холименко Александр Сергеевич» иначе давало «группа не найдена», и
+    // по такому обращению заводили вторую группу тому же ведущему.
+    const surname = full[0]!;
+    const same = (t: string): boolean => sameToken(t, surname) || (looksLikeSurname(surname) && closeToken(t, surname));
+    const rest = leader.filter((t) => !same(t));
+    if (rest.length < leader.length && rest.some((t) => initials.some((i) => t.startsWith(i)))) return 'likely';
   }
   // Вероятное: совпала фамилия (в том числе с опечаткой), а имена не противоречат. Так находятся «Коновалов и Маруфов» (ведущим
   // записан один из супругов), одна фамилия без имени и «Измуратова Лилия» вместо «Ишмуратова Лилия». Однофамильцы с другим
@@ -137,7 +141,9 @@ function matchName(subject: readonly string[], leader: readonly string[]): Tier 
     const spareMine = full.filter((t) => !leaderFull.some((l) => near(l, t)));
     const spareTheirs = leaderFull.filter((l) => !full.some((t) => near(l, t)));
     // Ведущий записан с инициалом, который не подошёл к имени человека («Ишмуратова Л.» и «Ишмуратова Анна»): это другой человек.
-    const contradicted = leaderInitials.length > 0 && spareMine.some((t) => !looksLikeSurname(t));
+    // Имя, которое начинается на этот инициал («Холеменко Александр» и «Холименко А.»), не противоречит.
+    const contradicted = leaderInitials.length > 0
+      && spareMine.some((t) => !looksLikeSurname(t) && !leaderInitials.some((i) => t.startsWith(i)));
     if (!contradicted && (spareMine.every(looksLikeSurname) || spareTheirs.every(looksLikeSurname))) return 'likely';
   }
   return null;

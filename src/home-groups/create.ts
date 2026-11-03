@@ -56,6 +56,10 @@ export function fieldsToForm(body: unknown): URLSearchParams | string {
 const cardOf = (fio: string, phone: string | null | undefined): PersonInput => ({ fio, phone: phone ?? null, age: null, place: null, note: null });
 
 /** Район группы, у которой есть только адрес, а он не нашёлся на карте (тот же, что у групп из таблицы без района). */
+/** Отказ «Создать группу по заявке» для «уже состою в группе». */
+export const MEMBER_NO_GROUP =
+  'Человек из этой заявки уже состоит в группе: группу по ней не заводят. Найдите его группу в разборе обращения; если не нашлась — уточните у него, кто ведущий.';
+
 const NO_DISTRICT = 'Не указан';
 
 export function createRecordCreator(deps: {
@@ -134,6 +138,9 @@ export function createRecordCreator(deps: {
       if (requestId !== null) {
         const state = await deps.groups.requestLinkState(requestId);
         if (state === 'missing') return { ok: false, error: 'not_found', message: 'Заявка не найдена: возможно, её удалили.' };
+        // Ведущим новой группы стал бы человек из заявки, а он ходит в чужую группу. Так, не найдя группу по имени
+        // ведущего с опечаткой, заводили вторую группу тому же ведущему.
+        if (state === 'member') return { ok: false, error: 'conflict', message: MEMBER_NO_GROUP };
         if (state !== 'free') return { ok: false, error: 'conflict', message: `По этой заявке группа уже заведена: ${groupCode(state)}.` };
       }
       let leaderRef: PersonRef | null = null;

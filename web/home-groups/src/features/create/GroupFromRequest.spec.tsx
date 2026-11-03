@@ -67,6 +67,14 @@ describe('«Создать группу по заявке»', () => {
     expect(within(section).queryByRole('button', { name: 'Создать группу по заявке' })).not.toBeInTheDocument();
   });
 
+  test('у «уже состою в группе» кнопки нет: ведущим новой группы стал бы сам участник', async () => {
+    stubFetchWithFixtures();
+    // 203 в демо — «Уже состоит в группе».
+    const card = await openCard('/?tab=requests&view=others&req=203');
+    expect(within(card).queryByRole('heading', { name: 'Группа по заявке' })).not.toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: 'Создать группу по заявке' })).not.toBeInTheDocument();
+  });
+
   test('если по заявке группу уже завели, сервер отказывает, и его слова видны в форме', async () => {
     stubFetchWithFixtures({
       [`requests/${LEADER}/group-draft`]: () => json(draft()),

@@ -318,16 +318,19 @@ export class GroupsRepo {
   /** Одна живая (не убранная) группа по номеру. */
   /**
    * Можно ли завести группу по заявке: 'missing' — заявки нет (или удалена), число — по ней уже заведена действующая
-   * группа (её номер), 'free' — можно.
+   * группа (её номер), 'member' — обращение «уже состою в группе», по нему группу не заводят, 'free' — можно.
    */
-  async requestLinkState(requestId: number): Promise<'missing' | 'free' | number> {
-    const { rows } = await this.db.query<{ request: boolean; group_id: number | null }>(
-      `SELECT EXISTS (SELECT 1 FROM requests WHERE id = $1 AND archived_at IS NULL) AS request,
+  async requestLinkState(requestId: number): Promise<'missing' | 'member' | 'free' | number> {
+    const { rows } = await this.db.query<{ type: string | null; group_id: number | null }>(
+      `SELECT (SELECT type FROM requests WHERE id = $1 AND archived_at IS NULL) AS type,
               (SELECT id::int FROM groups WHERE source_request_id = $1 AND archived_at IS NULL) AS group_id`,
       [requestId],
     );
     const row = rows[0]!;
-    return !row.request ? 'missing' : row.group_id ?? 'free';
+    if (row.type === null) return 'missing';
+    // Уже заведённую группу показываем и у «уже состою»: такие успели завести до запрета.
+    if (row.group_id !== null) return row.group_id;
+    return row.type === 'already_member' ? 'member' : 'free';
   }
 
   /**

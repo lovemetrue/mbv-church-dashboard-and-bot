@@ -103,6 +103,18 @@ describe('создание группы по заявке', () => {
     expect((await db.query('SELECT 1 FROM groups')).rowCount).toBe(0);
   });
 
+  test('по обращению «уже состою в группе» группу не завести: её ведущим стал бы участник чужой группы', async () => {
+    const userId = await seedUser(db, { id: '502', fio: 'Анна Участница', phone: '+79215550022' });
+    await db.query(`UPDATE users SET leader_name = 'Холеменко А. С.' WHERE id = $1`, [userId]);
+    const { rows } = await db.query<{ id: number }>(
+      `INSERT INTO requests (user_id, type, status, origin) VALUES ($1, 'already_member', 'Новая', 'бот') RETURNING id::int AS id`,
+      [userId],
+    );
+    const fields = { leader: 'Анна', district: 'Приморский', direction: 'Основное служение', status: 'Функционирует', sourceRequestId: String(rows[0]!.id) };
+    expect(await creator().group({ fields }, 'a')).toMatchObject({ ok: false, error: 'conflict', message: expect.stringMatching(/уже состоит в группе/) });
+    expect((await db.query('SELECT 1 FROM groups')).rowCount).toBe(0);
+  });
+
   test('без заявки группа заводится как раньше, без связи', async () => {
     const out = await creator().group({ fields: { leader: 'Пётр', district: 'Приморский', direction: 'Основное служение', status: 'Функционирует' } }, 'a');
     if (!out.ok) throw new Error(out.message);

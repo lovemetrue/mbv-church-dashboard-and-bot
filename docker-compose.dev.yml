@@ -1,6 +1,12 @@
-# Оверрайд для разработки на ноутбуке: база доступна с хоста, бот из compose не поднимается.
-# Запуск: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db
+# Оверрайд для разработки на ноутбуке: база и Valkey доступны с хоста, бот из compose не поднимается.
+# Запуск: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db valkey
 services:
   db:
     ports:
       - '5433:5432'
+  # Сессии интерфейса «Домашние группы» при локальном `npm run dev:hg` идут в этот Valkey.
+  # Порт 6380, а не 6379: на машине разработчика 6379 часто занят чужим Redis,
+  # и тогда compose либо не стартует, либо интерфейс пишет сессии не туда.
+  valkey:
+    ports:
+      - '6380:6379'

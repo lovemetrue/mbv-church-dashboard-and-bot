@@ -10,4 +10,5 @@ gdrive.json
 *.log
 .DS_Store
 _preview.html
-rscyn_build_check.shdeploy-logs/
+rscyn_build_check.sh
+deploy-logs/

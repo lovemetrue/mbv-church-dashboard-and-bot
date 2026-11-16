@@ -171,71 +171,28 @@ export class RequestsRepo {
       'INSERT INTO requests (user_id, type, text, origin) VALUES ($1, $2, $3, $4) RETURNING id',
       [userId, type, text ?? null, origin],
     );
-    await this.afterCreate(rows[0]!.id, type, true);
+    await this.afterCreate(rows[0]!.id, type);
     const created = await this.findById(rows[0]!.id);
     return created!;
   }
 
   /**
-   * Что делается с только что созданной заявкой: «хочу в группу» получает распределителя (если ответственного не указали),
-   * «хочу открыть» — потенциальную группу в справочнике. Это дополнения: если они не удались (например, база отвечает
-   * ошибкой), заявка человека всё равно уже записана и не должна пропасть из-за них.
+   * Что делается с только что созданной заявкой: «хочу открыть» получает потенциальную группу в справочнике.
+   * Ответственного заявке НЕ назначают ни для какого типа: новые приходят «не назначен», и берёт их человек вручную
+   * (раньше «хочу в группу» раздавались распределителям автоматически — это отключено намеренно). Это дополнение:
+   * если оно не удалось (например, база отвечает ошибкой), заявка человека всё равно уже записана и не должна пропасть.
    */
-  private async afterCreate(requestId: number, type: RequestType, mayAssign: boolean): Promise<void> {
+  private async afterCreate(requestId: number, type: RequestType): Promise<void> {
     try {
-      if (type === 'join_group' && mayAssign) await this.assignDistributor(requestId);
       if (type === 'lead_group') {
         await this.db.query('SELECT ensure_potential_group($1)', [requestId]);
         // Адрес и время, названные до регистрации, ложатся в группу сразу.
         await this.db.query('SELECT sync_potential_group(user_id) FROM requests WHERE id = $1 AND user_id IS NOT NULL', [requestId]);
       }
     } catch (err) {
-      logger.error({ err: (err as Error).message, requestId }, 'заявка создана, но автоматическое назначение или потенциальная группа не удались');
+      logger.error({ err: (err as Error).message, requestId }, 'заявка создана, но потенциальная группа не заведена');
     }
   }
-
-  /**
-   * Новой заявке «хочу в группу» назначается ответственный из «Команды»: тот, у кого роль «Распределитель» и сейчас меньше
-   * всего открытых заявок. Так заявки раздаются поровну, а распределитель, зайдя под своим именем, сразу видит «свои».
-   * Распределителей нет — заявка остаётся без ответственного, как раньше. Выбор идёт под замком: две заявки, пришедшие
-   * одновременно, иначе достались бы одному и тому же человеку (оба видели бы его как «наименее загруженного»).
-   */
-  async assignDistributor(requestId: number): Promise<string | null> {
-    const c = await this.db.connect();
-    try {
-      await c.query('BEGIN');
-      await c.query(`SELECT pg_advisory_xact_lock(hashtext('hg_auto_assign'))`);
-      const { rows } = await c.query<{ name: string }>(
-        `SELECT c.name
-           FROM coordinators c
-          WHERE c.archived_at IS NULL
-            AND EXISTS (SELECT 1 FROM coordinator_roles cr JOIN team_roles tr ON tr.id = cr.role_id
-                         WHERE cr.coordinator_id = c.id AND tr.kind = 'distributor')
-          ORDER BY (SELECT count(*) FROM requests r
-                     WHERE r.responsible = c.name AND r.archived_at IS NULL AND r.status NOT IN ('Исполнена', 'Аннулирована')),
-                   c.id
-          LIMIT 1`,
-      );
-      const name = rows[0]?.name ?? null;
-      if (name === null) { await c.query('COMMIT'); return null; }
-      const done = await c.query(`UPDATE requests SET responsible = $2 WHERE id = $1 AND responsible IS NULL`, [requestId, name]);
-      if ((done.rowCount ?? 0) > 0) {
-        await c.query(
-          `INSERT INTO audit_log (actor, service, action, entity_type, entity_id, after)
-           VALUES ('авто-распределение', 'home-groups', 'request.assign', 'request', $1, $2::jsonb)`,
-          [requestId, JSON.stringify({ responsible: name, auto: true })],
-        );
-      }
-      await c.query('COMMIT');
-      return done.rowCount ? name : null;
-    } catch (err) {
-      await c.query('ROLLBACK').catch(() => undefined);
-      throw err;
-    } finally {
-      c.release();
-    }
-  }
-
 
   /** Заведение заявки из формы дашборда: участника в боте у неё нет. */
   async createFromDashboard(input: RequestInput): Promise<number> {
@@ -273,7 +230,7 @@ export class RequestsRepo {
         input.family ?? null,
       ],
     );
-    await this.afterCreate(rows[0]!.id, input.type, !input.responsible);
+    await this.afterCreate(rows[0]!.id, input.type);
     return rows[0]!.id;
   }
 

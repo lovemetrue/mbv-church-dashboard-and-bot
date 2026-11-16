@@ -42,7 +42,7 @@ describe('«Настройки → Роли команды»', () => {
     // Подписи в списке короткие (на телефоне длинные обрезались бы), а что значит каждая — сказано над списком.
     expect(within(within(rows[0]!).getByRole('combobox', { name: 'Что значит' })).getAllByRole('option').map((o) => o.textContent))
       .toEqual(['Без особых настроек', 'Катализатор', 'Старший распределитель', 'Распределитель', 'Старший координатор', 'Координатор групп']);
-    expect(screen.getByText(/сервис сам раздаёт ему новые заявки/)).toBeInTheDocument();
+    expect(screen.getAllByText(/новые приходят «не назначен», берёт их сам/).length).toBeGreaterThan(0);
     // У каждой роли прямо под ней — что она даёт; у распределителя — что карточки групп он не правит.
     expect(within(rows[0]!).getByText(/видит свои группы и свои обращения/)).toBeInTheDocument();
     expect(within(rows[1]!).getByText(/карточки групп не правит/)).toBeInTheDocument();

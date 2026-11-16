@@ -682,14 +682,28 @@ export function buildViewsWithPlan(
       ?? (r.status === DONE && finalBrief ? `${finalBrief.code}, ${finalBrief.leader}` : null);
     // Если утверждение есть в журнале, строка о нём придёт оттуда — с автором и датой.
     if (approved && !trail.some((a) => a.action === 'request.approve')) log.push({ at: null, text: `Утверждена: ${approved}` });
+    // Записи аудита и сообщения в MAX приходят из разных источников; в журнал они должны лечь по времени события, а не
+    // «сначала всё из аудита, потом всё из MAX» — иначе дни в карточке перемешаны. Дата в журнале дневная, поэтому
+    // порядок держим по полному моменту, пока он есть. Запись без момента остаётся за предыдущей.
+    const timed: { ts: number | null; entry: LogEntry }[] = [];
     for (const a of trail) {
       const text = auditText(a);
-      if (text) log.push({ at: a.at ? localIsoDate(a.at, timeZone) : null, text });
+      if (text) timed.push({ ts: a.at ? new Date(a.at).getTime() : null, entry: { at: a.at ? localIsoDate(a.at, timeZone) : null, text } });
     }
     // Сообщения в MAX — в журнал все, по всем утверждениям: блок в карточке показывает только последнее, а история нужна.
     for (const n of noticesByRequest.get(r.id) ?? []) {
-      for (const e of noticeLog(n)) log.push({ at: e.at ? localIsoDate(new Date(e.at), timeZone) : null, text: e.text });
+      for (const e of noticeLog(n)) {
+        const ts = e.at ? new Date(e.at).getTime() : null;
+        timed.push({ ts: ts !== null && Number.isFinite(ts) ? ts : null, entry: { at: e.at ? localIsoDate(new Date(e.at), timeZone) : null, text: e.text } });
+      }
     }
+    let prev = -Infinity;
+    const keyed = timed.map((t, i) => {
+      if (t.ts !== null) prev = t.ts;
+      return { key: prev, i, entry: t.entry };
+    });
+    keyed.sort((x, y) => x.key - y.key || x.i - y.i);
+    for (const k of keyed) log.push(k.entry);
     const cancelReason = nonBlank(r.cancel_reason);
     if (cancelReason) log.push({ at: null, text: `Причина аннулирования: ${cancelReason}` });
     const attendance = nonBlank(r.attendance);

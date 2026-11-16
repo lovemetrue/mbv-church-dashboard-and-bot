@@ -936,6 +936,22 @@ describe('накопленные предложения и счётчик уча
     expect(person.requests.find((r) => r.id === 7)!.botNotices?.[0]).toMatchObject({ answer: 'not_fit', groupCode: 'ДГ-0002' });
   });
 
+  test('журнал заявки идёт по времени: записи аудита и сообщения в MAX не группируются по источнику', () => {
+    const n = (over: object) => ({ requestId: 7, groupId: 1, recipient: 'person' as const, status: 'sent' as const, error: null, answer: null, sentAt: null, answeredAt: null, ...over });
+    const { views } = build({
+      groups: [group({ id: 1 })],
+      requests: [request({ id: 7, place: 'Приморский', status: 'В работе' })],
+      audit: [
+        { entity_id: 7, at: new Date('2026-11-05T09:00:00Z'), actor: 'super_mbv_admin', action: 'request.need_call', after: { callback: true }, note: null },
+        { entity_id: 7, at: new Date('2026-11-11T09:00:00Z'), actor: 'mbv_admin', action: 'request.need_call', after: { callback: true }, note: null },
+      ],
+      notices: [n({ sentAt: '2026-11-10T10:00:00Z', answer: 'waiting', answeredAt: '2026-11-11T08:00:00Z' })],
+    });
+    const log = views.requests.items[0]!.log.filter((l) => l.at !== null && l.at >= '2026-11-01');
+    expect(log.map((l) => l.at)).toEqual(['2026-11-05', '2026-11-10', '2026-11-11', '2026-11-11']);
+    expect(log[2]!.text).toBe('Человек нажал «Жду звонка» (MAX)');
+  });
+
   test('оценка для окна «Другая группа»: по каждой группе число или причина; чужой номер — null', () => {
     const { views } = build({
       groups: [group({ id: 1 }), group({ id: 2, district: 'Центральный' })],

@@ -1,4 +1,5 @@
-import type { RequestTableFields } from '@contracts';
+import type { FamilyKind, RequestTableFields } from '@contracts';
+import { familyOptionLabels } from '../../entities/family';
 import { formatPhone } from '../../entities/format';
 import { ru } from '../../shared/i18n/ru';
 import type { EditField, EditSpec } from '../manage/editSpec';
@@ -19,6 +20,10 @@ export interface ContactValues {
   hobby: string | null;
   profession: string | null;
   family: string | null;
+  /** Семейное положение вариантом (миграция 070); нет поля (старые данные) — «не указано». */
+  familyKind?: FamilyKind | null;
+  /** Пол человека — для подписей «Холост» / «Не замужем»; неизвестен — обе формы. */
+  gender?: { value: 'м' | 'ж' | null };
   note: string | null;
   /** Только у заявки: поля из таблицы церкви. У человека в «Людях» их нет, и форма их не рисует. */
   table?: RequestTableFields;
@@ -27,7 +32,24 @@ export interface ContactValues {
 }
 
 /** Поля, которых при скрытых контактах в форме нет: сервер их не прислал. */
-const HIDDEN_CONTACT_FIELDS: ReadonlySet<string> = new Set(['phone', 'address', 'hobby', 'profession', 'family']);
+const HIDDEN_CONTACT_FIELDS: ReadonlySet<string> = new Set(['phone', 'address', 'hobby', 'profession', 'family', 'familyKind']);
+
+/**
+ * Семейное положение в форме правки — выбор, а не текст (миграция 070): «не указано», «холост / не замужем»,
+ * «женат / замужем» с подписями по полу. Исходный текст человека не правится — он показан подсказкой и остаётся.
+ */
+function familyKindField(v: ContactValues): EditField {
+  return {
+    name: 'familyKind',
+    label: f.family,
+    kind: 'select',
+    options: ['single', 'married'],
+    labels: familyOptionLabels(v.gender?.value ?? null),
+    emptyLabel: ru.family.notSet,
+    wide: true,
+    ...(v.family ? { hint: ru.family.hintOriginal(v.family) } : {}),
+  };
+}
 
 /** Порядок и подписи полей — единственное место: формы правки и добавления человека строятся только отсюда. */
 export const CONTACT_FIELD_DEFS: EditField[] = [
@@ -62,7 +84,9 @@ const TABLE_FIELD_DEFS: EditField[] = [
 
 export function contactEditSpec(v: ContactValues): EditSpec {
   const t = v.table;
-  const all = t ? [...CONTACT_FIELD_DEFS, ...TABLE_FIELD_DEFS] : CONTACT_FIELD_DEFS;
+  // В правке текст семейного положения заменён выбором варианта (в форме добавления человека он остаётся текстом).
+  const own = CONTACT_FIELD_DEFS.map((d) => (d.name === 'family' ? familyKindField(v) : d));
+  const all = t ? [...own, ...TABLE_FIELD_DEFS] : own;
   return {
     fields: v.contactsHidden ? all.filter((x) => !HIDDEN_CONTACT_FIELDS.has(x.name)) : all,
     initial: {
@@ -84,7 +108,7 @@ export function contactEditSpec(v: ContactValues): EditSpec {
       schedule: v.schedule ?? '',
       hobby: v.hobby ?? '',
       profession: v.profession ?? '',
-      family: v.family ?? '',
+      familyKind: v.familyKind ?? '',
       // У заявки показ склеивает заметку с «Дополнительно»; править надо порознь, иначе сохранение заметки задвоило бы «Дополнительно».
       note: (t ? t.note : v.note) ?? '',
     },

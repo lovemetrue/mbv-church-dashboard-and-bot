@@ -16,6 +16,7 @@ import { STATE_TONE, statusLabel } from './OtherList';
 import styles from './Others.module.css';
 import { PairsBlock } from './PairsBlock';
 import { ProspectsBlock } from './ProspectsBlock';
+import { familyValue } from '../../contact/FamilyValue';
 import { ReconcileBlock } from './ReconcileBlock';
 
 const o = ru.requests.others;
@@ -60,7 +61,7 @@ export function OtherCard({ item, onClose, onClosed }: { item: OtherItem; onClos
     { label: ru.requests.place, value: item.place ?? noValue },
     ...(item.hobby ? [{ label: ru.contact.fields.hobby, value: item.hobby }] : []),
     ...(item.profession ? [{ label: ru.contact.fields.profession, value: item.profession }] : []),
-    ...(item.family ? [{ label: ru.contact.fields.family, value: item.family }] : []),
+    ...(item.family || item.familyKind ? [{ label: ru.contact.fields.family, value: familyValue(item.familyKind, item.family, null) }] : []),
     { label: ru.requests.source, value: item.source },
     { label: ru.requests.status, value: item.status },
     ...(item.waitingDays != null && item.state === 'open' ? [{ label: ru.requests.waiting, value: `${item.waitingDays} дн.` }] : []),

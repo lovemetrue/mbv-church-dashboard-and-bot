@@ -34,6 +34,8 @@
  *   POST /api/v1/people/strange         PersonStrangeBody → ActionOk | ActionError (то же по ключу человека: u12, r345, p7)
  *   POST /api/v1/people/gender          PersonGenderBody → ActionOk | ActionError (пол человека по ключу; null — снова из ФИО)
  *   POST /api/v1/people/gender-ai       (тело {})         → GenderAiOk | ActionError (модель подсказывает пол тем, у кого он не понятен из ФИО)
+ *   POST /api/v1/people/relatives       RelativeAddBody   → ActionOk | ActionError (связать двоих родством; пара уже связана — 409)
+ *   POST /api/v1/people/relatives/delete RelativeDeleteBody → ActionOk | ActionError (убрать связь по её номеру)
  *   POST /api/v1/requests/:id/reconcile ReconcileBody → ReconcileOk | ActionError (разобрать «другое обращение»: в состав групп или ведущим групп)
  *   POST /api/v1/requests/reconcile-ready ReconcileReadyBody → ReconcileReadyOk | ActionError (разобрать сразу все с одной точно найденной группой)
  *   POST /api/v1/people/(u|r)<id>/update {fields} → ActionOk | ActionError (контакты регистрации или человека из заявки; доходят и до заявок)
@@ -265,6 +267,13 @@ export interface BotNotice {
  * группы человеку не подбираются). by: откуда — «fio» (выведен из ФИО), «ai» (подсказка модели, стоит проверить),
  * «manual» (поставил служитель); у пустого null.
  */
+/**
+ * Семейное положение вариантом: 'single' — холост / не замужем, 'married' — женат / замужем; null — не указано.
+ * Распознаётся из свободного текста (`familyKindOf`, миграция 070), служитель выбирает в правке человека. Подпись
+ * зависит от пола: мужчине «Холост» / «Женат», женщине «Не замужем» / «Замужем», при неизвестном — обе через «/».
+ */
+export type FamilyKind = 'single' | 'married';
+
 export interface GenderInfo {
   value: 'м' | 'ж' | null;
   by: 'fio' | 'ai' | 'manual' | null;
@@ -420,6 +429,8 @@ export interface RequestItem {
   id: number;
   /** Человек в «Людях»: регистрация («u12») или сама заявка без регистрации («r345») — переход в его карточку. */
   personKey: string;
+  /** Родственники человека заявки (миграция 071) — коротким списком со ссылками на их карточки. */
+  relatives: PersonRelative[];
   fio: string;
   phone: string | null;
   /** Возраст так, как записан в заявке: «26-35», «35-45 лет», «подростки (до 18 лет)». */
@@ -456,6 +467,8 @@ export interface RequestItem {
   hobby: string | null;
   profession: string | null;
   family: string | null;
+  /** Семейное положение вариантом (миграция 070); `family` остаётся исходным текстом и показывается подсказкой. */
+  familyKind: FamilyKind | null;
   /** Заявка как она пришла: что человек заполнил сам, в порядке показа. */
   original: OriginalField[];
   /** Куда человека утвердили (для bucket = done). */
@@ -1062,6 +1075,8 @@ export interface OtherItem {
   hobby: string | null;
   profession: string | null;
   family: string | null;
+  /** Семейное положение вариантом (миграция 070); `family` остаётся исходным текстом и показывается подсказкой. */
+  familyKind: FamilyKind | null;
   cancelReason: string | null;
   original: OriginalField[];
   table: RequestTableFields;
@@ -1416,6 +1431,44 @@ export interface GroupsView {
   items: GroupItem[];
 }
 
+/**
+ * Степень родства — кем родственник приходится владельцу карточки: супруг(а), родитель, ребёнок, брат/сестра, другое.
+ * Связь одна на пару и видна с обеих сторон; обратная степень выводится (родитель ↔ ребёнок), см. миграцию 071.
+ */
+export type RelativeKind = 'spouse' | 'parent' | 'child' | 'sibling' | 'other';
+
+/** Родственник в карточке человека: `id` — номер связи (для удаления), `key` — его ключ в «Людях». */
+export interface PersonRelative {
+  id: number;
+  key: string;
+  fio: string;
+  kind: RelativeKind;
+}
+
+/**
+ * Возможный родственник: та же фамилия (с учётом рода) и тот же телефон или адрес. Только подсказка с кнопкой
+ * «Связать». `samePhone` / `sameAddress` — совпавшее значение из карточки владельца; null — не совпало. У карточки со
+ * скрытыми контактами подсказок нет (сервер их убирает, см. `peopleFor`).
+ */
+export interface RelativeHint {
+  key: string;
+  fio: string;
+  samePhone: string | null;
+  sameAddress: string | null;
+}
+
+/** `POST /api/v1/people/relatives`: «`otherKey` приходится `key`: `kind`». */
+export interface RelativeAddBody {
+  key: string;
+  otherKey: string;
+  kind: RelativeKind;
+}
+
+/** `POST /api/v1/people/relatives/delete`: убрать связь по её номеру. */
+export interface RelativeDeleteBody {
+  id: number;
+}
+
 export interface PersonItem {
   /** Метка «Странный человек»; null — нет. */
   strange: StrangeMark | null;
@@ -1457,6 +1510,12 @@ export interface PersonItem {
   hobby: string | null;
   profession: string | null;
   family: string | null;
+  /** Семейное положение вариантом (миграция 070); `family` остаётся исходным текстом и показывается подсказкой. */
+  familyKind: FamilyKind | null;
+  /** Родственники (связи миграции 071) — с обеих сторон, степенью «кем он приходится этому человеку». */
+  relatives: PersonRelative[];
+  /** Возможные родственники — подсказки «Связать»; сами не связываются. */
+  relativeHints: RelativeHint[];
   /** Комментарий к человеку: у регистрации — служителя, у человека из заявки — комментарий заявки, у карточки — заметка. */
   note: string | null;
   /** Из регистрации: церковь, кто ведущий («уже состою в группе»), как удобнее связаться. У заявок без регистрации — null. */

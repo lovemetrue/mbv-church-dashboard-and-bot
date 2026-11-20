@@ -8,7 +8,7 @@ import { demoStrangeOf } from './strange';
 
 /** Обращение без метки: метка накладывается при сборке (`buildOthers`), потому что её можно поставить в демо. */
 type BaseOther = Omit<OtherItem, 'strange'>;
-type RawOther = Omit<BaseOther, 'address' | 'schedule' | 'hobby' | 'profession' | 'family' | 'table' | 'ownGroup' | 'contactsHidden' | 'personKey' | 'outcome' | 'offer'> & Partial<Pick<BaseOther, 'offer'>>;
+type RawOther = Omit<BaseOther, 'address' | 'schedule' | 'hobby' | 'profession' | 'family' | 'familyKind' | 'table' | 'ownGroup' | 'contactsHidden' | 'personKey' | 'outcome' | 'offer'> & Partial<Pick<BaseOther, 'offer'>>;
 
 /** Поля из таблицы церкви у демо-заявок пусты: их заполняют вручную. */
 export function emptyTable(note: string | null): RequestTableFields {
@@ -20,7 +20,7 @@ function baseOthers(): BaseOther[] {
   // Группа по обращению в демо — та же, что «будущая группа» у «хочу открыть» (на сервере это одна связь, source_request_id).
   // Регистраций у демо-обращений нет (переход в «Люди» не из чего). Итог закрытых — как без записи в журнале.
   return rawOthers().map((o) => ({
-    address: null, schedule: null, hobby: null, profession: null, family: null, table: emptyTable(o.note), ownGroup: o.prospects?.futureGroup ? { ...o.prospects.futureGroup, status: 'Потенциальная' } : null, contactsHidden: false,
+    address: null, schedule: null, hobby: null, profession: null, family: null, familyKind: null, table: emptyTable(o.note), ownGroup: o.prospects?.futureGroup ? { ...o.prospects.futureGroup, status: 'Потенциальная' } : null, contactsHidden: false,
     personKey: null,
     // Что предлагает человек из «хочу открыть»: в демо по одной на «откроет группу» и «даст дом».
     offer: o.offer ?? null,

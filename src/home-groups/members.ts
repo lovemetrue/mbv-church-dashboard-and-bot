@@ -1,5 +1,6 @@
 import { normalizePhone } from '../core/phone.js';
 import type { AuditRepo } from '../db/repos/audit.repo.js';
+import { FAMILY_KIND_ERROR, parseFamilyKind } from './contacts.js';
 import { parsePersonKey, type MembersRepo, type PersonInput } from '../db/repos/members.repo.js';
 import type { ActionError } from './contracts.js';
 
@@ -49,7 +50,14 @@ function parseRow(src: Record<string, unknown>, today: Date): { joinedOn?: strin
 function parsePerson(src: Record<string, unknown>, base: PersonInput | null): PersonInput | string {
   const out: PersonInput = base ? { ...base } : { fio: '', phone: null, age: null, place: null, note: null };
   const TEXT = ['fio', 'phone', 'age', 'place', 'note', 'address', 'schedule', 'hobby', 'profession', 'family'] as const;
-  for (const k of Object.keys(src)) if (!(TEXT as readonly string[]).includes(k)) return `Поле «${k.slice(0, 40)}» здесь менять нельзя.`;
+  for (const k of Object.keys(src)) if (!(TEXT as readonly string[]).includes(k) && k !== 'familyKind') return `Поле «${k.slice(0, 40)}» здесь менять нельзя.`;
+  if ('familyKind' in src) {
+    const v = src['familyKind'];
+    if (v !== null && typeof v !== 'string') return 'Значения должны быть текстом.';
+    const kind = parseFamilyKind((v ?? '').trim());
+    if (kind === undefined) return FAMILY_KIND_ERROR;
+    out.familyKind = kind;
+  }
   for (const k of TEXT) {
     if (!(k in src)) continue;
     if (src[k] !== null && typeof src[k] !== 'string') return 'Значения должны быть текстом.';

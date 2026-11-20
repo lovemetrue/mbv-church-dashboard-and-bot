@@ -20,18 +20,18 @@ export const REJECT_REASONS: readonly RejectReason[] = ['time', 'far', 'age', 'd
 
 /** Поля заявки, которые координатор правит вручную; `null` или пустая строка очищают поле (кроме ФИО). */
 export interface RequestEdit {
-  fio?: string | null; phone?: string | null; age?: string | null; place?: string | null; note?: string | null; address?: string | null; schedule?: string | null; hobby?: string | null; profession?: string | null; family?: string | null;
+  fio?: string | null; phone?: string | null; age?: string | null; place?: string | null; note?: string | null; address?: string | null; schedule?: string | null; hobby?: string | null; profession?: string | null; family?: string | null; familyKind?: string | null;
   source?: string | null; ministry?: string | null; extra?: string | null; recommended?: string | null; recommendedAt?: string | null; attendance?: string | null;
 }
 const EDIT_LIMITS: Record<keyof RequestEdit, number> = {
-  fio: 200, phone: 40, age: 60, place: 200, note: 1000, address: 200, schedule: 200, hobby: 200, profession: 200, family: 200,
+  fio: 200, phone: 40, age: 60, place: 200, note: 1000, address: 200, schedule: 200, hobby: 200, profession: 200, family: 200, familyKind: 10,
   source: 200, ministry: 200, extra: 2000, recommended: 200, recommendedAt: 10, attendance: 200,
 };
 // Поля человека (ФИО, телефон, возраст, район, адрес, время, хобби, профессия, семья) пишутся в его запись — регистрацию
 // или карточку (миграция 057): заявка на него ссылается. Комментарий и поля из таблицы церкви (источник, служение,
 // рекомендация…) — свойство самой заявки. «Ходит в группу» (текст из таблицы) здесь не правится: куда человек ходит,
 // задаёт утверждение в группу, и второе поле о том же разошлось бы с ним.
-const HUMAN_FIELDS = ['fio', 'phone', 'age', 'place', 'address', 'schedule', 'hobby', 'profession', 'family'] as const;
+const HUMAN_FIELDS = ['fio', 'phone', 'age', 'place', 'address', 'schedule', 'hobby', 'profession', 'family', 'familyKind'] as const;
 type HumanField = (typeof HUMAN_FIELDS)[number];
 const isHumanField = (k: keyof RequestEdit): k is HumanField => (HUMAN_FIELDS as readonly string[]).includes(k);
 const REQUEST_EDIT_COLUMNS: Record<Exclude<keyof RequestEdit, HumanField>, string> = {
@@ -349,6 +349,10 @@ export class PlacementRepo {
         if (!normalized) return fail('bad_request', 'Не похоже на номер телефона. Пример: +7 911 123-45-67.');
         clean[k] = normalized;
         continue;
+      }
+      // Семейное положение вариантом (миграция 070): только из списка, иначе база отказала бы всей правке.
+      if (k === 'familyKind' && t !== '' && t !== 'single' && t !== 'married') {
+        return fail('bad_request', 'Семейное положение — «холост / не замужем», «женат / замужем» или не указано.');
       }
       if (k === 'recommendedAt' && t !== '' && !isIsoDate(t)) return fail('bad_request', 'Дата рекомендации — в виде 2026-08-27.');
       clean[k] = t === '' ? null : t;

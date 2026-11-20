@@ -22,6 +22,8 @@ import { subjectOfRequest } from './work/subject';
 import { HeaderTools } from './work/HeaderTools';
 import { WorkPlace } from './work/WorkPlace';
 import { PersonLink } from './work/PersonLink';
+import { familyValue } from '../contact/FamilyValue';
+import { RequestRelatives } from '../relatives/RequestRelatives';
 import { DeleteRequestSection } from '../manage';
 import { GroupFromRequestSection } from '../create';
 import { AssistantNoteBlock } from './assistant/AssistantNoteBlock';
@@ -526,7 +528,7 @@ export function RequestCard({
     { label: ru.requests.place, value: r.place ?? noValue },
     ...(r.hobby ? [{ label: ru.contact.fields.hobby, value: r.hobby }] : []),
     ...(r.profession ? [{ label: ru.contact.fields.profession, value: r.profession }] : []),
-    ...(r.family ? [{ label: ru.contact.fields.family, value: r.family }] : []),
+    ...(r.family || r.familyKind ? [{ label: ru.contact.fields.family, value: familyValue(r.familyKind, r.family, r.gender.value) }] : []),
     { label: ru.requests.source, value: r.source },
     { label: ru.requests.status, value: r.status },
     ...(r.waitingDays != null ? [{ label: ru.requests.waiting, value: `${r.waitingDays} дн.` }] : []),
@@ -574,6 +576,8 @@ export function RequestCard({
         <KeyValue rows={contacts} />
         <PersonLink personKey={r.personKey} fio={r.fio} />
       </DrawerSection>
+      {/* Родственники человека заявки — отдельным блоком под контактами (шапку карточки не трогаем). */}
+      <RequestRelatives relatives={r.relatives ?? []} />
       <AssistantNoteBlock key={`assistant-${r.id}`} note={r.assistant} />
       <WorkPlace key={`work-${r.id}`} subject={subjectOfRequest(r)} onClosed={onClosed} />
       <GroupFromRequestSection key={`own-group-${r.id}`} requestId={r.id} ownGroup={r.ownGroup} />

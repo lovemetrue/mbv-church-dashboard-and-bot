@@ -182,6 +182,10 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
       set: async (body: unknown, actor: string) => { strangeCalls.push({ name: 'gender', body, actor }); return { ok: true }; },
       fillWithAi: async () => { strangeCalls.push({ name: 'gender-ai' }); return { ok: true, unknownBefore: 3, filled: 2, left: 1 }; },
     } as never,
+    relatives: {
+      add: async (body: unknown, actor: string) => { strangeCalls.push({ name: 'relative.add', body, actor }); return { ok: true }; },
+      remove: async (body: unknown, actor: string) => { strangeCalls.push({ name: 'relative.remove', body, actor }); return { ok: false, error: 'not_found', message: 'Связь уже убрана: обновите страницу.' }; },
+    } as never,
     teamRoles: {
       view: async () => ({ items: [{ id: 1, name: 'Распределитель', kind: 'distributor', members: 2 }] }),
       create: async (body: unknown, actor: string) => { kitCalls.push({ name: 'role.create', body, actor }); return { ok: true, id: 7 }; },
@@ -1754,6 +1758,24 @@ describe('метка «Странный человек»', () => {
   });
 });
 
+describe('родственники', () => {
+  const post = (cookie: string | null, path: string, body: unknown) => fetch(`${app.base}/api/v1/${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body),
+  });
+
+  test('связать и убрать связь: без входа 401, обычный вход может, тело и автор доходят, ошибка — со своим кодом', async () => {
+    expect((await post(null, 'people/relatives', { key: 'u1', otherKey: 'p2', kind: 'spouse' })).status).toBe(401);
+    const inv = app.invalidations();
+    const cookie = await signIn(REGULAR);
+    expect((await post(cookie, 'people/relatives', { key: 'u1', otherKey: 'p2', kind: 'spouse' })).status).toBe(200);
+    expect(app.strangeCalls.at(-1)).toEqual({ name: 'relative.add', body: { key: 'u1', otherKey: 'p2', kind: 'spouse' }, actor: REGULAR.login });
+    expect(app.invalidations()).toBe(inv + 1);
+    const gone = await post(cookie, 'people/relatives/delete', { id: 5 });
+    expect(gone.status).toBe(404);
+    expect(app.strangeCalls.at(-1)).toEqual({ name: 'relative.remove', body: { id: 5 }, actor: REGULAR.login });
+  });
+});
+
 describe('пол человека', () => {
   const post = (cookie: string | null, path: string, body: unknown) => fetch(`${app.base}/api/v1/${path}`, {
     method: 'POST', headers: { 'content-type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body),
@@ -2015,7 +2037,7 @@ describe('вход «Стойка регистрации»', () => {
       expect((await get(cookie, path)).status, path).toBe(403);
     }
     const actions = app.actionCalls.length;
-    for (const path of ['requests/1/approve', 'groups/1/update', 'people/12/update', 'settings/staff/create', 'matching/run', 'assistant/chat', 'requests/bulk']) {
+    for (const path of ['requests/1/approve', 'groups/1/update', 'people/12/update', 'people/relatives', 'people/relatives/delete', 'settings/staff/create', 'matching/run', 'assistant/chat', 'requests/bulk']) {
       expect((await postJson(cookie, path, {})).status, path).toBe(403);
     }
     expect(app.viewsCalls()).toBe(views);
@@ -2067,7 +2089,7 @@ describe('вход «Только чтение»', () => {
     const before = counts();
     for (const path of ['requests/1/approve', 'requests/1/rematch', 'requests/1/assign', 'requests/1/close', 'requests/bulk', 'groups/1/update', 'groups/create',
       'people/create', 'persons/create', 'groups/1/members/create', 'people/u12/update', 'matching/run', 'matching/rerun-all', 'assistant/run', 'assistant/chat',
-      'kits/issue', 'people/strange', 'people/gender', 'requests/reconcile-ready', 'settings/staff/create']) {
+      'kits/issue', 'people/strange', 'people/gender', 'people/relatives', 'people/relatives/delete', 'requests/reconcile-ready', 'settings/staff/create']) {
       const r = await postJson(cookie, path, {});
       expect(r.status, path).toBe(403);
       expect(await r.json()).toMatchObject({ error: 'forbidden' });

@@ -29,6 +29,7 @@ import { ContactsRepo } from '../db/repos/contacts.repo.js';
 import { createReconciler } from './reconcile/service.js';
 import { createStrange } from './strange.js';
 import { createGenders } from './genders.js';
+import { createRelatives } from './relatives.js';
 import { createKits } from './kits.js';
 import { createTeamRoles } from './teamRoles.js';
 import { createGroupDirections } from './groupDirections.js';
@@ -36,6 +37,7 @@ import { MembersRepo } from '../db/repos/members.repo.js';
 import { GeocodeRepo } from '../db/repos/geocode.repo.js';
 import { StrangeRepo } from '../db/repos/strange.repo.js';
 import { GendersRepo } from '../db/repos/genders.repo.js';
+import { RelativesRepo } from '../db/repos/relatives.repo.js';
 import { TeamRolesRepo } from '../db/repos/teamRoles.repo.js';
 import { GroupDirectionsRepo } from '../db/repos/groupDirections.repo.js';
 import { createAssistant } from './assistant/service.js';
@@ -127,6 +129,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     members: new MembersRepo(db),
     strange: new StrangeRepo(db),
     genders: new GendersRepo(db),
+    relatives: new RelativesRepo(db),
     geocode: new GeocodeRepo(db),
     notices: noticesRepo,
   }, { ...(opts.timeZone ? { timeZone: opts.timeZone } : {}), assistantAvailable: () => assistantAvailable() });
@@ -204,6 +207,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     llm,
     unknown: async () => (await views()).people.items.filter((p) => p.gender.value === null).map((p) => ({ key: p.key, fio: p.fio })),
   });
+  const relatives = createRelatives({ repo: new RelativesRepo(db) });
   const members = createMembers({ members: new MembersRepo(db), audit: new AuditRepo(db) });
   const contacts = createContacts({ contacts: new ContactsRepo(db) });
   const usersRepo = new UsersRepo(db);
@@ -229,7 +233,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   const groupDirections = createGroupDirections({ repo: new GroupDirectionsRepo(db), audit: auditRepo });
   const kits = createKits({ users: usersRepo, audit: auditRepo, timeZone: opts.timeZone ?? 'Europe/Moscow' });
   const formMeta = createFormMeta({ defaultCapacity: opts.defaultCapacity, coordinators: new CoordinatorsRepo(db), teamRoles: new TeamRolesRepo(db), directions: new GroupDirectionsRepo(db), groups: new GroupsRepo(db) });
-  return { load, views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, geocoderConfig, geocodeAddresses, mapConfig, chat, members, contacts, reconciler, strange, genders, kits, teamRoles, groupDirections, formMeta, help };
+  return { load, views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, geocoderConfig, geocodeAddresses, mapConfig, chat, members, contacts, reconciler, strange, genders, relatives, kits, teamRoles, groupDirections, formMeta, help };
 }
 
 export function composeViews(db: Pool, engine: PlanEngineApi, opts: ComposeOptions): ViewsSource {

@@ -114,6 +114,8 @@ export interface RegisteredParticipant {
   hobby: string | null;
   profession: string | null;
   family: string | null;
+  /** Семейное положение вариантом (миграция 070): 'single', 'married'; null — не указано. */
+  family_kind: 'single' | 'married' | null;
   /** Комментарий служителя к человеку (`admin_comment`). */
   note: string | null;
   /** Кто ведущий — у тех, кто ответил «уже состою в группе». */
@@ -424,6 +426,8 @@ export class UsersRepo {
     // Метка «странный человек» привязана к ключу регистрации: вместе с регистрацией уходит и она.
     await this.db.query('DELETE FROM strange_marks WHERE person_key = $1', [`u${id}`]);
     await this.db.query('DELETE FROM person_genders WHERE person_key = $1', [`u${id}`]);
+    // И связи с родственниками (миграция 071): ключ u<номер> без регистрации ни на кого не указывает.
+    await this.db.query('DELETE FROM person_relatives WHERE a_key = $1 OR b_key = $1', [`u${id}`]);
     return (rowCount ?? 0) > 0;
   }
 
@@ -526,7 +530,7 @@ export class UsersRepo {
     const { rows } = await this.db.query<RegisteredParticipant>(
       `SELECT id, registration_no, full_name, phone, church, mdg_status, registered_at,
               chat_id <> '' AS has_chat, kit_issued_at, age, location, address_raw AS address, schedule_raw AS schedule,
-              hobby, profession, family_status AS family, admin_comment AS note, leader_name, preferred_contact, platform
+              hobby, profession, family_status AS family, family_kind, admin_comment AS note, leader_name, preferred_contact, platform
          FROM users
         WHERE registration_no IS NOT NULL
         ORDER BY registration_no DESC`,

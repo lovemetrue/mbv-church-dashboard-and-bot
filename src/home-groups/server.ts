@@ -21,6 +21,7 @@ import type { Members } from './members.js';
 import type { Contacts } from './contacts.js';
 import type { Strange } from './strange.js';
 import type { Genders } from './genders.js';
+import type { Relatives } from './relatives.js';
 import type { Kits } from './kits.js';
 import type { TeamRoles } from './teamRoles.js';
 import type { GroupDirections } from './groupDirections.js';
@@ -97,6 +98,8 @@ export interface HomeGroupsDeps {
   strange: Strange;
   /** Пол человека: ручная установка и прогон моделью. Нет (в части тестов) — маршруты отвечают 404. */
   genders?: Genders;
+  /** Родственники в «Людях»: связать и убрать связь. Нет (в части тестов) — маршруты отвечают 404. */
+  relatives?: Relatives;
   /** Справочник ролей команды («Настройки → Роли команды», только полный вход). */
   teamRoles: TeamRoles;
   /** Справочник направлений групп («Настройки → Направления», только полный вход). */
@@ -199,6 +202,8 @@ const KIT_POST_PATH = /^\/api\/v1\/kits\/(find|search|issue|undo)$/;
 const PERSON_STRANGE_PATH = '/api/v1/people/strange';
 const PERSON_GENDER_PATH = '/api/v1/people/gender';
 const PERSON_GENDER_AI_PATH = '/api/v1/people/gender-ai';
+const RELATIVES_ADD_PATH = '/api/v1/people/relatives';
+const RELATIVES_DELETE_PATH = '/api/v1/people/relatives/delete';
 const RECONCILE_READY_PATH = '/api/v1/requests/reconcile-ready';
 const ASSISTANT_RUN_PATH = '/api/v1/assistant/run';
 const ASSISTANT_CHAT_PATH = '/api/v1/assistant/chat';
@@ -799,6 +804,24 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     sendJson(res, 200, outcome);
   }
 
+  /**
+   * Родственники: связать двоих и убрать связь. Как метка «Странный человек» — любому входу, который меняет данные
+   * (вход «Только чтение» и стойка регистрации сюда не пускаются белыми списками). Убрать связь — не удаление записи:
+   * люди остаются, поэтому полного входа не требует.
+   */
+  async function handleRelatives(req: IncomingMessage, res: ServerResponse, sid: string | undefined, relatives: Relatives, op: 'add' | 'remove'): Promise<void> {
+    const call = await readAuthedJson(req, res, sid);
+    if (!call) return;
+    const done = op === 'add' ? await relatives.add(call.body, call.actor) : await relatives.remove(call.body, call.actor);
+    if (!done.ok) {
+      sendJson(res, ACTION_STATUS[done.error], { error: done.error, message: done.message } satisfies ActionError);
+      return;
+    }
+    deps.invalidateViews();
+    logger.info({ actor: call.actor, op }, 'домашние группы: родственники');
+    sendJson(res, 200, { ok: true } satisfies ActionOk);
+  }
+
   async function handlePersonStrange(req: IncomingMessage, res: ServerResponse, sid: string | undefined): Promise<void> {
     const call = await readAuthedJson(req, res, sid);
     if (!call) return;
@@ -1003,6 +1026,8 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     if (req.method === 'POST' && path === PERSON_STRANGE_PATH) { await handlePersonStrange(req, res, sid); return; }
     if (req.method === 'POST' && path === PERSON_GENDER_PATH && deps.genders) { await handlePersonGender(req, res, sid, deps.genders); return; }
     if (req.method === 'POST' && path === PERSON_GENDER_AI_PATH && deps.genders) { await handleGenderAi(req, res, sid, deps.genders); return; }
+    if (req.method === 'POST' && path === RELATIVES_ADD_PATH && deps.relatives) { await handleRelatives(req, res, sid, deps.relatives, 'add'); return; }
+    if (req.method === 'POST' && path === RELATIVES_DELETE_PATH && deps.relatives) { await handleRelatives(req, res, sid, deps.relatives, 'remove'); return; }
     if (req.method === 'POST' && path === RECONCILE_READY_PATH) { await handleReconcileReady(req, res, sid); return; }
     if (req.method === 'POST' && path === ASSISTANT_CHAT_PATH) { await handleAssistantChat(req, res, sid); return; }
     if (req.method === 'POST' && path === ASSISTANT_CHAT_CLEAR_PATH) { await handleAssistantChatClear(req, res, sid); return; }

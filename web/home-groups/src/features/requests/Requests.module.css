@@ -1102,3 +1102,30 @@
   font-size: 13px;
   color: var(--warn);
 }
+
+/* Сводка в шапке карточки: подпись и значение в строку, длинный адрес и «Дополнительно» переносятся. */
+.summary {
+  margin: 6px 0 0;
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+  color: var(--text);
+  min-width: 0;
+}
+.summaryRow {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+.summaryRow dt {
+  flex: none;
+  color: var(--muted);
+}
+.summaryRow dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.summaryMuted {
+  color: var(--muted);
+}

@@ -10,7 +10,7 @@ const t = ru.create.requestFields;
  * Пустое не показываем. Заметка и «Дополнительно» — отдельными строками, как в форме правки.
  * «Ходит в группу» — текст из таблицы; у утверждённой заявки группу уже показывает карточка, повторять её не нужно.
  */
-export function tableRows(table: RequestTableFields, opts: { finalGroup: boolean }): KvRow[] {
+export function tableRows(table: RequestTableFields, opts: { finalGroup: boolean; skipExtra?: boolean }): KvRow[] {
   const recommended = [table.recommended, table.recommendedAt ? formatDateFull(table.recommendedAt) : null].filter(Boolean).join(' · ');
   return [
     ...(table.ministry ? [{ label: t.ministry, value: table.ministry }] : []),
@@ -18,6 +18,6 @@ export function tableRows(table: RequestTableFields, opts: { finalGroup: boolean
     ...(opts.finalGroup && table.finalGroup ? [{ label: t.finalGroup, value: table.finalGroup }] : []),
     ...(table.attendance ? [{ label: t.attendance, value: table.attendance }] : []),
     ...(table.note ? [{ label: ru.requests.note, value: table.note }] : []),
-    ...(table.extra ? [{ label: t.extra, value: table.extra }] : []),
+    ...(table.extra && !opts.skipExtra ? [{ label: t.extra, value: table.extra }] : []),
   ];
 }

@@ -17,6 +17,7 @@ import styles from './Requests.module.css';
 import { useRequestActions, type RequestActionsState } from './useRequestActions';
 import { useRequestParams, type ParamField } from './useRequestParams';
 import { tableRows } from './tableRows';
+import { CardSummary, scheduleText } from './CardSummary';
 import { subjectOfRequest } from './work/subject';
 import { HeaderTools } from './work/HeaderTools';
 import { WorkPlace } from './work/WorkPlace';
@@ -529,8 +530,8 @@ export function RequestCard({
     { label: ru.requests.source, value: r.source },
     { label: ru.requests.status, value: r.status },
     ...(r.waitingDays != null ? [{ label: ru.requests.waiting, value: `${r.waitingDays} дн.` }] : []),
-    ...(r.responsible ? [{ label: ru.requests.responsible, value: r.responsible }] : []),
-    ...tableRows(r.table, { finalGroup: r.bucket !== 'done' }),
+    // Ответственный и «Дополнительно» — в сводке шапки, повторять их здесь не нужно.
+    ...tableRows(r.table, { finalGroup: r.bucket !== 'done', skipExtra: true }),
   ];
   return (
     <Drawer
@@ -546,6 +547,13 @@ export function RequestCard({
         <>
           <Pill tone={r.bucket === 'cancelled' ? 'plain' : r.bucket}>{BUCKET_LABEL[r.bucket]}</Pill>
           {r.ageLabel && <AgeTag>{r.ageLabel}</AgeTag>}
+          <CardSummary
+            address={r.street ?? r.streetInfo.text}
+            district={r.district}
+            responsible={r.responsible}
+            schedule={scheduleText(r.scheduleInfo.text, r.days, r.slot)}
+            extra={r.table.extra}
+          />
         </>
       }
       tools={<HeaderTools subject={subjectOfRequest(r)} group={group} />}

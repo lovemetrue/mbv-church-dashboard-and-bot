@@ -1023,3 +1023,18 @@ describe('«Другие обращения»: «Разобрать все го�
     expect(await screen.findByRole('alert')).toHaveTextContent('За раз можно разобрать не больше 500 обращений.');
   });
 });
+
+describe('«Другие обращения»: сводка в шапке карточки', () => {
+  test('адрес, ответственный, время и «Дополнительно» — в шапке, а в «Контактах» их нет', async () => {
+    const o = { ...fixtureOther(211), address: 'Невский, 10', schedule: 'по средам', responsible: 'Анна Л.', table: { ...fixtureOther(211).table, extra: 'есть машина' } };
+    const { card } = await openOtherCard(211, { requests: () => json(viewWithOthers(OTHERS.map((x) => (x.id === 211 ? o : x)))) });
+    const s = within(within(card).getByRole('banner')).getByRole('group', { name: 'Сводка' });
+    const row = (label: string) => within(s).getByText(label, { selector: 'dt' }).nextElementSibling;
+    expect(row('Адрес')).toHaveTextContent('Невский, 10');
+    expect(row('Ответственный')).toHaveTextContent('Анна Л.');
+    expect(row('Время')).toHaveTextContent('по средам');
+    expect(row('Дополнительно')).toHaveTextContent('есть машина');
+    const contacts = within(card).getByRole('heading', { name: 'Контакты' }).closest('section')!;
+    for (const label of ['Ответственный', 'Дополнительно']) expect(within(contacts).queryByText(label)).not.toBeInTheDocument();
+  });
+});

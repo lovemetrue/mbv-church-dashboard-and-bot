@@ -5,6 +5,7 @@ import { AgeTag, Drawer, DrawerSection, KeyValue, Pill, StrangeBadge, StrangeBan
 import { DeleteRequestSection } from '../../manage';
 import { GroupFromRequestSection, OwnGroupLink } from '../../create';
 import { tableRows } from '../tableRows';
+import { CardSummary } from '../CardSummary';
 import { subjectOfOther } from '../work/subject';
 import { HeaderTools } from '../work/HeaderTools';
 import { WorkPlace } from '../work/WorkPlace';
@@ -57,16 +58,14 @@ export function OtherCard({ item, onClose, onClosed }: { item: OtherItem; onClos
   const contacts: KvRow[] = [
     { label: ru.requests.phone, value: item.phone ? <span className="num">{formatPhone(item.phone)}</span> : noValue },
     { label: ru.requests.place, value: item.place ?? noValue },
-    ...(item.address ? [{ label: ru.contact.fields.address, value: item.address }] : []),
-    ...(item.schedule ? [{ label: ru.contact.fields.schedule, value: item.schedule }] : []),
     ...(item.hobby ? [{ label: ru.contact.fields.hobby, value: item.hobby }] : []),
     ...(item.profession ? [{ label: ru.contact.fields.profession, value: item.profession }] : []),
     ...(item.family ? [{ label: ru.contact.fields.family, value: item.family }] : []),
     { label: ru.requests.source, value: item.source },
     { label: ru.requests.status, value: item.status },
     ...(item.waitingDays != null && item.state === 'open' ? [{ label: ru.requests.waiting, value: `${item.waitingDays} дн.` }] : []),
-    ...(item.responsible ? [{ label: ru.requests.responsible, value: item.responsible }] : []),
-    ...tableRows(item.table, { finalGroup: true }),
+    // Ответственный, адрес, время и «Дополнительно» — в сводке шапки.
+    ...tableRows(item.table, { finalGroup: true, skipExtra: true }),
   ];
   return (
     <Drawer
@@ -84,6 +83,7 @@ export function OtherCard({ item, onClose, onClosed }: { item: OtherItem; onClos
           <span className={styles.typeInTitle}>{item.typeLabel}</span>
           {item.ageLabel && <AgeTag>{item.ageLabel}</AgeTag>}
           {item.ownGroup && <OwnGroupLink group={item.ownGroup} />}
+          <CardSummary address={item.address} responsible={item.responsible} schedule={item.schedule} extra={item.table.extra} />
         </>
       }
       tools={<HeaderTools subject={subjectOfOther(item)} />}

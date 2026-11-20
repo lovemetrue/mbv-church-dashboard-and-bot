@@ -21,7 +21,7 @@ import { buildCoordinators, buildGroups, buildPeople, buildRequests, buildToday 
 import { RAW_REQUESTS } from './raw';
 import { setDemoStrange, strangeKey } from './strange';
 import { buildCampaign } from './campaign';
-import { buildKits, demoKitAction, findDemoKit, searchDemoKits } from './kits';
+import { buildKits, buildKitsIssued, demoKitAction, findDemoKit, searchDemoKits } from './kits';
 import { buildTeamRoles, teamRoleAction } from './teamRoles';
 import { buildHelpArticle, buildHelpIndex } from './help';
 import { buildDirections, directionAction } from './directions';
@@ -83,6 +83,8 @@ export function fixtureResponse(path: string): unknown {
       return buildHelpIndex();
     case 'kits':
       return buildKits();
+    case 'kits/issued':
+      return buildKitsIssued();
     // История чата «Помощник»: в демо уже есть пара реплик (fixtures/chat.ts).
     case 'assistant/chat/history':
       return fixtureChatHistory();

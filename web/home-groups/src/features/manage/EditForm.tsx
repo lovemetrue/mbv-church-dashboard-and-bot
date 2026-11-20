@@ -222,7 +222,7 @@ export function EditForm({ spec: given, path, onClose, onSaved, onBusyChange, re
         </label>
         {f.kind === 'select' ? (
           <select {...common} onChange={(e) => change(f.name, e.target.value)}>
-            <option value="">{ru.manage.notChosen}</option>
+            <option value="">{f.emptyLabel ?? ru.manage.notChosen}</option>
             {(f.options ?? []).map((o) => (
               <option key={o} value={o}>
                 {f.labels?.[o] ?? o}

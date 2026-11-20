@@ -1,4 +1,4 @@
-import type { OtherItem, RequestItem, RequestTableFields, StrangeMark } from '@contracts';
+import type { FamilyKind, GenderInfo, OtherItem, RequestItem, RequestTableFields, StrangeMark } from '@contracts';
 
 /**
  * Минимум полей, которые нужны блоку «Работа с заявкой»: заявка из подбора и «другое обращение»
@@ -18,6 +18,10 @@ export interface WorkSubject {
   hobby: string | null;
   profession: string | null;
   family: string | null;
+  /** Семейное положение вариантом — у человека записи (миграция 070). */
+  familyKind: FamilyKind | null;
+  /** Пол человека — для подписей вариантов; у «другого обращения» его нет. */
+  gender?: GenderInfo;
   note: string | null;
   /** Поля из таблицы церкви, как записаны: для формы правки. */
   table: RequestTableFields;
@@ -45,6 +49,8 @@ export function subjectOfRequest(r: RequestItem): WorkSubject {
     hobby: r.hobby,
     profession: r.profession,
     family: r.family,
+    familyKind: r.familyKind,
+    gender: r.gender,
     note: r.note,
     table: r.table,
     responsible: r.responsible,
@@ -68,6 +74,7 @@ export function subjectOfOther(o: OtherItem): WorkSubject {
     hobby: o.hobby,
     profession: o.profession,
     family: o.family,
+    familyKind: o.familyKind,
     note: o.note,
     table: o.table,
     responsible: o.responsible,

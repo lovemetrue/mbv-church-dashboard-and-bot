@@ -1,7 +1,7 @@
 import { useCanChange } from '../../shared/access';
 import { GenderField } from '../gender/GenderField';
 import type { CoordinatorItem, GroupItem, PersonItem } from '@contracts';
-import { formatDateFull, formatPhone, groupLabel, healthTone } from '../../entities/format';
+import { formatDateFull, formatPhone, groupLabel, groupWhere, healthTone } from '../../entities/format';
 import { registrationCardUrl, registrationQrUrl } from '../../shared/api/base';
 import { useGroups, usePeople } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
@@ -11,6 +11,8 @@ import { LinkButton } from '../create';
 import { StrangeSection } from '../strange';
 import { BotNotices } from '../requests/BotNotices';
 import { CoordinatorActions, DeletePersonSection, GroupActions, GroupHeaderTools, MembersSection, PersonActions, PersonGroups, PersonHeaderTools } from '../manage';
+import { familyValue } from '../contact/FamilyValue';
+import { RelativesSection } from '../relatives/RelativesSection';
 import styles from './Reference.module.css';
 
 const noValue = <span className={styles.note}>{ru.reference.notSpecified}</span>;
@@ -130,7 +132,7 @@ export function GroupCard({ g, onClose }: { g: GroupItem; onClose: () => void })
             )}
           </>
         }
-        subtitle={[g.leader, g.district, g.metro].filter(Boolean).join(' · ')}
+        subtitle={[g.leader, groupWhere({ district: g.district, metro: g.metro })].filter(Boolean).join(' · ')}
         tools={<GroupHeaderTools key={g.id} g={g} />}
         toolsBelow
         onClose={onClose}
@@ -274,7 +276,7 @@ export function PersonCard({ p, onClose, beside = false }: { p: PersonItem; onCl
     { label: ru.contact.fields.schedule, value: orNone(p.schedule) },
     { label: ru.contact.fields.hobby, value: orNone(p.hobby) },
     { label: ru.contact.fields.profession, value: orNone(p.profession) },
-    { label: ru.contact.fields.family, value: orNone(p.family) },
+    { label: ru.contact.fields.family, value: familyValue(p.familyKind, p.family, p.gender.value) ?? noValue },
     { label: ru.contact.fields.note, value: orNone(p.note) },
     { label: 'Откуда', value: p.from },
     // Ответы регистрации: то, что служитель вписал в форму (или человек — в боте), видно и потом.
@@ -324,6 +326,7 @@ export function PersonCard({ p, onClose, beside = false }: { p: PersonItem; onCl
         <StrangeSection key={p.key} target={{ kind: 'person', key: p.key }} mark={p.strange} />
       </DrawerSection>
       <PersonGroups p={p} />
+      <RelativesSection key={`relatives-${p.key}`} p={p} />
       {registrationLinks && (
         <DrawerSection>
           <div className={styles.cardActions}>

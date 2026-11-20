@@ -59,7 +59,11 @@ function buildMatrix(input: SummaryInput): MatrixRow[] {
     if (!isAccepting(g) || g.district === NO_DISTRICT) continue;
     const free = g.capacity - (g.people ?? 0);
     if (free <= 0) continue;
-    for (const column of ageColumnsOverlapping(g.ageRange)) {
+    // Группа нескольких категорий даёт места в каждой их колонке; возраст не указан — во всех (`ageColumnsOverlapping(null)`).
+    const columns = g.ageRanges.length === 0
+      ? ageColumnsOverlapping(null)
+      : [...new Set(g.ageRanges.flatMap((range) => ageColumnsOverlapping([range[0], range[1]])))];
+    for (const column of columns) {
       const cell = slot(g.district, column);
       cell.supply += free;
       cell.groupIds.push(g.id);

@@ -174,7 +174,8 @@ describe('«Заявки»: другая группа', () => {
     const picker = await screen.findByRole('dialog', { name: 'Другая группа' });
     const radio = await within(picker).findByRole('radio', { name: /ДГ-0019/ });
     expect(radio).toHaveAccessibleName(/Дмитрий В\./);
-    expect(radio).toHaveAccessibleName(/Приморский/);
+    // Района в краткой карточке группы нет (его ставит адрес): метро, дни и время.
+    expect(radio).not.toHaveAccessibleName(/Приморский/);
     expect(radio).toHaveAccessibleName(/мест: 8/);
     const submit = within(picker).getByRole('button', { name: 'Утвердить' });
     expect(submit).toBeDisabled();

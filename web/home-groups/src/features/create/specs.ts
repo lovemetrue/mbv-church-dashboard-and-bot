@@ -178,9 +178,10 @@ export function groupSpec(meta: FormMeta): FormSpec {
     { name: 'phone', label: t.phone, kind: 'text', inputMode: 'tel', autoComplete: 'off', showWhen: noLeaderPicked },
     { name: 'coLeader', label: t.coLeader, kind: 'text', autoComplete: 'off' },
     { name: 'coLeaderPhone', label: t.coLeaderPhone, kind: 'text', inputMode: 'tel', autoComplete: 'off' },
-    { name: 'age', label: t.age, kind: 'select', options: opts(meta.ageGroups) },
+    // Возраст и дни — галочками: у группы бывает несколько категорий возраста и несколько дней встреч (время одно).
+    { name: 'age', label: t.age, kind: 'multi', wide: true, options: opts(meta.ageGroups), hint: ru.create.groupAgeHint },
     { name: 'composition', label: t.composition, kind: 'multi', wide: true, options: opts(meta.compositions) },
-    { name: 'day', label: t.day, kind: 'select', options: opts(ru.create.days) },
+    { name: 'day', label: t.day, kind: 'multi', wide: true, options: opts(ru.create.days), hint: ru.create.groupDaysHint },
     { name: 'time', label: t.time, kind: 'text', placeholder: ru.create.timePlaceholder, autoComplete: 'off' },
     { name: 'people', label: t.people, kind: 'text', inputMode: 'numeric', placeholder: ru.create.peoplePlaceholder, autoComplete: 'off' },
     {
@@ -195,16 +196,8 @@ export function groupSpec(meta: FormMeta): FormSpec {
     { name: 'coordinator', label: t.coordinator, kind: 'select', options: opts(meta.coordinators) },
     { name: 'training', label: t.training, kind: 'text', autoComplete: 'off' },
     { name: 'feedbackAt', label: t.feedbackAt, kind: 'date' },
-    // Внизу и необязательно: нужны, только если адреса пока нет (или чтобы поправить определённое).
-    {
-      name: 'district',
-      label: t.district,
-      kind: 'select',
-      options: opts(meta.districts.filter((d) => d !== 'Онлайн')),
-      emptyLabel: ru.create.groupDistrictAuto,
-      hint: ru.create.groupDistrictHint,
-      showWhen: notOnline,
-    },
+    // Района в форме нет: его ставит сервер по адресу (`locate.ts`), а не нашёлся — «Не указан». Метро — внизу и
+    // необязательно: нужно, только если адреса пока нет (или чтобы поправить определённое).
     { name: 'metro', label: t.metro, kind: 'text', autoComplete: 'off', hint: ru.create.groupMetroHint, showWhen: notOnline },
     { name: 'comment', label: t.comment, kind: 'textarea', wide: true },
     { name: 'checked', label: t.checked, kind: 'checkbox' },
@@ -215,7 +208,8 @@ export function groupSpec(meta: FormMeta): FormSpec {
   ];
   return {
     fields,
-    // Без адреса и района сервер не узнал бы, где группа: просим одно из двух (онлайн-группе — ничего).
+    // Без адреса сервер не узнал бы, где группа: просим адрес или «Онлайн». Район бывает только у черновика по заявке
+    // (скрытым полем, см. GroupFromRequest) — с ним группа место знает.
     check: (v) =>
       v['online'] || (v['address'] ?? '').trim() || (v['district'] ?? '').trim() ? null : { field: 'address', message: ru.create.groupPlaceMissing },
     // Направление по умолчанию — первое в справочнике (основное служение), как у групп, заведённых без него.

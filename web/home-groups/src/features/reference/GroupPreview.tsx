@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { groupLabel } from '../../entities/format';
+import { groupLabel, groupWhere } from '../../entities/format';
 import { useGroups } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
 import { Button, ErrorState, KeyValue, LoadingState, Modal } from '../../shared/ui';
@@ -27,7 +27,7 @@ export function GroupPreview({ groupId, onClose }: { groupId: number; onClose: (
         <p className={styles.note}>{t.gone}</p>
       ) : (
         <>
-          <p className={styles.note}>{[g.leader, g.district, g.metro].filter(Boolean).join(' · ')}</p>
+          <p className={styles.note}>{[g.leader, groupWhere({ district: g.district, metro: g.metro })].filter(Boolean).join(' · ')}</p>
           <p className={styles.note}>
             {t.readOnly} · {ru.reference.health}: {ru.reference.healthOf(g.health.score)}
           </p>

@@ -75,7 +75,9 @@ export function exclusionReason(r: PlanRequest, g: PlanGroup, settings: PlanSett
     return r.gender ? `${kind} группа` : `${kind} группа, а пол человека не указан`;
   }
   if (freePlaces(g) <= 0) return 'группа заполнена';
-  if (r.ageRange && g.ageRange && !overlaps(r.ageRange, g.ageRange)) return 'возраст группы не подходит';
+  // У группы бывает несколько категорий возраста («25-40» и «40-55»): подходит, если подходит любая.
+  const age = r.ageRange;
+  if (age && g.ageRanges.length > 0 && !g.ageRanges.some((range) => overlaps(age, range))) return 'возраст группы не подходит';
   if (r.district !== null && !districtReachable(r.district, g.district, settings)) return `другой район (${g.district})`;
   return null;
 }
@@ -113,22 +115,23 @@ function districtPart(r: PlanRequest, g: PlanGroup, settings: PlanSettings): Par
 function agePart(g: PlanGroup, settings: PlanSettings): Part {
   const weight = settings.weights.age;
   // Пересечение гарантировано отсевом, поэтому у группы с известным возрастом это полное совпадение.
-  if (g.ageRange) return { weight, share: 1, reason: { tone: 'good', text: 'возраст подходит' } };
+  if (g.ageRanges.length > 0) return { weight, share: 1, reason: { tone: 'good', text: 'возраст подходит' } };
   return { weight, share: 0.5, reason: { tone: 'neutral', text: 'у группы не указан возраст' } };
 }
 
 /**
- * День недели весит как район (`weights.day`, см. `DISTRICT_WEIGHT`). У группы день неизвестен, когда в ячейке
- * несколько дней («Среда, Четверг»), «Плавающий» или пусто: это нейтральные 0,5 — не знаем, подходит ли, а штрафовать
- * группу за пробел в таблице несправедливо. Когда неизвестно и время суток, причина одна на оба (`timeUnknown`).
+ * День недели весит как район (`weights.day`, см. `DISTRICT_WEIGHT`). У группы бывает несколько дней («Вт, Чт»):
+ * день совпал, если человеку подходит любой из них. Дни неизвестны («Плавающий» или пусто) — нейтральные 0,5: не знаем,
+ * подходит ли, а штрафовать группу за пробел в таблице несправедливо. Когда неизвестно и время суток, причина одна на оба (`timeUnknown`).
  */
 function dayPart(r: PlanRequest, g: PlanGroup, settings: PlanSettings, timeUnknown: boolean): Part {
   const weight = settings.weights.day;
-  if (g.day === null) {
+  if (g.days.length === 0) {
     return { weight, share: 0.5, reason: { tone: 'neutral', text: timeUnknown ? 'у группы не указано время' : 'день группы не указан' } };
   }
-  if (r.days.includes(g.day)) return { weight, share: 1, reason: { tone: 'good', text: `день совпал: ${g.day}` } };
-  return { weight, share: 0, reason: { tone: 'bad', text: `день не совпал: ${g.day}` } };
+  const same = g.days.filter((d) => r.days.includes(d));
+  if (same.length > 0) return { weight, share: 1, reason: { tone: 'good', text: `день совпал: ${same.join(', ')}` } };
+  return { weight, share: 0, reason: { tone: 'bad', text: `день не совпал: ${g.days.join(', ')}` } };
 }
 
 /** Время суток: вес отдельный и меньший, чем у дня. Неизвестное у группы — нейтральные 0,5, как и у дня. */
@@ -190,7 +193,7 @@ function scoreGroup(r: PlanRequest, g: PlanGroup, known: KnownParams, settings: 
   if (known[1]) parts.push(agePart(g, settings));
   if (known[2]) {
     // День и время суток считаются каждый сам и только если человек их назвал: «по вторникам» ничего не говорит о часах.
-    const timeUnknown = g.day === null && g.slot === null;
+    const timeUnknown = g.days.length === 0 && g.slot === null;
     if (r.days.length > 0) parts.push(dayPart(r, g, settings, timeUnknown));
     if (r.slot !== null) parts.push(slotPart(r, g, settings, timeUnknown));
   }
@@ -307,8 +310,9 @@ export function buildPlan(input: PlanInput): PlanOutput {
     const candidates = ranked.filter((c) => {
       const g = groupById.get(c.groupId)!;
       if (request.rejectedGroupIds.includes(g.id)) return false;
-      // Неизвестный день группы нежеланием дня не исключается: «не знаем» не значит «нежелательно».
-      if (g.day !== null && request.avoidDays.includes(g.day)) return false;
+      // Неизвестный день группы нежеланием дня не исключается: «не знаем» не значит «нежелательно». Группа нескольких
+      // дней исключается, только если нежелательны все её дни: на подходящий день человек и придёт.
+      if (g.days.length > 0 && g.days.every((d) => request.avoidDays.includes(d))) return false;
       if (g.slot !== null && request.avoidSlots.includes(g.slot)) return false;
       return true;
     });

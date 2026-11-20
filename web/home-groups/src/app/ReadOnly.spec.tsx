@@ -24,11 +24,11 @@ function openAs(me: Me, at: string) {
 }
 
 describe('вход «Только чтение»', () => {
-  test('вкладки — только для чтения: «Наборы» есть, «Команды» и «Настроек» нет; меню «+ Создать» нет', async () => {
+  test('вкладки — только для чтения: «Наборы» нет, «Команды» и «Настроек» нет; меню «+ Создать» нет', async () => {
     openAs(READER, '/');
     // До ответа `/me` вкладки рисуются для обычного входа, поэтому ждём, пока список станет нужным.
     await waitFor(() =>
-      expect(within(screen.getByRole('tablist', { name: 'Разделы' })).getAllByRole('tab').map((t) => t.textContent?.replace(/\d+$/, '').trim())).toEqual(['Сегодня', 'Заявки', 'Группы', 'Наборы', 'Справочник']),
+      expect(within(screen.getByRole('tablist', { name: 'Разделы' })).getAllByRole('tab').map((t) => t.textContent?.replace(/\d+$/, '').trim())).toEqual(['Сегодня', 'Заявки', 'Группы', 'Справочник']),
     );
     expect(screen.queryByRole('button', { name: '+ Создать' })).not.toBeInTheDocument();
   });

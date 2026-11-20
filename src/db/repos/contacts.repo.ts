@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from 'pg';
+import type { FamilyKind } from '../../core/family.js';
 
 /**
  * Данные человека: ФИО, телефон, возраст, район, адрес, удобное время, хобби, профессия, семья. Они живут в одном
@@ -15,22 +16,27 @@ export interface ContactPatch {
   hobby?: string | null;
   profession?: string | null;
   family?: string | null;
+  /**
+   * Семейное положение вариантом (миграция 070): выбор служителя. Исходный текст (`family`) остаётся как был — его
+   * показывают подсказкой. null — «не указано».
+   */
+  familyKind?: FamilyKind | null;
   /** Комментарий: у регистрации это `admin_comment` человека, у заявки — её собственный `note`. */
   note?: string | null;
 }
 export type ContactField = keyof ContactPatch;
 
-export const CONTACT_FIELDS: readonly ContactField[] = ['fio', 'phone', 'age', 'place', 'address', 'schedule', 'hobby', 'profession', 'family', 'note'];
+export const CONTACT_FIELDS: readonly ContactField[] = ['fio', 'phone', 'age', 'place', 'address', 'schedule', 'hobby', 'profession', 'family', 'familyKind', 'note'];
 
 /** Колонки регистрации. Возраст — текстом, а «место» хранится в `location`. */
 const USER_COLUMNS: Record<ContactField, string> = {
   fio: 'full_name', phone: 'phone', age: 'age', place: 'location', address: 'address_raw', schedule: 'schedule_raw',
-  hobby: 'hobby', profession: 'profession', family: 'family_status', note: 'admin_comment',
+  hobby: 'hobby', profession: 'profession', family: 'family_status', familyKind: 'family_kind', note: 'admin_comment',
 };
 /** Колонки карточки в «Людях». Комментарий карточки — её `note`. */
 const PERSON_COLUMNS: Record<ContactField, string> = {
   fio: 'full_name', phone: 'phone', age: 'age', place: 'place', address: 'address', schedule: 'schedule',
-  hobby: 'hobby', profession: 'profession', family: 'family_status', note: 'note',
+  hobby: 'hobby', profession: 'profession', family: 'family_status', familyKind: 'family_kind', note: 'note',
 };
 
 const keysOf = (patch: ContactPatch): ContactField[] => CONTACT_FIELDS.filter((k) => patch[k] !== undefined);

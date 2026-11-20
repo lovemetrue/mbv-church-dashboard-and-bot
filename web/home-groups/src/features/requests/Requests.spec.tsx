@@ -158,7 +158,7 @@ describe('«Заявки»: экран', () => {
     stubFetchWithFixtures();
     renderAt(<App />, '/?tab=requests&req=17');
     const card = await screen.findByRole('dialog', { name: /Эльвира Волкова/ });
-    expect(within(card).getByText(/Лучший вариант — ДГ-0027 \(Чт, вечер\), но место в ней отдано другой заявке: Руслан Агеев/)).toBeInTheDocument();
+    expect(within(card).getByText(/Лучший вариант — ДГ-0027 \(Чт — вечер\), но место в ней отдано другой заявке: Руслан Агеев/)).toBeInTheDocument();
   });
 
   test('заявка без плана показывает красный блок с причиной и подсказкой, без кнопки «Утвердить»', async () => {

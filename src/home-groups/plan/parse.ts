@@ -1,5 +1,6 @@
 import { ageRange } from '../../core/matching.js';
-import { classifyDays, negatedBefore, normalize, tokenize } from './days.js';
+import { AGE_GROUPS } from '../../core/texts.js';
+import { WEEK, classifyDays, negatedBefore, normalize, tokenize } from './days.js';
 import type { AgeRange, Day, Slot } from './types.js';
 
 /**
@@ -82,18 +83,45 @@ export function ageColumnsOverlapping(range: AgeRange): string[] {
   });
 }
 
+// ── категории возраста группы ───────────────────────────────────────────────
+
+/**
+ * Возраст группы — набор категорий анкеты (`AGE_GROUPS`): форма пишет их через запятую («25-40, 40-55»). Старый
+ * диапазон из таблицы церкви («35-50») раскладывается на все категории, которые он задевает, по тем же правилам, что
+ * колонки матрицы (`ageColumnsOverlapping`): касание в одной цифре не считается. «Любой», пусто и мусор — пустой
+ * список: возраст группы неизвестен. Тем же правилом миграция 068 переписала старые значения в базе.
+ */
+export function groupAgeCategories(text: string | null | undefined): string[] {
+  const parts = (text ?? '').split(',').map((p) => p.trim()).filter(Boolean);
+  if (parts.length === 0) return [];
+  const known: readonly string[] = AGE_GROUPS;
+  if (parts.every((p) => known.includes(p))) return AGE_GROUPS.filter((a) => parts.includes(a));
+  const range = ageRange(text);
+  if (!range) return [];
+  const columns = ageColumnsOverlapping(range);
+  return AGE_GROUPS.filter((_, i) => columns.includes(AGE_COLUMNS[i]!));
+}
+
+/** Диапазоны возраста группы для подбора — по одному на категорию; пустой список — возраст неизвестен. */
+export function parseGroupAgeRanges(text: string | null | undefined): [number, number][] {
+  return groupAgeCategories(text).flatMap((c) => {
+    const range = ageRange(c);
+    return range ? [range] : [];
+  });
+}
+
 // ── день и время ────────────────────────────────────────────────────────────
 
 /**
- * День группы. Если в ячейке названо НЕСКОЛЬКО разных дней («Среда, Четверг», «пн-ср», «будни»), day = null:
- * движок сравнивает с одним днём, и брать «первый из двух» значило бы утверждать то, чего мы не
- * знаем. Для сравнения группа без дня получает нейтральные 0,5 («время уточнить»), что честнее,
- * чем штраф за день, который у группы тоже бывает. «Плавающий», пусто и строка 'None' — тоже null.
+ * Дни встреч группы — все названные, в порядке недели: «Вт, Чт» (так их пишет форма), «Среда, Четверг», «пн-ср»,
+ * «будни». Подбор считает день совпавшим, если совпал любой из них. «Плавающий», пусто, строка 'None' и запись
+ * с отказом («кроме пятницы») — пустой список: дни неизвестны, и подбор даёт за них нейтральные 0,5.
  * Дни читает тот же разбор, что и у человека (`classifyDays`): «ср», «Среда», «по средам» сходятся.
  */
-function parseDay(raw: string | null | undefined): Day | null {
+function parseDays(raw: string | null | undefined): Day[] {
   const { days, avoid } = classifyDays(raw);
-  return avoid.length === 0 && days.length === 1 ? days[0]! : null;
+  if (avoid.length > 0) return [];
+  return WEEK.filter((d) => days.includes(d));
 }
 
 /**
@@ -122,14 +150,27 @@ function parseSlot(raw: string | null | undefined): Slot | null {
  * День и время суток группы из двух колонок таблицы. Если колонка времени пуста, а время написано прямо в колонке дня
  * («Среда 19:00»), берём оттуда: пустое время группы даёт нейтральные очки, а оно у неё на самом деле есть.
  */
-export function parseGroupWhen(day: string | null, time: string | null): { day: Day | null; slot: Slot | null } {
-  return { day: parseDay(day), slot: parseSlot(time) ?? (normalize(time) === '' ? parseSlot(day) : null) };
+export function parseGroupWhen(day: string | null, time: string | null): { days: Day[]; slot: Slot | null } {
+  return { days: parseDays(day), slot: parseSlot(time) ?? (normalize(time) === '' ? parseSlot(day) : null) };
 }
 
-/** «Вт, вечер» / «Вт» / «вечер» / null — так день и время показываются в карточках и причинах. */
-export function formatWhen(day: Day | null, slot: Slot | null): string | null {
-  if (day && slot) return `${day}, ${slot}`;
-  return day ?? slot ?? null;
+/** Время по часам из колонки «время» («19:00», «19.30», «9:00») в виде «19:00»; иначе null. */
+function clockOf(time: string | null | undefined): string | null {
+  const m = /^(\d{1,2})[:.](\d{2})$/.exec((time ?? '').trim());
+  if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return null;
+  return `${m[1]!.padStart(2, '0')}:${m[2]}`;
+}
+
+/**
+ * «Вт, Чт — 19:00» / «Вт — вечер» / «Вт» / «вечер» / null — так дни и время показываются в карточках. Записанное по
+ * часам время показывается как есть: служитель знает, что группа в 19:00, и «вечер» вместо этого — потеря. Время
+ * словом («Вечер») или неразборчивое — временем суток.
+ */
+export function formatWhen(days: readonly Day[], slot: Slot | null, time?: string | null): string | null {
+  const when = clockOf(time) ?? slot;
+  const daysText = days.join(', ');
+  if (daysText && when) return `${daysText} — ${when}`;
+  return daysText || when || null;
 }
 
 // ── удобное время человека, свободным текстом ───────────────────────────────

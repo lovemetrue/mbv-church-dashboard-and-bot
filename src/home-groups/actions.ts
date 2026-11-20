@@ -126,7 +126,7 @@ export function createActions(
       const src = isRecord(body['fields']) ? body['fields'] : body;
       const out: Record<string, string | null> = {};
       for (const key of [
-        'fio', 'phone', 'age', 'place', 'note', 'address', 'schedule', 'hobby', 'profession', 'family',
+        'fio', 'phone', 'age', 'place', 'note', 'address', 'schedule', 'hobby', 'profession', 'family', 'familyKind',
         'source', 'ministry', 'extra', 'recommended', 'recommendedAt', 'attendance',
       ] as const) {
         const v = src[key];

@@ -43,3 +43,8 @@
 .copyFailed:empty {
   display: none;
 }
+
+/* Исходный текст семейного положения рядом с вариантом — тише основного. */
+.familyOriginal {
+  color: var(--muted);
+}

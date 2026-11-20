@@ -103,16 +103,23 @@ export interface RowGroup<T extends Row> {
   rows: T[];
 }
 
-/** Группировка с сохранением порядка строк внутри группы (то есть учётом сортировки). Пустая группа — последней. */
-export function groupRows<T extends Row>(rows: readonly T[], field: string | null): RowGroup<T>[] {
+/**
+ * Группировка с сохранением порядка строк внутри группы (то есть учётом сортировки). Пустая группа — последней.
+ * У поля-списка (`multi`: дни встреч «Вт, Чт») строка попадает в группу каждого своего значения: группа, что
+ * собирается во вторник и четверг, видна и среди вторничных, и среди четверговых.
+ */
+export function groupRows<T extends Row>(rows: readonly T[], field: string | null, defs: readonly FieldDef[] = []): RowGroup<T>[] {
   if (!field) return [{ key: '', rows: [...rows] }];
+  const multi = defs.find((d) => d.key === field)?.multi === true;
   const map = new Map<string, T[]>();
   for (const r of rows) {
-    const v = r[field];
-    const key = isBlank(v) ? '' : String(v);
-    const list = map.get(key);
-    if (list) list.push(r);
-    else map.set(key, [r]);
+    const v = r[field] ?? null;
+    const keys = isBlank(v) ? [''] : multi ? splitMulti(v) : [String(v)];
+    for (const key of keys) {
+      const list = map.get(key);
+      if (list) list.push(r);
+      else map.set(key, [r]);
+    }
   }
   return [...map.entries()]
     .sort(([a], [b]) => (a === '' ? 1 : b === '' ? -1 : collator.compare(a, b)))

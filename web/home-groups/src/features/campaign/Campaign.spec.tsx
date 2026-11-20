@@ -5,7 +5,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { App } from '../../app/App';
 import { buildCampaign } from '../../fixtures/campaign';
 import { currentSearch, makeClient, renderAt, stubFetchWithFixtures } from '../../test/render';
-import { getsOf, json } from '../../test/calls';
+import { getsOf, json, posts } from '../../test/calls';
 import { CAMPAIGN_KEY } from './useCampaign';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -60,12 +60,12 @@ describe('«Команда»: переключатель разделов', () =
     expect(getsOf(fetchMock, 'campaign')).toBe(0);
   });
 
-  test('верхних вкладок семь (с «Группами» и «Наборами»): кампания живёт внутри «Команды»', async () => {
+  test('верхних вкладок шесть (с «Группами», без «Наборов»): кампания живёт внутри «Команды»', async () => {
     openCampaign();
     await region('Итоги кампании');
     const tabs = within(screen.getByRole('tablist', { name: 'Разделы' })).getAllByRole('tab');
     // У «Заявок» на вкладке стоит число открытых, его в сравнение не берём.
-    expect(tabs.map((t) => (t.textContent ?? '').replace(/\d+$/, ''))).toEqual(['Сегодня', 'Заявки', 'Группы', 'Наборы', 'Команда', 'Справочник', 'Настройки']);
+    expect(tabs.map((t) => (t.textContent ?? '').replace(/\d+$/, ''))).toEqual(['Сегодня', 'Заявки', 'Группы', 'Команда', 'Справочник', 'Настройки']);
     expect(screen.getByRole('tab', { name: 'Команда' })).toHaveAttribute('aria-selected', 'true');
   });
 
@@ -254,5 +254,115 @@ describe('«Кампания»: загрузка, сбои и обновлени
     });
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Не удалось обновить данные. Показаны прежние.'));
     expect(valueOf(screen.getByRole('region', { name: 'Итоги кампании' }), 'Наборов выдано')).toHaveTextContent('43');
+  });
+});
+
+describe('«Наборов выдано»: окно со списком', () => {
+  const issuedList = {
+    generatedAt: '2026-10-22T09:00:00Z',
+    items: [
+      { userId: 7, registrationNo: 7, fio: 'Анна Смирнова', phone: '+7 911 000-11-22', issuedAt: '2026-10-22T08:30:00Z', issuedBy: 'p_ivanova' },
+      { userId: 12, registrationNo: 1042, fio: 'Иван Королёв', phone: '+7 921 555-44-33', issuedAt: '2026-10-21T10:00:00Z', issuedBy: 'бот' },
+    ],
+  };
+
+  function openIssued(role: Me['role'] = 'super', undo?: () => Response) {
+    const client = makeClient();
+    const fetchMock = stubFetchWithFixtures({
+      campaign: () => json(view()),
+      me: () => json({ role }),
+      'kits/issued': () => json(issuedList),
+      ...(undo ? { 'kits/undo': undo } : {}),
+    });
+    renderAt(<App />, '/?tab=team&sec=campaign', client);
+    return fetchMock;
+  }
+
+  const openDialog = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(await screen.findByRole('button', { name: 'Наборов выдано: 43. Открыть список' }));
+    return screen.findByRole('dialog', { name: 'Выданные наборы' });
+  };
+
+  test('плитка — кнопка, доступная с клавиатуры; список грузится только после нажатия', async () => {
+    const fetchMock = openIssued();
+    const user = userEvent.setup();
+    const button = await screen.findByRole('button', { name: 'Наборов выдано: 43. Открыть список' });
+    expect(getsOf(fetchMock, 'kits/issued')).toBe(0);
+    button.focus();
+    await user.keyboard('{Enter}');
+    const dialog = await screen.findByRole('dialog', { name: 'Выданные наборы' });
+    expect(getsOf(fetchMock, 'kits/issued')).toBe(1);
+    const rows = within(within(dialog).getByRole('table')).getAllByRole('row');
+    expect(rows.map((r) => within(r).queryAllByRole('cell').map((c) => c.textContent).slice(0, 5))).toEqual([
+      [],
+      ['7', 'Анна Смирнова', '+7 911 000 11 22', expect.stringMatching(/22 октября/), 'p_ivanova'],
+      ['1042', 'Иван Королёв', '+7 921 555 44 33', expect.stringMatching(/21 октября/), 'бот'],
+    ]);
+    expect(within(dialog).getByRole('columnheader', { name: '№ регистрации' })).toBeInTheDocument();
+  });
+
+  test('поиск по ФИО («ё» как «е»), номеру и телефону', async () => {
+    openIssued();
+    const user = userEvent.setup();
+    const dialog = await openDialog(user);
+    const search = within(dialog).getByRole('searchbox', { name: 'Поиск' });
+    const fios = () => within(dialog).queryAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell')[1]!.textContent);
+    await user.type(search, 'королев');
+    expect(fios()).toEqual(['Иван Королёв']);
+    await user.clear(search);
+    await user.type(search, '№ 7');
+    // Одна цифра — номер регистрации, а не кусок телефона: «7» есть в каждом «+7 …».
+    expect(fios()).toEqual(['Анна Смирнова']);
+    await user.clear(search);
+    await user.type(search, '5544');
+    expect(fios()).toEqual(['Иван Королёв']);
+    await user.clear(search);
+    await user.type(search, 'Зиновьев');
+    expect(within(dialog).getByText('Ничего не найдено.')).toBeInTheDocument();
+  });
+
+  test('выгрузка в CSV: то, что показано, с шапкой', async () => {
+    const saved: Blob[] = [];
+    URL.createObjectURL = vi.fn((b: Blob | MediaSource) => { saved.push(b as Blob); return 'blob:x'; });
+    URL.revokeObjectURL = vi.fn();
+    openIssued();
+    const user = userEvent.setup();
+    const dialog = await openDialog(user);
+    await user.type(within(dialog).getByRole('searchbox', { name: 'Поиск' }), 'смирн');
+    await user.click(within(dialog).getByRole('button', { name: 'Выгрузить в CSV' }));
+    const text = await saved[0]!.text();
+    const lines = text.replace('﻿', '').trim().split('\r\n');
+    expect(lines[0]).toBe('№ регистрации;ФИО;Телефон;Выдан;Выдал');
+    expect(lines).toHaveLength(2);
+    // Телефон с «+» csv метит апострофом, чтобы Excel не принял его за формулу (как и в выгрузке справочника).
+    expect(lines[1]).toMatch(/^7;Анна Смирнова;'\+7 911 000 11 22;.*;p_ivanova$/);
+  });
+
+  test('«Отменить выдачу» шлёт отмену и обновляет счётчики; новой выдачи в окне нет', async () => {
+    const fetchMock = openIssued('super', () => json({ ok: true, person: { ...issuedList.items[0], issuedAt: null, issuedBy: null }, changed: true }));
+    const user = userEvent.setup();
+    const dialog = await openDialog(user);
+    expect(within(dialog).queryByRole('button', { name: /Выдать набор/ })).not.toBeInTheDocument();
+    const before = getsOf(fetchMock, 'kits/issued');
+    await user.click(within(dialog).getByRole('button', { name: 'Отменить выдачу: Анна Смирнова' }));
+    await waitFor(() => expect(posts(fetchMock)).toEqual([{ path: 'kits/undo', body: { userId: 7 } }]));
+    await waitFor(() => expect(getsOf(fetchMock, 'kits/issued')).toBeGreaterThan(before));
+    await waitFor(() => expect(getsOf(fetchMock, 'campaign')).toBeGreaterThan(1));
+  });
+
+  test('отказ сервера при отмене показан текстом', async () => {
+    openIssued('super', () => json({ error: 'not_found', message: 'Регистрация не найдена.' }, 404));
+    const user = userEvent.setup();
+    const dialog = await openDialog(user);
+    await user.click(within(dialog).getByRole('button', { name: 'Отменить выдачу: Анна Смирнова' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Регистрация не найдена.');
+  });
+
+  test('Esc закрывает окно', async () => {
+    openIssued();
+    const user = userEvent.setup();
+    await openDialog(user);
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'Выданные наборы' })).not.toBeInTheDocument();
   });
 });

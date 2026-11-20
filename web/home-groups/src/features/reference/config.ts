@@ -51,7 +51,8 @@ export const groupsConfig: EntityConfig<GroupItem> = {
     f('Адрес'),
     f('Возраст', { multi: true }),
     f('Когда'),
-    f('День', { groupable: true }),
+    // Дней у группы бывает несколько («Вт, Чт»): отбор «День = Чт» находит и её, группировка кладёт её в оба дня.
+    f('День', { multi: true, groupable: true }),
     f('Время', { groupable: true }),
     f('Места'),
     f('Мест свободно', { kind: 'number' }),
@@ -118,9 +119,10 @@ export const groupsConfig: EntityConfig<GroupItem> = {
     Район: g.district,
     Метро: g.metro,
     Адрес: g.address,
-    Возраст: g.ageText,
+    // Категории возраста — для отбора по ним; неразборчивое («любой») — как записано.
+    Возраст: g.ages.length > 0 ? g.ages.join(', ') : g.ageText,
     Когда: g.whenText,
-    День: g.day,
+    День: g.days.join(', ') || null,
     Время: g.slot,
     Места: `${g.people ?? '?'}/${g.capacity}`,
     // Служебное, как `_key`: в столбцы и фильтры не попадает, нужно только таблице для пометки.

@@ -1,3 +1,4 @@
+import { FAMILY_KINDS, type FamilyKind } from '../core/family.js';
 import { normalizePhone } from '../core/phone.js';
 import { CONTACT_FIELDS, type ContactPatch, type ContactsRepo } from '../db/repos/contacts.repo.js';
 import type { ActionError } from './contracts.js';
@@ -10,8 +11,16 @@ type Fail = { ok: false; error: ActionError['error']; message: string };
 export type ContactOutcome = { ok: true } | Fail;
 const bad = (message: string): Fail => ({ ok: false, error: 'bad_request', message });
 
-const LIMITS: Record<(typeof CONTACT_FIELDS)[number], number> = { fio: 200, phone: 40, age: 60, place: 200, address: 200, schedule: 200, hobby: 200, profession: 200, family: 200, note: 1000 };
+const LIMITS: Record<(typeof CONTACT_FIELDS)[number], number> = { fio: 200, phone: 40, age: 60, place: 200, address: 200, schedule: 200, hobby: 200, profession: 200, family: 200, familyKind: 10, note: 1000 };
 const KEY = /^([ur])(\d{1,15})$/;
+
+export const FAMILY_KIND_ERROR = 'Семейное положение — «холост / не замужем», «женат / замужем» или не указано.';
+
+/** Вариант семейного положения из формы: пусто — «не указано» (null); незнакомое — undefined (ошибка). */
+export function parseFamilyKind(v: string): FamilyKind | null | undefined {
+  if (v === '') return null;
+  return (FAMILY_KINDS as readonly string[]).includes(v) ? (v as FamilyKind) : undefined;
+}
 
 /** Тело `{fields: {…}}` → правка; текст — понятная ошибка. Пустая строка очищает поле (кроме ФИО). */
 export function parseContactPatch(body: unknown): ContactPatch | string {
@@ -31,6 +40,10 @@ export function parseContactPatch(body: unknown): ContactPatch | string {
     if (k === 'fio') {
       if (t === '') return 'ФИО не может быть пустым.';
       out.fio = t;
+    } else if (k === 'familyKind') {
+      const kind = parseFamilyKind(t);
+      if (kind === undefined) return FAMILY_KIND_ERROR;
+      out.familyKind = kind;
     } else if (k === 'phone' && t !== '') {
       const phone = normalizePhone(t);
       if (!phone) return 'Не похоже на номер телефона. Пример: +7 911 123-45-67.';

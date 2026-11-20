@@ -5,6 +5,7 @@ import {
   type GroupStatus,
 } from '../core/groups.js';
 import { normalizePhone } from '../core/phone.js';
+import { AGE_GROUPS } from '../core/texts.js';
 import { REQUEST_STATUSES, type RequestInput, type RequestStatus } from '../db/repos/requests.repo.js';
 import type { GroupInput } from '../db/repos/groups.repo.js';
 import type { CoordinatorInput } from '../db/repos/coordinators.repo.js';
@@ -67,6 +68,22 @@ function composition(form: URLSearchParams): string | null {
   const picked = new Set(form.getAll('composition').flatMap((v) => v.split(',')).map((v) => v.trim()));
   const kept = COMPOSITIONS.filter((c) => picked.has(c));
   return kept.length > 0 ? kept.join(', ') : null;
+}
+
+/** Дни недели встреч группы — как их отмечает галочками новый интерфейс и пишет база («Вт, Чт»). */
+const GROUP_DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const;
+
+/**
+ * Поле с несколькими значениями из справочника (дни встреч, категории возраста группы): галочки приходят отдельными
+ * значениями или одной строкой через запятую, а пишутся одной строкой в порядке справочника («Вт, Чт»). Значение не
+ * из справочника — запись таблицы церкви или старого дашборда («Четверг», «Плавающий», «35-50») — остаётся как
+ * записано: подбор читает и её, а форма, переписав, потеряла бы данные.
+ */
+function listOf(form: URLSearchParams, name: string, known: readonly string[]): string | null {
+  const parts = form.getAll(name).flatMap((v) => v.split(',')).map((v) => v.trim()).filter(Boolean);
+  if (parts.length === 0) return null;
+  if (parts.every((p) => known.includes(p))) return known.filter((k) => parts.includes(k)).join(', ');
+  return form.getAll(name).map((v) => v.trim()).filter(Boolean).join(', ');
 }
 
 function oneOf<T extends string>(form: URLSearchParams, name: string, allowed: readonly T[]): T | null {
@@ -146,11 +163,11 @@ export function parseGroupForm(form: URLSearchParams): Parsed<GroupInput> {
       no,
       openToNew: text(form, 'openToNew'),
       ...phone(form),
-      age: text(form, 'age'),
+      age: listOf(form, 'age', AGE_GROUPS),
       metro: text(form, 'metro'),
       address: text(form, 'address'),
       composition: composition(form),
-      day: text(form, 'day'),
+      day: listOf(form, 'day', GROUP_DAYS),
       time: text(form, 'time'),
       people,
       ...(capacity === undefined ? {} : { capacity }),

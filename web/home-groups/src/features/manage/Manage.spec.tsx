@@ -39,7 +39,7 @@ async function openGroupEdit(user: User, rec = 1) {
   const card = await groupCard(rec);
   await user.click(within(card).getByRole('button', { name: /^Править группу/ }));
   const dialog = await screen.findByRole('dialog', { name: /^Правка группы/ });
-  await within(dialog).findByRole('combobox', { name: 'Район' });
+  await within(dialog).findByRole('combobox', { name: 'Статус' });
   return { card, dialog };
 }
 
@@ -56,6 +56,14 @@ describe('шапка карточки группы: значки, как у за
     expect(within(header).getByRole('button', { name: 'Скопировать номер' })).toBeInTheDocument();
     // Текстовой кнопки «Править» в разделе данных больше нет: правка — карандашом в шапке.
     expect(within(card).queryByRole('button', { name: 'Править' })).not.toBeInTheDocument();
+  });
+
+  test('в карточке группы района нет (его ставит адрес), а «когда» — дни и записанное время', async () => {
+    stubFetchWithFixtures({ groups: () => json(groupsWith(2, { whenText: 'Вт, Чт — 19:00' })) });
+    const card = await groupCard(2);
+    expect(within(card).queryByText(/Приморский/)).not.toBeInTheDocument();
+    expect(within(card).getByText('Вт, Чт — 19:00')).toBeInTheDocument();
+    expect(within(card).getAllByText(/Беговая/).length).toBeGreaterThan(0);
   });
 
   test('без телефона ведущего вместо значков звонка — подпись, карандаш остаётся', async () => {
@@ -100,10 +108,13 @@ describe('правка группы', () => {
     stubFetchWithFixtures();
     const user = userEvent.setup();
     const { dialog } = await openGroupEdit(user, 1);
-    expect(within(dialog).getByRole('combobox', { name: 'Район' })).toHaveValue('Приморский');
+    // Района в форме нет: его ставит адрес (колонка и отбор «Район» остались в таблице групп).
+    expect(within(dialog).queryByRole('combobox', { name: 'Район' })).not.toBeInTheDocument();
     expect(within(dialog).getByRole('combobox', { name: 'Статус' })).toHaveValue('Функционирует');
     expect(within(dialog).getByRole('textbox', { name: 'Сколько человек' })).toHaveValue('8');
-    expect(within(dialog).getByRole('combobox', { name: 'День' })).toHaveValue('Вт');
+    const days = within(dialog).getByRole('group', { name: 'Дни встреч' });
+    expect(within(days).getByRole('checkbox', { name: 'Вт' })).toBeChecked();
+    expect(within(days).getByRole('checkbox', { name: 'Чт' })).not.toBeChecked();
     expect(within(dialog).getByRole('combobox', { name: 'Координатор' })).toHaveValue('Трофимова С.');
     expect(within(dialog).getByRole('checkbox', { name: 'Не направлять в эту группу' })).not.toBeChecked();
   });
@@ -159,7 +170,8 @@ describe('правка группы', () => {
     const { dialog } = await openGroupEdit(user);
     const time = within(dialog).getByRole('textbox', { name: 'Время' });
     await user.type(time, '  19:30 ');
-    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Район' }), 'Выборгский');
+    // Второй день встреч: дни уходят одной строкой в порядке недели, время у них одно.
+    await user.click(within(within(dialog).getByRole('group', { name: 'Дни встреч' })).getByRole('checkbox', { name: 'Чт' }));
     const people = within(dialog).getByRole('textbox', { name: 'Сколько человек' });
     await user.clear(people);
     await user.type(people, '10');
@@ -167,7 +179,7 @@ describe('правка группы', () => {
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
     expect(posts(fetchMock)[0]).toEqual({
       path: 'groups/1/update',
-      body: { fields: { district: 'Выборгский', people: '10', time: '19:30' } },
+      body: { fields: { day: 'Вт, Чт', people: '10', time: '19:30' } },
     });
   });
 
@@ -198,12 +210,16 @@ describe('правка группы', () => {
 
   test('поля старого дашборда — возраст, обучение, «проверено», «40 дней» — заполнены и правятся; «№ в реестре» нет', async () => {
     const fetchMock = stubFetchWithFixtures({
-      groups: () => json(groupsWith(1, { campaignRegistered: true, training: 'Нет' })),
+      groups: () => json(groupsWith(1, { campaignRegistered: true, training: 'Нет', ageText: '25-40, 40-55', ages: ['25-40', '40-55'] })),
       'groups/1/update': () => json({ ok: true }),
     });
     const user = userEvent.setup();
     const { dialog } = await openGroupEdit(user, 1);
-    expect(within(dialog).getByRole('combobox', { name: 'Возраст' })).toHaveValue('18–25, 26–35');
+    // Возраст — галочками, категорий бывает несколько.
+    const ages = within(dialog).getByRole('group', { name: 'Возраст' });
+    expect(within(ages).getByRole('checkbox', { name: '25-40' })).toBeChecked();
+    expect(within(ages).getByRole('checkbox', { name: '40-55' })).toBeChecked();
+    expect(within(ages).getByRole('checkbox', { name: '18-25' })).not.toBeChecked();
     expect(within(dialog).getByRole('textbox', { name: 'Обучение' })).toHaveValue('Нет');
     expect(within(dialog).queryByRole('combobox', { name: 'Приём новых' })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('textbox', { name: '№ в реестре' })).not.toBeInTheDocument();
@@ -373,7 +389,7 @@ describe('правка группы', () => {
     stubFetchWithFixtures();
     const user = userEvent.setup();
     const { dialog } = await openGroupEdit(user, 2);
-    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Район' }), '');
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Статус' }), '');
     await user.click(await within(dialog).findByRole('button', { name: 'Открыть в «Людях»: Ведущий' }));
     const ask = within(dialog).getByRole('group', { name: 'В группе есть несохранённые изменения' });
     expect(within(ask).queryByRole('button', { name: 'Сохранить и перейти' })).not.toBeInTheDocument();
@@ -426,18 +442,18 @@ describe('правка группы', () => {
     expect(posts(fetchMock)[1]).toEqual({ path: 'groups/1/update', body: { fields: { coLeaderKey: 'p55' } } });
   });
 
-  test('адрес наверху, район и метро ниже, с подсказкой, что они ставятся по адресу сами', async () => {
+  test('адрес наверху, метро ниже, с подсказкой, что район и метро ставятся по адресу сами; района в форме нет', async () => {
     stubFetchWithFixtures();
     const user = userEvent.setup();
     const { dialog } = await openGroupEdit(user);
     const address = within(dialog).getByRole('textbox', { name: 'Адрес' });
     expect(address).toHaveValue('Комендантский пр.');
     expect(address).toHaveAccessibleDescription(/сами ставятся район и метро/);
-    const district = within(dialog).getByRole('combobox', { name: 'Район' });
-    expect(district).toHaveAccessibleDescription(/Ставится сам по адресу/);
-    expect(within(dialog).getByRole('textbox', { name: 'Метро или ориентир' })).toHaveAccessibleDescription(/Пока адреса нет/);
-    // Порядок: адрес — среди первых полей, район — после него, внизу основных данных.
-    expect(address.compareDocumentPosition(district) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(dialog).queryByRole('combobox', { name: 'Район' })).not.toBeInTheDocument();
+    const metro = within(dialog).getByRole('textbox', { name: 'Метро или ориентир' });
+    expect(metro).toHaveAccessibleDescription(/Пока адреса нет/);
+    // Порядок: адрес — среди первых полей, метро — после него, внизу основных данных.
+    expect(address.compareDocumentPosition(metro) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(dialog).queryByText(/дашборд/i)).not.toBeInTheDocument();
   });
 
@@ -447,15 +463,26 @@ describe('правка группы', () => {
     const { dialog } = await openGroupEdit(user);
     const online = within(dialog).getByRole('checkbox', { name: 'Онлайн-группа' });
     expect(online).not.toBeChecked();
-    // «Онлайн» больше не пункт списка районов: онлайн-группу отмечают только галочкой.
-    expect(within(within(dialog).getByRole('combobox', { name: 'Район' })).queryByRole('option', { name: 'Онлайн' })).not.toBeInTheDocument();
     await user.click(online);
     expect(within(dialog).queryByRole('textbox', { name: 'Адрес' })).not.toBeInTheDocument();
-    expect(within(dialog).queryByRole('combobox', { name: 'Район' })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('textbox', { name: 'Метро или ориентир' })).not.toBeInTheDocument();
     await user.click(saveButton(dialog));
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
     expect((posts(fetchMock)[0]!.body as { fields: Record<string, string> }).fields).toEqual({ district: 'Онлайн' });
+  });
+
+  test('у онлайн-группы сняли «Онлайн» и вписали адрес — район уходит пустым: сервер поставит его по адресу', async () => {
+    const fetchMock = stubFetchWithFixtures({
+      groups: () => json(groupsWith(1, { district: 'Онлайн', address: null })),
+      'groups/1/update': () => json({ ok: true }),
+    });
+    const user = userEvent.setup();
+    const { dialog } = await openGroupEdit(user);
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Онлайн-группа' }));
+    await user.type(within(dialog).getByRole('textbox', { name: 'Адрес' }), 'пр. Энгельса 100');
+    await user.click(saveButton(dialog));
+    await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
+    expect((posts(fetchMock)[0]!.body as { fields: Record<string, string> }).fields).toEqual({ district: '', address: 'пр. Энгельса 100' });
   });
 
   test('сняли «Онлайн-группа», не сохранив, — район возвращается прежний и на сервер ничего не уходит', async () => {
@@ -465,7 +492,7 @@ describe('правка группы', () => {
     const online = within(dialog).getByRole('checkbox', { name: 'Онлайн-группа' });
     await user.click(online);
     await user.click(online);
-    expect(within(dialog).getByRole('combobox', { name: 'Район' })).toHaveValue('Приморский');
+    expect(within(dialog).getByRole('textbox', { name: 'Адрес' })).toHaveValue('Комендантский пр.');
     expect(saveButton(dialog)).toBeDisabled();
   });
 
@@ -771,7 +798,7 @@ describe('координаторы: правка и удаление', () => {
     await user.click(await screen.findByRole('button', { name: '+ Создать' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Группа' }));
     const create = await screen.findByRole('dialog', { name: 'Новая группа' });
-    await within(create).findByRole('combobox', { name: 'Район' });
+    await within(create).findByRole('combobox', { name: 'Статус' });
     await user.click(within(create).getByRole('button', { name: 'Отмена' }));
     expect(getsOf(fetchMock, 'form-meta')).toBe(1);
 
@@ -786,7 +813,7 @@ describe('координаторы: правка и удаление', () => {
 
     await user.click(screen.getByRole('button', { name: '+ Создать' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Группа' }));
-    await within(await screen.findByRole('dialog', { name: 'Новая группа' })).findByRole('combobox', { name: 'Район' });
+    await within(await screen.findByRole('dialog', { name: 'Новая группа' })).findByRole('combobox', { name: 'Статус' });
     await waitFor(() => expect(getsOf(fetchMock, 'form-meta')).toBe(2));
   });
 
@@ -881,7 +908,7 @@ describe('«+ Создать» → «Координатор»', () => {
     await user.click(await screen.findByRole('button', { name: '+ Создать' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Группа' }));
     const group = await screen.findByRole('dialog', { name: 'Новая группа' });
-    await within(group).findByRole('combobox', { name: 'Район' });
+    await within(group).findByRole('combobox', { name: 'Статус' });
     await user.click(within(group).getByRole('button', { name: 'Отмена' }));
     expect(getsOf(fetchMock, 'form-meta')).toBe(1);
 
@@ -896,7 +923,7 @@ describe('«+ Создать» → «Координатор»', () => {
 
     await user.click(screen.getByRole('button', { name: '+ Создать' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Группа' }));
-    await within(await screen.findByRole('dialog', { name: 'Новая группа' })).findByRole('combobox', { name: 'Район' });
+    await within(await screen.findByRole('dialog', { name: 'Новая группа' })).findByRole('combobox', { name: 'Статус' });
     // Окно координатора само читает справочник (роли): чтений после создания может быть и два — важно, что они есть.
     await waitFor(() => expect(getsOf(fetchMock, 'form-meta')).toBeGreaterThanOrEqual(2));
   });

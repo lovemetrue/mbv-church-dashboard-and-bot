@@ -120,3 +120,43 @@ describe('правка из заявки доходит до человека', 
     expect(await members.updatePerson(id, { fields: { address: 'я'.repeat(201) } }, 'тест')).toMatchObject({ ok: false, error: 'bad_request' });
   });
 });
+
+describe('семейное положение вариантом (миграция 070)', () => {
+  const kindOf = async (table: 'users' | 'persons', id: number) =>
+    (await db.query<{ k: string | null; t: string | null }>(`SELECT family_kind AS k, family_status AS t FROM ${table} WHERE id = $1`, [id])).rows[0]!;
+
+  test('разбор: «single», «married» или пусто — «не указано»; другое — ошибка', () => {
+    expect(parseContactPatch({ fields: { familyKind: 'married' } })).toEqual({ familyKind: 'married' });
+    expect(parseContactPatch({ fields: { familyKind: '' } })).toEqual({ familyKind: null });
+    expect(parseContactPatch({ fields: { familyKind: 'divorced' } })).toMatch(/Семейное положение/);
+  });
+
+  test('выбор в регистрации пишется вариантом, исходный текст остаётся; в журнале — название поля', async () => {
+    const u = await seedUser();
+    await db.query(`UPDATE users SET family_status = 'двое детей' WHERE id = $1`, [u]);
+    expect(await svc().update(`u${u}`, { fields: { familyKind: 'married' } }, 'тест')).toEqual({ ok: true });
+    expect(await kindOf('users', u)).toEqual({ k: 'married', t: 'двое детей' });
+    const after = (await db.query<{ after: string }>(`SELECT after::text AS after FROM audit_log`)).rows[0]!.after;
+    expect(after).toContain('familyKind');
+  });
+
+  test('из «Править данные» заявки вариант уходит человеку, а снимок заявки не трогается', async () => {
+    const u = await seedUser();
+    const r = await seedRequest(u, "family_status|'женат'");
+    expect(await new PlacementRepo(db).editRequest(r, { familyKind: 'single' }, 'тест')).toEqual({ ok: true });
+    expect((await kindOf('users', u)).k).toBe('single');
+    expect(await request(r)).toMatchObject({ family_status: 'женат' });
+    expect(await new PlacementRepo(db).editRequest(r, { familyKind: 'вдовец' }, 'тест')).toMatchObject({ ok: false, error: 'bad_request' });
+  });
+
+  test('карточка, внесённая вручную: вариант правится, текст распознаётся при создании', async () => {
+    const members = createMembers({ members: new MembersRepo(db), audit: new AuditRepo(db) });
+    const made = await members.createPerson({ fields: { fio: 'Сидоров Пётр', family: 'Женат' } }, 'тест');
+    if (!made.ok) throw new Error('карточка не создана');
+    const id = Number(made.personKey.slice(1));
+    expect(await kindOf('persons', id)).toEqual({ k: 'married', t: 'Женат' });
+    expect(await members.updatePerson(id, { fields: { familyKind: '' } }, 'тест')).toEqual({ ok: true });
+    expect((await kindOf('persons', id)).k).toBeNull();
+    expect(await members.updatePerson(id, { fields: { familyKind: 'x' } }, 'тест')).toMatchObject({ ok: false });
+  });
+});

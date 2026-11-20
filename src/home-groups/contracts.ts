@@ -34,6 +34,8 @@
  *   POST /api/v1/people/strange         PersonStrangeBody → ActionOk | ActionError (то же по ключу человека: u12, r345, p7)
  *   POST /api/v1/people/gender          PersonGenderBody → ActionOk | ActionError (пол человека по ключу; null — снова из ФИО)
  *   POST /api/v1/people/gender-ai       (тело {})         → GenderAiOk | ActionError (модель подсказывает пол тем, у кого он не понятен из ФИО)
+ *   POST /api/v1/people/relatives       RelativeAddBody   → ActionOk | ActionError (связать двоих родством; пара уже связана — 409)
+ *   POST /api/v1/people/relatives/delete RelativeDeleteBody → ActionOk | ActionError (убрать связь по её номеру)
  *   POST /api/v1/requests/:id/reconcile ReconcileBody → ReconcileOk | ActionError (разобрать «другое обращение»: в состав групп или ведущим групп)
  *   POST /api/v1/requests/reconcile-ready ReconcileReadyBody → ReconcileReadyOk | ActionError (разобрать сразу все с одной точно найденной группой)
  *   POST /api/v1/people/(u|r)<id>/update {fields} → ActionOk | ActionError (контакты регистрации или человека из заявки; доходят и до заявок)
@@ -164,6 +166,9 @@ export interface Reason {
  */
 export type Bucket = 'ready' | 'callback' | 'human' | 'done' | 'cancelled';
 
+/** День недели встречи группы — как его пишет форма и показывает интерфейс. */
+export type GroupDay = 'Пн' | 'Вт' | 'Ср' | 'Чт' | 'Пт' | 'Сб' | 'Вс';
+
 /** Краткая карточка группы внутри предложений и списков. */
 export interface GroupBrief {
   id: number;
@@ -174,7 +179,7 @@ export interface GroupBrief {
   leader: string;
   district: string;
   metro: string | null;
-  /** «Вт, вечер» — собранное из дня и времени; null, если не указано. */
+  /** «Вт, Чт — 19:00» (время по часам — как записано) или «Вт — вечер» (время словом); null, если не указано. */
   whenText: string | null;
   /** Участников сейчас; null, если число неизвестно. */
   people: number | null;
@@ -264,6 +269,13 @@ export interface BotNotice {
  * группы человеку не подбираются). by: откуда — «fio» (выведен из ФИО), «ai» (подсказка модели, стоит проверить),
  * «manual» (поставил служитель); у пустого null.
  */
+/**
+ * Семейное положение вариантом: 'single' — холост / не замужем, 'married' — женат / замужем; null — не указано.
+ * Распознаётся из свободного текста (`familyKindOf`, миграция 070), служитель выбирает в правке человека. Подпись
+ * зависит от пола: мужчине «Холост» / «Женат», женщине «Не замужем» / «Замужем», при неизвестном — обе через «/».
+ */
+export type FamilyKind = 'single' | 'married';
+
 export interface GenderInfo {
   value: 'м' | 'ж' | null;
   by: 'fio' | 'ai' | 'manual' | null;
@@ -419,6 +431,8 @@ export interface RequestItem {
   id: number;
   /** Человек в «Людях»: регистрация («u12») или сама заявка без регистрации («r345») — переход в его карточку. */
   personKey: string;
+  /** Родственники человека заявки (миграция 071) — коротким списком со ссылками на их карточки. */
+  relatives: PersonRelative[];
   fio: string;
   phone: string | null;
   /** Возраст так, как записан в заявке: «26-35», «35-45 лет», «подростки (до 18 лет)». */
@@ -455,6 +469,8 @@ export interface RequestItem {
   hobby: string | null;
   profession: string | null;
   family: string | null;
+  /** Семейное положение вариантом (миграция 070); `family` остаётся исходным текстом и показывается подсказкой. */
+  familyKind: FamilyKind | null;
   /** Заявка как она пришла: что человек заполнил сам, в порядке показа. */
   original: OriginalField[];
   /** Куда человека утвердили (для bucket = done). */
@@ -1089,6 +1105,8 @@ export interface OtherItem {
   hobby: string | null;
   profession: string | null;
   family: string | null;
+  /** Семейное положение вариантом (миграция 070); `family` остаётся исходным текстом и показывается подсказкой. */
+  familyKind: FamilyKind | null;
   cancelReason: string | null;
   original: OriginalField[];
   table: RequestTableFields;
@@ -1368,9 +1386,15 @@ export interface GroupItem extends GroupBrief {
   coLeaderPhone: string | null;
   /** Адрес группы (улица, дом) — как записал координатор. По нему подбор сопоставляет группу с адресом человека; если пусто, по `metro`. */
   address: string | null;
+  /** Возраст как записан: категории через запятую («25-40, 40-55») или старое значение таблицы. */
   ageText: string | null;
-  /** День недели («Пн»…«Вс») или null. */
-  day: string | null;
+  /**
+   * Категории возраста группы (`AGE_GROUPS` анкеты: «18-25», «25-40»…), в их порядке; старый диапазон («35-50»)
+   * разложен на задетые категории. Пусто — возраст не указан.
+   */
+  ages: string[];
+  /** Дни встреч в порядке недели («Вт», «Чт»); пусто — не указаны или «плавающий». Время у всех дней одно. */
+  days: GroupDay[];
   slot: 'утро' | 'день' | 'вечер' | null;
   status: string;
   /** «Приём новых» не «Нет». */
@@ -1437,6 +1461,44 @@ export interface GroupsView {
   items: GroupItem[];
 }
 
+/**
+ * Степень родства — кем родственник приходится владельцу карточки: супруг(а), родитель, ребёнок, брат/сестра, другое.
+ * Связь одна на пару и видна с обеих сторон; обратная степень выводится (родитель ↔ ребёнок), см. миграцию 071.
+ */
+export type RelativeKind = 'spouse' | 'parent' | 'child' | 'sibling' | 'other';
+
+/** Родственник в карточке человека: `id` — номер связи (для удаления), `key` — его ключ в «Людях». */
+export interface PersonRelative {
+  id: number;
+  key: string;
+  fio: string;
+  kind: RelativeKind;
+}
+
+/**
+ * Возможный родственник: та же фамилия (с учётом рода) и тот же телефон или адрес. Только подсказка с кнопкой
+ * «Связать». `samePhone` / `sameAddress` — совпавшее значение из карточки владельца; null — не совпало. У карточки со
+ * скрытыми контактами подсказок нет (сервер их убирает, см. `peopleFor`).
+ */
+export interface RelativeHint {
+  key: string;
+  fio: string;
+  samePhone: string | null;
+  sameAddress: string | null;
+}
+
+/** `POST /api/v1/people/relatives`: «`otherKey` приходится `key`: `kind`». */
+export interface RelativeAddBody {
+  key: string;
+  otherKey: string;
+  kind: RelativeKind;
+}
+
+/** `POST /api/v1/people/relatives/delete`: убрать связь по её номеру. */
+export interface RelativeDeleteBody {
+  id: number;
+}
+
 export interface PersonItem {
   /** Метка «Странный человек»; null — нет. */
   strange: StrangeMark | null;
@@ -1478,6 +1540,12 @@ export interface PersonItem {
   hobby: string | null;
   profession: string | null;
   family: string | null;
+  /** Семейное положение вариантом (миграция 070); `family` остаётся исходным текстом и показывается подсказкой. */
+  familyKind: FamilyKind | null;
+  /** Родственники (связи миграции 071) — с обеих сторон, степенью «кем он приходится этому человеку». */
+  relatives: PersonRelative[];
+  /** Возможные родственники — подсказки «Связать»; сами не связываются. */
+  relativeHints: RelativeHint[];
   /** Комментарий к человеку: у регистрации — служителя, у человека из заявки — комментарий заявки, у карточки — заметка. */
   note: string | null;
   /** Из регистрации: церковь, кто ведущий («уже состою в группе»), как удобнее связаться. У заявок без регистрации — null. */
@@ -1528,6 +1596,12 @@ export interface KitsView {
   issuedToday: number;
   /** Последние выдачи, свежие сверху. */
   recent: KitPerson[];
+}
+
+/** `GET /api/v1/kits/issued`: все, кому выдан набор, свежие сверху (окно «Наборов выдано» в «Команде → Кампания»). */
+export interface KitsIssuedView {
+  generatedAt: string;
+  items: KitPerson[];
 }
 
 /** `POST /api/v1/kits/find`: тело `{ code }` — номер регистрации (или текст из QR). */

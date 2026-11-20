@@ -1,5 +1,5 @@
 import type { Candidate } from '@contracts';
-import { groupLabel } from '../../entities/format';
+import { groupLabel, groupWhere } from '../../entities/format';
 import { ru } from '../../shared/i18n/ru';
 import { isUnscored } from './model';
 import type { ReactNode } from 'react';
@@ -20,7 +20,7 @@ export function CandidateCard({ candidate, main = false, action }: CandidateCard
   const { group, reasons } = candidate;
   const value = candidate.confidence ?? candidate.score;
   const caption = candidate.confidence != null ? ru.requests.confidence : ru.requests.match;
-  const where = [group.district, group.metro, group.whenText].filter(Boolean).join(' · ');
+  const where = groupWhere(group);
   const unscored = isUnscored(candidate);
   return (
     <article className={`${styles.cand} ${main ? styles.candTop : ''}`}>

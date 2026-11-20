@@ -105,8 +105,8 @@ describe('представления из живых репозиториев', 
     const maria = view.items.find((g) => g.id === s.maria.id)!;
     expect(maria).toMatchObject({
       code: `ДГ-${String(s.maria.id).padStart(4, '0')}`, leader: 'Мария Иванова', coLeader: 'Пётр',
-      phone: '+7 911 123-45-67', district: 'Приморский', metro: 'Беговая', day: 'Вт', slot: 'вечер',
-      whenText: 'Вт, вечер', people: 4, capacity: 10, free: 6, status: 'Функционирует', acceptsNew: true,
+      phone: '+7 911 123-45-67', district: 'Приморский', metro: 'Беговая', days: ['Вт'], slot: 'вечер',
+      whenText: 'Вт — 19:00', people: 4, capacity: 10, free: 6, status: 'Функционирует', acceptsNew: true,
       doNotRefer: false, coordinator: 'Анна Смирнова', verifiedDaysAgo: 5, comment: 'Собираются у метро',
     });
     // Все шесть пунктов здоровья заполнены.

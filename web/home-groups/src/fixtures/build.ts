@@ -9,6 +9,7 @@ import type {
   AssistantReviewItem, AssistantStatus,
   Bucket,
   Candidate,
+  GroupDay,
   CellLevel,
   Cluster,
   CoordinatorItem,
@@ -96,7 +97,7 @@ export function groupBrief(g: RawGroup): GroupBrief {
     leader: g.leader,
     district: g.district,
     metro: g.metro,
-    whenText: g.day ? (g.slot ? `${g.day}, ${g.slot}` : g.day) : null,
+    whenText: g.day ? (g.slot ? `${g.day} — ${g.slot}` : g.day) : null,
     people: g.people,
     capacity: capOf(g),
     free: freeOf(g),
@@ -341,6 +342,7 @@ export function buildRequests(): RequestsView {
       gender,
       id: r.id,
       personKey: `r${r.id}`,
+      relatives: [],
       fio: r.fio,
       phone: r.phone,
       ageLabel: r.ageLabel || null,
@@ -354,6 +356,7 @@ export function buildRequests(): RequestsView {
       hobby: null,
       profession: null,
       family: null,
+      familyKind: null,
       source: r.source,
       status: r.status,
       bucket: held ? 'human' : bucket,
@@ -552,7 +555,9 @@ export function buildGroups(): GroupsView {
     coLeaderPhone: g.coLeader ? '+7 921 000-11-44' : null,
     address: g.street,
     ageText: g.ages.join(', '),
-    day: g.day,
+    ages: g.ages,
+    // В фикстуре дни записаны строкой, как в базе: «Вт» или «Вт, Чт».
+    days: (g.day ?? '').split(', ').filter(Boolean) as GroupDay[],
     slot: g.slot,
     status: g.status,
     acceptsNew: g.acceptsNew,
@@ -625,6 +630,8 @@ export function buildPeople(): PeopleView {
       hobby: null,
       profession: null,
       family: null,
+      familyKind: null,
+      relatives: [], relativeHints: [],
       note: raw.note ?? null,
       church: null,
       leaderName: null,
@@ -640,11 +647,11 @@ export function buildPeople(): PeopleView {
       kitIssuedOn: null,
     };
   });
-  const extras: PersonItem[] = RAW_EXTRA_PEOPLE.map((p) => ({ ...p, place: p.place ?? p.district, address: p.address ?? null, schedule: p.schedule ?? null, hobby: p.hobby ?? null, profession: p.profession ?? null, family: p.family ?? null, note: p.note ?? null, church: p.church ?? null, leaderName: p.leaderName ?? null, preferredContact: p.preferredContact ?? null, addressGeo: p.address ? ('found' as const) : null, personId: p.personId ?? null, groups: groupsOf(p.key), leads: leadsOf(p.key), requests: [], requestId: null, kitIssuedOn: p.kitIssuedOn ?? null, strange: demoStrangeOf(p.phone, p.key), gender: demoGenderOf(p.key, p.fio), team: null, contactsHidden: false }));
+  const extras: PersonItem[] = RAW_EXTRA_PEOPLE.map((p) => ({ ...p, place: p.place ?? p.district, address: p.address ?? null, schedule: p.schedule ?? null, hobby: p.hobby ?? null, profession: p.profession ?? null, family: p.family ?? null, familyKind: null, relatives: [], relativeHints: [], note: p.note ?? null, church: p.church ?? null, leaderName: p.leaderName ?? null, preferredContact: p.preferredContact ?? null, addressGeo: p.address ? ('found' as const) : null, personId: p.personId ?? null, groups: groupsOf(p.key), leads: leadsOf(p.key), requests: [], requestId: null, kitIssuedOn: p.kitIssuedOn ?? null, strange: demoStrangeOf(p.phone, p.key), gender: demoGenderOf(p.key, p.fio), team: null, contactsHidden: false }));
   const coordinators = buildCoordinators().items;
   const team: PersonItem[] = demoTeam().map((t) => ({
     key: t.key, personId: t.personId, fio: t.name, phone: t.phone, ageLabel: null, district: null, place: null, address: null,
-    schedule: null, hobby: null, profession: null, family: null, note: null, church: null, leaderName: null, preferredContact: null,
+    schedule: null, hobby: null, profession: null, family: null, familyKind: null, relatives: [], relativeHints: [], note: null, church: null, leaderName: null, preferredContact: null,
     addressGeo: null, from: 'Команда', userId: null, registrationNo: null, mdgLabel: '—', date: null, requestId: null, kitIssuedOn: null,
     groups: groupsOf(t.key), leads: leadsOf(t.key), requests: [], strange: null, gender: demoGenderOf(t.key, t.name), contactsHidden: false,
     team: { coordinatorId: t.id, role: coordinators.find((c) => c.id === t.id)!.role },

@@ -179,7 +179,7 @@ describe('«Заявки»: параметры подбора, карандаш'
 describe('«Заявки»: откуда значение и как его поняла система', () => {
   test('время из анкеты: слова человека, источник и «Понято как: Вт, Чт · вечер»', async () => {
     const card = await openCard(1);
-    expect(within(card).getByText('вт, чт вечером')).toBeInTheDocument();
+    expect(within(card).getAllByText('вт, чт вечером')).toHaveLength(2); // шапка и «Параметры»
     expect(within(card).getAllByText('из карточки человека в «Людях»').length).toBeGreaterThanOrEqual(1);
     expect(within(card).getByText('Понято как: Вт, Чт · вечер')).toBeInTheDocument();
   });
@@ -195,7 +195,7 @@ describe('«Заявки»: откуда значение и как его по�
 
   test('если система не разобрала слова человека, об этом сказано и дан пример, как записать', async () => {
     const card = await openCard(8);
-    expect(within(card).getByText('как получится, лучше ближе к выходным')).toBeInTheDocument();
+    expect(within(card).getAllByText('как получится, лучше ближе к выходным')).toHaveLength(2); // шапка и «Параметры»
     expect(
       within(card).getByText('Система не смогла разобрать — запишите дни и время проще, например «пн, ср вечером»'),
     ).toBeInTheDocument();

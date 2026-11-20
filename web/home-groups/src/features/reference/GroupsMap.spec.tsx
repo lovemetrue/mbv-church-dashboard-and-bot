@@ -232,6 +232,22 @@ describe('«Сегодня»: карта групп', () => {
     expect(loadMock).toHaveBeenCalledTimes(1);
   });
 
+  test('у группы несколько дней: отбор карты «День = Чт» оставляет её, а группу только по вторникам убирает', async () => {
+    const base = groupsFixture();
+    const usable = base.items.filter((g) => g.coords !== null && g.status === 'Функционирует' && !g.chamber && !g.doNotRefer && g.district !== 'Онлайн');
+    const [both, tuesday] = [usable[0]!, usable[1]!];
+    const items = base.items.map((g) => (g.id === both.id ? { ...g, days: ['Вт', 'Чт'] } : g.id === tuesday.id ? { ...g, days: ['Вт'] } : g));
+    const { box } = await openMap({ groups: () => json({ ...base, items }) });
+    const user = await goLive(box);
+    await user.click(within(box).getByRole('button', { name: /^Фильтры/ }));
+    const dlg = screen.getByRole('dialog', { name: 'Фильтры' });
+    await user.selectOptions(within(dlg).getByLabelText('Поле'), 'День');
+    await user.click(within(dlg).getByRole('checkbox', { name: 'Чт' }));
+    await user.click(within(dlg).getByRole('button', { name: 'Добавить' }));
+    await waitFor(() => expect(onMap(tuesday)).toBe(false));
+    expect(onMap(both)).toBe(true);
+  });
+
   test('центр, масштаб, переключатели и фильтры переживают перезагрузку страницы', async () => {
     const { box } = await openMap();
     const user = await goLive(box);

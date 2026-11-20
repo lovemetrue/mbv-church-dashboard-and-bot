@@ -218,14 +218,16 @@ describe('карточка человека: правка и удаление к
     expect(within(card).getByText('Внесён вручную')).toBeInTheDocument();
   });
 
-  test.each([['u1'], ['r1'], ['p1']])('форма человека %s: те же десять полей в том же порядке, что в заявке', async (key) => {
+  test.each([['u1'], ['r1'], ['p1']])('форма человека %s: те же поля в том же порядке, что в заявке', async (key) => {
     stubFetchWithFixtures();
     const user = userEvent.setup();
     const card = await personCard(key);
     await user.click(await within(card).findByRole('button', { name: /Править карточку/ }));
     const dialog = await screen.findByRole('dialog', { name: /^Правка карточки/ });
     const names = within(dialog).getAllByRole('textbox').map((e) => document.querySelector(`label[for="${e.id}"]`)?.textContent?.replace(/\s*\*$/, ''));
-    expect(names).toEqual(['ФИО', 'Телефон', 'Возраст', 'Район, метро, ориентир', 'Улица и дом', 'Удобные день и время', 'Хобби', 'Профессия', 'Семейное положение', 'Комментарий']);
+    expect(names).toEqual(['ФИО', 'Телефон', 'Возраст', 'Район, метро, ориентир', 'Улица и дом', 'Удобные день и время', 'Хобби', 'Профессия', 'Комментарий']);
+    // Семейное положение в правке — выбор варианта (миграция 070), стоит между профессией и комментарием.
+    expect(within(dialog).getByRole('combobox', { name: 'Семейное положение' })).toBeInTheDocument();
   });
 
   test('форма заполнена текущими значениями, а сохранить нечего, пока не изменили', async () => {

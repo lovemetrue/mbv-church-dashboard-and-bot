@@ -99,7 +99,8 @@ function DraftForm({ meta, draft, onClose, onCreated, onBusyChange }: {
       ...base,
       fields: base.fields.filter((f) => f.name !== 'leaderKey'),
       initial: { ...base.initial, ...draft.fields },
-      hidden: { sourceRequestId: String(draft.requestId) },
+      // Район, понятый по заявке, уходит скрытым полем: в форме его нет (его ставит адрес), но без адреса он — место группы.
+      hidden: { sourceRequestId: String(draft.requestId), ...(draft.fields['district'] ? { district: draft.fields['district'] } : {}) },
     };
   }, [meta, draft]);
   return (

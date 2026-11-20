@@ -150,4 +150,25 @@ describe('выдача наборов', () => {
     expect(view).toMatchObject({ registered: 3, issued: 2, issuedToday: 1 });
     expect(view.recent.map((p) => p.fio)).toEqual(['Борис', 'Анна']);
   });
+
+  test('список выданных: все, свежие сверху, без невыданных и незарегистрированных; выдавший — «бот» или логин', async () => {
+    const a = await register('Анна');
+    const b = await register('Борис');
+    await register('Вера');
+    await db.query("INSERT INTO users (platform, platform_user_id, chat_id, full_name) VALUES ('telegram', '777', '777', 'Без номера')");
+    await kits().issue({ userId: a.id }, 'p_ivanova');
+    await new UsersRepo(db).markKitIssued(b.id, '27637540');
+    await db.query("UPDATE users SET kit_issued_at = now() - interval '2 days' WHERE id = $1", [a.id]);
+    const out = await kits().issued();
+    expect(out.items.map((p) => [p.fio, p.issuedBy])).toEqual([['Борис', 'бот'], ['Анна', 'p_ivanova']]);
+    expect(out.items[0]).toMatchObject({ registrationNo: b.registration_no, phone: '+7 911 000-11-22', issuedAt: expect.any(String) });
+  });
+
+  test('список выданных не обрезается лимитом «последних»: пятнадцать и больше', async () => {
+    for (let i = 0; i < 17; i++) {
+      const u = await register(`Участник ${i}`);
+      await kits().issue({ userId: u.id }, 'p');
+    }
+    expect((await kits().issued()).items).toHaveLength(17);
+  });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { GroupItem, GroupsView, OtherItem, PeopleView, PersonItem, RequestItem, RequestsView, TeamRoleKind } from '../src/home-groups/contracts.js';
-import { draftFor, groupsFor, kitPersonFor, maskPhone, peopleFor, requestsFor, type Viewer } from '../src/home-groups/contactsAccess.js';
+import { draftFor, groupsFor, kitPersonFor, kitsIssuedFor, maskPhone, peopleFor, requestsFor, type Viewer } from '../src/home-groups/contactsAccess.js';
 
 /**
  * Кто какие контакты видит: решает сервер на выходе, снимок представлений один на всех. Правило — персональные данные
@@ -22,12 +22,12 @@ const groupsView = (...items: GroupItem[]): GroupsView => ({ generatedAt: 'g', i
 const request = (over: Partial<RequestItem>): RequestItem => ({
   id: 10, fio: 'Пётр Ищущий', phone: '+7 911 555-00-11', district: 'Приморский', place: 'м. Беговая', responsible: null,
   street: 'Савушкина 5', streetInfo: { text: 'Савушкина 5', source: 'анкета' }, streetGeo: 'found',
-  hobby: 'бег', profession: 'повар', family: 'женат', contactsHidden: false, finalGroup: null,
+  hobby: 'бег', profession: 'повар', family: 'женат', familyKind: 'married', contactsHidden: false, finalGroup: null,
   original: [{ label: 'ФИО', value: 'Пётр Ищущий' }, { label: 'Телефон', value: '+7 911 555-00-11' }, { label: 'Улица и дом', value: 'Савушкина 5' }],
   ...over,
 } as RequestItem);
 const other = (over: Partial<OtherItem>): OtherItem => ({
-  id: 20, fio: 'Ольга Ведущая', phone: '+7 921 777-88-99', address: 'Невский 1', hobby: null, profession: null, family: null,
+  id: 20, fio: 'Ольга Ведущая', phone: '+7 921 777-88-99', address: 'Невский 1', hobby: null, profession: null, family: 'холост', familyKind: 'single',
   responsible: null, original: [], contactsHidden: false, ownGroup: null, ...over,
 } as OtherItem);
 const requestsView = (items: RequestItem[], others: OtherItem[] = []): RequestsView => ({ items, others } as RequestsView);
@@ -51,7 +51,7 @@ describe('заявки', () => {
     for (const r of [nobodys!, alien!]) {
       expect(r).toMatchObject({
         fio: 'Пётр Ищущий', district: 'Приморский', place: 'м. Беговая', phone: '… 00-11', street: null, streetGeo: null,
-        hobby: null, profession: null, family: null, contactsHidden: true, streetInfo: { text: null },
+        hobby: null, profession: null, family: null, familyKind: null, contactsHidden: true, streetInfo: { text: null },
       });
       // «Как пришла» тоже без улицы, а телефон в ней замаскирован.
       expect(r.original).toEqual([{ label: 'ФИО', value: 'Пётр Ищущий' }, { label: 'Телефон', value: '… 00-11' }]);
@@ -62,7 +62,7 @@ describe('заявки', () => {
     const view = requestsView([], [other({ responsible: 'Галя' }), other({ id: 21, responsible: null })]);
     const [mine, nobodys] = requestsFor(view, person('Галя', 'coordinator')).others;
     expect(mine!.contactsHidden).toBe(false);
-    expect(nobodys).toMatchObject({ phone: '… 88-99', address: null, contactsHidden: true });
+    expect(nobodys).toMatchObject({ phone: '… 88-99', address: null, family: null, familyKind: null, contactsHidden: true });
   });
 
   test('лидеры, старший распределитель, полный и общий вход видят всё', () => {
@@ -124,7 +124,7 @@ describe('группы', () => {
 describe('люди', () => {
   const p = (over: Partial<PersonItem>): PersonItem => ({
     key: 'u1', fio: 'Мария', phone: '+7 999 123-45-67', address: 'Юкки', addressGeo: 'found', hobby: 'бег', profession: 'врач',
-    family: null, groups: [], requestId: null, contactsHidden: false, ...over,
+    family: 'замужем', familyKind: 'married', groups: [], requestId: null, contactsHidden: false, ...over,
   } as PersonItem);
   const people = (...items: PersonItem[]): PeopleView => ({ generatedAt: 'g', items });
 
@@ -139,7 +139,9 @@ describe('люди', () => {
     ).items;
     expect(out[0]).toEqual(fromMyRequest);
     expect(out[1]).toEqual(inMyGroup);
-    expect(out[2]).toMatchObject({ fio: 'Мария', phone: '… 45-67', address: null, addressGeo: null, hobby: null, profession: null, contactsHidden: true });
+    expect(out[2]).toMatchObject({
+      fio: 'Мария', phone: '… 45-67', address: null, addressGeo: null, hobby: null, profession: null, family: null, familyKind: null, contactsHidden: true,
+    });
   });
 
   test('у ведущего чужой группы номер виден целиком — тот же, что в справочнике групп; адреса и остального нет', () => {
@@ -153,6 +155,17 @@ describe('люди', () => {
     expect(out[0]).toMatchObject({ phone: '+7 999 123-45-67', address: null, hobby: null, contactsHidden: true });
     // Камерная группа скрывает телефоны ведущих — и в «Людях» тоже.
     expect(out[1]!.phone).toBe('… 45-67');
+  });
+
+  test('подсказки «возможно, родственник» с телефоном и адресом — только у открытой карточки; связи видны всем', () => {
+    const hint = { key: 'u9', fio: 'Иванова Анна', samePhone: '+7 999 123-45-67', sameAddress: 'Юкки' };
+    const relative = { id: 1, key: 'u8', fio: 'Иванов Пётр', kind: 'spouse' as const };
+    const mine = p({ key: 'u1', requestId: 1, relativeHints: [hint], relatives: [relative] });
+    const stranger = p({ key: 'u3', relativeHints: [hint], relatives: [relative] });
+    const out = peopleFor(people(mine, stranger), person('Анна Л.', 'coordinator'), groupsView(), requestsView([request({ id: 1, responsible: 'Анна Л.' })])).items;
+    expect(out[0]!.relativeHints).toEqual([hint]);
+    expect(out[1]!.relativeHints).toEqual([]);
+    expect(out[1]!.relatives).toEqual([relative]);
   });
 
   test('у участника команды номер виден целиком — как в «Координаторах»; адреса нет', () => {
@@ -173,5 +186,12 @@ describe('черновик группы, списки форм, наборы', (
     const kit = { userId: 1, registrationNo: 5, fio: 'Пётр', phone: '+79110001122', issuedAt: null };
     expect(kitPersonFor(kit, person('Галя', 'coordinator')).phone).toBe('… 11-22');
     expect(kitPersonFor(kit, SHARED)).toEqual(kit);
+  });
+
+  test('список выданных наборов: личному входу — хвост номера у каждого, лидеру и общему входу — целиком', () => {
+    const view = { generatedAt: 'g', items: [{ userId: 1, registrationNo: 5, fio: 'Пётр', phone: '+7 911 000-11-22', issuedAt: null, issuedBy: null }] };
+    expect(kitsIssuedFor(view, person('Галя', 'coordinator')).items[0]!.phone).toBe('… 11-22');
+    expect(kitsIssuedFor(view, person('Галя', 'senior'))).toEqual(view);
+    expect(kitsIssuedFor(view, SHARED)).toEqual(view);
   });
 });

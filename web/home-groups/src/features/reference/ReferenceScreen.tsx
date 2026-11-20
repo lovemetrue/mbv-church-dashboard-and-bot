@@ -159,9 +159,10 @@ function EntityView<T>({ config, query, items, renderCard, extra, actions }: Ent
   const groups = useMemo(() => {
     const filtered = searchRows(applyFilters(allRows, state.filters, config.fields), state.text);
     const sorted = sortRows(filtered, state.sort, config.fields);
-    return groupRows(sorted, state.group);
+    return groupRows(sorted, state.group, config.fields);
   }, [allRows, state.filters, state.text, state.sort, state.group, config.fields]);
-  const shown = groups.reduce((n, g) => n + g.rows.length, 0);
+  // По полю-списку («День») одна запись бывает в нескольких группах — считаем записи, а не строки.
+  const shown = new Set(groups.flatMap((g) => g.rows.map((r) => r['_key']))).size;
 
   if (query.isPending) return <LoadingState lines={6} />;
   if (query.isError) return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;
@@ -185,7 +186,8 @@ function EntityView<T>({ config, query, items, renderCard, extra, actions }: Ent
     const date = new Date().toLocaleDateString('sv-SE');
     downloadCsv(
       `${config.id}-${date}.csv`,
-      toCsv(cols, groups.flatMap((g) => g.rows).map((r) => cols.map((c) => r[c] ?? null))),
+      // Запись, попавшая в несколько групп поля-списка, в выгрузке — одной строкой.
+      toCsv(cols, [...new Set(groups.flatMap((g) => g.rows))].map((r) => cols.map((c) => r[c] ?? null))),
     );
   };
 

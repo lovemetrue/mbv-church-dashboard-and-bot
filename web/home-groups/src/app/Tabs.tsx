@@ -17,7 +17,7 @@ export function Tabs() {
   const refs = useRef<Partial<Record<TabId, HTMLButtonElement | null>>>({});
   const open = requests.data ? openCount(requests.data.counters) : null;
 
-  // На телефоне вкладки не помещаются и прокручиваются вбок: выбранная («Наборы» по ссылке) не должна остаться
+  // На телефоне вкладки не помещаются и прокручиваются вбок: выбранная (по ссылке) не должна остаться
   // обрезанной за краем. nearest — страницу по вертикали не дёргаем. В jsdom метода нет, отсюда `?.`.
   useEffect(() => {
     refs.current[nav.tab]?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });

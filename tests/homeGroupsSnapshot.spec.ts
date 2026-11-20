@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { bucketOf, buildPlan, buildTodaySummary } from '../src/home-groups/plan/index.js';
 import { DEFAULT_SETTINGS } from '../src/home-groups/plan/settings.js';
 import { buildMetroIndex, resolveDistrict } from '../src/home-groups/plan/geo.js';
-import { parseAgeRange, parseGroupWhen } from '../src/home-groups/plan/parse.js';
+import { parseAgeRange, parseGroupAgeRanges, parseGroupWhen } from '../src/home-groups/plan/parse.js';
 import type { PlanGroup, PlanRequest } from '../src/home-groups/plan/types.js';
 
 /**
@@ -57,8 +57,8 @@ const groups: PlanGroup[] = table.groups.map((row, i) => {
     leader: row.leader,
     district: row.district || 'Не указан',
     metro: row.metro || null,
-    ageRange: parseAgeRange(row.age),
-    day: when.day,
+    ageRanges: parseGroupAgeRanges(row.age),
+    days: when.days,
     slot: when.slot,
     street: null,
     people: row.people,

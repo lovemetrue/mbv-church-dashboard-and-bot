@@ -11,6 +11,7 @@ import type { SettingsRepo } from '../db/repos/settings.repo.js';
 import type { RequestsRepo } from '../db/repos/requests.repo.js';
 import type { StrangeRepo } from '../db/repos/strange.repo.js';
 import type { GendersRepo } from '../db/repos/genders.repo.js';
+import type { RelativesRepo } from '../db/repos/relatives.repo.js';
 import type { UsersRepo } from '../db/repos/users.repo.js';
 import type { ViewsInput } from './api/views.js';
 
@@ -28,6 +29,8 @@ export interface LoaderRepos {
   strange?: Pick<StrangeRepo, 'all'>;
   /** Пол, поставленный вручную или моделью; без репозитория (в тестах) пол только из ФИО. */
   genders?: Pick<GendersRepo, 'all'>;
+  /** Родственники (миграция 071); без репозитория (в тестах) связей нет. */
+  relatives?: Pick<RelativesRepo, 'all'>;
   /** Кэш координат адресов; без него (в тестах) подбор сравнивает улицы по названию. */
   geocode?: Pick<GeocodeRepo, 'all'>;
   /** Сообщения в MAX после «Утвердить»; без репозитория (в тестах) их нет. */
@@ -61,11 +64,12 @@ export function createLoader(repos: LoaderRepos, opts: { timeZone?: string; assi
     const strange = repos.strange ? await repos.strange.all() : undefined;
     const geo = repos.geocode ? await repos.geocode.all() : undefined;
     const genders = repos.genders ? await repos.genders.all() : undefined;
+    const relatives = repos.relatives ? await repos.relatives.all() : undefined;
     const notices = repos.notices ? await repos.notices.traces() : undefined;
     const fioResend = repos.notices ? await repos.notices.fioResendPending() : 0;
     const notify = await repos.settings.get<boolean>(SETTING_NOTIFY);
     return {
-      strange, geo, genders, notices,
+      strange, geo, genders, relatives, notices,
       groups, requests, participants, coordinators, rejectedGroups, audit, activity, activeProposals, restorable, placedNew,
       matching: { auto: auto === true, notify: notify === true, fioResend, lastRun: lastRun ?? null },
       hints,

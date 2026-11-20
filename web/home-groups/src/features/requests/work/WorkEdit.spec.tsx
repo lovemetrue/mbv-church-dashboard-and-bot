@@ -37,9 +37,11 @@ describe('Карточка заявки: карандаш «Править да�
     expect(within(dialog).getByRole('textbox', { name: 'Телефон' })).toHaveValue('+7 921 555 00 11');
     expect(within(dialog).getByRole('textbox', { name: 'Возраст' })).toHaveValue('46 и старше');
     expect(within(dialog).getByRole('textbox', { name: 'Район, метро, ориентир' })).toHaveValue('Ладожская');
-    for (const name of ['Улица и дом', 'Удобные день и время', 'Хобби', 'Профессия', 'Семейное положение']) {
+    for (const name of ['Улица и дом', 'Удобные день и время', 'Хобби', 'Профессия']) {
       expect(within(dialog).getByRole('textbox', { name })).toBeInTheDocument();
     }
+    // Семейное положение — выбор варианта, а не текст (миграция 070).
+    expect(within(dialog).getByRole('combobox', { name: 'Семейное положение' })).toBeInTheDocument();
     expect(within(dialog).getByRole('textbox', { name: 'Комментарий' })).toHaveValue('Просила звонить после 18:00.');
     expect(within(dialog).getByText(/сохранятся и в регистрации, и во всех заявках/)).toBeInTheDocument();
   });
@@ -49,7 +51,7 @@ describe('Карточка заявки: карандаш «Править да�
     const { dialog } = await openEdit(5);
     const fromRequest = labels(dialog);
     expect(fromRequest.map((l) => l?.replace(/\s*\*$/, ''))).toEqual([
-      'ФИО', 'Телефон', 'Возраст', 'Район, метро, ориентир', 'Улица и дом', 'Удобные день и время', 'Хобби', 'Профессия', 'Семейное положение', 'Комментарий',
+      'ФИО', 'Телефон', 'Возраст', 'Район, метро, ориентир', 'Улица и дом', 'Удобные день и время', 'Хобби', 'Профессия', 'Комментарий',
       'Источник', 'Служение', 'Рекомендованная группа', 'Контроль посещения', 'Дополнительно',
     ]);
     // Дата — не текстовое поле, поэтому в списке выше её нет.
@@ -94,6 +96,25 @@ describe('Карточка заявки: карандаш «Править да�
     expect(posts(fetchMock)[0]!.body).toEqual({ fields: { recommended: 'Иван Петров', recommendedAt: '2026-09-01', attendance: 'ходит' } });
   });
 
+  test('семейное положение: варианты подписаны по полу, исходный текст — подсказкой и в форму не уходит', async () => {
+    const { dialog } = await openEdit(5, {
+      requests: () => json(viewWith(5, { phone: PHONE, gender: { value: 'ж', by: 'fio' }, family: 'замужем, двое детей', familyKind: 'married' })),
+    });
+    const select = within(dialog).getByRole('combobox', { name: 'Семейное положение' });
+    expect(select).toHaveValue('married');
+    expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual(['не указано', 'Не замужем', 'Замужем']);
+    expect(select).toHaveAccessibleDescription(/Как написал человек: «замужем, двое детей»/);
+  });
+
+  test('пол неизвестен — обе формы через «/»', async () => {
+    const { dialog } = await openEdit(5, {
+      requests: () => json(viewWith(5, { phone: PHONE, gender: { value: null, by: null }, familyKind: null })),
+    });
+    const select = within(dialog).getByRole('combobox', { name: 'Семейное положение' });
+    expect(select).toHaveValue('');
+    expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual(['не указано', 'Холост / не замужем', 'Женат / замужем']);
+  });
+
   test('пока ничего не изменено, «Сохранить» отключена', async () => {
     const { user, dialog } = await openEdit(5);
     expect(within(dialog).getByRole('button', { name: 'Сохранить' })).toBeDisabled();
@@ -109,11 +130,12 @@ describe('Карточка заявки: карандаш «Править да�
     await user.type(within(dialog).getByRole('textbox', { name: 'Удобные день и время' }), 'среда');
     await user.type(within(dialog).getByRole('textbox', { name: 'Хобби' }), 'вязание');
     await user.type(within(dialog).getByRole('textbox', { name: 'Профессия' }), 'врач');
-    await user.type(within(dialog).getByRole('textbox', { name: 'Семейное положение' }), 'замужем');
+    // Семейное положение — выбор (миграция 070): текст человека остаётся, уходит вариант.
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Семейное положение' }), 'married');
     await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
     expect(posts(fetchMock)[0]).toMatchObject({ path: 'requests/5/edit' });
-    expect(posts(fetchMock)[0]!.body).toEqual({ fields: { address: 'Коллонтай 5', schedule: 'среда', hobby: 'вязание', profession: 'врач', family: 'замужем' } });
+    expect(posts(fetchMock)[0]!.body).toEqual({ fields: { address: 'Коллонтай 5', schedule: 'среда', hobby: 'вязание', profession: 'врач', familyKind: 'married' } });
   });
 
   test('после успеха окно закрывается, а заявки, «Сегодня», группы и люди перечитываются', async () => {

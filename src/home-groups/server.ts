@@ -24,7 +24,7 @@ import type { Genders } from './genders.js';
 import type { Kits } from './kits.js';
 import type { TeamRoles } from './teamRoles.js';
 import type { GroupDirections } from './groupDirections.js';
-import { draftFor, groupsFor, kitPersonFor, peopleFor, requestsFor, type Viewer } from './contactsAccess.js';
+import { draftFor, groupsFor, kitPersonFor, kitsIssuedFor, peopleFor, requestsFor, type Viewer } from './contactsAccess.js';
 import type { Reconciler } from './reconcile/service.js';
 import { registrationCardPage } from '../dashboard/registrationCard.js';
 import type { Settings } from '../platform/settings/service.js';
@@ -193,6 +193,8 @@ const CONTACT_PATH = /^\/api\/v1\/people\/([ur]\d{1,15})\/update$/;
 const BULK_PATH = '/api/v1/requests/bulk';
 /** Выдача наборов: найти участника по номеру или ФИО, отметить выдачу, отменить ошибочную. Любой вход. */
 const KITS_PATH = '/api/v1/kits';
+/** Все выданные наборы для окна в «Кампании». Стойке не нужен (в deskAllows только `KITS_PATH`), «Только чтение» читает. */
+const KITS_ISSUED_PATH = '/api/v1/kits/issued';
 const KIT_POST_PATH = /^\/api\/v1\/kits\/(find|search|issue|undo)$/;
 const PERSON_STRANGE_PATH = '/api/v1/people/strange';
 const PERSON_GENDER_PATH = '/api/v1/people/gender';
@@ -1094,6 +1096,12 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       return;
     }
     if (path === KITS_PATH) { sendJson(res, 200, await deps.kits.view()); return; }
+    if (path === KITS_ISSUED_PATH) {
+      const viewer = await viewerOf(sid);
+      const view = await deps.kits.issued();
+      sendJson(res, 200, viewer ? kitsIssuedFor(view, viewer) : view);
+      return;
+    }
     const helpFile = HELP_FILE_PATH.exec(path);
     if (helpFile) {
       const png = deps.help ? await deps.help.image(helpFile[1]!) : null;

@@ -8,7 +8,6 @@ import { AssistantChat } from '../features/assistant-chat';
 import { isRegistrationPath, REGISTRATION_PATH, RegistrationPage } from '../features/create/RegistrationPage';
 import { RequestsScreen } from '../features/requests/RequestsScreen';
 import { GroupsScreen } from '../features/groups/GroupsScreen';
-import { KitsScreen } from '../features/kits/KitsScreen';
 import { ReferenceScreen } from '../features/reference/ReferenceScreen';
 import { SettingsScreen } from '../features/settings/SettingsScreen';
 import { TeamScreen } from '../features/team/TeamScreen';
@@ -52,7 +51,7 @@ export function App() {
 }
 
 /**
- * Вкладка, которой этому входу не видно (например, «Команда» и «Наборы» у «Только чтение»), по набранному вручную адресу
+ * Вкладка, которой этому входу не видно (например, «Команда» у «Только чтение»), по набранному вручную адресу
  * уводит на «Сегодня», как «Настройки». Настоящая защита — 403 сервера.
  */
 function HiddenTabGuard() {
@@ -67,7 +66,7 @@ function HiddenTabGuard() {
 
 function Shell() {
   const nav = useAppNav();
-  // «Команда» и «Наборы» закрыты входу «Только чтение»: их экраны ждут ответа `/me`, чтобы не спросить лишнего.
+  // «Команда» закрыта входу «Только чтение»: их экраны ждут ответа `/me`, чтобы не спросить лишнего.
   const role = useMe().data?.role;
   const shown = role ? visibleTabs(role) : [];
   return (
@@ -84,7 +83,6 @@ function Shell() {
           {nav.tab === 'today' && <TodayScreen />}
           {nav.tab === 'requests' && <RequestsScreen />}
           {nav.tab === 'groups' && <GroupsScreen />}
-          {nav.tab === 'kits' && shown.includes('kits') && <KitsScreen />}
           {nav.tab === 'team' && shown.includes('team') && <TeamScreen />}
           {nav.tab === 'reference' && <ReferenceScreen />}
           {nav.tab === 'settings' && <SettingsRoute />}

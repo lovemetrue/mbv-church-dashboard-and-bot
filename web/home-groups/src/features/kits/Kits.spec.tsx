@@ -27,7 +27,7 @@ function open(opts: { role?: Me['role']; find?: () => Response; search?: () => R
     'kits/issue': opts.issue ?? (() => json({ ok: true, person: person({ issuedAt: '2026-10-22T09:05:00Z', issuedBy: 'p_ivanova' }), changed: true })),
     'kits/undo': opts.undo ?? (() => json({ ok: true, person: person(), changed: true })),
   });
-  renderAt(<App />, '/?tab=kits');
+  renderAt(<App />, '/registration?view=kits');
   return fetchMock;
 }
 
@@ -39,28 +39,13 @@ async function search(user: ReturnType<typeof userEvent.setup>, text: string) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('«Наборы»: вкладка и счётчики', () => {
-  test('вкладка видна обычному входу и показывает выдано сегодня, всего из скольких и сколько осталось', async () => {
+  test('«Наборы» открыты на стойке регистрации и показывают выдано сегодня, всего из скольких и сколько осталось', async () => {
     open({ role: 'admin' });
-    expect(screen.getByRole('tab', { name: 'Наборы' })).toHaveAttribute('aria-selected', 'true');
     const tiles = await screen.findByLabelText('Выдача наборов');
     const value = (label: string) => within(tiles).getByText(label).nextElementSibling!.textContent;
     expect(value('Выдано сегодня')).toBe('9');
     expect(value('Выдано всего')).toBe('43 / 87');
     expect(value('Ещё не выдано')).toBe('44');
-  });
-
-  test('на узком экране выбранная вкладка «Наборы» прокручивается в видимую часть строки вкладок', async () => {
-    const scrolled: string[] = [];
-    const spy = vi.fn(function (this: Element) { scrolled.push(this.textContent ?? ''); });
-    Element.prototype.scrollIntoView = spy;
-    try {
-      open();
-      await screen.findByLabelText('Номер или ФИО');
-      expect(scrolled).toContain('Наборы');
-      expect(spy).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' });
-    } finally {
-      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
-    }
   });
 
   test('найденный участник прокручивается в видимую часть экрана: на телефоне он ниже края', async () => {

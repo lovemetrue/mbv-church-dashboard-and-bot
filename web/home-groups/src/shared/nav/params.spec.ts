@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { parseBucket, parseEntity, parseId, parseOtherFilter, parseReconcileFilter, parseTab, parseView, patchParams, tabParams, visibleTabs } from './params';
+import { parseBucket, parseEntity, parseId, parseOtherFilter, parseReconcileFilter, parseTab, parseView, patchParams, tabParams, TAB_IDS, visibleTabs } from './params';
 
 const p = (s: string) => new URLSearchParams(s);
 
@@ -39,9 +39,15 @@ describe('состояние экрана в адресе', () => {
 
 describe('вкладки по ролям', () => {
   test('«Настройки» видит только полный вход, а пока роль неизвестна вкладки нет', () => {
-    expect(visibleTabs('super')).toEqual(['today', 'requests', 'groups', 'kits', 'team', 'reference', 'settings']);
-    expect(visibleTabs('admin')).toEqual(['today', 'requests', 'groups', 'kits', 'team', 'reference']);
-    expect(visibleTabs(undefined)).toEqual(['today', 'requests', 'groups', 'kits', 'team', 'reference']);
+    expect(visibleTabs('super')).toEqual(['today', 'requests', 'groups', 'team', 'reference', 'settings']);
+    expect(visibleTabs('admin')).toEqual(['today', 'requests', 'groups', 'team', 'reference']);
+    expect(visibleTabs(undefined)).toEqual(['today', 'requests', 'groups', 'team', 'reference']);
+  });
+
+  test('вкладки «Наборы» больше нет, а старая ссылка ?tab=kits мягко ведёт на «Сегодня»', () => {
+    expect(TAB_IDS).not.toContain('kits');
+    expect(visibleTabs('super')).not.toContain('kits');
+    expect(parseTab('kits')).toBe('today');
   });
 
   test('вкладка «Команда» разбирается из адреса и при уходе с неё сбрасывает свои параметры', () => {

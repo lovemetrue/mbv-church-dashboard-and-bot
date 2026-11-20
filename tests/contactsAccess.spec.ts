@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { GroupItem, GroupsView, OtherItem, PeopleView, PersonItem, RequestItem, RequestsView, TeamRoleKind } from '../src/home-groups/contracts.js';
-import { draftFor, groupsFor, kitPersonFor, maskPhone, peopleFor, requestsFor, type Viewer } from '../src/home-groups/contactsAccess.js';
+import { draftFor, groupsFor, kitPersonFor, kitsIssuedFor, maskPhone, peopleFor, requestsFor, type Viewer } from '../src/home-groups/contactsAccess.js';
 
 /**
  * Кто какие контакты видит: решает сервер на выходе, снимок представлений один на всех. Правило — персональные данные
@@ -173,5 +173,12 @@ describe('черновик группы, списки форм, наборы', (
     const kit = { userId: 1, registrationNo: 5, fio: 'Пётр', phone: '+79110001122', issuedAt: null };
     expect(kitPersonFor(kit, person('Галя', 'coordinator')).phone).toBe('… 11-22');
     expect(kitPersonFor(kit, SHARED)).toEqual(kit);
+  });
+
+  test('список выданных наборов: личному входу — хвост номера у каждого, лидеру и общему входу — целиком', () => {
+    const view = { generatedAt: 'g', items: [{ userId: 1, registrationNo: 5, fio: 'Пётр', phone: '+7 911 000-11-22', issuedAt: null, issuedBy: null }] };
+    expect(kitsIssuedFor(view, person('Галя', 'coordinator')).items[0]!.phone).toBe('… 11-22');
+    expect(kitsIssuedFor(view, person('Галя', 'senior'))).toEqual(view);
+    expect(kitsIssuedFor(view, SHARED)).toEqual(view);
   });
 });

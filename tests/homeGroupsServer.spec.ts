@@ -196,6 +196,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
     } as never,
     kits: {
       view: async () => { kitCalls.push({ name: 'view' }); return { generatedAt: 'g', registered: 3, issued: 1, issuedToday: 1, recent: [] }; },
+      issued: async () => { kitCalls.push({ name: 'issued' }); return { generatedAt: 'g', items: [{ ...kitPerson, phone: '+7 911 000-11-22', issuedAt: '2026-11-01T10:00:00.000Z', issuedBy: 'p_ivanova' }] }; },
       find: async (body: unknown) => {
         kitCalls.push({ name: 'find', body });
         return (body as { code?: string }).code === 'нет' ? { ok: false, error: 'not_found', message: 'Регистрации №5 нет.' } : { ok: true, person: kitPerson };
@@ -1737,6 +1738,15 @@ describe('метка «Странный человек»', () => {
     expect(app.strangeCalls.at(-1)).toEqual({ name: 'person', body: { key: 'u12', value: false }, actor: REGULAR.login });
   });
 
+  test('список выданных: без входа 401, вошедшему — все выдачи с телефоном, закрытому входу — хвост номера', async () => {
+    expect((await fetch(`${app.base}/api/v1/kits/issued`)).status).toBe(401);
+    const full = await fetch(`${app.base}/api/v1/kits/issued`, { headers: { cookie: await signIn(REGULAR) } });
+    expect(full.status).toBe(200);
+    expect(await full.json()).toMatchObject({ items: [{ registrationNo: 1042, issuedBy: 'p_ivanova', phone: '+7 911 000-11-22' }] });
+    const masked = await fetch(`${app.base}/api/v1/kits/issued`, { headers: { cookie: await signIn(DISTRIBUTOR) } });
+    expect(await masked.json()).toMatchObject({ items: [{ registrationNo: 1042, phone: '… 11-22' }] });
+  });
+
   test('изменяющие адреса не отвечают на GET', async () => {
     const cookie = await signIn(REGULAR);
     expect((await fetch(`${app.base}/api/v1/requests/9/strange`, { headers: { cookie } })).status).toBe(404);
@@ -1979,6 +1989,8 @@ describe('вход «Стойка регистрации»', () => {
     expect((await postJson(cookie, 'kits/find', { code: '1042' })).status).toBe(200);
     expect((await postJson(cookie, 'kits/issue', { userId: 12 })).status).toBe(200);
     expect(app.kitCalls.at(-1)).toEqual({ name: 'issue', body: { userId: 12 }, actor: 'mbv_admin' });
+    // Полный список выданных — не для стойки: там только отметка выдачи.
+    expect((await get(cookie, '/api/v1/kits/issued')).status).toBe(403);
   });
 
   test('регистрация участника проходит; группу, заявку и координатора создать нельзя', async () => {
@@ -2030,7 +2042,7 @@ describe('вход «Только чтение»', () => {
 
   test('«Координаторы» и «Наборы» открыты на чтение: список и поиск набора проходят, выдача и отмена — 403', async () => {
     const cookie = await signIn(READER);
-    for (const path of ['/api/v1/coordinators', '/api/v1/kits']) expect((await get(cookie, path)).status, path).toBe(200);
+    for (const path of ['/api/v1/coordinators', '/api/v1/kits', '/api/v1/kits/issued']) expect((await get(cookie, path)).status, path).toBe(200);
     expect((await postJson(cookie, 'kits/find', { code: '1042' })).status).toBe(200);
     expect((await postJson(cookie, 'kits/search', { query: 'Иван' })).status).toBe(200);
     const kits = app.kitCalls.filter((c) => c.name === 'issue' || c.name === 'undo').length;

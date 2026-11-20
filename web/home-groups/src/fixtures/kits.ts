@@ -1,4 +1,4 @@
-import type { KitFindOk, KitIssueOk, KitPerson, KitSearchOk, KitsView } from '@contracts';
+import type { KitFindOk, KitIssueOk, KitPerson, KitSearchOk, KitsIssuedView, KitsView } from '@contracts';
 import { ApiError } from '../shared/api/client';
 import { RAW_EXTRA_PEOPLE } from './raw';
 
@@ -33,6 +33,12 @@ export function buildKits(): KitsView {
     issuedToday: recent.filter((p) => p.issuedAt!.startsWith(today)).length,
     recent,
   };
+}
+
+/** Все выданные в демо — как на сервере: свежие сверху, без лимита «последних». */
+export function buildKitsIssued(): KitsIssuedView {
+  const items = people().filter((p) => p.issuedAt).sort((a, b) => (b.issuedAt ?? '').localeCompare(a.issuedAt ?? ''));
+  return { generatedAt: new Date().toISOString(), items };
 }
 
 /** Поиск по ФИО в демо: каждое слово в имени, «ё» как «е» — как на сервере, но без лимита. */

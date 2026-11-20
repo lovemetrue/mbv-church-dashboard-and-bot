@@ -61,7 +61,6 @@ export const ru = {
     requests: 'Заявки',
     team: 'Команда',
     groups: 'Группы',
-    kits: 'Наборы',
     reference: 'Справочник',
     settings: 'Настройки',
   },
@@ -102,6 +101,28 @@ export const ru = {
     open: (fio: string) => `Открыть: ${fio}`,
     network: 'Нет связи с сервером. Проверьте интернет и попробуйте ещё раз.',
     fallback: 'Не получилось. Попробуйте ещё раз.',
+  },
+
+  /** Окно «Наборов выдано» в «Команде → Кампания»: все, кому выдан набор. Новой выдачи там нет. */
+  kitsIssued: {
+    openLabel: (n: number) => `Наборов выдано: ${n}. Открыть список`,
+    openHint: 'список',
+    title: 'Выданные наборы',
+    searchLabel: 'Поиск',
+    searchPlaceholder: 'ФИО, номер или телефон',
+    exportCsv: 'Выгрузить в CSV',
+    fileName: 'vydannye-nabory',
+    shown: (shown: number, total: number) => (shown === total ? `Выдано: ${total}` : `Показано ${shown} из ${total}`),
+    empty: 'Пока ни одного выданного набора.',
+    tableLabel: 'Кому выдан набор',
+    colNo: '№ регистрации',
+    colFio: 'ФИО',
+    colPhone: 'Телефон',
+    colWhen: 'Выдан',
+    colBy: 'Выдал',
+    colActions: 'Действия',
+    noPhone: 'без телефона',
+    undoLabel: (fio: string) => `Отменить выдачу: ${fio}`,
   },
 
   /** Подсказка у кнопок, которые есть в макете, но работают только со следующего этапа. */

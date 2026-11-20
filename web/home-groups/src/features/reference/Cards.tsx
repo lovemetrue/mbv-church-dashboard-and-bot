@@ -1,7 +1,7 @@
 import { useCanChange } from '../../shared/access';
 import { GenderField } from '../gender/GenderField';
 import type { CoordinatorItem, GroupItem, PersonItem } from '@contracts';
-import { formatDateFull, formatPhone, groupLabel, healthTone } from '../../entities/format';
+import { formatDateFull, formatPhone, groupLabel, groupWhere, healthTone } from '../../entities/format';
 import { registrationCardUrl, registrationQrUrl } from '../../shared/api/base';
 import { useGroups, usePeople } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
@@ -130,7 +130,7 @@ export function GroupCard({ g, onClose }: { g: GroupItem; onClose: () => void })
             )}
           </>
         }
-        subtitle={[g.leader, g.district, g.metro].filter(Boolean).join(' · ')}
+        subtitle={[g.leader, groupWhere({ district: g.district, metro: g.metro })].filter(Boolean).join(' · ')}
         tools={<GroupHeaderTools key={g.id} g={g} />}
         toolsBelow
         onClose={onClose}

@@ -7,7 +7,9 @@ import {
   ageColumnOf,
   ageColumnsOverlapping,
   formatWhen,
+  groupAgeCategories,
   parseAgeRange,
+  parseGroupAgeRanges,
   parseGroupWhen,
 } from '../src/home-groups/plan/parse.js';
 
@@ -45,28 +47,33 @@ describe('parseAgeRange', () => {
 
 describe('parseGroupWhen: день', () => {
   test('один день недели из таблицы переводится в сокращение', () => {
-    expect(parseGroupWhen('Четверг', null).day).toBe('Чт');
-    expect(parseGroupWhen('Пятница', null).day).toBe('Пт');
-    expect(parseGroupWhen('вторник', null).day).toBe('Вт');
-    expect(parseGroupWhen('Воскресенье', null).day).toBe('Вс');
-    expect(parseGroupWhen('Понедельник', null).day).toBe('Пн');
-    expect(parseGroupWhen('Среда', null).day).toBe('Ср');
-    expect(parseGroupWhen('Суббота', null).day).toBe('Сб');
+    expect(parseGroupWhen('Четверг', null).days).toEqual(['Чт']);
+    expect(parseGroupWhen('Пятница', null).days).toEqual(['Пт']);
+    expect(parseGroupWhen('вторник', null).days).toEqual(['Вт']);
+    expect(parseGroupWhen('Воскресенье', null).days).toEqual(['Вс']);
+    expect(parseGroupWhen('Понедельник', null).days).toEqual(['Пн']);
+    expect(parseGroupWhen('Среда', null).days).toEqual(['Ср']);
+    expect(parseGroupWhen('Суббота', null).days).toEqual(['Сб']);
   });
 
-  test('несколько дней в одной ячейке дают day = null: точный день неизвестен, а не «первый из двух»', () => {
-    expect(parseGroupWhen('Среда, Четверг', '19:00')).toEqual({ day: null, slot: 'вечер' });
+  test('несколько дней в одной ячейке — все эти дни, в порядке недели', () => {
+    expect(parseGroupWhen('Среда, Четверг', '19:00')).toEqual({ days: ['Ср', 'Чт'], slot: 'вечер' });
+    expect(parseGroupWhen('Чт, Вт', null).days).toEqual(['Вт', 'Чт']);
+  });
+
+  test('каноничная запись формы «Вт, Чт» читается как два дня', () => {
+    expect(parseGroupWhen('Вт, Чт', '19:00')).toEqual({ days: ['Вт', 'Чт'], slot: 'вечер' });
   });
 
   test('«Плавающий», пусто и строка None — дня нет', () => {
-    expect(parseGroupWhen('Плавающий', '19:00').day).toBeNull();
-    expect(parseGroupWhen('', null).day).toBeNull();
-    expect(parseGroupWhen(null, null).day).toBeNull();
-    expect(parseGroupWhen('None', 'None')).toEqual({ day: null, slot: null });
+    expect(parseGroupWhen('Плавающий', '19:00').days).toEqual([]);
+    expect(parseGroupWhen('', null).days).toEqual([]);
+    expect(parseGroupWhen(null, null).days).toEqual([]);
+    expect(parseGroupWhen('None', 'None')).toEqual({ days: [], slot: null });
   });
 
   test('одинаковый день, названный дважды, остаётся днём', () => {
-    expect(parseGroupWhen('Четверг, четверг', null).day).toBe('Чт');
+    expect(parseGroupWhen('Четверг, четверг', null).days).toEqual(['Чт']);
   });
 });
 
@@ -104,16 +111,16 @@ describe('parseGroupWhen: время суток', () => {
     for (const pair of pairs) {
       const [day, time] = pair.split('|') as [string, string];
       const parsed = parseGroupWhen(day === 'null' ? null : day, time === 'null' ? null : time);
-      expect(parsed).toHaveProperty('day');
+      expect(parsed).toHaveProperty('days');
       expect(parsed).toHaveProperty('slot');
     }
   });
 
   test('реальные строки таблицы церкви: «Четверг» + «19:00», «Плавающий» + «День», «Пятница» + «12:00»', () => {
-    expect(parseGroupWhen('Четверг', '19:00')).toEqual({ day: 'Чт', slot: 'вечер' });
-    expect(parseGroupWhen('Плавающий', 'День')).toEqual({ day: null, slot: 'день' });
-    expect(parseGroupWhen('Пятница', '12:00')).toEqual({ day: 'Пт', slot: 'день' });
-    expect(parseGroupWhen('Четверг', 'Вечер')).toEqual({ day: 'Чт', slot: 'вечер' });
+    expect(parseGroupWhen('Четверг', '19:00')).toEqual({ days: ['Чт'], slot: 'вечер' });
+    expect(parseGroupWhen('Плавающий', 'День')).toEqual({ days: [], slot: 'день' });
+    expect(parseGroupWhen('Пятница', '12:00')).toEqual({ days: ['Пт'], slot: 'день' });
+    expect(parseGroupWhen('Четверг', 'Вечер')).toEqual({ days: ['Чт'], slot: 'вечер' });
   });
 });
 
@@ -121,11 +128,11 @@ describe('реальные значения из таблицы церкви (da
   // Список снят с выгрузки: так записан день, время и возраст у групп и заявок. Если в таблице
   // появится новая запись, которой нет здесь, общие проверки выше всё равно прогонят её через разбор.
   test('значения колонки «день»', () => {
-    const expected: [string, string | null][] = [
-      ['Четверг', 'Чт'], ['Пятница', 'Пт'], ['Вторник', 'Вт'], ['Суббота', 'Сб'], ['Воскресенье', 'Вс'],
-      ['Понедельник', 'Пн'], ['Среда', 'Ср'], ['Плавающий', null], ['Среда, Четверг', null], ['', null],
+    const expected: [string, string[]][] = [
+      ['Четверг', ['Чт']], ['Пятница', ['Пт']], ['Вторник', ['Вт']], ['Суббота', ['Сб']], ['Воскресенье', ['Вс']],
+      ['Понедельник', ['Пн']], ['Среда', ['Ср']], ['Плавающий', []], ['Среда, Четверг', ['Ср', 'Чт']], ['', []],
     ];
-    for (const [raw, day] of expected) expect(parseGroupWhen(raw, null).day, raw).toBe(day);
+    for (const [raw, days] of expected) expect(parseGroupWhen(raw, null).days, raw).toEqual(days);
   });
 
   test('значения колонки «время»', () => {
@@ -159,11 +166,61 @@ describe('реальные значения из таблицы церкви (da
 });
 
 describe('formatWhen', () => {
-  test('собирает «день, время суток», а при пропуске показывает то, что есть', () => {
-    expect(formatWhen('Вт', 'вечер')).toBe('Вт, вечер');
-    expect(formatWhen('Вт', null)).toBe('Вт');
-    expect(formatWhen(null, 'вечер')).toBe('вечер');
-    expect(formatWhen(null, null)).toBeNull();
+  test('собирает «дни — время суток», а при пропуске показывает то, что есть', () => {
+    expect(formatWhen(['Вт'], 'вечер')).toBe('Вт — вечер');
+    expect(formatWhen(['Вт'], null)).toBe('Вт');
+    expect(formatWhen([], 'вечер')).toBe('вечер');
+    expect(formatWhen([], null)).toBeNull();
+  });
+
+  test('записанное время показывается как записано: «Вт, Чт — 19:00», а не «вечер»', () => {
+    expect(formatWhen(['Вт', 'Чт'], 'вечер', '19:00')).toBe('Вт, Чт — 19:00');
+    expect(formatWhen(['Ср'], 'вечер', '19.30')).toBe('Ср — 19:30');
+    expect(formatWhen(['Ср'], 'вечер', ' 9:00 ')).toBe('Ср — 09:00');
+    expect(formatWhen([], 'вечер', '18:30')).toBe('18:30');
+  });
+
+  test('время словом или неразборчивое показывается временем суток', () => {
+    expect(formatWhen(['Пт'], 'вечер', 'Вечер')).toBe('Пт — вечер');
+    expect(formatWhen(['Пт'], 'вечер', 'после работы вечером')).toBe('Пт — вечер');
+    expect(formatWhen(['Пт'], null, 'None')).toBe('Пт');
+  });
+});
+
+describe('категории возраста группы', () => {
+  test('каноничная запись формы — набор категорий анкеты в их порядке', () => {
+    expect(groupAgeCategories('40-55, 25-40')).toEqual(['25-40', '40-55']);
+    expect(groupAgeCategories('подростки (до 18 лет), 65+')).toEqual(['подростки (до 18 лет)', '65+']);
+    expect(groupAgeCategories('18-25')).toEqual(['18-25']);
+  });
+
+  test('старый диапазон из таблицы — все категории, которые он задевает: «35-50» → «25-40» и «40-55»', () => {
+    expect(groupAgeCategories('35-50')).toEqual(['25-40', '40-55']);
+    expect(groupAgeCategories('50-60')).toEqual(['40-55', '55-65']);
+    expect(groupAgeCategories('16-25')).toEqual(['подростки (до 18 лет)', '18-25']);
+    expect(groupAgeCategories('25-35')).toEqual(['25-40']);
+    expect(groupAgeCategories('35-45 лет')).toEqual(['25-40', '40-55']);
+    expect(groupAgeCategories('65+')).toEqual(['65+']);
+  });
+
+  test('касание в одной цифре категорией не считается: «40-55» — только «40-55»', () => {
+    expect(groupAgeCategories('40-55')).toEqual(['40-55']);
+    expect(groupAgeCategories('25-40')).toEqual(['25-40']);
+  });
+
+  test('«любой», пусто и мусор — категорий нет (возраст группы неизвестен)', () => {
+    for (const raw of [null, '', 'любой', 'Любой', '???']) expect(groupAgeCategories(raw), String(raw)).toEqual([]);
+  });
+
+  test('диапазоны для подбора: у каждой категории свой, а неизвестный возраст — пустой список', () => {
+    expect(parseGroupAgeRanges('25-40, 55-65')).toEqual([[25, 40], [55, 65]]);
+    expect(parseGroupAgeRanges('35-50')).toEqual([[25, 40], [40, 55]]);
+    expect(parseGroupAgeRanges('любой')).toEqual([]);
+    expect(parseGroupAgeRanges(null)).toEqual([]);
+  });
+
+  test('каждое значение возраста групп из реальной таблицы раскладывается в категории без исключений', () => {
+    for (const g of table.groups) for (const c of groupAgeCategories(g.age)) expect(AGE_GROUPS, String(g.age)).toContain(c);
   });
 });
 

@@ -19,7 +19,7 @@ export function buildFormMeta(): FormMeta {
       { value: 'already_member', label: 'Уже в группе' },
       { value: 'already_leader', label: 'Уже ведёт группу' },
     ],
-    ageGroups: ['18-25', '25-40', '40-55', '55+'],
+    ageGroups: ['подростки (до 18 лет)', '18-25', '25-40', '40-55', '55-65', '65+'],
     coordinators: ['Трофимова С.', 'Петров Г.', 'Лебедева А.', 'Морозов Д.'],
     teamRoles: DEMO_TEAM_ROLES.map(({ id, name }) => ({ id, name })),
     scheduleDays: [

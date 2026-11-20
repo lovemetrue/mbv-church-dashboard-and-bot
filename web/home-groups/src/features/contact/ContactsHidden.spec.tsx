@@ -52,7 +52,7 @@ describe('скрытые телефоны чужой группы', () => {
     expect(card).toHaveTextContent('Телефоны ведущих видны всем');
     await user.click(within(card).getByRole('button', { name: /^Править группу/ }));
     const dialog = await screen.findByRole('dialog', { name: /^Правка группы/ });
-    await within(dialog).findByRole('combobox', { name: 'Район' });
+    await within(dialog).findByRole('combobox', { name: 'Статус' });
     expect(within(dialog).queryByRole('textbox', { name: 'Телефон' })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('textbox', { name: 'Телефон соведущего' })).not.toBeInTheDocument();
     expect(within(dialog).getByRole('textbox', { name: 'Адрес' })).toBeInTheDocument();

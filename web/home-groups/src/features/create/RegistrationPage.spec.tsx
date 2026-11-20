@@ -153,10 +153,10 @@ describe('стойка: группа и наборы на той же стран
     await user.click(within(await screen.findByRole('group', { name: 'Кого регистрируем' })).getByRole('button', { name: 'Группа' }));
     expect(currentSearch().get('what')).toBe('group');
     await user.type(await screen.findByRole('textbox', { name: 'ФИО ведущего' }), 'Ольга Крылова');
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Район' }), 'Приморский');
+    await user.type(screen.getByRole('textbox', { name: 'Адрес' }), 'Комендантский пр., 12');
     await user.click(screen.getByRole('button', { name: 'Создать группу' }));
     expect(await screen.findByText('Группа ДГ-0057 заведена.')).toBeInTheDocument();
-    expect(posts(fetchMock)).toEqual([{ path: 'groups/create', body: { fields: expect.objectContaining({ leader: 'Ольга Крылова', district: 'Приморский', direction: 'Основное служение' }) } }]);
+    expect(posts(fetchMock)).toEqual([{ path: 'groups/create', body: { fields: expect.objectContaining({ leader: 'Ольга Крылова', address: 'Комендантский пр., 12', direction: 'Основное служение' }) } }]);
     await user.click(screen.getByRole('button', { name: 'Завести ещё группу' }));
     expect(screen.getByRole('textbox', { name: 'ФИО ведущего' })).toHaveValue('');
   });

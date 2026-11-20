@@ -3,6 +3,7 @@ import type { GroupBrief, GroupFit, GroupItem, RequestItem } from '@contracts';
 import { useGroupFit, useGroups } from '../../shared/api/queries';
 import { GroupPreviewButton } from '../reference/GroupPreview';
 import { ru } from '../../shared/i18n/ru';
+import { groupWhere } from '../../entities/format';
 import { Button, ErrorState, GroupMarks, LoadingState } from '../../shared/ui';
 import { needsResponsible, proposalOf } from './model';
 import styles from './Requests.module.css';
@@ -75,7 +76,7 @@ function OptionRow({
   onApprove: () => void;
 }) {
   const { group: g } = o;
-  const where = [g.district, g.metro, g.whenText].filter(Boolean).join(' · ');
+  const where = groupWhere(g);
   return (
     // Кнопка стоит рядом с подписью, а не внутри неё: нажатие по подписи только отмечает строку.
     <li className={styles.choiceRow}>

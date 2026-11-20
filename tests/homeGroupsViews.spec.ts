@@ -300,7 +300,7 @@ describe('карточка заявки', () => {
     expect(item.bucket).toBe('done');
     expect(item.finalGroup).toMatchObject({
       id: 12, no: 12, code: 'ДГ-0012', leader: 'Мария', district: 'Невский', people: 4, capacity: 10, free: 6,
-      whenText: 'Вт, вечер',
+      whenText: 'Вт — 19:00',
     });
     expect(item.finalGroupText).toBeNull();
   });
@@ -470,7 +470,7 @@ describe('группы справочника', () => {
       groups: [group({ id: 1, age: '25-40', day: 'Вторник', time: '19:00', people: 6, metro: ' Беговая ', address: 'ул. Закрытая, 5' })],
     });
     expect(calls.plan[0]!.groups[0]).toMatchObject({
-      id: 1, ageRange: [25, 40], day: 'Вт', slot: 'вечер', street: 'закрытая', people: 6, capacity: 10, metro: 'Беговая',
+      id: 1, ageRanges: [[25, 40]], days: ['Вт'], slot: 'вечер', street: 'закрытая', people: 6, capacity: 10, metro: 'Беговая',
       status: 'Функционирует', doNotRefer: false,
     });
   });
@@ -546,10 +546,24 @@ describe('группы справочника', () => {
       })],
     });
     expect(views.groups.items[0]).toMatchObject({
-      leader: 'Мария', coLeader: 'Пётр', phone: '+7 911 123-45-67', ageText: '25-40', day: 'Чт', slot: 'вечер',
+      leader: 'Мария', coLeader: 'Пётр', phone: '+7 911 123-45-67', ageText: '25-40', ages: ['25-40'], days: ['Чт'], slot: 'вечер',
       status: 'Функционирует', composition: 'Семейная', coordinator: 'Анна', comment: 'Тихо', direction: 'Молодёжное служение',
-      whenText: 'Чт, вечер', metro: 'Беговая',
+      whenText: 'Чт — 19:00', metro: 'Беговая',
     });
+  });
+
+  test('поля справочника: несколько дней и категорий возраста; старый диапазон возраста разложен на категории', () => {
+    const { views } = build({
+      groups: [
+        group({ id: 1, age: '25-40, 40-55', day: 'Вт, Чт', time: '19:00' }),
+        group({ id: 2, age: '35-50', day: 'Пятница', time: '20:30' }),
+        group({ id: 3, age: 'любой', day: null, time: null }),
+      ],
+    });
+    const [a, b, c] = views.groups.items;
+    expect(a).toMatchObject({ ages: ['25-40', '40-55'], days: ['Вт', 'Чт'], whenText: 'Вт, Чт — 19:00' });
+    expect(b).toMatchObject({ ageText: '35-50', ages: ['25-40', '40-55'], days: ['Пт'], whenText: 'Пт — 20:30' });
+    expect(c).toMatchObject({ ages: [], days: [], whenText: null });
   });
 
   test('кого план направляет в группу: ФИО, возраст, место и уверенность', () => {

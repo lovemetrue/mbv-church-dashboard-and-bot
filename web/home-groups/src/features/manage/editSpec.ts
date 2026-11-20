@@ -87,7 +87,7 @@ function feedbackNow(days: number | null): string {
 
 /**
  * Форма правки группы. Сервер не отдаёт интерфейсу «время» и «дату обратной связи» в чистом виде
- * (только собранное «Вт, вечер» и «дней назад»), поэтому эти поля пустые и отправляются, только если
+ * (только собранное «Вт, Чт — 19:00» и «дней назад»), поэтому эти поля пустые и отправляются, только если
  * их вписали; под ними подсказка с текущим значением.
  *
  * Отдельных полей «телефон ведущего» и «телефон соведущего» нет: ведущего и соведущего выбирают из «Людей», и номер
@@ -168,7 +168,8 @@ function groupEditFields(g: GroupItem, meta: FormMeta): EditSpec {
         placeholder: String(meta.defaultCapacity),
         hint: ru.create.capacityHint(meta.defaultCapacity),
       },
-      { name: 'day', label: t.day, kind: 'select', options: withCurrent(ru.create.days, g.day) },
+      // Дней встреч бывает несколько («Вт, Чт»), время у них одно — поле ниже.
+      { name: 'day', label: t.day, kind: 'multi', wide: true, options: [...ru.create.days], hint: ru.create.groupDaysHint },
       {
         name: 'time',
         label: t.time,
@@ -177,21 +178,16 @@ function groupEditFields(g: GroupItem, meta: FormMeta): EditSpec {
         hint: `${m.group.now(g.whenText ?? m.group.notSpecified)} ${keep}`,
       },
       { name: 'composition', label: t.composition, kind: 'multi', wide: true, options: optionsWithPicked(meta.compositions, g.composition ?? '') },
-      { name: 'age', label: t.age, kind: 'select', options: withCurrent(meta.ageGroups, g.ageText) },
+      // Категорий возраста бывает несколько; старый диапазон («35-50») сервер уже разложил на категории (`ages`).
+      { name: 'age', label: t.age, kind: 'multi', wide: true, options: meta.ageGroups, hint: ru.create.groupAgeHint },
       { name: 'coordinator', label: t.coordinator, kind: 'select', options: withCurrent(meta.coordinators, g.coordinator) },
       { name: 'feedbackAt', label: t.feedbackAt, kind: 'date', hint: `${feedbackNow(g.verifiedDaysAgo)} ${keep}` },
       { name: 'openedOn', label: t.openedOn, kind: 'date', hint: m.group.openedOnHint },
       { name: 'training', label: t.training, kind: 'text' },
-      // Внизу основных данных: обычно их ставит адрес, а руками правят, только если определилось неверно или адреса пока нет.
-      {
-        name: 'district',
-        label: t.district,
-        kind: 'select',
-        required: true,
-        options: withCurrent(meta.districts.filter((d) => d !== ONLINE), g.district === ONLINE ? null : g.district),
-        hint: m.group.districtHint,
-        hiddenWhen: isOnline,
-      },
+      // Район не показывается: его ставит адрес при сохранении. Поле остаётся скрытым ради галочки «Онлайн» — она пишет
+      // район «Онлайн» и снимает его (пустой район сервер ставит по адресу). Обязательным оно быть не может: его не видно.
+      { name: 'district', label: t.district, kind: 'select', options: [], hiddenWhen: () => true },
+      // Метро — внизу основных данных: обычно его ставит адрес, а руками правят, если определилось неверно или адреса пока нет.
       { name: 'metro', label: t.metro, kind: 'text', wide: true, hint: m.group.metroHint, hiddenWhen: isOnline },
       { name: 'comment', label: t.comment, kind: 'textarea', wide: true },
       { name: 'checked', label: t.checked, kind: 'checkbox', wide: true },
@@ -208,10 +204,10 @@ function groupEditFields(g: GroupItem, meta: FormMeta): EditSpec {
       status: g.status,
       people: g.people === null ? '' : String(g.people),
       capacity: g.capacityOwn === null ? '' : String(g.capacityOwn),
-      day: g.day ?? '',
+      day: g.days.join(', '),
       time: '',
       composition: g.composition ?? '',
-      age: g.ageText ?? '',
+      age: g.ages.join(', '),
       training: g.training ?? '',
       checked: g.checked ? '1' : '',
       campaignRegistered: g.campaignRegistered ? '1' : '',

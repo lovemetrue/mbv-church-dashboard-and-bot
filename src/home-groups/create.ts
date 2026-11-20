@@ -60,7 +60,7 @@ const cardOf = (fio: string, phone: string | null | undefined): PersonInput => (
 export const MEMBER_NO_GROUP =
   'Человек из этой заявки уже состоит в группе: группу по ней не заводят. Найдите его группу в разборе обращения; если не нашлась — уточните у него, кто ведущий.';
 
-const NO_DISTRICT = 'Не указан';
+export const NO_DISTRICT = 'Не указан';
 
 export function createRecordCreator(deps: {
   requests: Pick<RequestsRepo, 'createFromDashboard' | 'findById'>;

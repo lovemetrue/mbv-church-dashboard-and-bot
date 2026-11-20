@@ -456,6 +456,20 @@ describe('район и метро по адресу при сохранении
     expect(await g(id)).toMatchObject({ district: 'Невский', metro: 'Ломоносовская' });
   });
 
+  test('сняли «Онлайн» без выбора района (поля района в форме нет) — район ставится по адресу, а не отказ', async () => {
+    const id = await group();
+    await manager().updateGroup(id, { fields: { district: 'Онлайн', address: 'пр. Энгельса 100' } }, 'a');
+    expect(await located().updateGroup(id, { fields: { district: '' } }, 'a')).toEqual({ ok: true });
+    expect(await g(id)).toMatchObject({ district: 'Выборгский', metro: 'Озерки' });
+  });
+
+  test('сняли «Онлайн», а адреса нет — район «Не указан»: служитель увидит и поправит', async () => {
+    const id = await group();
+    await manager().updateGroup(id, { fields: { district: 'Онлайн', address: '' } }, 'a');
+    expect(await manager().updateGroup(id, { fields: { district: '' } }, 'a')).toEqual({ ok: true });
+    expect((await g(id)).district).toBe('Не указан');
+  });
+
   test('онлайн-группа остаётся онлайн, даже если у неё есть адрес', async () => {
     const id = await group();
     await located().updateGroup(id, { fields: { district: 'Онлайн', address: 'пр. Энгельса 100' } }, 'a');

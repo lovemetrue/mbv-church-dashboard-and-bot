@@ -6,7 +6,8 @@ import { useRequests } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
 import { useAppNav } from '../../shared/nav';
 import { SavedViewsMenu } from '../../shared/savedViews';
-import { Button, Chip, EmptyState, ErrorState, LoadingState } from '../../shared/ui';
+import { Button, Chip, Collapsible, EmptyState, ErrorState, LoadingState } from '../../shared/ui';
+import { GroupsMap } from '../reference/GroupsMap';
 import { countBuckets, filterByBucket, filterByResponsible, searchRequests } from './model';
 import { useResponsible } from './useResponsible';
 import { BulkPanel } from './bulk/BulkPanel';
@@ -131,6 +132,10 @@ function WaitingContent({
           <MatchingBar matching={data.matching} assistant={data.assistant} changed={changed} />
         </div>
         <RequestFilterChips filters={rf.filters} onChange={rf.set} />
+        {/* Та же карта, что на «Сегодня»: свёрнута, а раскрыли — берёт свежие данные групп. */}
+        <Collapsible title={ru.requests.mapBlock} className={styles.mapBlock}>
+          <GroupsMap freshOnOpen />
+        </Collapsible>
         {canChange && <BulkPanel bulk={bulk} visibleCount={visible.length} />}
         {visible.length ? (
           <RequestList

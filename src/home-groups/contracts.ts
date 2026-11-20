@@ -65,9 +65,11 @@
  *   POST /api/v1/settings/geocoder-retry AddressRetryBody → ActionOk | ActionError (только super: один запрос к Яндексу по одному адресу)
  *   POST /api/v1/settings/geocoder-reject AddressRejectBody → ActionOk | ActionError (только super: «это не адрес» — снимает найденные координаты)
  *   GET  /api/v1/settings/map            → MapConfigView (только super; ключа в ответе нет)
- *   POST /api/v1/settings/map            GeocoderConfigBody → ActionOk | ActionError (только super; ключ карты шифруется)
- *   GET  /api/v1/map/config              → MapBootstrap (любой вход: нужен, чтобы открыть карту)
- *   POST /api/v1/map/loaded              (тело {}) → MapBootstrap (любой вход: считает открытие карты в месяце)
+ *   POST /api/v1/settings/map            MapConfigBody → ActionOk | ActionError (только super; ключи карты шифруются)
+ *   GET  /api/v1/map/config              → MapBootstrap (любой вход: нужен, чтобы открыть карту; снимок — свой у входа)
+ *   POST /api/v1/map/loaded              (тело {}) → MapBootstrap (любой вход: считает открытие живой карты за сутки)
+ *   POST /api/v1/map/snapshot            MapSnapshotBody → MapSnapshotOk | ActionError (любой вход: снимок Static API)
+ *   GET  /api/v1/map/snapshot.png        → image/png (снимок этого входа; 404 — снимка нет)
  *   GET  /api/v1/settings/bot           → SettingsBotView (только super)
  *   POST /api/v1/settings/bot/extra-questions ExtraQuestionsBody → ActionOk | ActionError (только super)
  *   POST /api/v1/settings/bot/send-extra-questions SendExtraInvitesBody → SendExtraInvitesOk | ActionError (только super; пишет живым людям)
@@ -689,18 +691,46 @@ export interface AddressRetryBody { address: string }
 /** Отметить, что это не адрес («среда с 18:00»): координаты снимаются, повторно не спрашиваем. Тело то же, что у повтора. */
 export type AddressRejectBody = AddressRetryBody
 
-/** Ключ Яндекс.Карт (JS API) для карты групп. Самого ключа в ответе настроек нет никогда. */
+/**
+ * Ключи Яндекс.Карт для карты групп: JS API (живая карта) и Static API (снимок-картинка после перезагрузки страницы).
+ * Самих ключей в ответе настроек нет никогда, только последние четыре символа.
+ */
 export interface MapConfigView {
   keySet: boolean;
   keyHint: string | null;
   keyUnreadable: boolean;
-  /** Сколько раз карта открывалась в этом месяце и сколько бесплатно даёт ключ. */
-  loadsThisMonth: number;
-  monthlyLimit: number;
+  staticKeySet: boolean;
+  staticKeyHint: string | null;
+  staticKeyUnreadable: boolean;
+  /** Сколько раз живая карта открывалась сегодня (сутки — по часовому поясу кампании) и сколько даёт ключ в сутки. */
+  loadsToday: number;
+  dailyLimit: number;
 }
 
-/** Что нужно странице, чтобы показать карту: ключ (он и так уходит в браузер, ограничьте его по адресу сайта в кабинете Яндекса) и расход. */
-export interface MapBootstrap { apiKey: string | null; loadsThisMonth: number; monthlyLimit: number }
+/** Тело `POST /settings/map`: меняется тот ключ, что передан; null — убрать. */
+export interface MapConfigBody { apiKey?: string | null; staticKey?: string | null }
+
+/** Снимок карты входа: когда сделан и сколько меток на нём; `skipped` — не поместились в лимит меток Static API. */
+export interface MapSnapshotMeta { takenAt: string; marks: number; skipped: number }
+
+/**
+ * Что нужно странице, чтобы показать карту: ключ JS API (он и так уходит в браузер, ограничьте его по адресу сайта в
+ * кабинете Яндекса), расход за сутки, можно ли сделать снимок (ключ Static API задан; сам ключ остаётся на сервере)
+ * и последний снимок этого входа.
+ */
+export interface MapBootstrap {
+  apiKey: string | null;
+  loadsToday: number;
+  dailyLimit: number;
+  staticReady: boolean;
+  snapshot: MapSnapshotMeta | null;
+}
+
+/** Тело `POST /map/snapshot`: вид карты и группы, чьи метки на ней сейчас. Координаты сервер берёт свои. */
+export interface MapSnapshotBody { center: { lat: number; lon: number }; zoom: number; groupIds: number[] }
+
+/** Ответ `POST /map/snapshot`: снимок сделан (или прежний подошёл). */
+export interface MapSnapshotOk { ok: true; snapshot: MapSnapshotMeta }
 
 export interface SettingsAssistantView {
   generatedAt: string;

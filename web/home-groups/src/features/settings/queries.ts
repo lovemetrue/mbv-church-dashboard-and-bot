@@ -6,6 +6,7 @@ import type {
   ExtraQuestionsBody,
   AddressTableView,
   GeocoderConfigBody,
+  MapConfigBody,
   MapConfigView,
   GeocoderConfigView,
   GeocoderTestResult,
@@ -355,7 +356,7 @@ export function useSettingsMap(): UseQueryResult<MapConfigView> {
 export function useMapActions() {
   const queryClient = useQueryClient();
   return {
-    async save(body: GeocoderConfigBody): Promise<void> {
+    async save(body: MapConfigBody): Promise<void> {
       await apiPost('settings/map', body);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: settingsKeys.map }),

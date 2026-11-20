@@ -92,14 +92,14 @@ describe('оболочка', () => {
     expect(await screen.findByText('Не удалось загрузить.')).toBeInTheDocument();
     fail = false;
     await user.click(screen.getByRole('button', { name: 'Повторить' }));
-    expect(await screen.findByText('Спрос и предложение по районам')).toBeInTheDocument();
+    expect(await screen.findByText('Распределение по районам')).toBeInTheDocument();
   });
 
   test('поиск из другой вкладки переносит на «Заявки» и сужает список по ФИО, месту и цифрам телефона', async () => {
     stubFetchWithFixtures();
     const user = userEvent.setup();
     renderAt(<App />);
-    await screen.findByText('Спрос и предложение по районам');
+    await screen.findByText('Распределение по районам');
     await user.type(screen.getByRole('searchbox', { name: 'Поиск по заявкам' }), 'соколов');
     expect(currentSearch().get('tab')).toBe('requests');
     const list = await screen.findByRole('list', { name: 'Список заявок' });

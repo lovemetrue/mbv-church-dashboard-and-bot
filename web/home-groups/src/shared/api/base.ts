@@ -20,3 +20,6 @@ export const registrationQrUrl = (personId: number): string => `${API_BASE}peopl
 
 /** Режим фикстур: данные берутся из src/fixtures, сеть не нужна. Включается VITE_FIXTURES=1. */
 export const FIXTURES_MODE = import.meta.env.VITE_FIXTURES === '1';
+
+/** Снимок карты групп этого входа (PNG). `t` — время снимка: новый снимок — новый адрес, браузер не покажет старый. */
+export const mapSnapshotUrl = (takenAt: string): string => `${API_BASE}map/snapshot.png?t=${encodeURIComponent(takenAt)}`;

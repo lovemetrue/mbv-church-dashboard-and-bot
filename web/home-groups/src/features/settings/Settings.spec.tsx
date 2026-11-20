@@ -60,7 +60,7 @@ describe('вкладка «Настройки»', () => {
 
   test('если обычный вход ввёл адрес вкладки вручную, его возвращает на «Сегодня»', async () => {
     const { fetchMock } = openSettings(null, {}, 'admin');
-    expect(await screen.findByText('Спрос и предложение по районам')).toBeInTheDocument();
+    expect(await screen.findByText('Распределение по районам')).toBeInTheDocument();
     expect(currentSearch().get('tab')).toBeNull();
     expect(screen.queryByRole('region', { name: 'Общее состояние' })).not.toBeInTheDocument();
     // Данных настроек обычный вход не запрашивал вовсе.

@@ -1,8 +1,8 @@
 import type { TodayView } from '@contracts';
 import { useState } from 'react';
-import { useGroups, useToday } from '../../shared/api/queries';
+import { useToday } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
-import { ErrorState, LoadingState } from '../../shared/ui';
+import { Collapsible, ErrorState, LoadingState } from '../../shared/ui';
 import { CellPanel } from './CellPanel';
 import { Matrix, type CellRef } from './Matrix';
 import { useMatrixPrefs } from './prefs';
@@ -17,11 +17,14 @@ export function TodayScreen() {
   return <TodayContent data={query.data} />;
 }
 
+/** Браузер помнит, раскрыта ли таблица по районам (localStorage, как остальные личные настройки). */
+export const MATRIX_OPEN_KEY = 'hg.today.matrixOpen';
+
 /**
- * «Пульт»: верхний ряд компактных виджетов (число и подпись), под ним таблица на всю ширину.
+ * «Пульт»: верхний ряд компактных виджетов (число и подпись), под ним карта групп, ниже — сворачиваемая таблица по районам
+ * (по умолчанию свёрнута: смотрят её реже, чем карту).
  */
 export function TodayContent({ data }: { data: TodayView; now?: Date }) {
-  const groups = useGroups();
   const [prefs, setPrefs] = useMatrixPrefs();
   const [selected, setSelected] = useState<CellRef | null>(null);
   const selectedCell = selected
@@ -37,15 +40,12 @@ export function TodayContent({ data }: { data: TodayView; now?: Date }) {
         <UrgentWidget data={data} />
       </div>
 
-      <section className={`${styles.panel} ${styles.matrixPanel}`} aria-labelledby="today-matrix">
-        <h3 id="today-matrix" className={styles.h3}>
-          {ru.today.matrixTitle}
-        </h3>
-        <Matrix data={data} prefs={prefs} onPrefs={setPrefs} selected={selected} onOpen={setSelected} />
-      </section>
+      {/* Карта сразу под виджетами: где группы есть физически, смотрят чаще, чем таблицу. */}
+      <GroupsMap />
 
-      {/* Карта групп переехала сюда из «Справочника»: открывать её нужно там, где смотрят, где людям не хватает групп. */}
-      <GroupsMap groups={groups.data?.items ?? []} />
+      <Collapsible title={ru.today.matrixTitle} storageKey={MATRIX_OPEN_KEY} className={`${styles.panel} ${styles.matrixPanel}`}>
+        <Matrix data={data} prefs={prefs} onPrefs={setPrefs} selected={selected} onOpen={setSelected} />
+      </Collapsible>
 
       {selected && selectedCell && (
         <CellPanel

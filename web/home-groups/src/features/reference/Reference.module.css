@@ -426,6 +426,7 @@
 }
 .mapKinds {
   display: flex;
+  flex-wrap: wrap;
   gap: 14px;
   font-size: 13px;
 }
@@ -445,6 +446,15 @@
   .mapCanvas {
     height: 320px;
   }
+}
+.mapShot {
+  display: block;
+  margin-top: 12px;
+  width: 100%;
+  max-width: 650px;
+  height: auto;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line-soft);
 }
 .mapNote {
   margin: 8px 0 0;

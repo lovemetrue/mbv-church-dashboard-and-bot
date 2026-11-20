@@ -6,7 +6,7 @@ import type { AuthPort } from '../platform/auth/personalAuth.js';
 import type { StaffService } from '../platform/auth/staffService.js';
 import { logger } from '../logger.js';
 import { ACTION_STATUS, type RequestActions } from './actions.js';
-import type { CampaignView, FormMeta } from './contracts.js';
+import type { CampaignView, FormMeta, MapBootstrap } from './contracts.js';
 import type { RecordCreator } from './create.js';
 import type { Registrar } from './registration.js';
 import type { Manager } from './manage.js';
@@ -16,6 +16,7 @@ import type { Chat } from './assistant/chat.js';
 import type { LlmConfig } from './assistant/llmConfig.js';
 import type { GeocoderConfig } from './geocoderConfig.js';
 import type { MapConfig } from './mapConfig.js';
+import type { MapSnapshots } from './mapSnapshot.js';
 import type { AddressTableView } from './contracts.js';
 import type { Members } from './members.js';
 import type { Contacts } from './contacts.js';
@@ -112,8 +113,10 @@ export interface HomeGroupsDeps {
   geocoderConfig: GeocoderConfig;
   /** Таблица адресов геокодера и повтор по одному адресу. */
   geocodeAddresses: { table(): Promise<AddressTableView>; retry(body: unknown): Promise<{ ok: true } | { ok: false; error: ActionError['error']; message: string }>; reject(body: unknown): Promise<{ ok: true } | { ok: false; error: ActionError['error']; message: string }> };
-  /** Ключ Яндекс.Карт и счётчик открытий карты. */
+  /** Ключи Яндекс.Карт и счётчик открытий карты за сутки. */
   mapConfig: MapConfig;
+  /** Снимки карты (Static API), по одному на вход. */
+  mapSnapshots: MapSnapshots;
   /** Чат помощника: вопросы по базе, только чтение. */
   chat: Chat;
   /** База знаний для «?» в шапке и для помощника. Нет — маршруты справки отвечают 404. */
@@ -176,6 +179,8 @@ class BodyTooLarge extends Error {}
 
 const SETTINGS_POST_PATH = /^\/api\/v1\/settings\/(prompts\/save|prompts\/activate|staff\/suggest|staff\/create|staff\/update|staff\/invite|staff\/reset|staff\/personal-mode|staff\/generate-password|staff\/password|team-roles\/create|team-roles\/update|team-roles\/delete|directions\/create|directions\/update|directions\/delete|bot\/extra-questions|bot\/send-extra-questions|bot\/send-coordinator-contacts|bot\/send-leader-message|assistant\/enabled|assistant\/llm|assistant\/llm-test|geocoder|geocoder-test|geocoder-retry|geocoder-reject|map)$/;
 const MAP_LOADED_PATH = '/api/v1/map/loaded';
+const MAP_SNAPSHOT_PATH = '/api/v1/map/snapshot';
+const MAP_SNAPSHOT_PNG_PATH = '/api/v1/map/snapshot.png';
 const CREATE_PATH = /^\/api\/v1\/(requests|groups|people|coordinators)\/create$/;
 /** `POST /api/v1/groups/5/update`: правка и удаление записей справочника. */
 const MANAGE_PATH = /^\/api\/v1\/(groups|coordinators|people)\/(\d{1,15})\/(update|delete)$/;
@@ -233,7 +238,7 @@ function deskAllows(method: string, path: string): boolean {
  * отмена набора, подбор, помощник, правки и создание отвечают 403. Как и у стойки, закрыто всё, что сюда не вписано.
  */
 function readonlyAllows(method: string, path: string): boolean {
-  if (method === 'POST') return path === MAP_LOADED_PATH || path === '/api/v1/kits/find' || path === '/api/v1/kits/search';
+  if (method === 'POST') return path === MAP_LOADED_PATH || path === MAP_SNAPSHOT_PATH || path === '/api/v1/kits/find' || path === '/api/v1/kits/search';
   if (method !== 'GET') return false;
   return !(path === '/api/v1/team' || path.startsWith('/api/v1/settings/') || path === ASSISTANT_CHAT_HISTORY_PATH);
 }
@@ -815,6 +820,19 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
    * входа рядом может не быть. Удалением отмена не считается — регистрация остаётся, снимается только отметка.
    */
   /** Кто смотрит — для скрытия контактов (contactsAccess.ts). null — сессии нет. */
+  /**
+   * Чей снимок карты: логин личного входа, а у общего входа — его роль (общим входом пользуются вместе, снимок у них один).
+   * Префикс «роль:» не даёт общему входу совпасть с личным логином.
+   */
+  async function mapViewerKey(sid: string | undefined): Promise<string> {
+    const identity = await deps.auth.identityOf?.(sid);
+    return identity ? identity.login : `роль:${(await deps.auth.roleOf(sid)) ?? 'нет'}`;
+  }
+
+  async function mapBootstrap(sid: string | undefined): Promise<MapBootstrap> {
+    return { ...(await deps.mapConfig.bootstrap()), snapshot: await deps.mapSnapshots.meta(await mapViewerKey(sid)) };
+  }
+
   async function viewerOf(sid: string | undefined): Promise<Viewer | null> {
     const role = await deps.auth.roleOf(sid);
     if (!role) return null;
@@ -992,7 +1010,19 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
     if (req.method === 'POST' && path === MAP_LOADED_PATH) {
       // Открытие карты считает любой вход: карта нужна и координаторам, а расход общий.
       const call = await readAuthedJson(req, res, sid);
-      if (call) sendJson(res, 200, await deps.mapConfig.recordLoad());
+      if (call) { await deps.mapConfig.recordLoad(); sendJson(res, 200, await mapBootstrap(sid)); }
+      return;
+    }
+    if (req.method === 'POST' && path === MAP_SNAPSHOT_PATH) {
+      const call = await readAuthedJson(req, res, sid);
+      if (!call) return;
+      const viewer = await viewerOf(sid);
+      if (!viewer) { sendJson(res, 401, { error: 'unauthorized' }); return; }
+      // Метки снимка — из тех же групп, что этот вход видит в «Справочнике»: адресов сверх того снимок не раскроет.
+      const v = await deps.views();
+      const done = await deps.mapSnapshots.take(await mapViewerKey(sid), call.body, groupsFor(v.groups, viewer, v.requests).items);
+      if (!done.ok) { sendJson(res, ACTION_STATUS[done.error], { error: done.error, message: done.message } satisfies ActionError); return; }
+      sendJson(res, 200, done);
       return;
     }
     const kit = req.method === 'POST' ? KIT_POST_PATH.exec(path) : null;
@@ -1109,7 +1139,14 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
       sendJson(res, 200, found);
       return;
     }
-    if (path === '/api/v1/map/config') { sendJson(res, 200, await deps.mapConfig.bootstrap()); return; }
+    if (path === '/api/v1/map/config') { sendJson(res, 200, await mapBootstrap(sid)); return; }
+    if (path === MAP_SNAPSHOT_PNG_PATH) {
+      const png = await deps.mapSnapshots.png(await mapViewerKey(sid));
+      if (!png) { sendJson(res, 404, { error: 'not_found' }); return; }
+      res.writeHead(200, { ...BASE_HEADERS, 'content-type': 'image/png', 'cache-control': 'private, no-store' });
+      res.end(png);
+      return;
+    }
     if (path === '/api/v1/form-meta') {
       const viewer = await viewerOf(sid);
       if (!viewer) { sendJson(res, 401, { error: 'unauthorized' }); return; }
@@ -1226,7 +1263,7 @@ export function createHomeGroupsServer(deps: HomeGroupsDeps) {
         ...BASE_HEADERS,
         'content-type': 'text/html; charset=utf-8',
         'cache-control': 'no-store',
-        'content-security-policy': (await deps.mapConfig.bootstrap()).apiKey ? MAP_CSP : CSP,
+        'content-security-policy': (await deps.mapConfig.apiKey()) ? MAP_CSP : CSP,
       });
       res.end(method === 'HEAD' ? undefined : index);
     } catch (err) {

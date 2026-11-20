@@ -108,6 +108,7 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
   const kitPerson = { userId: 12, registrationNo: 1042, fio: 'Иван Петров', phone: null, issuedAt: null, issuedBy: null };
   const llmCalls: { name: string; body?: unknown; actor?: string }[] = [];
   let mapKey: string | null = null;
+  let mapLoads = 3;
   let llmSaveOutcome: unknown = { ok: true };
   let llmTestResult: unknown = { ok: true, provider: 'DeepSeek', model: 'deepseek-chat', ms: 700 };
   const reconcileCalls: { name: string; id?: number; actor?: string; body?: unknown }[] = [];
@@ -220,10 +221,20 @@ async function start(opts: { secureCookie?: boolean; webDir?: string; maxAttempt
       reject: async (body: unknown) => { llmCalls.push({ name: 'geo-reject', body }); return { ok: true }; },
     } as never,
     mapConfig: {
-      view: async () => ({ keySet: mapKey !== null, keyHint: mapKey ? mapKey.slice(-4) : null, keyUnreadable: false, loadsThisMonth: 3, monthlyLimit: 100 }),
-      bootstrap: async () => ({ apiKey: mapKey, loadsThisMonth: 3, monthlyLimit: 100 }),
-      recordLoad: async () => { llmCalls.push({ name: 'map-loaded' }); return { apiKey: mapKey, loadsThisMonth: 4, monthlyLimit: 100 }; },
+      view: async () => ({ keySet: mapKey !== null, keyHint: mapKey ? mapKey.slice(-4) : null, keyUnreadable: false, loadsToday: 3, dailyLimit: 100 }),
+      bootstrap: async () => ({ apiKey: mapKey, loadsToday: mapLoads, dailyLimit: 100, staticReady: true }),
+      apiKey: async () => mapKey,
+      recordLoad: async () => { llmCalls.push({ name: 'map-loaded' }); mapLoads += 1; return { apiKey: mapKey, loadsToday: mapLoads, dailyLimit: 100, staticReady: true }; },
       save: async (body: unknown, actor: string) => { llmCalls.push({ name: 'map-save', body, actor }); return { ok: true }; },
+    } as never,
+    // Снимок карты: у общего обычного входа он есть, у остальных — нет.
+    mapSnapshots: {
+      meta: async (viewer: string) => (viewer === 'роль:admin' ? { takenAt: '2026-11-20T09:00:00.000Z', marks: 2, skipped: 0 } : null),
+      png: async (viewer: string) => (viewer === 'роль:admin' ? Buffer.from('PNG-снимок') : null),
+      take: async (viewer: string, body: unknown, groups: { id: number; coords: unknown }[]) => {
+        llmCalls.push({ name: 'map-snapshot', body: { viewer, request: body, groups: groups.map((g) => ({ id: g.id, coords: g.coords })) } });
+        return { ok: true, snapshot: { takenAt: '2026-11-20T10:00:00.000Z', marks: 1, skipped: 0 } };
+      },
     } as never,
     reconciler: {
       apply: async (id: number, body: unknown, actor: string) => { reconcileCalls.push({ name: 'apply', id, body, actor }); return { ok: true, already: false }; },
@@ -1604,23 +1615,57 @@ describe('помощник по разбору заявок', () => {
     expect(await refused.json()).toMatchObject({ error: 'conflict', message: expect.stringMatching(/сначала смените им направление/) });
   });
 
-  test('ключ карты: настройки и сохранение только у полного входа, а страница получает ключ и расход при любом входе', async () => {
+  test('ключ карты: настройки и сохранение только у полного входа, а страница получает ключ, расход за сутки и свой снимок при любом входе', async () => {
     app.setMapKey('map-key-WXYZ');
     expect((await fetch(`${app.base}/api/v1/settings/map`, { headers: { cookie: await signIn(REGULAR) } })).status).toBe(403);
     expect((await post(await signIn(REGULAR), 'settings/map', { apiKey: 'map-key-1234' })).status).toBe(403);
     const sup = await signIn(SUPER);
     const view = await (await fetch(`${app.base}/api/v1/settings/map`, { headers: { cookie: sup } })).text();
-    expect(JSON.parse(view)).toMatchObject({ keySet: true, keyHint: 'WXYZ', loadsThisMonth: 3, monthlyLimit: 100 });
+    expect(JSON.parse(view)).toMatchObject({ keySet: true, keyHint: 'WXYZ', loadsToday: 3, dailyLimit: 100 });
     expect(view).not.toContain('map-key-WXYZ');
     expect((await post(sup, 'settings/map', { apiKey: 'map-key-1234' })).status).toBe(200);
-    // Для открытия карты ключ нужен любому входу.
+    // Для открытия карты ключ нужен любому входу; снимок — того, кто вошёл.
     const boot = await fetch(`${app.base}/api/v1/map/config`, { headers: { cookie: await signIn(REGULAR) } });
-    expect(await boot.json()).toEqual({ apiKey: 'map-key-WXYZ', loadsThisMonth: 3, monthlyLimit: 100 });
+    expect(await boot.json()).toEqual({
+      apiKey: 'map-key-WXYZ', loadsToday: 3, dailyLimit: 100, staticReady: true,
+      snapshot: { takenAt: '2026-11-20T09:00:00.000Z', marks: 2, skipped: 0 },
+    });
+    expect(await (await fetch(`${app.base}/api/v1/map/config`, { headers: { cookie: sup } })).json()).toMatchObject({ snapshot: null });
     expect((await fetch(`${app.base}/api/v1/map/config`)).status).toBe(401);
     const loaded = await post(await signIn(REGULAR), 'map/loaded', {});
-    expect(await loaded.json()).toMatchObject({ loadsThisMonth: 4 });
+    expect(await loaded.json()).toMatchObject({ loadsToday: 4 });
     expect((await post(null, 'map/loaded', {})).status).toBe(401);
     app.setMapKey(null);
+  });
+
+  test('снимок карты: сервер получает вид и группы такими, какими их видит этот вход, а картинку отдаёт только её владельцу', async () => {
+    const cookie = await signIn(REGULAR);
+    const body = { center: { lat: 59.93, lon: 30.31 }, zoom: 11, groupIds: [1, 2] };
+    const res = await post(cookie, 'map/snapshot', body);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, snapshot: { takenAt: '2026-11-20T10:00:00.000Z', marks: 1, skipped: 0 } });
+    const call = app.llmCalls.find((c) => c.name === 'map-snapshot')!.body as { viewer: string; request: unknown; groups: unknown[] };
+    // Общий вход — снимок на роль: этим входом пользуются вместе.
+    expect(call.viewer).toBe('роль:admin');
+    expect(call.request).toEqual(body);
+    // Те же группы, что отдаёт «Справочник» этому входу (contactsAccess.ts): у камерной без доступа координат нет.
+    const listed = (await (await fetch(`${app.base}/api/v1/groups`, { headers: { cookie } })).json()) as { items: { id: number; coords: unknown }[] };
+    expect(call.groups).toEqual(listed.items.map((g) => ({ id: g.id, coords: g.coords })));
+    // Личный вход распределителя камерную группу без адреса и видит — и снимок координат её не получает.
+    const base = sampleViews();
+    const chamber = { id: 70, code: 'ДГ-0070', status: 'Функционирует', chamber: true, doNotRefer: false, coordinator: 'Другой координатор', members: [], leaderAnswer: null, address: 'ул. Тайная, 1', coords: { lat: 59.95, lon: 30.32 } };
+    app.setViews(async () => ({ ...base, groups: { ...base.groups, items: [chamber as never] } }));
+    await post(await signIn(DISTRIBUTOR), 'map/snapshot', body);
+    const restricted = app.llmCalls.filter((c) => c.name === 'map-snapshot').at(-1)!.body as { groups: { id: number; coords: unknown }[] };
+    expect(restricted.groups).toEqual([{ id: 70, coords: null }]);
+    app.setViews(async () => sampleViews());
+    const png = await fetch(`${app.base}/api/v1/map/snapshot.png?t=2026-11-20T10%3A00%3A00.000Z`, { headers: { cookie } });
+    expect(png.status).toBe(200);
+    expect(png.headers.get('content-type')).toBe('image/png');
+    expect(Buffer.from(await png.arrayBuffer()).toString()).toBe('PNG-снимок');
+    expect((await fetch(`${app.base}/api/v1/map/snapshot.png`, { headers: { cookie: await signIn(SUPER) } })).status).toBe(404);
+    expect((await fetch(`${app.base}/api/v1/map/snapshot.png`)).status).toBe(401);
+    expect((await post(null, 'map/snapshot', body)).status).toBe(401);
   });
 
   test('политика содержимого интерфейса: без ключа карты строгая, с ключом добавляет хосты Яндекс.Карт; страница входа всегда строгая', async () => {
@@ -2063,6 +2108,7 @@ describe('вход «Только чтение»', () => {
     expect(counts()).toEqual(before);
     // Учёт открытий карты ничего в данных не меняет: карта нужна и тому, кто только смотрит.
     expect((await postJson(cookie, 'map/loaded', {})).status).toBe(200);
+    expect((await postJson(cookie, 'map/snapshot', { center: { lat: 59.9, lon: 30.3 }, zoom: 10, groupIds: [] })).status).toBe(200);
   });
 });
 

@@ -1102,3 +1102,7 @@
   font-size: 13px;
   color: var(--warn);
 }
+
+.mapBlock {
+  margin: 8px 0;
+}

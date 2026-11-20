@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { currentSearch, renderAt, stubFetchWithFixtures } from '../../test/render';
 import { App } from '../../app/App';
 import { buildGroups, buildRequests, buildToday } from '../../fixtures/build';
-import { TodayContent } from './TodayScreen';
+import { MATRIX_OPEN_KEY, TodayContent } from './TodayScreen';
 import { cellSummary, hiddenNote, urgentDistricts } from './model';
 
 const NOW = new Date(2026, 9, 9, 9, 0);
@@ -13,6 +13,9 @@ const NOW = new Date(2026, 9, 9, 9, 0);
 beforeEach(() => {
   // Состояние матрицы живёт в sessionStorage; setup.ts чистит только localStorage.
   window.sessionStorage.clear();
+  // Таблица по районам по умолчанию свёрнута; тесты ниже проверяют её содержимое, поэтому начинают с раскрытой.
+  // Само сворачивание — в последнем блоке файла.
+  window.localStorage.setItem(MATRIX_OPEN_KEY, '1');
   stubFetchWithFixtures();
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -518,5 +521,47 @@ describe('«Срочно нужна группа»: расчёт', () => {
 
   test('«Район не определён» не в счёте, как и районы, где мест хватает', () => {
     expect(urgentDistricts([row('Район не определён', [mkCell('26–35', 9, 0)]), row('Невский', [mkCell('26–35', 1, 1)])])).toEqual([]);
+  });
+});
+
+describe('«Сегодня»: порядок блоков и сворачиваемая таблица', () => {
+  const MATRIX = 'Таблица: районы и возрастные группы, спрос и свободные места';
+
+  test('карта стоит сразу под виджетами, таблица — ниже, под заголовком «Распределение по районам», и по умолчанию свёрнута', async () => {
+    window.localStorage.removeItem(MATRIX_OPEN_KEY);
+    renderAt(<TodayContent data={buildToday()} now={NOW} />);
+    const map = await screen.findByRole('region', { name: 'Карта групп' });
+    const toggle = screen.getByRole('button', { name: 'Распределение по районам' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('region', { name: MATRIX })).toBeNull();
+    // Карта в документе раньше таблицы.
+    expect(map.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const widget = screen.getByText('Утверждено');
+    expect(widget.compareDocumentPosition(map) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  test('раскрытую таблицу браузер помнит: после перезагрузки она раскрыта, свернули — снова свёрнута', async () => {
+    window.localStorage.removeItem(MATRIX_OPEN_KEY);
+    const user = userEvent.setup();
+    const first = renderAt(<TodayContent data={buildToday()} now={NOW} />);
+    await user.click(screen.getByRole('button', { name: 'Распределение по районам' }));
+    expect(screen.getByRole('region', { name: MATRIX })).toBeInTheDocument();
+    first.unmount();
+    renderAt(<TodayContent data={buildToday()} now={NOW} />);
+    const toggle = screen.getByRole('button', { name: 'Распределение по районам' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await user.click(toggle);
+    expect(window.localStorage.getItem(MATRIX_OPEN_KEY)).toBe('0');
+  });
+
+  test('хранилище браузера закрыто — таблица просто свёрнута, страница не падает', async () => {
+    const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('запрещено'); });
+    const user = userEvent.setup();
+    renderAt(<TodayContent data={buildToday()} now={NOW} />);
+    const toggle = screen.getByRole('button', { name: 'Распределение по районам' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await user.click(toggle);
+    expect(screen.getByRole('region', { name: MATRIX })).toBeInTheDocument();
+    spy.mockRestore();
   });
 });

@@ -404,6 +404,16 @@ export class UsersRepo {
     return rows;
   }
 
+  /** Все выданные наборы, свежие сверху: список в «Команде → Кампания». Лимита нет — выданных не больше, чем зарегистрированных. */
+  async issuedKits(): Promise<KitRow[]> {
+    const { rows } = await this.db.query<KitRow>(
+      `SELECT ${KIT_COLUMNS} FROM users
+        WHERE registration_no IS NOT NULL AND kit_issued_at IS NOT NULL
+        ORDER BY kit_issued_at DESC, id DESC`,
+    );
+    return rows;
+  }
+
   /**
    * Удалить регистрацию из дашборда — жёстко, по явному решению церкви, в отличие
    * от групп/участников/заявок (там archive() — мягкое удаление). ON DELETE CASCADE

@@ -26,7 +26,7 @@ function dayText(day: CampaignView['day']): string {
 }
 
 /** Пять плиток сверху. Подпись идёт первой в разметке (список определений), число — под ней. */
-export function Tiles({ data }: { data: CampaignView }) {
+export function Tiles({ data, onOpenKits }: { data: CampaignView; onOpenKits: () => void }) {
   const p = data.participants;
   return (
     <section aria-label={t.tilesLabel}>
@@ -38,7 +38,12 @@ export function Tiles({ data }: { data: CampaignView }) {
         </div>
         <div className={styles.tile}>
           <dt className={styles.tileLabel}>{t.tileKits}</dt>
-          <dd className={`${styles.tileNum} ${styles.ok} num`}>{p.kitsIssued}</dd>
+          <dd className={styles.tileNum}>
+            <button type="button" className={`${styles.tileButton} ${styles.ok} num`} aria-label={ru.kitsIssued.openLabel(p.kitsIssued)} onClick={onOpenKits}>
+              {p.kitsIssued}
+            </button>
+          </dd>
+          <dd className={styles.tileSub}>{ru.kitsIssued.openHint}</dd>
         </div>
         <div className={styles.tile}>
           <dt className={styles.tileLabel}>{t.tileUnfinished}</dt>

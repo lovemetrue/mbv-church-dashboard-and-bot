@@ -1,7 +1,7 @@
 import { formatPhone } from '../core/phone.js';
 import type { AuditRepo } from '../db/repos/audit.repo.js';
 import type { KitRow, UsersRepo } from '../db/repos/users.repo.js';
-import type { ActionError, KitFindOk, KitIssueOk, KitMatch, KitPerson, KitSearchOk, KitsView } from './contracts.js';
+import type { ActionError, KitFindOk, KitIssueOk, KitMatch, KitPerson, KitSearchOk, KitsIssuedView, KitsView } from './contracts.js';
 
 type Failure = { ok: false; error: ActionError['error']; message: string };
 const bad = (message: string): Failure => ({ ok: false, error: 'bad_request', message });
@@ -84,7 +84,7 @@ const RECENT = 15;
  * и через интерфейс видна в обоих местах, а повторно выдать не даст условие в базе.
  */
 export function createKits(deps: {
-  users: Pick<UsersRepo, 'kitByRegistrationNo' | 'kitById' | 'markKitIssued' | 'unmarkKitIssued' | 'kitStats' | 'recentKits' | 'searchKits'>;
+  users: Pick<UsersRepo, 'kitByRegistrationNo' | 'kitById' | 'markKitIssued' | 'unmarkKitIssued' | 'kitStats' | 'recentKits' | 'searchKits' | 'issuedKits'>;
   audit: Pick<AuditRepo, 'write'>;
   timeZone: string;
 }) {
@@ -103,6 +103,12 @@ export function createKits(deps: {
         issuedToday: stats.issued_today,
         recent: recent.map(toPerson),
       };
+    },
+
+    /** Весь список выданных: телефоны здесь полные, маскирует их сервер по вошедшему (`kitsIssuedFor`). */
+    async issued(): Promise<KitsIssuedView> {
+      const rows = await deps.users.issuedKits();
+      return { generatedAt: new Date().toISOString(), items: rows.map(toPerson) };
     },
 
     async find(body: unknown): Promise<KitFindOk | Failure> {

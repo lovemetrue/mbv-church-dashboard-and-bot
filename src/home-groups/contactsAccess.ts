@@ -1,5 +1,5 @@
 import type {
-  FormMeta, GroupDraftView, GroupItem, GroupMember, GroupsView, KitPerson, OtherItem, PeopleView, PersonItem, RequestItem, RequestsView, Role,
+  FormMeta, GroupDraftView, GroupItem, GroupMember, GroupsView, KitPerson, KitsIssuedView, OtherItem, PeopleView, PersonItem, RequestItem, RequestsView, Role,
   TeamRoleKind,
 } from './contracts.js';
 
@@ -188,4 +188,9 @@ export function draftFor(draft: GroupDraftView, viewer: Viewer, requests: Reques
 /** Найденный на «Наборах» участник: при ограниченном входе — последние цифры телефона, чтобы отличить тёзок. */
 export function kitPersonFor(person: KitPerson, viewer: Viewer): KitPerson {
   return restrictedName(viewer) === null ? person : { ...person, phone: maskPhone(person.phone) };
+}
+
+/** Список выданных наборов: каждой строке — то же правило, что и найденному участнику. */
+export function kitsIssuedFor(view: KitsIssuedView, viewer: Viewer): KitsIssuedView {
+  return restrictedName(viewer) === null ? view : { ...view, items: view.items.map((p) => kitPersonFor(p, viewer)) };
 }

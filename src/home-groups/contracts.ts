@@ -1500,6 +1500,12 @@ export interface KitsView {
   recent: KitPerson[];
 }
 
+/** `GET /api/v1/kits/issued`: все, кому выдан набор, свежие сверху (окно «Наборов выдано» в «Команде → Кампания»). */
+export interface KitsIssuedView {
+  generatedAt: string;
+  items: KitPerson[];
+}
+
 /** `POST /api/v1/kits/find`: тело `{ code }` — номер регистрации (или текст из QR). */
 export interface KitFindOk {
   ok: true;

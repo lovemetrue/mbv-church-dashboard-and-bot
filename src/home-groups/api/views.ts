@@ -6,6 +6,7 @@ import type { RestorableProposal } from '../../db/repos/placement.repo.js';
 import { groupTakesPeople } from '../plan/engine.js';
 import { diffSnapshots, inputSnapshot, type InputSnapshot } from '../plan/signature.js';
 import { streetName } from '../plan/street.js';
+import { groupAgeCategories } from '../plan/parse.js';
 import { addressKey } from '../geocode.js';
 import { gistOf } from '../reconcile/gist.js';
 import { reconcileOf } from '../reconcile/plan.js';
@@ -393,8 +394,8 @@ export function buildViewsWithPlan(
       leader: g.leader,
       district: g.district,
       metro: nonBlank(g.metro),
-      ageRange: engine.parseAgeRange(g.age),
-      day: when.day,
+      ageRanges: engine.parseGroupAgeRanges(g.age),
+      days: when.days,
       slot: when.slot,
       // В подбор идёт только название улицы без дома: «Рылеева 30» и «ул. Рылеева, 32» — одна улица. Пустой адрес —
       // подбор откатывается на метро или ориентир (`metro`).
@@ -428,7 +429,7 @@ export function buildViewsWithPlan(
       leader: p.leader,
       district: p.district,
       metro: p.metro,
-      whenText: engine.formatWhen(p.day, p.slot),
+      whenText: engine.formatWhen(p.days, p.slot, g.time),
       people: p.people,
       capacity: p.capacity,
       free: Math.max(0, p.capacity - (p.people ?? 0)),
@@ -842,7 +843,7 @@ export function buildViewsWithPlan(
     if (lead.district === null && !lead.coords) return null;
     return {
       id: -r.id, no: null, leader: nonBlank(r.fio) ?? '', district: lead.district ?? 'Не указан', metro: null,
-      ageRange: lead.ageRange, day: lead.days[0] ?? null, slot: lead.slot, street: lead.street, coords: lead.coords ?? null,
+      ageRanges: lead.ageRange ? [lead.ageRange] : [], days: lead.days, slot: lead.slot, street: lead.street, coords: lead.coords ?? null,
       people: 0, capacity: defaultCapacity, status: 'Потенциальная', acceptsNew: true, doNotRefer: false, verifiedDaysAgo: null,
     };
   };
@@ -1098,7 +1099,8 @@ export function buildViewsWithPlan(
       coLeaderPhone: linkedPhone(g.co_leader_user_id, g.co_leader_person_id) ?? nonBlank(formatPhone(nonBlank(g.co_leader_phone))),
       address: nonBlank(g.address),
       ageText: nonBlank(g.age),
-      day: p.day,
+      ages: groupAgeCategories(g.age),
+      days: [...p.days],
       slot: p.slot,
       status: g.status,
       acceptsNew: p.acceptsNew,
@@ -1325,7 +1327,7 @@ function groupHealth(g: DashboardGroup, p: PlanGroup): { score: number; items: H
   const items: HealthItem[] = [
     { ok: nonBlank(g.leader) !== null, label: 'Ведущий указан', points: 10 },
     { ok: displayPhone(g.phones, g.phone) !== null, label: 'Телефон ведущего', points: 15 },
-    { ok: p.day !== null && p.slot !== null, label: 'День и время', points: 20 },
+    { ok: p.days.length > 0 && p.slot !== null, label: 'День и время', points: 20 },
     { ok: g.district !== 'Не указан' && p.metro !== null, label: 'Район и метро', points: 15 },
     {
       ok: p.verifiedDaysAgo !== null && p.verifiedDaysAgo <= FRESH_FEEDBACK_DAYS,

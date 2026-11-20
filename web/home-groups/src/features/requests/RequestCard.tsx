@@ -3,7 +3,7 @@ import { GenderField } from '../gender/GenderField';
 import { useId, useState, type FormEvent } from 'react';
 import type { GroupBrief, GroupItem, LogEntry, RequestItem } from '@contracts';
 import { BUCKET_LABEL } from '../../entities/buckets';
-import { formatDateShort, formatPhone, groupLabel } from '../../entities/format';
+import { formatDateShort, formatPhone, groupLabel, groupWhere } from '../../entities/format';
 import { useGroups } from '../../shared/api/queries';
 import { ru } from '../../shared/i18n/ru';
 import { AgeTag, Button, Drawer, DrawerSection, GroupMarks, KeyValue, Pill, StrangeBadge, StrangeBanner, type KvRow } from '../../shared/ui';
@@ -126,7 +126,7 @@ function DisplacedVariant({
   registry: ReadonlyMap<number, GroupItem>;
 }) {
   const g = displaced.group;
-  const where = [g.district, g.metro, g.whenText].filter(Boolean).join(' · ');
+  const where = groupWhere(g);
   return (
     <article className={styles.cand}>
       <div className={styles.candHead}>

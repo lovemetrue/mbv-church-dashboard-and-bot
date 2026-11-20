@@ -8,6 +8,44 @@ const form = (o: Record<string, string>) => new URLSearchParams(o);
 const GROUP_MIN = { leader: 'Иванова Мария', district: 'Невский', direction: 'Молодёжное служение', status: 'Функционирует' };
 const REQUEST_MIN = { fio: 'Петров Пётр', type: 'join_group', status: 'В работе' };
 
+describe('форма группы: несколько дней встреч и категорий возраста', () => {
+  const pick = (name: string, values: string[]) => {
+    const f = form(GROUP_MIN);
+    for (const v of values) f.append(name, v);
+    return parseGroupForm(f);
+  };
+
+  test('дни галочками сохраняются одной строкой в порядке недели, как бы их ни прислали', () => {
+    const r = pick('day', ['Чт', 'Вт']);
+    expect(r.ok && r.value.day).toBe('Вт, Чт');
+    const joined = parseGroupForm(form({ ...GROUP_MIN, day: 'Чт, Вт, Чт' }));
+    expect(joined.ok && joined.value.day).toBe('Вт, Чт');
+  });
+
+  test('день, записанный словами (старый дашборд, таблица), остаётся как записан', () => {
+    for (const raw of ['Четверг', 'Плавающий', 'Среда, Четверг']) {
+      const r = parseGroupForm(form({ ...GROUP_MIN, day: raw }));
+      expect(r.ok && r.value.day, raw).toBe(raw);
+    }
+    const none = parseGroupForm(form(GROUP_MIN));
+    expect(none.ok && none.value.day).toBeNull();
+  });
+
+  test('категории возраста галочками — одной строкой в порядке анкеты', () => {
+    const r = pick('age', ['40-55', '25-40']);
+    expect(r.ok && r.value.age).toBe('25-40, 40-55');
+    const teen = pick('age', ['65+', 'подростки (до 18 лет)']);
+    expect(teen.ok && teen.value.age).toBe('подростки (до 18 лет), 65+');
+  });
+
+  test('возраст не из категорий (старое «35-50», «любой») сохраняется как записан', () => {
+    for (const raw of ['35-50', 'любой']) {
+      const r = parseGroupForm(form({ ...GROUP_MIN, age: raw }));
+      expect(r.ok && r.value.age, raw).toBe(raw);
+    }
+  });
+});
+
 describe('форма группы: соведущий и состав', () => {
   test('соведущий и его телефон сохраняются', () => {
     const r = parseGroupForm(new URLSearchParams({ ...GROUP_MIN, coLeader: 'Петрова Анна', coLeaderPhone: '8 900 111-22-33' }));

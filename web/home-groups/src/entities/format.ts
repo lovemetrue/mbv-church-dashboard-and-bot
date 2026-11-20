@@ -49,7 +49,16 @@ export function groupLabel(g: { code: string }): string {
   return g.code;
 }
 
-/** «Ольга К. · Вт, вечер» — подпись группы в списках. */
+/**
+ * «Беговая · Вт, Чт — 19:00» — где и когда группа, для кратких карточек (подбор, предложения, выбор группы). Района
+ * здесь нет: его ставит адрес, и в карточках группы он не показывается (колонка и отбор «Район» — в таблице групп).
+ * Онлайн-группа так и подписана: «Онлайн» у неё — формат, а не район.
+ */
+export function groupWhere(g: { district: string; metro: string | null; whenText?: string | null }): string {
+  return [g.district === 'Онлайн' ? 'Онлайн' : null, g.metro, g.whenText].filter(Boolean).join(' · ');
+}
+
+/** «Ольга К. · Вт — вечер» — подпись группы в списках. */
 export function groupLine(g: { code: string; leader: string; whenText: string | null }): string {
   return [groupLabel(g), g.leader, g.whenText].filter(Boolean).join(' · ');
 }

@@ -21,9 +21,14 @@ export interface PlanGroup {
   /** Район из справочника (`DISTRICTS`) или «Не указан». */
   district: string;
   metro: string | null;
-  ageRange: AgeRange;
-  /** Разобранные день и время суток; null, если не указаны или не разобрались. */
-  day: Day | null;
+  /**
+   * Возраст группы — диапазоны её категорий (у группы их бывает несколько: «25-40» и «40-55»); пустой список — возраст
+   * не указан, отсева по возрасту нет.
+   */
+  ageRanges: readonly (readonly [number, number])[];
+  /** Дни встреч в порядке недели (их бывает несколько: «Вт, Чт»); пустой список — дни не указаны или не разобрались. */
+  days: readonly Day[];
+  /** Время суток; null, если не указано или не разобралось. */
   slot: Slot | null;
   /**
    * Улица группы (только название, без дома) для подбора рядом, из адреса группы. null — адрес не заполнен: тогда
@@ -203,15 +208,17 @@ export interface PlanEngineApi {
   buildMetroIndex(groups: readonly { metro: string | null; district: string }[]): Map<string, string>;
   /** «35-45 лет», «65+», «подростки (до 18 лет)», «любой», «» → диапазон или null. */
   parseAgeRange(text: string | null | undefined): AgeRange;
-  /** День и время из колонок группы: «Четверг» + «19:00», «Среда, Четверг» + null, «Плавающий», «День»… */
-  parseGroupWhen(day: string | null, time: string | null): { day: Day | null; slot: Slot | null };
+  /** Возраст группы → диапазоны её категорий («25-40, 40-55», старое «35-50»); пустой список — не указан. */
+  parseGroupAgeRanges(text: string | null | undefined): [number, number][];
+  /** Дни и время из колонок группы: «Четверг» + «19:00», «Среда, Четверг» + null, «Плавающий», «День»… */
+  parseGroupWhen(day: string | null, time: string | null): { days: Day[]; slot: Slot | null };
   /**
    * «пн, ср — с 17 до 22 часов» → дни и время суток; неясное остаётся пустым / null. Названное неподходящим
    * («кроме воскресенья», «не утром») возвращается в `avoidDays` / `avoidSlots`.
    */
   parseHumanSchedule(text: string | null | undefined): { days: Day[]; slot: Slot | null; avoidDays: Day[]; avoidSlots: Slot[] };
-  /** «Вт, вечер» / «Вт» / «вечер» / null. */
-  formatWhen(day: Day | null, slot: Slot | null): string | null;
+  /** «Вт, Чт — 19:00» / «Вт — вечер» / «Вт» / «вечер» / null; `time` — колонка «время» как записана. */
+  formatWhen(days: readonly Day[], slot: Slot | null, time?: string | null): string | null;
   /** Колонка возраста для матрицы «район × возраст» (по середине диапазона); null — возраст неизвестен. */
   ageColumnOf(range: AgeRange): string | null;
   /** Насколько человек подходит будущей группе (без проверки статуса и мест); null — не подходит. */

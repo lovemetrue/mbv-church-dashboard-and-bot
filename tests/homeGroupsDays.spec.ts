@@ -186,15 +186,19 @@ describe('день и время группы читаются тем же ра�
     ['Ср', 'Ср'], ['ср', 'Ср'], ['Среда', 'Ср'], ['среду', 'Ср'], ['Пт.', 'Пт'], ['пятница (раз в две недели)', 'Пт'],
     ['каждый вторник', 'Вт'], ['по четвергам', 'Чт'], ['Воскр.', 'Вс'], ['вс', 'Вс'],
   ])('день группы «%s» → %s', (raw, day) => {
-    expect(parseGroupWhen(raw, null).day).toBe(day);
+    expect(parseGroupWhen(raw, null).days).toEqual([day]);
   });
 
-  test.each(['Среда, Четверг', 'вт/чт', 'Будни', 'Выходные', 'пн-ср', 'Плавающий', 'None', '', 'кроме воскресенья'])(
-    'несколько дней, диапазон, отрицание или «плавающий» («%s») — день группы неизвестен',
-    (raw) => {
-      expect(parseGroupWhen(raw, null).day).toBeNull();
-    },
-  );
+  test.each([
+    ['Среда, Четверг', ['Ср', 'Чт']], ['Вт, Чт', ['Вт', 'Чт']], ['вт/чт', ['Вт', 'Чт']], ['Будни', ['Пн', 'Вт', 'Ср', 'Чт', 'Пт']],
+    ['Выходные', ['Сб', 'Вс']], ['пн-ср', ['Пн', 'Вт', 'Ср']],
+  ])('несколько дней или диапазон («%s») — все дни группы в порядке недели', (raw, want) => {
+    expect(parseGroupWhen(raw, null).days).toEqual(want);
+  });
+
+  test.each(['Плавающий', 'None', '', 'кроме воскресенья'])('отрицание или «плавающий» («%s») — дни группы неизвестны', (raw) => {
+    expect(parseGroupWhen(raw, null).days).toEqual([]);
+  });
 
   test.each([
     ['19:00', 'вечер'], ['19.30', 'вечер'], ['9:00', 'утро'], ['13:00', 'день'], ['Вечер', 'вечер'], ['День', 'день'], ['утро', 'утро'],
@@ -204,8 +208,8 @@ describe('день и время группы читаются тем же ра�
   });
 
   test('время суток, записанное прямо в колонке «день» («Среда 19:00»), берётся, если колонка времени пуста', () => {
-    expect(parseGroupWhen('Среда 19:00', null)).toEqual({ day: 'Ср', slot: 'вечер' });
-    expect(parseGroupWhen('Среда 19:00', '10:00')).toEqual({ day: 'Ср', slot: 'утро' });
+    expect(parseGroupWhen('Среда 19:00', null)).toEqual({ days: ['Ср'], slot: 'вечер' });
+    expect(parseGroupWhen('Среда 19:00', '10:00')).toEqual({ days: ['Ср'], slot: 'утро' });
   });
 
   test('«Плавающий» и пустое время суток не дают', () => {
@@ -217,7 +221,7 @@ describe('день и время группы читаются тем же ра�
 
 describe('от текста до группы: подбор выбирает группу в нужный день', () => {
   const groupOf = (id: number, day: string, time: string): PlanGroup => ({
-    id, no: id, leader: 'Ведущий', district: 'Приморский', metro: null, ageRange: null, ...parseGroupWhen(day, time),
+    id, no: id, leader: 'Ведущий', district: 'Приморский', metro: null, ageRanges: [], ...parseGroupWhen(day, time),
     street: null, people: 3, capacity: 10, status: 'Функционирует', acceptsNew: true, doNotRefer: false, verifiedDaysAgo: 3,
   });
   const requestOf = (schedule: string): PlanRequest => ({

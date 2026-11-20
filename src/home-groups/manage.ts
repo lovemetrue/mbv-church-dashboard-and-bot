@@ -7,7 +7,7 @@ import type { GroupRow, GroupsRepo, PersonRef } from '../db/repos/groups.repo.js
 import type { RequestsRepo } from '../db/repos/requests.repo.js';
 import type { UsersRepo } from '../db/repos/users.repo.js';
 import type { ActionOutcome } from '../db/repos/placement.repo.js';
-import { UNKNOWN_DIRECTION, fieldsToForm, knownDirection } from './create.js';
+import { NO_DISTRICT, UNKNOWN_DIRECTION, fieldsToForm, knownDirection } from './create.js';
 import { autoPlace, type Locate } from './locate.js';
 
 /**
@@ -182,6 +182,10 @@ export function createManager(deps: {
         if (k === 'capacity') { merged.set(k, v.trim()); continue; }
         if (v.trim() === '') merged.delete(k); else merged.set(k, v);
       }
+      // Поля «Район» в формах нет: район ставит адрес. Пустым он приходит, когда сняли «Онлайн» у группы, что была онлайн
+      // с самого начала, — тогда район ищем по адресу (ниже), а не нашёлся — «Не указан», как при создании группы.
+      const districtCleared = !merged.get('district')?.trim();
+      if (districtCleared) merged.set('district', NO_DISTRICT);
       const parsed = parseGroupForm(merged);
       if (!parsed.ok) return fail('bad_request', parsed.error);
       // Человеку из заявки заводим карточку только теперь, когда правка прошла проверки: иначе отказ оставил бы лишнюю карточку.
@@ -225,7 +229,7 @@ export function createManager(deps: {
       };
       // Район и метро ищем, только когда адрес поменяли: правку района или метро руками при прежнем адресе не перетираем.
       const addressChanged = given.has('address') && (input.address ?? '') !== (current.address ?? '');
-      const auto = addressChanged ? await autoPlace(deps.locate, input.address, input.district) : {};
+      const auto = addressChanged || districtCleared ? await autoPlace(deps.locate, input.address, input.district) : {};
       const updated = await deps.groups.update(id, { ...input, ...auto });
       if (!updated) return fail('not_found', 'Группа не найдена.');
       await deps.audit.write(actor, 'group.update', 'group', id, { fields: [...given.keys()], ...(Object.keys(auto).length ? { auto: Object.keys(auto) } : {}) });

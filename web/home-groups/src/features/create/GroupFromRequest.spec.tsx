@@ -39,9 +39,11 @@ describe('«Создать группу по заявке»', () => {
 
     const dialog = await screen.findByRole('dialog', { name: 'Новая группа по заявке: Олег Кравцов' });
     expect(await within(dialog).findByRole('textbox', { name: 'ФИО ведущего' })).toHaveValue('Олег Кравцов');
-    expect(within(dialog).getByRole('combobox', { name: 'Район' })).toHaveValue('Приморский');
+    // Района в форме нет (его ставит адрес); понятый по заявке район уходит скрытым полем — вдруг адреса нет.
+    expect(within(dialog).queryByRole('combobox', { name: 'Район' })).not.toBeInTheDocument();
     expect(within(dialog).getByRole('combobox', { name: 'Статус' })).toHaveValue('Потенциальная');
-    expect(within(dialog).getByRole('combobox', { name: 'День' })).toHaveValue('Ср');
+    expect(within(within(dialog).getByRole('group', { name: 'Дни встреч' })).getByRole('checkbox', { name: 'Ср' })).toBeChecked();
+    expect(within(within(dialog).getByRole('group', { name: 'Возраст' })).getByRole('checkbox', { name: '25-40' })).toBeChecked();
     // Направления в черновике нет: форма ставит первое из справочника, как у любой новой группы.
     expect(within(dialog).getByRole('combobox', { name: 'Направление' })).toHaveValue('Основное служение');
     // Ведущий уже известен — это человек из заявки, выбирать из зарегистрированных незачем.

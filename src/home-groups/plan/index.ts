@@ -1,6 +1,6 @@
 import { bucketOf, buildPlan, fitGroup, scoreProspect } from './engine.js';
 import { buildMetroIndex, resolveDistrict } from './geo.js';
-import { ageColumnOf, formatWhen, parseAgeRange, parseGroupWhen, parseHumanSchedule } from './parse.js';
+import { ageColumnOf, formatWhen, parseAgeRange, parseGroupAgeRanges, parseGroupWhen, parseHumanSchedule } from './parse.js';
 import { DEFAULT_SETTINGS } from './settings.js';
 import { buildTodaySummary } from './summary.js';
 import type { PlanEngineApi } from './types.js';
@@ -14,7 +14,9 @@ export {
   ageColumnOf,
   ageColumnsOverlapping,
   formatWhen,
+  groupAgeCategories,
   parseAgeRange,
+  parseGroupAgeRanges,
   parseGroupWhen,
   parseHumanSchedule,
 } from './parse.js';
@@ -36,6 +38,7 @@ export const engine = {
   resolveDistrict,
   buildMetroIndex,
   parseAgeRange,
+  parseGroupAgeRanges,
   parseGroupWhen,
   parseHumanSchedule,
   formatWhen,

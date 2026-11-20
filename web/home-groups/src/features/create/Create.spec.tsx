@@ -353,15 +353,20 @@ describe('«+ Создать»: группа', () => {
     const address = within(dialog).getByRole('textbox', { name: 'Адрес' });
     expect(within(dialog).getAllByRole('textbox', { name: 'Адрес' })).toHaveLength(1);
     expect(address).toHaveAccessibleDescription(/Район и метро по нему определятся сами/);
-    // Адрес — наверху, у ведущего; район — внизу и необязательный.
-    const district = within(dialog).getByRole('combobox', { name: 'Район' });
-    expect(address.compareDocumentPosition(district) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(district).not.toBeRequired();
-    expect(district).toHaveAccessibleDescription(/определится по адресу/);
+    // Района в форме нет: его ставит сервер по адресу.
+    expect(within(dialog).queryByRole('combobox', { name: 'Район' })).not.toBeInTheDocument();
 
     await user.type(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' }), 'Ольга Крылова');
     await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Направление' }), 'Молодёжное служение');
-    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'День' }), 'Вт');
+    // Дни — галочками, время одно на все дни.
+    const days = within(dialog).getByRole('group', { name: 'Дни встреч' });
+    expect(days).toHaveAccessibleDescription(/одно для всех дней/);
+    await user.click(within(days).getByRole('checkbox', { name: 'Чт' }));
+    await user.click(within(days).getByRole('checkbox', { name: 'Вт' }));
+    // Возраст — галочками, категорий бывает несколько.
+    const ages = within(dialog).getByRole('group', { name: 'Возраст' });
+    await user.click(within(ages).getByRole('checkbox', { name: '40-55' }));
+    await user.click(within(ages).getByRole('checkbox', { name: '25-40' }));
     await user.type(within(dialog).getByRole('textbox', { name: 'Время' }), '19:00');
     await user.type(within(dialog).getByRole('textbox', { name: 'Сколько человек' }), '8');
     await user.type(within(dialog).getByRole('textbox', { name: 'Мест в группе' }), '5');
@@ -377,7 +382,8 @@ describe('«+ Создать»: группа', () => {
           leader: 'Ольга Крылова',
           direction: 'Молодёжное служение',
           status: 'Функционирует',
-          day: 'Вт',
+          age: '25-40, 40-55',
+          day: 'Вт, Чт',
           time: '19:00',
           people: '8',
           capacity: '5',
@@ -400,7 +406,7 @@ describe('«+ Создать»: группа', () => {
     const dialog = await ready(await openForm(user, 'Группа'));
     expect(within(dialog).getByRole('combobox', { name: 'Направление' })).toHaveValue('Основное служение');
     await user.type(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' }), 'Ольга Крылова');
-    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Район' }), 'Приморский');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Адрес' }), 'Комендантский пр., 12');
     await user.click(within(dialog).getByRole('checkbox', { name: 'Камерная группа: служителей или отдельного служения' }));
     expect(within(dialog).getByRole('checkbox', { name: 'Не направлять в эту группу' })).not.toBeChecked();
     await user.click(within(dialog).getByRole('button', { name: 'Создать группу' }));
@@ -414,7 +420,7 @@ describe('«+ Создать»: группа', () => {
     renderAt(<App />, REFERENCE);
     const dialog = await ready(await openForm(user, 'Группа'));
     await user.type(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' }), 'Ольга Крылова');
-    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Район' }), 'Приморский');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Адрес' }), 'Комендантский пр., 12');
     await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Направление' }), 'Молодёжное служение');
     await user.type(within(dialog).getByRole('textbox', { name: 'Со-ведущий' }), 'Анна Петрова');
     await user.type(within(dialog).getByRole('textbox', { name: 'Телефон соведущего' }), '+7 921 000-11-44');
@@ -433,7 +439,7 @@ describe('«+ Создать»: группа', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Создать группу' }));
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
     expect(posts(fetchMock)[0]!.body.fields).toEqual({
-      leader: 'Ольга Крылова', district: 'Приморский', direction: 'Молодёжное служение', status: 'Функционирует',
+      leader: 'Ольга Крылова', address: 'Комендантский пр., 12', direction: 'Молодёжное служение', status: 'Функционирует',
       coLeader: 'Анна Петрова', coLeaderPhone: '+7 921 000-11-44', composition: 'Мужская, Ментальная',
       training: 'Да', feedbackAt: '2026-09-10', checked: '1', campaignRegistered: '1',
     });
@@ -455,12 +461,12 @@ describe('«+ Создать»: группа', () => {
     // Выбранному ФИО и телефон от руки не нужны: они из его карточки.
     expect(within(dialog).queryByRole('textbox', { name: 'ФИО ведущего' })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('textbox', { name: 'Телефон' })).not.toBeInTheDocument();
-    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Район' }), 'Приморский');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Адрес' }), 'Комендантский пр., 12');
     await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Направление' }), 'Молодёжное служение');
     await user.click(within(dialog).getByRole('button', { name: 'Создать группу' }));
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
     expect(posts(fetchMock)[0]!.body.fields).toEqual({
-      leaderKey: 'u2', district: 'Приморский', direction: 'Молодёжное служение', status: 'Функционирует',
+      leaderKey: 'u2', address: 'Комендантский пр., 12', direction: 'Молодёжное служение', status: 'Функционирует',
     });
   });
 
@@ -475,7 +481,7 @@ describe('«+ Создать»: группа', () => {
     expect(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' })).toBeInTheDocument();
   });
 
-  test('группа не отправляется, пока нет ни адреса, ни района: просят вписать адрес', async () => {
+  test('группа не отправляется без адреса (или «Онлайн»): просят вписать адрес', async () => {
     const fetchMock = stubFetchWithFixtures({ me: meOf(null), 'groups/create': () => json({ ok: true, id: 17 }) });
     const user = userEvent.setup();
     renderAt(<App />, REFERENCE);
@@ -485,14 +491,15 @@ describe('«+ Создать»: группа', () => {
     expect(within(dialog).getByText(/Впишите адрес/)).toBeInTheDocument();
     expect(within(dialog).getByRole('textbox', { name: 'Адрес' })).toHaveFocus();
     expect(posts(fetchMock)).toHaveLength(0);
-    // Адреса пока нет — хватает района.
-    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Район' }), 'Приморский');
+    // Района в форме нет — хватает адреса: район по нему поставит сервер.
+    expect(within(dialog).queryByRole('combobox', { name: 'Район' })).not.toBeInTheDocument();
+    await user.type(within(dialog).getByRole('textbox', { name: 'Адрес' }), 'Комендантский пр., 12');
     await user.click(within(dialog).getByRole('button', { name: 'Создать группу' }));
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
-    expect((posts(fetchMock)[0]!.body as { fields: Record<string, string> }).fields).toMatchObject({ district: 'Приморский' });
+    expect((posts(fetchMock)[0]!.body as { fields: Record<string, string> }).fields).toMatchObject({ address: 'Комендантский пр., 12' });
   });
 
-  test('«Онлайн-группа» прячет адрес, район и метро; уходит отметкой online', async () => {
+  test('«Онлайн-группа» прячет адрес и метро; уходит отметкой online', async () => {
     const fetchMock = stubFetchWithFixtures({ me: meOf(null), 'groups/create': () => json({ ok: true, id: 18 }) });
     const user = userEvent.setup();
     renderAt(<App />, REFERENCE);
@@ -500,7 +507,6 @@ describe('«+ Создать»: группа', () => {
     await user.type(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' }), 'Ольга Крылова');
     await user.click(within(dialog).getByRole('checkbox', { name: 'Онлайн-группа' }));
     expect(within(dialog).queryByRole('textbox', { name: 'Адрес' })).not.toBeInTheDocument();
-    expect(within(dialog).queryByRole('combobox', { name: 'Район' })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('textbox', { name: 'Метро' })).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: 'Создать группу' }));
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));
@@ -523,7 +529,7 @@ describe('«+ Создать»: потенциальная группа и «40 
     await user.selectOptions(status, 'Потенциальная');
     expect(forty).toBeChecked();
     await user.type(within(dialog).getByRole('textbox', { name: 'ФИО ведущего' }), 'Ольга Крылова');
-    await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Район' }), 'Приморский');
+    await user.type(within(dialog).getByRole('textbox', { name: 'Адрес' }), 'Комендантский пр., 12');
     await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Направление' }), 'Молодёжное служение');
     await user.click(within(dialog).getByRole('button', { name: 'Создать группу' }));
     await waitFor(() => expect(posts(fetchMock)).toHaveLength(1));

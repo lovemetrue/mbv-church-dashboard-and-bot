@@ -13,8 +13,8 @@ const group = (patch: Partial<PlanGroup> = {}): PlanGroup => ({
   leader: 'Ведущий',
   district: 'Приморский',
   metro: null,
-  ageRange: [25, 35],
-  day: 'Чт',
+  ageRanges: [[25, 35]],
+  days: ['Чт'],
   slot: 'вечер',
   street: null,
   people: 5,
@@ -75,15 +75,25 @@ describe('матрица «район × возраст»', () => {
   });
 
   test('группа с диапазоном в несколько колонок считается во всех, которые задевает', () => {
-    const s = summary([request()], [group({ ageRange: [35, 50], people: 6, capacity: 10 })]);
+    const s = summary([request()], [group({ ageRanges: [[35, 50]], people: 6, capacity: 10 })]);
     expect(cellOf(s, 'Приморский', '25–40')!.supply).toBe(4);
     expect(cellOf(s, 'Приморский', '40–55')!.supply).toBe(4);
     expect(cellOf(s, 'Приморский', '55–65')!.supply).toBe(0);
     expect(cellOf(s, 'Приморский', '18–25')!.supply).toBe(0);
   });
 
+  test('группа нескольких категорий считается во всех своих колонках, а между ними — нет', () => {
+    const s = summary([], [group({ ageRanges: [[18, 25], [55, 65]], people: 6, capacity: 10 })]);
+    expect(cellOf(s, 'Приморский', '18–25')!.supply).toBe(4);
+    expect(cellOf(s, 'Приморский', '55–65')!.supply).toBe(4);
+    expect(cellOf(s, 'Приморский', '25–40')!.supply).toBe(0);
+    expect(cellOf(s, 'Приморский', '40–55')!.supply).toBe(0);
+    // Места района — без двойного счёта.
+    expect(s.matrix[0]!.supplyTotal).toBe(4);
+  });
+
   test('группа с неизвестным возрастом считается во всех колонках', () => {
-    const s = summary([], [group({ ageRange: null, people: 7, capacity: 10 })]);
+    const s = summary([], [group({ ageRanges: [], people: 7, capacity: 10 })]);
     // Все возрастные колонки; особая «Возраст не указан» — только для спроса.
     for (const age of s.ageColumns.filter((a) => a !== 'Возраст не указан')) expect(cellOf(s, 'Приморский', age)!.supply, age).toBe(3);
   });
@@ -126,7 +136,7 @@ describe('матрица «район × возраст»', () => {
   });
 
   test('места в особые колонку и строку не засчитываются: группа без возраста идёт в обычные колонки', () => {
-    const s = summary([], [group({ ageRange: null, district: 'Невский' })]);
+    const s = summary([], [group({ ageRanges: [], district: 'Невский' })]);
     expect(cellOf(s, 'Невский', 'Возраст не указан')).toMatchObject({ supply: 0, groupIds: [] });
     expect(cellOf(s, 'Невский', '25–40')!.supply).toBeGreaterThan(0);
   });
@@ -144,8 +154,8 @@ describe('матрица «район × возраст»', () => {
   });
 
   test('места района в итоге считаются без двойного счёта: группа с несколькими возрастами — один раз', () => {
-    const wide = group({ ageRange: [20, 40], people: 5, capacity: 10 });
-    const narrow = group({ ageRange: [26, 30], people: 8, capacity: 10 });
+    const wide = group({ ageRanges: [[20, 40]], people: 5, capacity: 10 });
+    const narrow = group({ ageRanges: [[26, 30]], people: 8, capacity: 10 });
     const s = summary([], [wide, narrow]);
     // По ячейкам wide входит в две колонки, но в итоге района её 5 мест — один раз.
     expect(s.matrix[0]!.supplyTotal).toBe(5 + 2);
@@ -158,7 +168,7 @@ describe('матрица «район × возраст»', () => {
   });
 
   test('группа с диапазоном в несколько колонок перечисляется в каждой из них', () => {
-    const wide = group({ ageRange: [20, 40], people: 5, capacity: 10 });
+    const wide = group({ ageRanges: [[20, 40]], people: 5, capacity: 10 });
     const s = summary([], [wide]);
     for (const age of ['18–25', '25–40']) expect(cellOf(s, 'Приморский', age)!.groupIds).toEqual([wide.id]);
     expect(cellOf(s, 'Приморский', '40–55')!.groupIds).toEqual([]);

@@ -20,8 +20,8 @@ const group = (patch: Partial<PlanGroup> = {}): PlanGroup => ({
   leader: 'Ведущий',
   district: 'Приморский',
   metro: null,
-  ageRange: [25, 35],
-  day: 'Чт',
+  ageRanges: [[25, 35]],
+  days: ['Чт'],
   slot: 'вечер',
   street: null,
   people: 5,
@@ -99,14 +99,21 @@ describe('жёсткие отсевы группы для заявки', () => {
   });
 
   test('непересекающиеся возрасты отсеивают, а касание на границе — нет (границы включительно)', () => {
-    expect(exclusionReason(request({ ageRange: [25, 35] }), group({ ageRange: [36, 50] }), SETTINGS)).toMatch(/возраст/);
-    expect(exclusionReason(request({ ageRange: [25, 35] }), group({ ageRange: [35, 50] }), SETTINGS)).toBeNull();
-    expect(exclusionReason(request({ ageRange: [18, 24] }), group({ ageRange: [25, 35] }), SETTINGS)).toMatch(/возраст/);
+    expect(exclusionReason(request({ ageRange: [25, 35] }), group({ ageRanges: [[36, 50]] }), SETTINGS)).toMatch(/возраст/);
+    expect(exclusionReason(request({ ageRange: [25, 35] }), group({ ageRanges: [[35, 50]] }), SETTINGS)).toBeNull();
+    expect(exclusionReason(request({ ageRange: [18, 24] }), group({ ageRanges: [[25, 35]] }), SETTINGS)).toMatch(/возраст/);
+  });
+
+  test('у группы несколько категорий возраста: подходит любая из них, а промежуток между ними — нет', () => {
+    const split = group({ ageRanges: [[18, 25], [55, 65]] });
+    expect(exclusionReason(request({ ageRange: [20, 22] }), split, SETTINGS)).toBeNull();
+    expect(exclusionReason(request({ ageRange: [60, 60] }), split, SETTINGS)).toBeNull();
+    expect(exclusionReason(request({ ageRange: [35, 45] }), split, SETTINGS)).toMatch(/возраст/);
   });
 
   test('возраст неизвестен у заявки или у группы — не отсев', () => {
-    expect(exclusionReason(request({ ageRange: null }), group({ ageRange: [60, 70] }), SETTINGS)).toBeNull();
-    expect(exclusionReason(request({ ageRange: [25, 35] }), group({ ageRange: null }), SETTINGS)).toBeNull();
+    expect(exclusionReason(request({ ageRange: null }), group({ ageRanges: [[60, 70]] }), SETTINGS)).toBeNull();
+    expect(exclusionReason(request({ ageRange: [25, 35] }), group({ ageRanges: [] }), SETTINGS)).toBeNull();
   });
 
   test('чужой район отсеивает, соседний — нет', () => {
@@ -147,7 +154,7 @@ describe('жёсткие отсевы группы для заявки', () => {
 describe('оценка совпадения: считается только по известным параметрам', () => {
   test('район и возраст совпали, остальное у заявки неизвестно → 100, как бы ни отличалась группа по дню и улице', () => {
     const r = request();
-    expect(scoreOf(r, group({ day: 'Сб', slot: 'утро', street: 'Невский пр.' }))).toBe(100);
+    expect(scoreOf(r, group({ days: ['Сб'], slot: 'утро', street: 'Невский пр.' }))).toBe(100);
   });
 
   test('соседний район даёт половину веса района, остальное совпало → 86 при всех четырёх известных', () => {
@@ -160,23 +167,23 @@ describe('оценка совпадения: считается только п�
   test('день недели: совпал день, но не время суток → теряется только вес времени суток', () => {
     const r = request({ days: ['Чт'], slot: 'вечер' });
     // (40 + 25 + 40 + 0) / (40 + 25 + 40 + 20) × 100 = 84
-    expect(scoreOf(r, group({ day: 'Чт', slot: 'день' }))).toBe(84);
+    expect(scoreOf(r, group({ days: ['Чт'], slot: 'день' }))).toBe(84);
   });
 
   test('день недели: не совпал день — теряется вес дня, равный весу района', () => {
     const r = request({ days: ['Пн'], slot: 'утро' });
     // (40 + 25) / 125 × 100 = 52
-    expect(scoreOf(r, group({ day: 'Чт', slot: 'вечер' }))).toBe(52);
+    expect(scoreOf(r, group({ days: ['Чт'], slot: 'вечер' }))).toBe(52);
     // Время суток совпало, а день нет: 85 / 125 × 100 = 68 — день важнее времени суток.
-    expect(scoreOf(r, group({ day: 'Чт', slot: 'утро' }))).toBe(68);
-    expect(scoreOf(r, group({ day: 'Пн', slot: 'вечер' }))).toBe(84);
+    expect(scoreOf(r, group({ days: ['Чт'], slot: 'утро' }))).toBe(68);
+    expect(scoreOf(r, group({ days: ['Пн'], slot: 'вечер' }))).toBe(84);
   });
 
   test('день недели весит как район: не тот день стоит ровно столько же очков, сколько чужой (не соседний) район', () => {
     // Район неизвестной группы не отсеивает только соседний; для сравнения берём «соседний» (0,5 веса) и «день мимо» (0 веса).
     const base = request({ days: ['Чт'] });
-    const sameDistrictWrongDay = scoreOf(base, group({ day: 'Пн' }));
-    const neighborRightDay = scoreOf({ ...base, district: 'Красногвардейский' }, group({ district: 'Невский', day: 'Чт' }));
+    const sameDistrictWrongDay = scoreOf(base, group({ days: ['Пн'] }));
+    const neighborRightDay = scoreOf({ ...base, district: 'Красногвардейский' }, group({ district: 'Невский', days: ['Чт'] }));
     // (40 + 25 + 0) / 105 = 61,9 против (20 + 25 + 40) / 105 = 81 — потеря дня вдвое больше потери «соседнего» района:
     // полный вес дня (40) против половины веса района (20).
     expect(sameDistrictWrongDay).toBe(62);
@@ -186,43 +193,51 @@ describe('оценка совпадения: считается только п�
 
   test('человек назвал только день: время суток в оценку не входит', () => {
     const r = request({ days: ['Чт'] });
-    expect(scoreOf(r, group({ day: 'Чт', slot: 'утро' }))).toBe(100);
-    expect(scoreOf(r, group({ day: 'Чт', slot: null }))).toBe(100);
+    expect(scoreOf(r, group({ days: ['Чт'], slot: 'утро' }))).toBe(100);
+    expect(scoreOf(r, group({ days: ['Чт'], slot: null }))).toBe(100);
   });
 
   test('человек назвал только время суток: день группы в оценку не входит', () => {
     const r = request({ slot: 'вечер' });
-    expect(scoreOf(r, group({ day: 'Пн', slot: 'вечер' }))).toBe(100);
-    expect(scoreOf(r, group({ day: 'Пн', slot: 'утро' }))).toBe(Math.round((65 / 85) * 100));
+    expect(scoreOf(r, group({ days: ['Пн'], slot: 'вечер' }))).toBe(100);
+    expect(scoreOf(r, group({ days: ['Пн'], slot: 'утро' }))).toBe(Math.round((65 / 85) * 100));
   });
 
   test('день: из нескольких удобных дней достаточно, чтобы совпал любой', () => {
     const r = request({ days: ['Вт', 'Чт'] });
-    expect(scoreOf(r, group({ day: 'Чт' }))).toBe(100);
-    expect(scoreOf(r, group({ day: 'Вт' }))).toBe(100);
-    expect(scoreOf(r, group({ day: 'Пт' }))).toBe(62);
+    expect(scoreOf(r, group({ days: ['Чт'] }))).toBe(100);
+    expect(scoreOf(r, group({ days: ['Вт'] }))).toBe(100);
+    expect(scoreOf(r, group({ days: ['Пт'] }))).toBe(62);
   });
 
   test('причины: день и время суток объясняются по отдельности', () => {
     const r = request({ days: ['Чт'], slot: 'вечер' });
-    expect(reasonsOf(r, group({ day: 'Чт', slot: 'вечер' }))).toEqual(expect.arrayContaining(['день совпал: Чт', 'время суток совпало: вечер']));
-    expect(reasonsOf(r, group({ day: 'Пн', slot: 'день' }))).toEqual(expect.arrayContaining(['день не совпал: Пн', 'время суток не совпало: день']));
-    const tones = match(r, [group({ day: 'Пн', slot: 'вечер' })], SETTINGS).ranked[0]!.reasons;
+    expect(reasonsOf(r, group({ days: ['Чт'], slot: 'вечер' }))).toEqual(expect.arrayContaining(['день совпал: Чт', 'время суток совпало: вечер']));
+    expect(reasonsOf(r, group({ days: ['Пн'], slot: 'день' }))).toEqual(expect.arrayContaining(['день не совпал: Пн', 'время суток не совпало: день']));
+    const tones = match(r, [group({ days: ['Пн'], slot: 'вечер' })], SETTINGS).ranked[0]!.reasons;
     expect(tones).toContainEqual({ tone: 'bad', text: 'день не совпал: Пн' });
     expect(tones).toContainEqual({ tone: 'good', text: 'время суток совпало: вечер' });
   });
 
+  test('день: у группы несколько дней — совпал любой из них, и в причине назван совпавший', () => {
+    const r = request({ days: ['Чт'] });
+    expect(scoreOf(r, group({ days: ['Вт', 'Чт'] }))).toBe(scoreOf(r, group({ days: ['Чт'] })));
+    expect(reasonsOf(r, group({ days: ['Вт', 'Чт'] }))).toContain('день совпал: Чт');
+    expect(reasonsOf(r, group({ days: ['Вт', 'Пт'] }))).toContain('день не совпал: Вт, Пт');
+    expect(scoreOf(r, group({ days: ['Вт', 'Пт'] }))).toBe(scoreOf(r, group({ days: ['Пн'] })));
+  });
+
   test('время: у группы времени нет вообще → нейтральные 0,5 и одна причина «уточнить»', () => {
     const r = request({ days: ['Чт'], slot: 'вечер' });
-    const g = group({ day: null, slot: null });
+    const g = group({ days: [], slot: null });
     // (40 + 25 + 20 + 10) / 125 × 100 = 76
     expect(scoreOf(r, g)).toBe(76);
     expect(reasonsOf(r, g).filter((x) => x === 'у группы не указано время')).toHaveLength(1);
   });
 
-  test('время: у группы несколько дней (day = null), но вечер известен → день не штрафуется, вечер совпал', () => {
+  test('время: дни группы не указаны, но вечер известен → день не штрафуется, вечер совпал', () => {
     const r = request({ days: ['Чт'], slot: 'вечер' });
-    const g = group({ day: null, slot: 'вечер' });
+    const g = group({ days: [], slot: 'вечер' });
     // день неизвестен (0,5 от 40), время суток совпало (полные 20)
     expect(scoreOf(r, g)).toBe(Math.round(((40 + 25 + 20 + 20) / 125) * 100));
     expect(reasonsOf(r, g)).toContain('день группы не указан');
@@ -289,15 +304,15 @@ describe('оценка совпадения: считается только п�
 
   test('возраст группы неизвестен → половина веса возраста и причина', () => {
     const r = request();
-    const g = group({ ageRange: null });
+    const g = group({ ageRanges: [] });
     expect(scoreOf(r, g)).toBe(Math.round(((40 + 12.5) / 65) * 100));
     expect(reasonsOf(r, g)).toContain('у группы не указан возраст');
   });
 
   test('возраст заявки неизвестен → возраст не учитывается вовсе, а не считается совпавшим', () => {
     const r = request({ ageRange: null });
-    expect(scoreOf(r, group({ ageRange: [60, 70] }))).toBe(100);
-    expect(reasonsOf(r, group({ ageRange: [60, 70] })).join('|')).not.toMatch(/возраст/);
+    expect(scoreOf(r, group({ ageRanges: [[60, 70]] }))).toBe(100);
+    expect(reasonsOf(r, group({ ageRanges: [[60, 70]] })).join('|')).not.toMatch(/возраст/);
   });
 
   test('группа без района: нейтральные 0,5 за район и причина', () => {
@@ -344,21 +359,21 @@ describe('вес дня недели', () => {
   test('движок берёт вес дня из настроек: обнулив его, получаем оценку без дня', () => {
     const custom: PlanSettings = { ...SETTINGS, weights: { ...SETTINGS.weights, day: 0 } };
     const r = request({ days: ['Пн'] });
-    expect(scoreOf(r, group({ day: 'Чт' }), custom)).toBe(100);
-    expect(scoreOf(r, group({ day: 'Чт' }))).toBeLessThan(100);
+    expect(scoreOf(r, group({ days: ['Чт'] }), custom)).toBe(100);
+    expect(scoreOf(r, group({ days: ['Чт'] }))).toBeLessThan(100);
   });
 
   test('район и день считаются по настройкам, а не по зашитым числам: при равных весах день мимо стоит столько же, сколько и район мимо', () => {
     const only: PlanSettings = { ...SETTINGS, weights: { district: 10, day: 10, age: 0, slot: 0, street: 0 } };
     const r = request({ district: 'Красногвардейский', days: ['Чт'], ageRange: null });
     // Район «Онлайн» не совпадает с районом заявки и даёт половину веса, день мимо — ноль: 10 + 0 против 5 + 10.
-    const wrongDay = scoreOf(r, group({ district: 'Красногвардейский', day: 'Пн' }), only);
-    const wrongDistrict = scoreOf(r, group({ district: 'Онлайн', day: 'Чт' }), only);
+    const wrongDay = scoreOf(r, group({ district: 'Красногвардейский', days: ['Пн'] }), only);
+    const wrongDistrict = scoreOf(r, group({ district: 'Онлайн', days: ['Чт'] }), only);
     expect(wrongDay).toBe(50);
     expect(wrongDistrict).toBe(75);
     // Меняем местами веса — результат зеркален: значит, влияют именно настройки, а не зашитые числа.
     const swapped: PlanSettings = { ...only, weights: { ...only.weights, district: 10, day: 30 } };
-    expect(scoreOf(r, group({ district: 'Красногвардейский', day: 'Пн' }), swapped)).toBe(25);
+    expect(scoreOf(r, group({ district: 'Красногвардейский', days: ['Пн'] }), swapped)).toBe(25);
   });
 });
 
@@ -401,9 +416,9 @@ describe('поправки к оценке', () => {
 
 describe('план на всю очередь: последнее место и две заявки', () => {
   /** Группа А с одним свободным местом подходит обеим заявкам, но «трудной» — только она. */
-  const A = group({ id: 1, ageRange: [25, 45], people: 9, capacity: 10 });
+  const A = group({ id: 1, ageRanges: [[25, 45]], people: 9, capacity: 10 });
   // B в соседнем районе: для «лёгкой» заявки А лучше по оценке, и вытеснение видно.
-  const B = group({ id: 2, district: 'Выборгский', ageRange: [40, 60], people: 2, capacity: 10 });
+  const B = group({ id: 2, district: 'Выборгский', ageRanges: [[40, 60]], people: 2, capacity: 10 });
 
   test('место получает заявка с единственным вариантом, а вытесненной объясняют, кто его занял', () => {
     // У R2 меньший id, но вариантов больше: порядок обработки определяет число вариантов, не id.
@@ -494,8 +509,8 @@ describe('план: выбор группы', () => {
 
   test('закреплённая заявка занимает своё место раньше «трудных»: накопленное предложение не отнимают новые заявки', () => {
     // Единственное свободное место в g. Заявка «трудная» (подходит только g) без закрепления забрала бы его первой.
-    const g = group({ id: 70, people: 9, ageRange: [25, 35] });
-    const other = group({ id: 71, people: 2, ageRange: [25, 35], district: 'Приморский' });
+    const g = group({ id: 70, people: 9, ageRanges: [[25, 35]] });
+    const other = group({ id: 71, people: 2, ageRanges: [[25, 35]], district: 'Приморский' });
     const hard = request({ id: 9001, ageRange: [25, 35] });
     const keeper = request({ id: 9002, pinnedGroupId: 70 });
     // «Трудная» заявка не может в other: он отказан ей раньше, значит g — её единственный вариант.
@@ -617,7 +632,7 @@ describe('план: выбор группы', () => {
 });
 
 describe('план: пропущенные параметры', () => {
-  const g = group({ id: 80, day: 'Чт', slot: 'вечер', street: 'Комендантский пр.', people: 0, capacity: 30 });
+  const g = group({ id: 80, days: ['Чт'], slot: 'вечер', street: 'Комендантский пр.', people: 0, capacity: 30 });
 
   test('заявка без дня, времени и улицы получает план по району и возрасту', () => {
     const r = request({ id: 81 });
@@ -711,8 +726,8 @@ describe('план: отказы из обзвона', () => {
   });
 
   test('«другой день»: группы с нежелательным днём исключаются', () => {
-    const thu = group({ id: 117, day: 'Чт', people: 0 });
-    const fri = group({ id: 118, day: 'Пт', people: 6 });
+    const thu = group({ id: 117, days: ['Чт'], people: 0 });
+    const fri = group({ id: 118, days: ['Пт'], people: 6 });
     const r = request({ id: 119, avoidDays: ['Чт'] });
     expect(proposal(planFor([r], [thu, fri]).entries.get(119)).main.groupId).toBe(118);
   });
@@ -724,8 +739,17 @@ describe('план: отказы из обзвона', () => {
     expect(proposal(planFor([r], [evening, day]).entries.get(122)).main.groupId).toBe(121);
   });
 
+  test('группа с несколькими днями исключается нежеланием, только если нежелательны все её дни', () => {
+    const tueThu = group({ id: 140, days: ['Вт', 'Чт'], people: 0 });
+    const r = request({ id: 141, avoidDays: ['Чт'] });
+    // Вторник человеку подходит — группа остаётся.
+    expect(proposal(planFor([r], [tueThu]).entries.get(141)).main.groupId).toBe(140);
+    const both = request({ id: 142, avoidDays: ['Вт', 'Чт'] });
+    expect(planFor([both], [tueThu]).entries.get(142)?.kind).not.toBe('proposal');
+  });
+
   test('группа без дня не исключается нежеланием дня: неизвестное не равно нежелательному', () => {
-    const floating = group({ id: 123, day: null });
+    const floating = group({ id: 123, days: [] });
     const r = request({ id: 124, avoidDays: ['Чт'] });
     expect(proposal(planFor([r], [floating]).entries.get(124)).main.groupId).toBe(123);
   });
@@ -763,7 +787,8 @@ describe('план: детерминированность и вместимос
   };
 
   const DISTRICT_POOL = ['Приморский', 'Выборгский', 'Калининский', 'Онлайн', 'Не указан'] as const;
-  const AGES: PlanGroup['ageRange'][] = [null, [18, 25], [25, 35], [35, 50], [50, 60], [65, 120]];
+  const AGES: PlanRequest['ageRange'][] = [null, [18, 25], [25, 35], [35, 50], [50, 60], [65, 120]];
+  const GROUP_AGES: PlanGroup['ageRanges'][] = [[], [[18, 25]], [[25, 40]], [[25, 40], [40, 55]], [[40, 55], [55, 65]], [[65, 120]]];
 
   function scenario(seed: number) {
     const rand = rng(seed);
@@ -771,8 +796,8 @@ describe('план: детерминированность и вместимос
       group({
         id: i + 1,
         district: pick(rand, DISTRICT_POOL),
-        ageRange: pick(rand, AGES),
-        day: pick(rand, ['Пн', 'Чт', 'Пт', null] as const),
+        ageRanges: pick(rand, GROUP_AGES),
+        days: pick<PlanGroup['days']>(rand, [['Пн'], ['Чт'], ['Пт'], ['Вт', 'Чт'], []]),
         slot: pick(rand, ['утро', 'день', 'вечер', null] as const),
         street: pick(rand, ['Невский пр.', 'Лиговский пр.', null]),
         people: pick(rand, [null, 0, 3, 8, 9, 10, 12]),
@@ -914,12 +939,12 @@ describe('кого можно направить в будущую группу 
   });
 
   test('возраст и далёкий район по-прежнему отсекают', () => {
-    expect(scoreProspect(request({ ageRange: [60, 80] }), future({ ageRange: [18, 25] }), SETTINGS)).toBeNull();
+    expect(scoreProspect(request({ ageRange: [60, 80] }), future({ ageRanges: [[18, 25]] }), SETTINGS)).toBeNull();
     expect(scoreProspect(request({ district: 'Колпинский' }), future({ district: 'Приморский' }), SETTINGS)).toBeNull();
   });
 
   test('чем лучше совпадает время, тем выше оценка', () => {
-    const g = future({ day: 'Чт', slot: 'вечер' });
+    const g = future({ days: ['Чт'], slot: 'вечер' });
     const fits = scoreProspect(request({ days: ['Чт'], slot: 'вечер' }), g, SETTINGS)!.score;
     const misses = scoreProspect(request({ days: ['Пн'], slot: 'утро' }), g, SETTINGS)!.score;
     expect(fits).toBeGreaterThan(misses);
@@ -944,7 +969,7 @@ describe('уверенность для окна «Другая группа» (
   });
 
   test('возраст и далёкий район — причина вместо числа', () => {
-    expect(fitGroup(request({ ageRange: [60, 80] }), group({ ageRange: [18, 25] }), SETTINGS)).toEqual({ confidence: null, why: 'возраст группы не подходит' });
+    expect(fitGroup(request({ ageRange: [60, 80] }), group({ ageRanges: [[18, 25]] }), SETTINGS)).toEqual({ confidence: null, why: 'возраст группы не подходит' });
     expect(fitGroup(request({ district: 'Колпинский' }), group({ district: 'Приморский' }), SETTINGS).why).toBe('другой район (Приморский)');
   });
 });
@@ -955,7 +980,7 @@ describe('пол: мужчине — не женская группа, женщ�
     expect(exclusionReason(r, group({ id: 1, gender: 'ж' }), SETTINGS)).toBe('женская группа');
     expect(exclusionReason(r, group({ id: 2, gender: 'м' }), SETTINGS)).toBeNull();
     expect(exclusionReason(r, group({ id: 3, gender: null }), SETTINGS)).toBeNull();
-    const plan = planFor([r], [group({ id: 1, gender: 'ж' }), group({ id: 3, gender: null, day: 'Пн', people: 9 })]);
+    const plan = planFor([r], [group({ id: 1, gender: 'ж' }), group({ id: 3, gender: null, days: ['Пн'], people: 9 })]);
     const p = proposal(plan.entries.get(r.id));
     expect(p.main.groupId).toBe(3);
     expect(p.alternatives.map((a) => a.groupId)).not.toContain(1);

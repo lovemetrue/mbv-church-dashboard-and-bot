@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { formatDateFull, formatDateShort, formatPhone, groupLabel, groupLine, healthTone, phoneDigits } from './format';
+import { formatDateFull, formatDateShort, formatPhone, groupLabel, groupLine, groupWhere, healthTone, phoneDigits } from './format';
 import { plural, pluralForm, FORMS } from './plural';
 import { BUCKET_LABEL, isBucketFilter, openCount } from './buckets';
 
@@ -48,7 +48,7 @@ describe('форматы', () => {
 
   test('группа подписывается кодом: номер строки из первоначальной таблицы — не номер группы', () => {
     expect(groupLabel({ code: 'ДГ-0012' })).toBe('ДГ-0012');
-    expect(groupLine({ code: 'ДГ-0012', leader: 'Ольга К.', whenText: 'Вт, вечер' })).toBe('ДГ-0012 · Ольга К. · Вт, вечер');
+    expect(groupLine({ code: 'ДГ-0012', leader: 'Ольга К.', whenText: 'Вт — 19:00' })).toBe('ДГ-0012 · Ольга К. · Вт — 19:00');
     expect(groupLine({ code: 'ДГ-0012', leader: 'Ольга К.', whenText: null })).toBe('ДГ-0012 · Ольга К.');
   });
 
@@ -58,6 +58,17 @@ describe('форматы', () => {
     expect(healthTone(79)).toBe('warn');
     expect(healthTone(60)).toBe('warn');
     expect(healthTone(59)).toBe('crit');
+  });
+});
+
+describe('где и когда группа в краткой карточке', () => {
+  test('район не показывается (его ставит адрес): метро и дни со временем', () => {
+    expect(groupWhere({ district: 'Приморский', metro: 'Беговая', whenText: 'Вт, Чт — 19:00' })).toBe('Беговая · Вт, Чт — 19:00');
+    expect(groupWhere({ district: 'Приморский', metro: null, whenText: null })).toBe('');
+  });
+
+  test('онлайн-группа так и подписана: это не район, а формат', () => {
+    expect(groupWhere({ district: 'Онлайн', metro: null, whenText: 'Пн — 20:00' })).toBe('Онлайн · Пн — 20:00');
   });
 });
 

@@ -1,7 +1,7 @@
 import { useCanEditGroups } from '../../../shared/access';
 import { useId, useMemo, useState, type FormEvent } from 'react';
 import type { GroupItem, PersonItem } from '@contracts';
-import { groupLabel } from '../../../entities/format';
+import { groupLabel, groupWhere } from '../../../entities/format';
 import { useGroups } from '../../../shared/api/queries';
 import { ru } from '../../../shared/i18n/ru';
 import { Button, ErrorState, LoadingState, Modal, Pill } from '../../../shared/ui';
@@ -173,7 +173,7 @@ export function AddToGroupDialog({
                     {groupLabel(g)} · {g.leader}
                     {alreadyThere(g, p, role) && <Pill>{t.already}</Pill>}
                   </span>
-                  <span className={styles.optionMeta}>{[g.district, g.metro, g.whenText].filter(Boolean).join(' · ')}</span>
+                  <span className={styles.optionMeta}>{groupWhere(g)}</span>
                 </button>
               </li>
             ))}

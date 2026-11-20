@@ -26,6 +26,7 @@ export const FAKE_SETTINGS: PlanSettings = {
 const DISTRICT_WORDS: Record<string, string> = { приморск: 'Приморский', невск: 'Невский', выборг: 'Выборгский' };
 const DAYS: Record<string, Day> = {
   пон: 'Пн', вто: 'Вт', сре: 'Ср', чет: 'Чт', пят: 'Пт', суб: 'Сб', вос: 'Вс',
+  пн: 'Пн', вт: 'Вт', ср: 'Ср', чт: 'Чт', пт: 'Пт', сб: 'Сб', вс: 'Вс',
 };
 
 export interface FakeEngineCalls {
@@ -126,21 +127,27 @@ export function createFakeEngine(options: FakeEngineOptions = {}): { engine: Pla
       return m ? [Number(m[1]), Number(m[2])] : null;
     },
 
+    parseGroupAgeRanges(text) {
+      const m = text?.match(/(\d+)\D+(\d+)/);
+      return m ? [[Number(m[1]), Number(m[2])]] : [];
+    },
+
     parseHumanSchedule(text) {
       return parseHumanSchedule(text);
     },
 
     parseGroupWhen(day, time) {
-      const d = day ? DAYS[day.trim().toLowerCase().slice(0, 3)] ?? null : null;
+      const days = (day ?? '').split(',').map((d) => DAYS[d.trim().toLowerCase().slice(0, 3)]).filter((d): d is Day => !!d);
       let slot: Slot | null = null;
       const hour = time?.match(/^(\d{1,2}):/);
       if (hour) slot = Number(hour[1]) >= 17 ? 'вечер' : Number(hour[1]) >= 12 ? 'день' : 'утро';
-      return { day: d, slot };
+      return { days, slot };
     },
 
-    formatWhen(day, slot) {
-      const parts = [day, slot].filter(Boolean);
-      return parts.length ? parts.join(', ') : null;
+    formatWhen(days, slot, time) {
+      const when = time && /^\d{1,2}:\d{2}$/.test(time.trim()) ? time.trim() : slot;
+      const parts = [days.join(', '), when].filter(Boolean);
+      return parts.length ? parts.join(' — ') : null;
     },
 
     ageColumnOf() { return null; },

@@ -1,6 +1,7 @@
 /**
- * Загрузка Яндекс.Карт (JS API 2.1) по требованию. Скрипт тянется с серверов Яндекса только когда человек нажал «Показать
- * карту»: каждая загрузка расходует месячный лимит ключа, поэтому на обычных страницах его нет.
+ * Загрузка Яндекс.Карт (JS API 2.1) по требованию. Скрипт тянется с серверов Яндекса только по кнопке карты («Показать
+ * карту» или «Обновить»): каждая загрузка расходует суточный лимит ключа. Дальше, до перезагрузки страницы, скрипт уже
+ * на месте, и карта на других вкладках интерфейса открывается без нового расхода.
  *
  * Описан лишь тот кусок API, который нужен карте групп; больше не нужно, и типов Яндекса в проекте нет.
  */
@@ -8,6 +9,10 @@ export interface YPlacemark { events: { add(type: string, handler: () => void): 
 export interface YMap {
   geoObjects: { add(o: YPlacemark): void; remove(o: YPlacemark): void };
   setBounds(bounds: [[number, number], [number, number]], opts?: { checkZoomRange?: boolean; zoomMargin?: number }): void;
+  getCenter(): [number, number];
+  getZoom(): number;
+  /** Нужен лишь `boundschange`: человек сдвинул карту или сменил масштаб. */
+  events: { add(type: string, handler: () => void): void };
   destroy(): void;
 }
 export interface YMaps {

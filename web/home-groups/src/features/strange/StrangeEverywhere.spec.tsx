@@ -150,8 +150,10 @@ describe('«Сегодня»: метка в очереди ожидающих', 
     stubFetchWithFixtures();
     // Район Фрунзенский / 36–45: в нём ждёт отмеченная Лариса Кулик
     renderAt(<App />, '/?tab=today');
-    await screen.findByRole('table');
     const user = userEvent.setup();
+    // Таблица по районам на «Сегодня» свёрнута по умолчанию.
+    await user.click(await screen.findByRole('button', { name: 'Распределение по районам' }));
+    await screen.findByRole('table');
     await user.click(await screen.findByRole('button', { name: (n) => n.startsWith('Фрунзенский, 36–45:') }));
     const panel = await screen.findByRole('dialog', { name: /Клетка таблицы/ });
     const list = await within(panel).findAllByRole('img', { name: /^Странный человек/ });

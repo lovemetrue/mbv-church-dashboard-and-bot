@@ -108,9 +108,10 @@ export function fixtureResponse(path: string): unknown {
         ],
       };
     case 'settings/map':
-      return { keySet: true, keyHint: 'c3d4', keyUnreadable: false, loadsThisMonth: 7, monthlyLimit: 100 };
+      return { keySet: true, keyHint: 'c3d4', keyUnreadable: false, staticKeySet: false, staticKeyHint: null, staticKeyUnreadable: false, loadsToday: 7, dailyLimit: 100 };
     case 'map/config':
-      return { apiKey: 'demo-map-key', loadsThisMonth: 7, monthlyLimit: 100 };
+      // В демо ключа Static API нет: картинку снимка отдавать некому, видна кнопка «Показать карту».
+      return { apiKey: 'demo-map-key', loadsToday: 7, dailyLimit: 100, staticReady: false, snapshot: null };
     case 'settings/health':
       return buildSettingsHealth();
     case 'settings/errors':
@@ -210,7 +211,8 @@ export function fixtureActionResponse(path: string, body?: unknown): unknown {
   if (clean === 'settings/assistant/llm-test') return buildLlmTestResult((body ?? {}) as Parameters<typeof buildLlmTestResult>[0]);
   // Ключ геокодера: в демо сохранение «получается», а проверка отвечает успехом.
   if (clean === 'settings/geocoder' || clean === 'settings/geocoder-retry' || clean === 'settings/map') return { ok: true };
-  if (clean === 'map/loaded') return { apiKey: 'demo-map-key', loadsThisMonth: 8, monthlyLimit: 100 };
+  if (clean === 'map/loaded') return { apiKey: 'demo-map-key', loadsToday: 8, dailyLimit: 100, staticReady: false, snapshot: null };
+  if (clean === 'map/snapshot') return { ok: true, snapshot: { takenAt: new Date().toISOString(), marks: 0, skipped: 0 } };
   if (clean === 'settings/geocoder-test') return { ok: true, ms: 420 };
   // Роли команды в демо меняются до перезагрузки страницы (fixtures/teamRoles.ts).
   if (clean === 'settings/team-roles/create' || clean === 'settings/team-roles/update' || clean === 'settings/team-roles/delete') {

@@ -52,6 +52,8 @@ import { createLocator } from './locate.js';
 import { buildAddressTable, createAddressReject, createAddressRetry } from './geocodeAddresses.js';
 import { createYandexGeocoder } from './geocode.js';
 import { createMapConfig } from './mapConfig.js';
+import { createMapSnapshots } from './mapSnapshot.js';
+import { MapSnapshotRepo } from '../db/repos/mapSnapshots.repo.js';
 import { addressStats, addressesOf } from './geocodeJob.js';
 import { createLlmConfig } from './assistant/llmConfig.js';
 import { requestsToCsv } from './export.js';
@@ -143,7 +145,10 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
     usedToday: () => geocodeCache.countSince(24),
     addressStats: async () => addressStats(addressesOf(await load()), await geocodeCache.all()),
   });
-  const mapConfig = createMapConfig({ settings: appSettings, audit: new AuditRepo(db), secret: opts.llmSettings?.secret ?? '' });
+  const mapConfig = createMapConfig({
+    settings: appSettings, audit: new AuditRepo(db), secret: opts.llmSettings?.secret ?? '', ...(opts.timeZone ? { timeZone: opts.timeZone } : {}),
+  });
+  const mapSnapshots = createMapSnapshots({ repo: new MapSnapshotRepo(db), staticKey: () => mapConfig.staticKey() });
   const geocodeAddresses = {
     table: async () => buildAddressTable(await load(), await geocodeCache.all(), new Date()),
     retry: createAddressRetry({
@@ -233,7 +238,7 @@ export function composeService(db: Pool, engine: PlanEngineApi, opts: ComposeOpt
   const groupDirections = createGroupDirections({ repo: new GroupDirectionsRepo(db), audit: auditRepo });
   const kits = createKits({ users: usersRepo, audit: auditRepo, timeZone: opts.timeZone ?? 'Europe/Moscow' });
   const formMeta = createFormMeta({ defaultCapacity: opts.defaultCapacity, coordinators: new CoordinatorsRepo(db), teamRoles: new TeamRolesRepo(db), directions: new GroupDirectionsRepo(db), groups: new GroupsRepo(db) });
-  return { load, views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, geocoderConfig, geocodeAddresses, mapConfig, chat, members, contacts, reconciler, strange, genders, relatives, kits, teamRoles, groupDirections, formMeta, help };
+  return { load, views, matching, placement, settings, errors, staff, staffRepo, appSettings, creator, registrar, manager, exporter, audit, campaign, botSettings, assistant, llmConfig, geocoderConfig, geocodeAddresses, mapConfig, mapSnapshots, chat, members, contacts, reconciler, strange, genders, relatives, kits, teamRoles, groupDirections, formMeta, help };
 }
 
 export function composeViews(db: Pool, engine: PlanEngineApi, opts: ComposeOptions): ViewsSource {

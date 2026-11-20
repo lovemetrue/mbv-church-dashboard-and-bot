@@ -6,7 +6,7 @@ import type { Filter, SavedView, SortState } from './types';
  */
 const storageKey = (entity: string): string => `hg.views.${entity}`;
 
-function isFilter(x: unknown): x is Filter {
+export function isFilter(x: unknown): x is Filter {
   if (!x || typeof x !== 'object') return false;
   const f = x as Record<string, unknown>;
   return typeof f.field === 'string' && typeof f.op === 'string' && typeof f.value === 'string';

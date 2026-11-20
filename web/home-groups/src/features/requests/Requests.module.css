@@ -1129,3 +1129,7 @@
 .summaryMuted {
   color: var(--muted);
 }
+
+.mapBlock {
+  margin: 8px 0;
+}

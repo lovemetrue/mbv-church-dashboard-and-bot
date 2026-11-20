@@ -16,3 +16,4 @@ export { WiltedLeafIcon } from './WiltedLeafIcon';
 export { GroupMarks } from './GroupMarks';
 export { Tip, type TipAria } from './Tip';
 export { StrangeBadge, StrangeBanner } from './StrangeBadge';
+export { Collapsible } from './Collapsible';

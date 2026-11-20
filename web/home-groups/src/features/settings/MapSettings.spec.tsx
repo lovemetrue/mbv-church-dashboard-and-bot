@@ -10,7 +10,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 // Ключ-пустышка из частей: сканеры секретов не должны принимать его за настоящий.
 const KEY = ['map', 'key', '12345678'].join('-');
-const view = (patch: Partial<MapConfigView> = {}): MapConfigView => ({ keySet: true, keyHint: 'c3d4', keyUnreadable: false, loadsThisMonth: 7, monthlyLimit: 100, ...patch });
+const view = (patch: Partial<MapConfigView> = {}): MapConfigView => ({ keySet: true, keyHint: 'c3d4', keyUnreadable: false, staticKeySet: false, staticKeyHint: null, staticKeyUnreadable: false, loadsToday: 7, dailyLimit: 100, ...patch });
 
 function open(overrides: Parameters<typeof stubFetchWithFixtures>[0] = {}) {
   const fetchMock = stubFetchWithFixtures({ me: () => json({ role: 'super' }), 'settings/map': () => json(view()), ...overrides });
@@ -24,12 +24,12 @@ async function block() {
 }
 
 describe('«Настройки»: карта', () => {
-  test('раздел есть в списке; показывает, что ключ сохранён, и расход открытий за месяц; самого ключа нет', async () => {
+  test('раздел есть в списке; показывает, что ключ сохранён, и расход открытий за сутки; самого ключа нет', async () => {
     open();
     const region = await block();
     expect(within(screen.getByRole('navigation', { name: 'Разделы настроек' })).getByRole('button', { name: 'Карта' })).toBeInTheDocument();
     expect(within(region).getByText(/Ключ сохранён: ••••••••c3d4/)).toBeInTheDocument();
-    expect(within(region).getByText(/Карта открывалась в этом месяце: 7 из 100/)).toBeInTheDocument();
+    expect(within(region).getByText(/Живая карта открывалась сегодня: 7 из 100/)).toBeInTheDocument();
     expect(within(region).getByLabelText('Ключ Яндекс.Карт (JS API)')).toHaveValue('');
   });
 
@@ -60,7 +60,28 @@ describe('«Настройки»: карта', () => {
   test('ключа нет — подсказка, а кнопки «Убрать» нет', async () => {
     open({ 'settings/map': () => json(view({ keySet: false, keyHint: null })) });
     const region = await block();
-    expect(within(region).getByText(/Ключ не задан/)).toBeInTheDocument();
+    expect(within(region).getByText(/Ключ не задан: карта не откроется/)).toBeInTheDocument();
     expect(within(region).queryByRole('button', { name: 'Убрать сохранённый ключ' })).toBeNull();
+  });
+
+  test('ключ Static API — своё поле рядом: уходит отдельно и второй ключ не трогает', async () => {
+    const fetchMock = open();
+    const user = userEvent.setup();
+    const region = await block();
+    expect(within(region).getByText(/Ключ не задан: снимка карты нет/)).toBeInTheDocument();
+    await user.type(within(region).getByLabelText('Ключ Static API'), KEY);
+    await user.click(within(region).getByRole('button', { name: 'Сохранить ключ Static API' }));
+    await waitFor(() => expect(posts(fetchMock).find((p) => p.path === 'settings/map')?.body).toEqual({ staticKey: KEY }));
+  });
+
+  test('ключ Static API сохранён: видны последние символы и кнопка убрать — она шлёт null только для него', async () => {
+    const fetchMock = open({ 'settings/map': () => json(view({ staticKeySet: true, staticKeyHint: 'EFGH' })) });
+    const user = userEvent.setup();
+    const region = await block();
+    expect(within(region).getByText(/Ключ сохранён: ••••••••EFGH/)).toBeInTheDocument();
+    await user.click(within(region).getByRole('button', { name: 'Убрать ключ Static API' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Убрать ключ Static API?' });
+    await user.click(within(dialog).getByRole('button', { name: 'Убрать ключ' }));
+    await waitFor(() => expect(posts(fetchMock).find((p) => p.path === 'settings/map')?.body).toEqual({ staticKey: null }));
   });
 });

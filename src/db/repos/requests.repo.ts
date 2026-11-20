@@ -120,6 +120,8 @@ export interface DashboardRequest {
   hobby: string | null;
   profession: string | null;
   family: string | null;
+  /** Семейное положение вариантом (миграция 070); null — не указано. */
+  family_kind: 'single' | 'married' | null;
 }
 
 /** Поле человека: из регистрации, иначе из карточки, иначе (старая заявка без человека) — из самой заявки. */
@@ -361,6 +363,8 @@ export class RequestsRepo {
               NULL::text AS manual_street, NULL::text AS manual_schedule,
               ${PERSON('hobby', 'hobby', 'r.hobby')} AS hobby, ${PERSON('profession', 'profession', 'r.profession')} AS profession,
               ${PERSON('family_status', 'family_status', 'r.family_status')} AS family,
+              -- Вариант семейного положения — у человека (миграция 070); у старой заявки без человека — из её текста.
+              ${PERSON('family_kind', 'family_kind', 'family_kind_of(r.family_status)')} AS family_kind,
               coalesce(r.fio, u.full_name) AS raw_fio, coalesce(r.phone, u.phone) AS raw_phone, r.phones AS raw_phones,
               coalesce(r.age, u.age) AS raw_age, coalesce(r.place, u.location) AS raw_place,
               u.schedule_raw AS raw_schedule, u.address_raw AS raw_address

@@ -17,6 +17,8 @@ import type { CoordinatorRow } from '../../db/repos/coordinators.repo.js';
 import { ALL_DISTRICTS, groupCode, groupGender } from '../../core/groups.js';
 import { genderFromFio } from '../../core/gender.js';
 import { GENDER_BY_AI, type GenderRow } from '../../db/repos/genders.repo.js';
+import type { RelativeRow } from '../../db/repos/relatives.repo.js';
+import { pairKey, relativeHints, relativesByPerson } from '../relatives.js';
 import { AGE_GROUPS } from '../../core/texts.js';
 import { inputSignature } from '../plan/signature.js';
 import { formatPhone } from '../../core/phone.js';
@@ -50,6 +52,8 @@ export interface ViewsInput {
   strange?: ReadonlyMap<string, StrangeMarkRow>;
   /** Пол, поставленный вручную или по подсказке модели (миграция 055): ключ человека → пол. Остальным пол — из ФИО. */
   genders?: ReadonlyMap<string, GenderRow>;
+  /** Родственники — связи между людьми (миграция 071); нет — связей нет. */
+  relatives?: readonly RelativeRow[];
   /** Состав групп, внесённый вручную. */
   members?: readonly MemberRow[];
   /** Карточки людей, внесённые вручную. */
@@ -793,6 +797,8 @@ export function buildViewsWithPlan(
     const finalBrief = bucket === 'done' && r.group_id !== null ? brief(r.group_id) : null;
     requestItems.push({
       id: r.id,
+      // Родственники человека заявки — из «Людей» ниже (миграция 071), когда собраны все люди.
+      relatives: [],
       personKey: requestKey(r),
       strange: strangeOfRequest(r),
       gender: genderOf(requestKey(r), r.fio),
@@ -807,7 +813,7 @@ export function buildViewsWithPlan(
       scheduleInfo: scheduleOf(r),
       streetInfo: streetOf(r),
       streetGeo: geoStateOf(streetOf(r).text),
-      hobby: nonBlank(r.hobby), profession: nonBlank(r.profession), family: nonBlank(r.family),
+      hobby: nonBlank(r.hobby), profession: nonBlank(r.profession), family: nonBlank(r.family), familyKind: r.family_kind ?? null,
       original: originalFields(r),
       street: pr.street,
       source: sourceLabel(r.origin, r.source),
@@ -952,7 +958,7 @@ export function buildViewsWithPlan(
     note: joinParts([r.note, r.extra], ' | '),
     address: streetOf(r).text,
     schedule: scheduleOf(r).text,
-    hobby: nonBlank(r.hobby), profession: nonBlank(r.profession), family: nonBlank(r.family),
+    hobby: nonBlank(r.hobby), profession: nonBlank(r.profession), family: nonBlank(r.family), familyKind: r.family_kind ?? null,
     cancelReason: nonBlank(r.cancel_reason),
     original: originalFields(r),
     table: tableFieldsOf(r),
@@ -1160,7 +1166,8 @@ export function buildViewsWithPlan(
       place: nonBlank(u.location),
       address: nonBlank(u.address),
       schedule: nonBlank(u.schedule),
-      hobby: nonBlank(u.hobby), profession: nonBlank(u.profession), family: nonBlank(u.family), note: nonBlank(u.note),
+      hobby: nonBlank(u.hobby), profession: nonBlank(u.profession), family: nonBlank(u.family), familyKind: u.family_kind ?? null, note: nonBlank(u.note),
+      relatives: [], relativeHints: [],
       church: nonBlank(u.church), leaderName: nonBlank(u.leader_name),
       preferredContact: u.preferred_contact ? (CONTACT_LABEL[u.preferred_contact] ?? u.preferred_contact) : null,
       addressGeo: geoStateOf(u.address),
@@ -1196,7 +1203,8 @@ export function buildViewsWithPlan(
       place: nonBlank(r.place),
       address: streetOf(r).text,
       schedule: scheduleOf(r).text,
-      hobby: nonBlank(r.hobby), profession: nonBlank(r.profession), family: nonBlank(r.family), note: nonBlank(r.note),
+      hobby: nonBlank(r.hobby), profession: nonBlank(r.profession), family: nonBlank(r.family), familyKind: r.family_kind ?? null, note: nonBlank(r.note),
+      relatives: [], relativeHints: [],
       church: null, leaderName: null, preferredContact: null,
       addressGeo: geoStateOf(streetOf(r).text),
       from: sourceLabel(r.origin, r.source),
@@ -1230,7 +1238,8 @@ export function buildViewsWithPlan(
       place: nonBlank(p.place),
       address: nonBlank(p.address),
       schedule: nonBlank(p.schedule),
-      hobby: nonBlank(p.hobby), profession: nonBlank(p.profession), family: nonBlank(p.family), note: nonBlank(p.note),
+      hobby: nonBlank(p.hobby), profession: nonBlank(p.profession), family: nonBlank(p.family), familyKind: p.family_kind ?? null, note: nonBlank(p.note),
+      relatives: [], relativeHints: [],
       church: null, leaderName: null, preferredContact: null,
       addressGeo: geoStateOf(p.address),
       from: join ? sourceLabel(join.origin, join.source) : 'Внесён вручную',
@@ -1243,6 +1252,19 @@ export function buildViewsWithPlan(
     });
   }
   people.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || a.key.localeCompare(b.key));
+  // Родственники (миграция 071): связи — обеим сторонам, подсказки — однофамильцам с тем же телефоном или адресом.
+  {
+    const names = new Map(people.map((p) => [p.key, p.fio]));
+    const relatives = relativesByPerson(input.relatives ?? [], names);
+    const related = new Set((input.relatives ?? []).map((r) => pairKey(r.a_key, r.b_key)));
+    const hints = relativeHints(people, related);
+    for (const p of people) {
+      p.relatives = relatives.get(p.key) ?? [];
+      p.relativeHints = hints.get(p.key) ?? [];
+    }
+    // Карточке заявки — короткий список родственников её человека: экран заявок «Людей» не читает.
+    for (const r of requestItems) r.relatives = relatives.get(r.personKey) ?? [];
+  }
 
   // ── справочник: координаторы ──────────────────────────────────────────────
   const coordinatorItems: CoordinatorItem[] = input.coordinators.map((c) => {

@@ -18,6 +18,8 @@ export interface EditField {
   required?: boolean;
   /** Для select и multi. */
   options?: string[];
+  /** Для select: подпись пустого пункта вместо «не выбрано» (у семейного положения — «не указано»). */
+  emptyLabel?: string;
   /** Подписи пунктов select, когда значение — номер записи (роль из справочника), а не сама подпись. */
   labels?: Record<string, string>;
   /** Пояснение под полем. */

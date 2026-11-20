@@ -1,3 +1,4 @@
+import type { FamilyKind } from '../../core/family.js';
 import type { Pool } from 'pg';
 
 /**
@@ -38,6 +39,8 @@ export interface PersonRow {
   hobby: string | null;
   profession: string | null;
   family: string | null;
+  /** Семейное положение вариантом (миграция 070); null — не указано. */
+  family_kind: FamilyKind | null;
   created_at: Date;
 }
 
@@ -52,6 +55,8 @@ export interface PersonInput {
   hobby?: string | null;
   profession?: string | null;
   family?: string | null;
+  /** Не передан — при создании распознаётся из `family` (триггер миграции 070), при правке остаётся как был. */
+  familyKind?: FamilyKind | null;
 }
 
 export type AddResult = { ok: true; id: number; personKey: string } | { ok: false; reason: 'no_group' | 'no_person' | 'duplicate' };
@@ -86,14 +91,14 @@ export class MembersRepo {
 
   async allPersons(): Promise<PersonRow[]> {
     const { rows } = await this.db.query<PersonRow>(
-      'SELECT id::int AS id, full_name, phone, age, place, note, address, schedule, hobby, profession, family_status AS family, created_at FROM persons WHERE archived_at IS NULL ORDER BY id',
+      'SELECT id::int AS id, full_name, phone, age, place, note, address, schedule, hobby, profession, family_status AS family, family_kind, created_at FROM persons WHERE archived_at IS NULL ORDER BY id',
     );
     return rows;
   }
 
   async findPerson(id: number): Promise<PersonRow | null> {
     const { rows } = await this.db.query<PersonRow>(
-      'SELECT id::int AS id, full_name, phone, age, place, note, address, schedule, hobby, profession, family_status AS family, created_at FROM persons WHERE id = $1 AND archived_at IS NULL',
+      'SELECT id::int AS id, full_name, phone, age, place, note, address, schedule, hobby, profession, family_status AS family, family_kind, created_at FROM persons WHERE id = $1 AND archived_at IS NULL',
       [id],
     );
     return rows[0] ?? null;
@@ -146,8 +151,8 @@ export class MembersRepo {
       const group = await c.query('SELECT 1 FROM groups WHERE id = $1 AND archived_at IS NULL', [groupId]);
       if ((group.rowCount ?? 0) === 0) { await c.query('ROLLBACK'); return { ok: false, reason: 'no_group' }; }
       const created = await c.query<{ id: number }>(
-        'INSERT INTO persons (full_name, phone, age, place, note, address, schedule, hobby, profession, family_status, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id::int AS id',
-        [person.fio, person.phone, person.age, person.place, person.note, person.address ?? null, person.schedule ?? null, person.hobby ?? null, person.profession ?? null, person.family ?? null, by],
+        'INSERT INTO persons (full_name, phone, age, place, note, address, schedule, hobby, profession, family_status, created_by, family_kind) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id::int AS id',
+        [person.fio, person.phone, person.age, person.place, person.note, person.address ?? null, person.schedule ?? null, person.hobby ?? null, person.profession ?? null, person.family ?? null, by, person.familyKind ?? null],
       );
       const r = await this.insert(c, groupId, { kind: 'p', id: created.rows[0]!.id }, input, by);
       await c.query(r.ok ? 'COMMIT' : 'ROLLBACK');
@@ -201,16 +206,17 @@ export class MembersRepo {
 
   async createPerson(input: PersonInput, by: string): Promise<number> {
     const { rows } = await this.db.query<{ id: number }>(
-      'INSERT INTO persons (full_name, phone, age, place, note, address, schedule, hobby, profession, family_status, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id::int AS id',
-      [input.fio, input.phone, input.age, input.place, input.note, input.address ?? null, input.schedule ?? null, input.hobby ?? null, input.profession ?? null, input.family ?? null, by],
+      'INSERT INTO persons (full_name, phone, age, place, note, address, schedule, hobby, profession, family_status, created_by, family_kind) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id::int AS id',
+      [input.fio, input.phone, input.age, input.place, input.note, input.address ?? null, input.schedule ?? null, input.hobby ?? null, input.profession ?? null, input.family ?? null, by, input.familyKind ?? null],
     );
     return rows[0]!.id;
   }
 
   async updatePerson(id: number, input: PersonInput): Promise<boolean> {
     const { rowCount } = await this.db.query(
-      'UPDATE persons SET full_name = $2, phone = $3, age = $4, place = $5, note = $6, address = $7, schedule = $8, hobby = $9, profession = $10, family_status = $11 WHERE id = $1 AND archived_at IS NULL',
-      [id, input.fio, input.phone, input.age, input.place, input.note, input.address ?? null, input.schedule ?? null, input.hobby ?? null, input.profession ?? null, input.family ?? null],
+      // Вариант семейного положения пишем, только если его прислали: иначе триггер (миграция 070) распознаёт новый текст.
+      `UPDATE persons SET full_name = $2, phone = $3, age = $4, place = $5, note = $6, address = $7, schedule = $8, hobby = $9, profession = $10, family_status = $11${input.familyKind !== undefined ? ', family_kind = $12' : ''} WHERE id = $1 AND archived_at IS NULL`,
+      [id, input.fio, input.phone, input.age, input.place, input.note, input.address ?? null, input.schedule ?? null, input.hobby ?? null, input.profession ?? null, input.family ?? null, ...(input.familyKind !== undefined ? [input.familyKind] : [])],
     );
     return (rowCount ?? 0) > 0;
   }

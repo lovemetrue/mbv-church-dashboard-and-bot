@@ -14,6 +14,8 @@ import type {
  *   группы и распределителю, который утвердил в неё человека. Человек из «Людей» — открыт, если он из своей заявки или
  *   из состава своей группы; у ведущего некамерной группы телефон виден всем, как в справочнике групп.
  * • Камерная группа: адрес и телефоны — только лидерам, её координатору и полному входу (отдельное правило выше всех).
+ * • Семейное положение (текст и вариант) скрывается вместе с хобби и профессией. Подсказки «возможно, родственник»
+ *   показывают совпавший телефон и адрес — у карточки со скрытыми контактами их нет; сами связи с родственниками видны.
  *
  * Снимок представлений один на всех и кэшируется, поэтому скрытие — здесь, на выходе, по вошедшему: иначе первый
  * вошедший решал бы, что увидят остальные. Чат помощника отвечает по всей базе — так решили, пока не трогаем.
@@ -73,13 +75,14 @@ function maskRequest(r: RequestItem): RequestItem {
     hobby: null,
     profession: null,
     family: null,
+    familyKind: null,
     original: maskOriginal(r.original),
     contactsHidden: true,
   };
 }
 
 function maskOther(o: OtherItem): OtherItem {
-  return { ...o, phone: maskPhone(o.phone), address: null, hobby: null, profession: null, family: null, original: maskOriginal(o.original), contactsHidden: true };
+  return { ...o, phone: maskPhone(o.phone), address: null, hobby: null, profession: null, family: null, familyKind: null, original: maskOriginal(o.original), contactsHidden: true };
 }
 
 /** Заявки и обращения для вошедшего: чужие и ничьи — без контактов. */
@@ -151,7 +154,7 @@ export function groupsFor(view: GroupsView, viewer: Viewer, requests: RequestsVi
 // ── люди ───────────────────────────────────────────────────────────────────
 
 function maskPerson(p: PersonItem, keepPhone = false): PersonItem {
-  return { ...p, phone: keepPhone ? p.phone : maskPhone(p.phone), address: null, addressGeo: null, hobby: null, profession: null, family: null, contactsHidden: true };
+  return { ...p, phone: keepPhone ? p.phone : maskPhone(p.phone), address: null, addressGeo: null, hobby: null, profession: null, family: null, familyKind: null, relativeHints: [], contactsHidden: true };
 }
 
 /** Справочник людей: открыты люди из своих заявок и из состава своих групп (как координатора). */

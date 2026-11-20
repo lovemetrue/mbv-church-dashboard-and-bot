@@ -11,6 +11,8 @@ import { LinkButton } from '../create';
 import { StrangeSection } from '../strange';
 import { BotNotices } from '../requests/BotNotices';
 import { CoordinatorActions, DeletePersonSection, GroupActions, GroupHeaderTools, MembersSection, PersonActions, PersonGroups, PersonHeaderTools } from '../manage';
+import { familyValue } from '../contact/FamilyValue';
+import { RelativesSection } from '../relatives/RelativesSection';
 import styles from './Reference.module.css';
 
 const noValue = <span className={styles.note}>{ru.reference.notSpecified}</span>;
@@ -274,7 +276,7 @@ export function PersonCard({ p, onClose, beside = false }: { p: PersonItem; onCl
     { label: ru.contact.fields.schedule, value: orNone(p.schedule) },
     { label: ru.contact.fields.hobby, value: orNone(p.hobby) },
     { label: ru.contact.fields.profession, value: orNone(p.profession) },
-    { label: ru.contact.fields.family, value: orNone(p.family) },
+    { label: ru.contact.fields.family, value: familyValue(p.familyKind, p.family, p.gender.value) ?? noValue },
     { label: ru.contact.fields.note, value: orNone(p.note) },
     { label: 'Откуда', value: p.from },
     // Ответы регистрации: то, что служитель вписал в форму (или человек — в боте), видно и потом.
@@ -324,6 +326,7 @@ export function PersonCard({ p, onClose, beside = false }: { p: PersonItem; onCl
         <StrangeSection key={p.key} target={{ kind: 'person', key: p.key }} mark={p.strange} />
       </DrawerSection>
       <PersonGroups p={p} />
+      <RelativesSection key={`relatives-${p.key}`} p={p} />
       {registrationLinks && (
         <DrawerSection>
           <div className={styles.cardActions}>

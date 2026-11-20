@@ -66,6 +66,8 @@ export class MaintenanceRepo {
     await this.db.query("DELETE FROM strange_marks WHERE person_key LIKE 'u%'");
     // И пол, поставленный регистрациям вручную: номера регистраций начнутся заново и достались бы чужим людям.
     await this.db.query("DELETE FROM person_genders WHERE person_key LIKE 'u%'");
+    // И связи с родственниками по ключам регистраций — по той же причине.
+    await this.db.query("DELETE FROM person_relatives WHERE a_key LIKE 'u%' OR b_key LIKE 'u%'");
     await this.db.query('ALTER SEQUENCE registration_no_seq RESTART WITH 1');
   }
 }

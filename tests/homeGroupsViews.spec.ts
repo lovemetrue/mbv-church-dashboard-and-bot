@@ -651,7 +651,7 @@ describe('люди', () => {
     });
     expect(views.people.items).toEqual([{
       key: 'u12', strange: null, contactsHidden: false, personId: null, groups: [], leads: [], requests: expect.any(Array), gender: { value: 'ж', by: 'fio' }, team: null, fio: 'Дарья Ефимова', phone: '+7 911 123-45-67', ageLabel: '26-35', district: 'Невский',
-      place: 'Ломоносовская', address: null, schedule: null, hobby: null, profession: null, family: null, note: null, church: null, leaderName: null, preferredContact: null, addressGeo: null, from: 'Бот · MAX', mdgLabel: 'Хочет в группу', date: '2026-09-12', requestId: 40, userId: 12, registrationNo: 12, kitIssuedOn: null,
+      place: 'Ломоносовская', address: null, schedule: null, hobby: null, profession: null, family: null, familyKind: null, relatives: [], relativeHints: [], note: null, church: null, leaderName: null, preferredContact: null, addressGeo: null, from: 'Бот · MAX', mdgLabel: 'Хочет в группу', date: '2026-09-12', requestId: 40, userId: 12, registrationNo: 12, kitIssuedOn: null,
     }]);
   });
 
@@ -691,7 +691,7 @@ describe('люди', () => {
     const person = (key: string) => views.people.items.find((p) => p.key === key)!;
     expect(person('r7')).toEqual({
       key: 'r7', strange: null, contactsHidden: false, personId: null, groups: [], leads: [], requests: expect.any(Array), gender: { value: 'м', by: 'fio' }, team: null, fio: 'Станислав Ким', phone: '+7 904 123-45-67', ageLabel: '26-35', district: 'Приморский',
-      place: 'Приморский', address: null, schedule: null, hobby: null, profession: null, family: null, note: null, church: null, leaderName: null, preferredContact: null, addressGeo: null, from: 'Таблица', mdgLabel: 'Заявка: готово к утверждению', date: '2026-10-02', requestId: 7, userId: null, registrationNo: null, kitIssuedOn: null,
+      place: 'Приморский', address: null, schedule: null, hobby: null, profession: null, family: null, familyKind: null, relatives: [], relativeHints: [], note: null, church: null, leaderName: null, preferredContact: null, addressGeo: null, from: 'Таблица', mdgLabel: 'Заявка: готово к утверждению', date: '2026-10-02', requestId: 7, userId: null, registrationNo: null, kitIssuedOn: null,
     });
     expect(person('r8')).toMatchObject({ from: 'Дашборд · Звонок', mdgLabel: 'Заявка: нужна помощь в сопоставлении', district: null });
     expect(person('r9').mdgLabel).toBe('Заявка: утверждено');

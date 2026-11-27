@@ -115,6 +115,21 @@ npm test
 npm run typecheck
 ```
 
+### Интерфейс «Домашние группы» локально
+
+Интерфейсу нужны база, Valkey для сессий и собранная статика:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db valkey
+npm run web:install
+npm run web:build
+```
+
+В `.env` добавьте две строки: `REDIS_URL=redis://localhost:6380/0` (в оверрайде разработки
+Valkey опубликован на 6380, чтобы не столкнуться с чужим Redis на 6379) и
+`HG_WEB_DIR=web/home-groups/dist` (без него сервис ищет статику по пути из образа, `/app/web-dist`).
+Дальше `npm run dev:hg` — порт 8092, вход по `DASHBOARD_PASSWORD` из `.env`.
+
 ## Что делает служитель в боте
 
 В боте осталось то, что умеет только бот. Всё остальное — статистика, заявки, домашние

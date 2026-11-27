@@ -546,7 +546,7 @@ describe('группы справочника', () => {
       })],
     });
     expect(views.groups.items[0]).toMatchObject({
-      leader: 'Мария', coLeader: 'Пётр', phone: '+7 911 123-45-67', ageText: '25-40', ages: ['25-40'], days: ['Чт'], slot: 'вечер',
+      leader: 'Мария', coLeader: 'Пётр', phone: '+7 911 123-45-67', ageText: '25-40', ages: ['21-25', '26-30', '31-35', '36-40'], days: ['Чт'], slot: 'вечер',
       status: 'Функционирует', composition: 'Семейная', coordinator: 'Анна', comment: 'Тихо', direction: 'Молодёжное служение',
       whenText: 'Чт — 19:00', metro: 'Беговая',
     });
@@ -561,8 +561,8 @@ describe('группы справочника', () => {
       ],
     });
     const [a, b, c] = views.groups.items;
-    expect(a).toMatchObject({ ages: ['25-40', '40-55'], days: ['Вт', 'Чт'], whenText: 'Вт, Чт — 19:00' });
-    expect(b).toMatchObject({ ageText: '35-50', ages: ['25-40', '40-55'], days: ['Пт'], whenText: 'Пт — 20:30' });
+    expect(a).toMatchObject({ ages: ['21-25', '26-30', '31-35', '36-40', '41-45', '46-50', '51-55'], days: ['Вт', 'Чт'], whenText: 'Вт, Чт — 19:00' });
+    expect(b).toMatchObject({ ageText: '35-50', ages: ['31-35', '36-40', '41-45', '46-50'], days: ['Пт'], whenText: 'Пт — 20:30' });
     expect(c).toMatchObject({ ages: [], days: [], whenText: null });
   });
 

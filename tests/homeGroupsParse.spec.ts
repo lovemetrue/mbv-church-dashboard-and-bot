@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
-import { AGE_GROUPS } from '../src/core/texts.js';
+import { AGE_GROUPS, GROUP_AGE_BUCKETS } from '../src/core/texts.js';
 import {
   AGE_COLUMNS,
   AGE_COLUMN_RANGES,
@@ -188,39 +188,51 @@ describe('formatWhen', () => {
 });
 
 describe('категории возраста группы', () => {
-  test('каноничная запись формы — набор категорий анкеты в их порядке', () => {
-    expect(groupAgeCategories('40-55, 25-40')).toEqual(['25-40', '40-55']);
+  test('каноничная запись формы — набор пятилеток в их порядке', () => {
+    expect(groupAgeCategories('26-30, 21-25')).toEqual(['21-25', '26-30']);
     expect(groupAgeCategories('подростки (до 18 лет), 65+')).toEqual(['подростки (до 18 лет)', '65+']);
-    expect(groupAgeCategories('18-25')).toEqual(['18-25']);
+    expect(groupAgeCategories('18-20')).toEqual(['18-20']);
   });
 
-  test('старый диапазон из таблицы — все категории, которые он задевает: «35-50» → «25-40» и «40-55»', () => {
-    expect(groupAgeCategories('35-50')).toEqual(['25-40', '40-55']);
-    expect(groupAgeCategories('50-60')).toEqual(['40-55', '55-65']);
-    expect(groupAgeCategories('16-25')).toEqual(['подростки (до 18 лет)', '18-25']);
-    expect(groupAgeCategories('25-35')).toEqual(['25-40']);
-    expect(groupAgeCategories('35-45 лет')).toEqual(['25-40', '40-55']);
+  test('старая широкая категория раскладывается на все пятилетки, которые задевает', () => {
+    expect(groupAgeCategories('25-40')).toEqual(['21-25', '26-30', '31-35', '36-40']);
+    expect(groupAgeCategories('40-55')).toEqual(['36-40', '41-45', '46-50', '51-55']);
+    expect(groupAgeCategories('55-65')).toEqual(['51-55', '56-60', '61-64', '65+']);
+    expect(groupAgeCategories('18-25')).toEqual(['18-20', '21-25']);
+  });
+
+  test('список старых категорий раскладывается по частям: «25-40, 40-55» → объединение пятилеток', () => {
+    expect(groupAgeCategories('25-40, 40-55')).toEqual(['21-25', '26-30', '31-35', '36-40', '41-45', '46-50', '51-55']);
+    expect(groupAgeCategories('18-25, 65+')).toEqual(['18-20', '21-25', '65+']);
+  });
+
+  test('старый диапазон из таблицы — все пятилетки, которые он задевает', () => {
+    expect(groupAgeCategories('35-50')).toEqual(['31-35', '36-40', '41-45', '46-50']);
+    expect(groupAgeCategories('50-60')).toEqual(['46-50', '51-55', '56-60']);
+    expect(groupAgeCategories('16-25')).toEqual(['подростки (до 18 лет)', '18-20', '21-25']);
+    expect(groupAgeCategories('25-35')).toEqual(['21-25', '26-30', '31-35']);
+    expect(groupAgeCategories('35-45 лет')).toEqual(['31-35', '36-40', '41-45']);
     expect(groupAgeCategories('65+')).toEqual(['65+']);
   });
 
-  test('касание в одной цифре категорией не считается: «40-55» — только «40-55»', () => {
-    expect(groupAgeCategories('40-55')).toEqual(['40-55']);
-    expect(groupAgeCategories('25-40')).toEqual(['25-40']);
+  test('граничные возраста не теряются: «40» попадает в «36-40», «35-40» задевает две пятилетки', () => {
+    expect(groupAgeCategories('40')).toEqual(['36-40']);
+    expect(groupAgeCategories('35-40')).toEqual(['31-35', '36-40']);
   });
 
   test('«любой», пусто и мусор — категорий нет (возраст группы неизвестен)', () => {
     for (const raw of [null, '', 'любой', 'Любой', '???']) expect(groupAgeCategories(raw), String(raw)).toEqual([]);
   });
 
-  test('диапазоны для подбора: у каждой категории свой, а неизвестный возраст — пустой список', () => {
-    expect(parseGroupAgeRanges('25-40, 55-65')).toEqual([[25, 40], [55, 65]]);
-    expect(parseGroupAgeRanges('35-50')).toEqual([[25, 40], [40, 55]]);
+  test('диапазоны для подбора: у каждой пятилетки свой, а неизвестный возраст — пустой список', () => {
+    expect(parseGroupAgeRanges('21-25, 56-60')).toEqual([[21, 25], [56, 60]]);
+    expect(parseGroupAgeRanges('35-50')).toEqual([[31, 35], [36, 40], [41, 45], [46, 50]]);
     expect(parseGroupAgeRanges('любой')).toEqual([]);
     expect(parseGroupAgeRanges(null)).toEqual([]);
   });
 
-  test('каждое значение возраста групп из реальной таблицы раскладывается в категории без исключений', () => {
-    for (const g of table.groups) for (const c of groupAgeCategories(g.age)) expect(AGE_GROUPS, String(g.age)).toContain(c);
+  test('каждое значение возраста групп из реальной таблицы раскладывается в пятилетки без исключений', () => {
+    for (const g of table.groups) for (const c of groupAgeCategories(g.age)) expect(GROUP_AGE_BUCKETS, String(g.age)).toContain(c);
   });
 });
 

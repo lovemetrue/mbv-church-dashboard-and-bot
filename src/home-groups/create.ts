@@ -2,7 +2,7 @@ import { SCHEDULE_DAYS, SCHEDULE_TIMES, parseGroupForm, parseRequestForm } from 
 import { autoPlace, type Locate } from './locate.js';
 import { ALL_DISTRICTS, ALL_GROUP_STATUSES, COMPOSITIONS, groupCode } from '../core/groups.js';
 import { allChurchOptions } from '../core/churches.js';
-import { AGE_GROUPS } from '../core/texts.js';
+import { GROUP_AGE_BUCKETS } from '../core/texts.js';
 import type { AuditRepo } from '../db/repos/audit.repo.js';
 import type { CoordinatorsRepo } from '../db/repos/coordinators.repo.js';
 import type { TeamRolesRepo } from '../db/repos/teamRoles.repo.js';
@@ -215,7 +215,7 @@ export function createFormMeta(deps: {
     compositions: [...COMPOSITIONS],
     requestStatuses: [...REQUEST_STATUSES],
     requestTypes: REQUEST_TYPES,
-    ageGroups: [...AGE_GROUPS],
+    ageGroups: [...GROUP_AGE_BUCKETS],
     coordinators: (await deps.coordinators.listActive()).map((c) => c.name),
     teamRoles: (await deps.teamRoles.list()).map((r) => ({ id: r.id, name: r.name })),
     scheduleDays: SCHEDULE_DAYS.map(({ value, label }) => ({ value, label })),

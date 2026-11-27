@@ -566,7 +566,7 @@ export function buildViewsWithPlan(
       ].filter(Boolean).join('. ') + '.',
       ...(phone ? { phone } : {}),
       ...(lead.district && DISTRICT_SET.has(lead.district) ? { district: lead.district } : {}),
-      ...(age && AGE_SET.has(age) ? { age } : {}),
+      ...(age && AGE_SET.has(age) ? { age: groupAgeCategories(age).join(', ') } : {}),
       ...(lead.street ? { address: lead.street } : {}),
       ...(lead.days.length === 1 ? { day: lead.days[0]! } : {}),
     };

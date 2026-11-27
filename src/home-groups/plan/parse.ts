@@ -1,5 +1,5 @@
 import { ageRange } from '../../core/matching.js';
-import { AGE_GROUPS } from '../../core/texts.js';
+import { GROUP_AGE_BUCKETS } from '../../core/texts.js';
 import { WEEK, classifyDays, negatedBefore, normalize, tokenize } from './days.js';
 import type { AgeRange, Day, Slot } from './types.js';
 
@@ -85,21 +85,47 @@ export function ageColumnsOverlapping(range: AgeRange): string[] {
 
 // ── категории возраста группы ───────────────────────────────────────────────
 
+/** Включительные границы пятилеток группы (`GROUP_AGE_BUCKETS`), в том же порядке. */
+const GROUP_AGE_RANGES: readonly (readonly [number, number])[] = [
+  [0, 17],
+  [18, 20],
+  [21, 25],
+  [26, 30],
+  [31, 35],
+  [36, 40],
+  [41, 45],
+  [46, 50],
+  [51, 55],
+  [56, 60],
+  [61, 64],
+  [65, 120],
+];
+
 /**
- * Возраст группы — набор категорий анкеты (`AGE_GROUPS`): форма пишет их через запятую («25-40, 40-55»). Старый
- * диапазон из таблицы церкви («35-50») раскладывается на все категории, которые он задевает, по тем же правилам, что
- * колонки матрицы (`ageColumnsOverlapping`): касание в одной цифре не считается. «Любой», пусто и мусор — пустой
- * список: возраст группы неизвестен. Тем же правилом миграция 068 переписала старые значения в базе.
+ * Возраст группы — набор пятилеток (`GROUP_AGE_BUCKETS`): форма пишет их через запятую («21-25, 26-30»). Старый
+ * диапазон из таблицы церкви («35-50») раскладывается на все пятилетки, которые он задевает, по включительному
+ * пересечению: граничные возраста не теряются, а диапазон расширяется до полной пятилетки («25-40» → «21-40») —
+ * сужение опаснее, оно молча выкинуло бы подходящих людей из подбора. «Любой», пусто и мусор — пустой список:
+ * возраст группы неизвестен. Тем же правилом миграция 073 перепишет старые значения в базе.
  */
 export function groupAgeCategories(text: string | null | undefined): string[] {
   const parts = (text ?? '').split(',').map((p) => p.trim()).filter(Boolean);
   if (parts.length === 0) return [];
-  const known: readonly string[] = AGE_GROUPS;
-  if (parts.every((p) => known.includes(p))) return AGE_GROUPS.filter((a) => parts.includes(a));
-  const range = ageRange(text);
-  if (!range) return [];
-  const columns = ageColumnsOverlapping(range);
-  return AGE_GROUPS.filter((_, i) => columns.includes(AGE_COLUMNS[i]!));
+  const known: readonly string[] = GROUP_AGE_BUCKETS;
+  if (parts.every((p) => known.includes(p))) return known.filter((a) => parts.includes(a));
+  // Иначе каждую часть (пятилетку, старую категорию «25-40» или диапазон «35-50») раскладываем в пятилетки, которые
+  // она задевает, и собираем без повторов в порядке анкеты. «Любой» и мусор в частях пропускаем: не знаем.
+  const picked = new Set<string>();
+  for (const part of parts) {
+    const range = ageRange(part);
+    if (!range) continue;
+    const [lo, hi] = range;
+    for (let i = 0; i < GROUP_AGE_BUCKETS.length; i++) {
+      const [from, to] = GROUP_AGE_RANGES[i]!;
+      if (lo <= to && from <= hi) picked.add(GROUP_AGE_BUCKETS[i]!);
+    }
+  }
+  return GROUP_AGE_BUCKETS.filter((a) => picked.has(a));
 }
 
 /** Диапазоны возраста группы для подбора — по одному на категорию; пустой список — возраст неизвестен. */

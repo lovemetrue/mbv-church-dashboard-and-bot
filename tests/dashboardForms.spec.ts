@@ -8,7 +8,7 @@ const form = (o: Record<string, string>) => new URLSearchParams(o);
 const GROUP_MIN = { leader: 'Иванова Мария', district: 'Невский', direction: 'Молодёжное служение', status: 'Функционирует' };
 const REQUEST_MIN = { fio: 'Петров Пётр', type: 'join_group', status: 'В работе' };
 
-describe('форма группы: несколько дней встреч и категорий возраста', () => {
+describe('форма группы: несколько дней встреч и пятилеток возраста', () => {
   const pick = (name: string, values: string[]) => {
     const f = form(GROUP_MIN);
     for (const v of values) f.append(name, v);
@@ -31,15 +31,15 @@ describe('форма группы: несколько дней встреч и �
     expect(none.ok && none.value.day).toBeNull();
   });
 
-  test('категории возраста галочками — одной строкой в порядке анкеты', () => {
-    const r = pick('age', ['40-55', '25-40']);
-    expect(r.ok && r.value.age).toBe('25-40, 40-55');
+  test('пятилетки возраста галочками — одной строкой в порядке анкеты', () => {
+    const r = pick('age', ['36-40', '21-25']);
+    expect(r.ok && r.value.age).toBe('21-25, 36-40');
     const teen = pick('age', ['65+', 'подростки (до 18 лет)']);
     expect(teen.ok && teen.value.age).toBe('подростки (до 18 лет), 65+');
   });
 
-  test('возраст не из категорий (старое «35-50», «любой») сохраняется как записан', () => {
-    for (const raw of ['35-50', 'любой']) {
+  test('возраст не из пятилеток (старые «25-40», «35-50», «любой») сохраняется как записан', () => {
+    for (const raw of ['25-40', '40-55', '35-50', 'любой']) {
       const r = parseGroupForm(form({ ...GROUP_MIN, age: raw }));
       expect(r.ok && r.value.age, raw).toBe(raw);
     }

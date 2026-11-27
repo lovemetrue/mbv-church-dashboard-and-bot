@@ -5,7 +5,7 @@ import {
   type GroupStatus,
 } from '../core/groups.js';
 import { normalizePhone } from '../core/phone.js';
-import { AGE_GROUPS } from '../core/texts.js';
+import { GROUP_AGE_BUCKETS } from '../core/texts.js';
 import { REQUEST_STATUSES, type RequestInput, type RequestStatus } from '../db/repos/requests.repo.js';
 import type { GroupInput } from '../db/repos/groups.repo.js';
 import type { CoordinatorInput } from '../db/repos/coordinators.repo.js';
@@ -163,7 +163,7 @@ export function parseGroupForm(form: URLSearchParams): Parsed<GroupInput> {
       no,
       openToNew: text(form, 'openToNew'),
       ...phone(form),
-      age: listOf(form, 'age', AGE_GROUPS),
+      age: listOf(form, 'age', GROUP_AGE_BUCKETS),
       metro: text(form, 'metro'),
       address: text(form, 'address'),
       composition: composition(form),

@@ -478,7 +478,7 @@ describe('создание и параметры подбора через HTTP 
       expect(meta.districts).toContain('Приморский');
       expect(meta.requestTypes.map((t: { value: string }) => t.value)).toContain('join_group');
       expect(meta.coordinators).toEqual(['Анна Координатор']);
-      expect(meta.ageGroups).toContain('25-40');
+      expect(meta.ageGroups).toContain('21-25');
       expect(meta.openToNew.map((o: { value: string }) => o.value)).toEqual(['ДА', 'НЕТ', 'По требованию']);
     } finally { app.server.close(); }
   });
